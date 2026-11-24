@@ -24,6 +24,7 @@ import {
   type findStreamLocation,
   type NumberedStreamRow,
   type StreamLocationKind,
+  type StreamBookmark,
 } from "./stream-location";
 
 export function StreamRecordNumbers({
@@ -83,6 +84,8 @@ export function StreamLocationPopover({
   onOpenChange,
   onLocate,
   onCopy,
+  bookmarks,
+  onRemoveBookmark,
 }: {
   labels: WorkbenchLabels;
   showNumbers: boolean;
@@ -93,6 +96,8 @@ export function StreamLocationPopover({
     input: string,
   ) => ReturnType<typeof findStreamLocation>;
   onCopy: (reference: string) => void;
+  bookmarks: readonly StreamBookmark[];
+  onRemoveBookmark: (reference: string) => void;
 }) {
   const [kind, setKind] = useState<StreamLocationKind>("reference");
   const [input, setInput] = useState("");
@@ -204,6 +209,47 @@ export function StreamLocationPopover({
             </p>
           )}
         </form>
+        {bookmarks.length > 0 && (
+          <section
+            className="grid min-w-0 gap-2 border-t pt-2"
+            aria-label={labels.contextBookmarks}
+          >
+            <h3 className="text-sm font-medium">{labels.contextBookmarks}</h3>
+            <ul className="grid max-h-40 gap-1 overflow-y-auto">
+              {bookmarks.map(({ reference, event, time }) => (
+                <li
+                  key={reference}
+                  className="flex flex-wrap items-center gap-1"
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-w-0 flex-1 justify-start whitespace-normal"
+                    onClick={() => setResult(onLocate("reference", reference))}
+                  >
+                    <span className="grid min-w-0 text-left wrap-anywhere">
+                      <span>
+                        {labels.locationEvent} {event}
+                      </span>
+                      <time className="font-mono text-xs" dateTime={time}>
+                        {time}
+                      </time>
+                    </span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRemoveBookmark(reference)}
+                  >
+                    {labels.contextRemoveBookmark}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </PopoverContent>
     </Popover>
   );

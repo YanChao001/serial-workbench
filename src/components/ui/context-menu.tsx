@@ -4,6 +4,7 @@ import { cn } from "cn"
 
 const ContextMenu = Primitive.Root
 const ContextMenuTrigger = Primitive.Trigger
+const ContextMenuSub = Primitive.Sub
 
 function ContextMenuContent({
   className,
@@ -39,4 +40,46 @@ function ContextMenuItem({
   )
 }
 
-export { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem }
+function ContextMenuSubTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof Primitive.SubTrigger>) {
+  return (
+    <Primitive.SubTrigger
+      data-slot="context-menu-item"
+      className={cn(
+        "flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-2 text-sm outline-none data-disabled:pointer-events-none data-disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+function ContextMenuSubContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof Primitive.SubContent>) {
+  return (
+    <Primitive.Portal>
+      <Primitive.SubContent
+        data-slot="context-menu-content"
+        className={cn(
+          "z-50 min-w-44 rounded-lg border p-1 shadow-md outline-none",
+          className,
+        )}
+        {...props}
+      />
+    </Primitive.Portal>
+  )
+}
+
+export {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
+}

@@ -11,7 +11,7 @@ const source = "packages/plugin-sdk/examples/reference-automation/";
 const packages = new URL("crates/host/resources/node-packages/", root);
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-test("the built-in automation matches the locked archive and both reference actions", () => {
+test("the built-in automation matches the locked archive and the reference actions", () => {
   const manifestBytes = readFileSync(
     new URL(source + "builtin-manifest.json", root),
   );
@@ -51,7 +51,7 @@ test("the built-in automation matches the locked archive and both reference acti
   assert.deepEqual(manifest.dependencies, []);
   assert.deepEqual(manifest.platformResources, []);
   assert.equal(manifest.runtimeRef, reference.runtimeRef);
-  const actions = ["repeat", "sequence"].map((name) => {
+  const actions = ["repeat", "sequence", "rule", "calendar"].map((name) => {
     const action = reference.contributes.actions.find(
       ({ actionId }) => actionId === "swb.reference.automation." + name,
     );

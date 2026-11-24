@@ -15,6 +15,20 @@ export const SEND_EDITOR_SHORTCUT: Shortcut = {
   allowInEditable: true,
 };
 
+export const UNDO_EDIT_SHORTCUT: Shortcut = {
+  key: "z",
+  primary: true,
+  allowInEditable: true,
+};
+export const REDO_EDIT_SHORTCUT: Shortcut = {
+  ...UNDO_EDIT_SHORTCUT,
+  shift: true,
+};
+export const REDO_EDIT_ALTERNATE: Shortcut = {
+  ...UNDO_EDIT_SHORTCUT,
+  key: "y",
+};
+
 const FUNCTION_KEYS = new Set(
   Array.from({ length: 12 }, (_, index) => `F${index + 1}`),
 );

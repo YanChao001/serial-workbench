@@ -16,8 +16,8 @@ use crate::{
     device::{
         DeviceService,
         sessions::{
-            BackendAdmission, ConfigurationChange, Session, blocking, decode, invalid, new_id,
-            object,
+            BackendAdmission, ConfigurationChange, Session, TxDispatchFence, blocking, decode,
+            invalid, new_id, object,
         },
     },
     dispatch::AcceptedCall,
@@ -66,6 +66,11 @@ pub struct TransmissionService {
     boundary_gap: TestGate,
     #[cfg(test)]
     settlement_gap: TestGate,
+}
+#[derive(Default)]
+struct QueueWait {
+    relative_ms: Option<DurationMs>,
+    dispatch_fence: Option<TxDispatchFence>,
 }
 struct ControlToken {
     is_stop: bool,
@@ -253,6 +258,12 @@ impl TransmissionService {
         };
         let bytes = if call.action_id.as_str() == "session.tx" {
             let params: TxParams = decode(&call.params)?;
+            if params
+                .dispatch_window
+                .is_some_and(|window| window.earliest_unix_ms > window.latest_unix_ms)
+            {
+                return Err(invalid());
+            }
             let bytes: Arc<[u8]> = STANDARD
                 .decode(params.bytes_base64.as_str())
                 .map_err(|_| invalid())?
@@ -617,6 +628,7 @@ impl TransmissionService {
         runtime: &Runtime,
     ) -> BackendAdmission {
         BackendAdmission {
+            dispatch_fence: None,
             session_epoch: accepted.call.target.session_epoch.expect("session target"),
             actor_id: accepted.actor.id().clone(),
             lease_id: accepted.call.lease_id.clone(),
@@ -749,9 +761,10 @@ impl TransmissionService {
         session: &Session,
         runtime: &Arc<Runtime>,
         bytes: usize,
-        queue_wait: Option<DurationMs>,
+        queue_wait: QueueWait,
     ) -> HostResult<Turn> {
         let end = queue_wait
+            .relative_ms
             .map(|wait| deadline(token.accepted_mono_ns, wait, 2147483647))
             .transpose()?;
         let lease_end = if accepted.call.action_id.as_str() == "lease.acquire" {
@@ -790,6 +803,9 @@ impl TransmissionService {
             if runtime.closing.load(Ordering::SeqCst) {
                 return Err(HostError::new("BACKEND_DISCONNECTED", "Session is closing"));
             }
+            if let Some(fence) = queue_wait.dispatch_fence {
+                fence.check(self.devices.inner.clock.as_ref())?;
+            }
             if end.is_some_and(|end| self.now() >= end) {
                 return Err(HostError::new("QUEUE_TIMEOUT", "Queue wait expired"));
             }
@@ -825,16 +841,29 @@ impl TransmissionService {
         let intent = session
             .source
             .commit_tx_intent(prepared, accepted.operation.operation_id.clone())?;
-        let prepared = self
-            .acquire(
-                accepted,
-                token,
-                session,
-                runtime,
-                bytes.len(),
-                params.queue_wait_ms,
-            )
-            .await;
+        let mut admission = self.backend_admission(accepted, token, runtime);
+        let fence = params
+            .dispatch_window
+            .map(|window| TxDispatchFence::new(window, self.devices.inner.clock.as_ref()))
+            .transpose();
+        let prepared = match fence {
+            Ok(fence) => {
+                admission.dispatch_fence = fence;
+                self.acquire(
+                    accepted,
+                    token,
+                    session,
+                    runtime,
+                    bytes.len(),
+                    QueueWait {
+                        relative_ms: params.queue_wait_ms,
+                        dispatch_fence: fence,
+                    },
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
         let (settlement, state) = match prepared {
             Err(error) => (
                 TxSettlement {
@@ -885,7 +914,7 @@ impl TransmissionService {
                         .write(
                             intent.write_payload(),
                             Duration::from_millis(params.write_wait_ms.get()),
-                            self.backend_admission(accepted, token, runtime),
+                            admission,
                         )
                         .await;
                     let settlement = write_settlement(result, bytes.len())?;

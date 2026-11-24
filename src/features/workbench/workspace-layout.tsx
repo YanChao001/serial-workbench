@@ -54,6 +54,7 @@ import { WorkbenchDialog, WorkbenchPanels } from "./workbench-dialog";
 import { WorkbenchConnection } from "./workbench-connection";
 import { supportsSessionTemplates } from "./session-templates";
 import type { SessionTemplateConnection } from "./session-template-tool";
+import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
@@ -75,6 +76,7 @@ import {
 } from "./workspace-model";
 import { CONFIG_FIELDS } from "./serial-configuration";
 import { StreamView, type StreamViewProps } from "./stream-view";
+import type { StreamBookmark } from "./stream-location";
 import type { ChartSourceSelection } from "./stream-chart-selection";
 import { ansiPasteParams } from "./ansi-paste";
 import { receiveEncodingFor } from "@/lib/text-encoding";
@@ -165,8 +167,11 @@ export type WorkbenchTool =
   | "captureTools"
   | "framing"
   | "repeatSend"
+  | "broadcastSend"
+  | "calendarSchedule"
   | "commandSequence"
   | "testSuite"
+  | "ruleTrigger"
   | "diagnostics";
 type WorkbenchPanel =
   | WorkbenchTool
@@ -196,7 +201,10 @@ function activityPanel(
     case "captureTools":
     case "framing":
     case "repeatSend":
+    case "broadcastSend":
+    case "calendarSchedule":
     case "commandSequence":
+    case "ruleTrigger":
     case "diagnostics":
     case "capture":
     case "activity":
@@ -223,6 +231,7 @@ export type WorkbenchToolContext = {
   configurationKey: string;
   configurationDisabled?: boolean;
   templateConnection?: SessionTemplateConnection;
+  broadcastMemory?: BroadcastMemory;
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
@@ -291,8 +300,11 @@ export type WorkspaceLayoutProps = {
         | "framing"
         | "sessionTemplates"
         | "repeatSend"
+        | "broadcastSend"
+        | "calendarSchedule"
         | "commandSequence"
         | "testSuite"
+        | "ruleTrigger"
       >
     | "more"
     | "chooseDevice"
@@ -308,8 +320,11 @@ export type WorkspaceLayoutProps = {
     framing?: string;
     sessionTemplates?: string;
     repeatSend?: string;
+    broadcastSend?: string;
+    calendarSchedule?: string;
     commandSequence?: string;
     testSuite?: string;
+    ruleTrigger?: string;
     manualRecording?: ManualRecordingLabels;
   };
   renderTool?: (
@@ -662,10 +677,14 @@ export function WorkspaceLayout({
   }, [promptDevice, transportPrompt]);
   const [editing, setEditing] = useState(false);
   const dialogTrigger = useRef<HTMLElement | null>(null);
+  const [broadcastMemory] = useState<BroadcastMemory>(() => new Map());
   const [clearThrough, setClearThrough] = useState<
     ReadonlyMap<string, { source: string; position: HistoryPosition }>
   >(new Map());
   const [viewModes, setViewModes] = useState<WindowViewModes>({});
+  const [receiveBookmarks, setReceiveBookmarks] = useState<
+    ReadonlyMap<string, readonly StreamBookmark[]>
+  >(new Map());
   const [savingLayout, setSavingLayout] = useState(false);
   const [unboundSendMode, setUnboundSendMode] = useState<"text" | "hex">();
   const [unboundSendEncoding, setUnboundSendEncoding] =
@@ -1759,6 +1778,7 @@ export function WorkspaceLayout({
           wait: host.waitForOperation,
         }
       : undefined;
+  const bookmarkScope = JSON.stringify([captureOwnerScope, target]);
   const recordingScope =
     renderTool &&
     toolLabels?.manualRecording &&
@@ -2314,6 +2334,28 @@ export function WorkspaceLayout({
             items={items}
             chartSourceItems={sourceItems}
             chartReveal={currentChartLink?.reveal}
+            bookmarks={receiveBookmarks.get(bookmarkScope) ?? []}
+            onBookmarksChange={(value) =>
+              setReceiveBookmarks((current) => {
+                const next = new Map(current);
+                next.delete(bookmarkScope);
+                if (value.length) next.set(bookmarkScope, value);
+                const oldest = next.keys().next().value;
+                if (next.size > 24 && oldest !== undefined) next.delete(oldest);
+                return next;
+              })
+            }
+            contextSender={
+              historyDestination && session && !disabled
+                ? {
+                    scope: JSON.stringify([bookmarkScope, session.revision]),
+                    port: historyDestination.port,
+                    send: (bytes, signal) =>
+                      submitBytes(bytes, signal, session.revision),
+                    wait: host.waitForOperation,
+                  }
+                : undefined
+            }
             onChartSelection={
               renderTool &&
               toolLabels?.framing &&
@@ -2815,8 +2857,12 @@ export function WorkspaceLayout({
                 onConfigurationChange: (value) =>
                   rememberConfiguration(deviceId, value),
                 writeWaitMode: waitModeFor(deviceId),
+                broadcastMemory:
+                  dialog === "broadcastSend" ? broadcastMemory : undefined,
                 draftBytes:
-                  dialog === "repeatSend"
+                  dialog === "repeatSend" ||
+                  dialog === "calendarSchedule" ||
+                  dialog === "broadcastSend"
                     ? (checkBytes ?? undefined)
                     : undefined,
                 onWriteWaitModeChange: (mode) =>

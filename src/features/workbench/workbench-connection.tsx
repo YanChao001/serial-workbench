@@ -23,6 +23,7 @@ import {
   History,
   Timer,
   Gauge,
+  Zap,
   RotateCw,
   ScrollText,
   PanelsTopLeft,
@@ -406,6 +407,24 @@ export function WorkbenchConnection({
                   {toolLabels.repeatSend}
                 </DropdownMenuItem>
               )}
+              {toolLabels?.broadcastSend && (
+                <DropdownMenuItem
+                  onSelect={() => onTool("broadcastSend", menuTrigger.current)}
+                >
+                  <Network aria-hidden="true" />
+                  {toolLabels.broadcastSend}
+                </DropdownMenuItem>
+              )}
+              {toolLabels?.calendarSchedule && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    onTool("calendarSchedule", menuTrigger.current)
+                  }
+                >
+                  <Timer aria-hidden="true" />
+                  {toolLabels.calendarSchedule}
+                </DropdownMenuItem>
+              )}
               {toolLabels?.commandSequence && (
                 <DropdownMenuItem
                   onSelect={() =>
@@ -423,6 +442,14 @@ export function WorkbenchConnection({
                   {toolLabels.testSuite}
                 </DropdownMenuItem>
               )}
+              {toolLabels?.ruleTrigger ? (
+                <DropdownMenuItem
+                  onSelect={() => onTool("ruleTrigger", menuTrigger.current)}
+                >
+                  <Zap aria-hidden="true" />
+                  {toolLabels.ruleTrigger}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 onSelect={() => onTool("sendHistory", menuTrigger.current)}
               >

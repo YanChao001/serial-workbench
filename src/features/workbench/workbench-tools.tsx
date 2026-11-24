@@ -1,7 +1,8 @@
-﻿import {
+import {
   lazy,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -59,6 +60,9 @@ import {
   readSuiteCaseCursor,
 } from "./sequence-workbench-model";
 import { RepeatSendTool } from "./repeat-send-tool";
+import { CalendarScheduleTool } from "./calendar-schedule-tool";
+import { calendarActionIds } from "./calendar-tool-model";
+import { CalendarTaskMemoryContext } from "./calendar-task-memory";
 import { builtinRepeatSendAction, repeatSendAction } from "./repeat-send-model";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
 import { framingAction } from "./framing-model";
@@ -70,9 +74,12 @@ import { workbenchToolLabels } from "./tool-labels";
 import { WorkbenchNotice } from "./workbench-notice";
 import { modbusSlaveAction } from "./modbus-slave-model";
 import { TestSuiteTool } from "./test-suite-tool";
+import { RuleTriggerTool } from "./rule-trigger-tool";
+import { ruleActionIds } from "./rule-trigger-model";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
+const BroadcastSendTool = lazy(() => import("./broadcast-send-tool"));
 
 /** Owns no Host projection: tool components keep their drafts and Host owns receipts. */
 export function WorkbenchTools({
@@ -101,6 +108,7 @@ export function WorkbenchTools({
 }) {
   const { t } = useI18n();
   const labels = useMemo(() => workbenchToolLabels(t), [t]);
+  const calendarTasks = useContext(CalendarTaskMemoryContext);
   const writeWaitLabels = {
     title: t("workbench.tools.writeWaitMode"),
     automatic: t("workbench.tools.writeWaitAutomatic"),
@@ -291,6 +299,19 @@ export function WorkbenchTools({
       waitForOperation: host.waitForOperation,
       readFile: host.readFile,
     };
+  }
+  if (tool === "broadcastSend" && context.broadcastMemory) {
+    return (
+      <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+        <BroadcastSendTool
+          key={generation}
+          host={host}
+          scope={generation}
+          memory={context.broadcastMemory}
+          draftBytes={context.draftBytes}
+        />
+      </Suspense>
+    );
   }
   if (tool === "sessionTemplates" && context.templateConnection) {
     const sessionAccess = protocolSessionAccess();
@@ -568,8 +589,10 @@ export function WorkbenchTools({
     );
   if (
     tool === "repeatSend" ||
+    tool === "calendarSchedule" ||
     tool === "commandSequence" ||
-    tool === "testSuite"
+    tool === "testSuite" ||
+    tool === "ruleTrigger"
   ) {
     const target = context.target;
     const session = context.session;
@@ -602,6 +625,104 @@ export function WorkbenchTools({
       catalog.some(
         (spec) => spec.actionId === id && spec.targetKinds.includes("session"),
       );
+    if (tool === "calendarSchedule") {
+      const connection = host.connection;
+      const actionId = calendarActionIds.find(registered);
+      const calendarKey = JSON.stringify([
+        key,
+        connection?.attachment.instanceEpoch,
+      ]);
+      return (
+        <CalendarScheduleTool
+          key={calendarKey}
+          actionId={actionId}
+          remembered={calendarTasks?.get(calendarKey)}
+          remember={(operation) => {
+            if (!calendarTasks) return;
+            calendarTasks.delete(calendarKey);
+            calendarTasks.set(calendarKey, operation);
+            const oldest = calendarTasks.keys().next().value;
+            if (oldest !== undefined && calendarTasks.size > 64)
+              calendarTasks.delete(oldest);
+          }}
+          operations={host.state.operations}
+          draftBytes={context.draftBytes}
+          access={
+            access && connection && session && actionId
+              ? {
+                  ...access,
+                  invoke: host.invoke,
+                  async prepare(params, signal) {
+                    const input: HostInvocation = {
+                      actionId,
+                      target: access.target,
+                      params: { ...params, sessionRevision: session.revision },
+                      executionMode: "independent",
+                    };
+                    const [current] = await Promise.all([
+                      connection.client.query(
+                        connection.buildQuery("session.get", access.target),
+                        signal,
+                      ),
+                      requireAllowed(input, signal),
+                    ]);
+                    signal.throwIfAborted();
+                    if (
+                      connection.attachment.hostId !== access.target.hostId ||
+                      current.kind !== "session" ||
+                      current.value.sessionId !== access.target.sessionId ||
+                      current.value.sessionEpoch !==
+                        access.target.sessionEpoch ||
+                      current.value.state !== "open" ||
+                      current.value.readOnly ||
+                      current.value.txGate !== "ready" ||
+                      current.value.revision !== session.revision
+                    )
+                      throw { code: "REVISION_CONFLICT" };
+                    return input;
+                  },
+                }
+              : undefined
+          }
+        />
+      );
+    }
+    if (tool === "ruleTrigger") {
+      const connection = host.connection;
+      const actionId = ruleActionIds.find(registered);
+      return (
+        <RuleTriggerTool
+          key={key}
+          actionId={actionId}
+          operations={host.state.operations}
+          access={
+            access && connection && session && actionId
+              ? {
+                  ...access,
+                  scope: key,
+                  invoke: host.invoke,
+                  async prepare(definition, signal) {
+                    const startEventSeq = await readSuiteCaseCursor(
+                      connection,
+                      access.target,
+                      session.configurationRevision,
+                      signal,
+                    );
+                    const input: HostInvocation = {
+                      actionId,
+                      target: access.target,
+                      executionMode: "independent",
+                      params: { definition, startEventSeq },
+                    };
+                    await requireAllowed(input, signal);
+                    return input;
+                  },
+                }
+              : undefined
+          }
+        />
+      );
+    }
     if (tool === "commandSequence" || tool === "testSuite") {
       const connection = host.connection;
       const cursorAccess =

@@ -1525,14 +1525,19 @@ export function createHostWorkspace(
     return result.value;
   }
   async function readFile(params: FileReadParams, signal?: AbortSignal) {
+    const waiting = signal
+      ? AbortSignal.any([signal, lifetime.signal])
+      : lifetime.signal;
+    waiting.throwIfAborted();
     const result = await rawQuery(
       connection.buildQuery(
         "file.read",
         referenceTarget(params.fileRef),
         params,
       ),
-      signal,
+      waiting,
     );
+    waiting.throwIfAborted();
     if (result.kind !== "file_read") throw new ContractValidationError();
     return result.value;
   }
@@ -1622,6 +1627,7 @@ export function createHostWorkspace(
     operation: Operation,
     signal?: AbortSignal,
     until: "running" | "succeeded" = "succeeded",
+    pollIntervalMs = 50,
   ) {
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
@@ -1637,7 +1643,7 @@ export function createHostWorkspace(
       !terminalStates.has(operation.state) &&
       !(until === "running" && operation.state === "running")
     ) {
-      await pause(50, waiting);
+      await pause(pollIntervalMs, waiting);
       const result = await connection.client.query(
         connection.buildQuery("operation.get", connection.hostTarget, {
           operationId: operation.operationId,

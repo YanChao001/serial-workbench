@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ThemeProvider } from "next-themes";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
@@ -23,9 +23,18 @@ import { OperationFailureObserver } from "@/features/workbench/operation-failure
 import { BrowserPairingScreen } from "@/features/browser/browser-pairing-screen";
 import { BrowserTakeoverNotice } from "@/features/browser/browser-takeover-notice";
 import { useBrowserPairing } from "@/features/browser/use-browser-pairing";
-import { LanWorkbench } from "@/features/lan/lan-workbench";
+import { LanWorkbench, LanWorkbenchPage } from "@/features/lan/lan-workbench";
 import { getLocalHostClient } from "@/lib/host-client";
 import { TestSuiteSessionsContext } from "@/features/workbench/test-suite-sessions";
+import {
+  createRuleTaskObservations,
+  RuleTaskObservationsContext,
+} from "@/features/workbench/rule-task-observations";
+
+import {
+  CalendarTaskMemoryContext,
+  type CalendarTaskMemory,
+} from "@/features/workbench/calendar-task-memory";
 
 function AppEffects() {
   useExternalLinks();
@@ -35,6 +44,9 @@ function AppEffects() {
 }
 export default function App() {
   const browser = useBrowserPairing();
+  const [ruleTasks] = useState(createRuleTaskObservations);
+  const [calendarTasks] = useState<CalendarTaskMemory>(() => new Map());
+  useEffect(() => () => ruleTasks.dispose(), [ruleTasks]);
   const [unresolvedSessions, setUnresolvedSessions] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -69,46 +81,56 @@ export default function App() {
                       <CommandsProvider>
                         <DesktopEffects />
                         <CommandPalette />
-                        <Routes>
-                          <Route
-                            element={
-                              <RecoveryGate>
-                                <AppShell />
-                              </RecoveryGate>
-                            }
-                          >
-                            {APP_ROUTES.map(
-                              ({ path, component: Page, index }) => (
-                                <Route
-                                  key={path}
-                                  index={index}
-                                  path={index ? undefined : path}
-                                  element={
-                                    index ? (
-                                      <TestSuiteSessionsContext.Provider
-                                        value={{
-                                          unresolvedSessions,
-                                          onUnresolvedSessionsChange:
-                                            setUnresolvedSessions,
-                                        }}
-                                      >
-                                        <LanWorkbench>
-                                          <Page />
-                                        </LanWorkbench>
-                                      </TestSuiteSessionsContext.Provider>
-                                    ) : (
-                                      <Page />
-                                    )
-                                  }
-                                />
-                              ),
-                            )}
+                        <LanWorkbench>
+                          <Routes>
                             <Route
-                              path="*"
-                              element={<Navigate to="/" replace />}
-                            />
-                          </Route>
-                        </Routes>
+                              element={
+                                <RecoveryGate>
+                                  <AppShell />
+                                </RecoveryGate>
+                              }
+                            >
+                              {APP_ROUTES.map(
+                                ({ path, component: Page, index }) => (
+                                  <Route
+                                    key={path}
+                                    index={index}
+                                    path={index ? undefined : path}
+                                    element={
+                                      index ? (
+                                        <TestSuiteSessionsContext.Provider
+                                          value={{
+                                            unresolvedSessions,
+                                            onUnresolvedSessionsChange:
+                                              setUnresolvedSessions,
+                                          }}
+                                        >
+                                          <LanWorkbenchPage>
+                                            <RuleTaskObservationsContext.Provider
+                                              value={ruleTasks}
+                                            >
+                                              <CalendarTaskMemoryContext.Provider
+                                                value={calendarTasks}
+                                              >
+                                                <Page />
+                                              </CalendarTaskMemoryContext.Provider>
+                                            </RuleTaskObservationsContext.Provider>
+                                          </LanWorkbenchPage>
+                                        </TestSuiteSessionsContext.Provider>
+                                      ) : (
+                                        <Page />
+                                      )
+                                    }
+                                  />
+                                ),
+                              )}
+                              <Route
+                                path="*"
+                                element={<Navigate to="/" replace />}
+                              />
+                            </Route>
+                          </Routes>
+                        </LanWorkbench>
                       </CommandsProvider>
                     </HashRouter>
                   )}

@@ -296,6 +296,7 @@ import type {
   TransformReference,
   TransportCapabilities,
   TransportSemantics,
+  TxDispatchWindow,
   TxGate,
   TxIntent,
   TxOutcome,
@@ -1080,6 +1081,9 @@ export declare function validateTransportCapabilities(
 export declare function validateTransportSemantics(
   value: unknown,
 ): value is TransportSemantics;
+export declare function validateTxDispatchWindow(
+  value: unknown,
+): value is TxDispatchWindow;
 export declare function validateTxGate(value: unknown): value is TxGate;
 export declare function validateTxIntent(value: unknown): value is TxIntent;
 export declare function validateTxOutcome(value: unknown): value is TxOutcome;

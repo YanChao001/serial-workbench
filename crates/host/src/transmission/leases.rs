@@ -32,7 +32,7 @@ impl TransmissionService {
                     return Err(expired());
                 }
                 let turn = self
-                    .acquire(accepted, token, session, runtime, 0, None)
+                    .acquire(accepted, token, session, runtime, 0, QueueWait::default())
                     .await?;
                 // 前一租约的 owner 保存终态后，后继才能覆盖该租约槽。
                 loop {

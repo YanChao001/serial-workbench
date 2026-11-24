@@ -2785,6 +2785,7 @@ mod tests {
         let automation = NodePackageId::try_from("swb.builtin.automation").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
+        let mut pending_calendar: Option<(Id, tokio::time::Instant, ContextToken)> = None;
         for epoch in [1_u64, 2] {
             let server = HostServer::bind(profile.path()).await.unwrap();
             let store = server.store();
@@ -2862,6 +2863,8 @@ mod tests {
                     (&chart, "swb.builtin.chart.exportPng"),
                     (&automation, "swb.builtin.automation.repeat"),
                     (&automation, "swb.builtin.automation.sequence"),
+                    (&automation, "swb.builtin.automation.rule"),
+                    (&automation, "swb.builtin.automation.calendar"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -2882,6 +2885,31 @@ mod tests {
             } else {
                 None
             };
+            if epoch == 2 {
+                let (operation_id, check_after, credential) = pending_calendar.as_ref().unwrap();
+                let actor = server
+                    .auth()
+                    .authenticate(&id("bundled-fields-operator"), Some(credential))
+                    .unwrap()
+                    .actor;
+                let before = store.get(&actor, operation_id).unwrap();
+                match before.state {
+                    OperationState::Cancelled | OperationState::Interrupted => {}
+                    OperationState::Failed => {
+                        assert_eq!(before.error.as_ref().unwrap().code, "NODE_ACTION_FAILED");
+                    }
+                    _ => panic!("shutdown did not end the armed calendar task: {before:?}"),
+                }
+                assert_eq!(before.child_high_watermark, 0.into());
+                tokio::time::sleep_until(*check_after).await;
+                let after = store.get(&actor, operation_id).unwrap();
+                assert_eq!(after.state, before.state);
+                assert_eq!(after.revision, before.revision);
+                assert_eq!(after.child_high_watermark, 0.into());
+                eprintln!(
+                    "bundled_calendar_restart terminal_before_due=true no_child_after_original_due=true"
+                );
+            }
             host.shutdown().await.unwrap();
             let statuses =
                 statuses.expect("bundled protocol packages reached a terminal registration phase");
@@ -2893,7 +2921,7 @@ mod tests {
             );
             assert!(registered.unwrap());
             if let Some(execution) = execution {
-                execution.expect("bundled field actions on the real Host");
+                pending_calendar = Some(execution.expect("bundled field actions on the real Host"));
             }
             assert_eq!(store.identity().unwrap().instance_epoch, U64::from(epoch));
             let installed =
@@ -2921,7 +2949,7 @@ mod tests {
         host: Host,
         profile: std::path::PathBuf,
         peer: Arc<BundledSlavePeer>,
-    ) {
+    ) -> (Id, tokio::time::Instant, ContextToken) {
         use base64::{Engine, engine::general_purpose::STANDARD};
         use std::time::Duration;
 
@@ -2929,7 +2957,9 @@ mod tests {
         let auth = &host.inner.auth;
         let identity = store.identity().unwrap();
         let client_id = id("bundled-fields-operator");
-        let actor = auth.authenticate(&client_id, None).unwrap().actor;
+        let authentication = auth.authenticate(&client_id, None).unwrap();
+        let credential = authentication.issued_credential.unwrap();
+        let actor = authentication.actor;
         let capability = serial_workbench_client::read_user_control_credential(&profile).unwrap();
         let operator = auth
             .authenticate_user_control(&id("bundled-fields-control"), &capability)
@@ -3419,13 +3449,13 @@ mod tests {
         eprintln!(
             "bundled_modbus denied_without_device_modify=true accepted_tx=true invalid_echo_ignored=true"
         );
-        let wait_armed = |operation_id: Id| {
+        let wait_armed = |operation_id: Id, unit: &'static str| {
             let actor = actor.clone();
             async move {
                 tokio::time::timeout(Duration::from_secs(8), async {
                     loop {
                         let state = store.get(&actor, &operation_id).unwrap();
-                        if state.progress.as_ref().is_some_and(|p| p.unit == "frames") {
+                        if state.progress.as_ref().is_some_and(|p| p.unit == unit) {
                             break;
                         }
                         assert!(!state.state.is_terminal(), "{state:?}");
@@ -3433,7 +3463,7 @@ mod tests {
                     }
                 })
                 .await
-                .expect("Slave took its lease and raw cursor");
+                .expect("Signed operation reported its armed source cursor");
             }
         };
         peer.serving.store(true, Ordering::Release);
@@ -3441,7 +3471,7 @@ mod tests {
             .invoke(&actor, call(&session, slave, slave_params.clone()))
             .await
             .unwrap();
-        wait_armed(started.operation_id.clone()).await;
+        wait_armed(started.operation_id.clone(), "frames").await;
         assert!(peer.replies.lock().unwrap().is_empty());
         let write = [0, 21, 0, 0, 0, 6, 1, 6, 0, 1, 1, 2];
         let query = [0, 22, 0, 0, 0, 6, 1, 3, 0, 1, 0, 1];
@@ -3490,7 +3520,7 @@ mod tests {
             .invoke(&actor, call(&session, slave, slave_params.clone()))
             .await
             .unwrap();
-        wait_armed(idle.operation_id.clone()).await;
+        wait_armed(idle.operation_id.clone(), "frames").await;
         let cancellation = Target {
             host_id: identity.host_id.clone(),
             kind: ResourceKind::try_from("operation").unwrap(),
@@ -3673,6 +3703,133 @@ mod tests {
         eprintln!(
             "bundled_assertion first_attempt=response_timeout retry=matched distinct_peer_writes=2"
         );
+
+        let arm_rule = || {
+            let cursor = host.inner.streams.current_cursor(&session).unwrap();
+            let document = serde_json::json!({
+                "version": 1,
+                "observationMs": 10_000,
+                "condition": {"kind":"regex","pattern":"^ALARM$"},
+                "effect": {"kind":"send","bytesBase64":STANDARD.encode(b"ACK\n")},
+            });
+            let mut operation = call(
+                &session,
+                "swb.builtin.automation.rule",
+                serde_json::json!({
+                    "definition": document.to_string(),
+                    "startEventSeq": cursor.position.get().checked_add(1).unwrap().to_string(),
+                }),
+            );
+            operation.execution_mode = Some(ExecutionMode::Independent);
+            operation
+        };
+        let read_automation_report = |result: ActionResult| -> serde_json::Value {
+            let ActionResult::Reference(output) = result else {
+                panic!("Expected the signed automation result file");
+            };
+            let read = host
+                .inner
+                .files
+                .read(
+                    FileReadParams {
+                        file_ref: output.result_ref,
+                        offset: 0.into(),
+                        max_bytes: 4096.into(),
+                    },
+                    &actor,
+                )
+                .unwrap();
+            assert!(read.at_end);
+            serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap()).unwrap()
+        };
+        let rule = host.invoke(&actor, arm_rule()).await.unwrap();
+        wait_armed(rule.operation_id.clone(), "matches").await;
+        let duplicate = host.invoke(&actor, arm_rule()).await.unwrap();
+        let rejected = read_automation_report(settled(duplicate).await);
+        assert_eq!(rejected, serde_json::json!({"outcome":"already_armed"}));
+        let input = host.invoke(&actor, call(
+            &session,
+            "session.tx",
+            serde_json::json!({"bytesBase64":STANDARD.encode(b"\nALARM\n"),"writeWaitMs":"1000"}),
+        )).await.unwrap();
+        assert!(
+            matches!(settled(input).await, ActionResult::Tx(tx) if tx.outcome == TxOutcome::Accepted)
+        );
+        let matched = read_automation_report(settled(rule).await);
+        assert_eq!(matched["outcome"], "written", "{matched}");
+        assert_eq!(matched["source"]["sessionId"], session.id.as_str());
+        assert_eq!(matched["source"]["direction"], "rx");
+        let from = matched["source"]["byteStart"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let to = matched["source"]["byteEnd"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        assert_eq!(to - from, b"ALARM\n".len() as u64);
+        let effect = store
+            .get(&actor, &id(matched["operationId"].as_str().unwrap()))
+            .unwrap();
+        assert!(matches!(effect.result, Some(ActionResult::Tx(tx))
+            if tx.outcome == TxOutcome::Accepted && tx.bytes_base64.as_str() == STANDARD.encode(b"ACK\n")));
+        eprintln!(
+            "bundled_rule duplicate_arm_rejected=true source_bytes=6 confirmed_write_ack=true"
+        );
+
+        let calendar = "swb.builtin.automation.calendar";
+        let session_revision = host.devices().snapshot(&session).await.unwrap().revision;
+        let now = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now());
+        let due = now + chrono::Duration::milliseconds(2_000);
+        let bytes = STANDARD.encode(b"CAL\n");
+        let mut input = call(
+            &session,
+            calendar,
+            serde_json::json!({
+                "schedule": { "kind": "once", "at": due.to_rfc3339_opts(chrono::SecondsFormat::Millis, true) },
+                "sessionRevision": session_revision,
+                "bytesBase64": bytes,
+            }),
+        );
+        input.execution_mode = Some(ExecutionMode::Independent);
+        let accepted = host.invoke(&actor, input).await.unwrap();
+        let parent_id = accepted.operation_id.clone();
+        let report = read_automation_report(settled(accepted).await);
+        assert_eq!(report["outcome"], "completed", "{report}");
+        let runs = report["runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["scheduledMs"], due.timestamp_millis());
+        assert_eq!(runs[0]["outcome"], "written");
+        assert!(runs[0]["observedMs"].as_i64().unwrap() >= due.timestamp_millis());
+        let child = store
+            .get(&actor, &id(runs[0]["operationId"].as_str().unwrap()))
+            .unwrap();
+        assert_eq!(child.root_operation_id, parent_id);
+        assert!(matches!(child.result, Some(ActionResult::Tx(tx))
+            if tx.outcome == TxOutcome::Accepted && tx.bytes_base64.as_str() == bytes));
+        eprintln!("bundled_calendar independent=true writes=1 exact_frame=true due_window=true");
+
+        let check_after_restart = tokio::time::Instant::now() + Duration::from_secs(11);
+        let later = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
+            + chrono::Duration::seconds(8);
+        let mut pending = call(
+            &session,
+            calendar,
+            serde_json::json!({
+                "schedule": { "kind": "once", "at": later.to_rfc3339_opts(chrono::SecondsFormat::Millis, true) },
+                "sessionRevision": session_revision,
+                "bytesBase64": STANDARD.encode(b"NO-REPLAY\n"),
+            }),
+        );
+        pending.execution_mode = Some(ExecutionMode::Independent);
+        let pending = host.invoke(&actor, pending).await.unwrap();
+        wait_armed(pending.operation_id.clone(), "slots").await;
+        let operation = store.get(&actor, &pending.operation_id).unwrap();
+        assert_eq!(operation.state, OperationState::Running);
+        assert_eq!(operation.child_high_watermark, 0.into());
+        (pending.operation_id, check_after_restart, credential)
     }
 
     #[tokio::test]

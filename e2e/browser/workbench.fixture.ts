@@ -131,9 +131,19 @@ export type WorkbenchFixture = {
   }[];
   automationCursorPosition: string;
   suiteConfigurationRevision?: string;
+  calendarSessionRevision?: string;
   automationCursorScope?: string;
   automationObserveFailures: number;
   finishAutomationCancellation: () => void;
+  automationRuleReplyHeld: "preflight" | "admission" | "cancelCheck" | null;
+  emitRuleOperation: () => number;
+  emitCalendarPeer: () => number;
+  calendarCheckHeld: boolean;
+  releaseCalendarCheck: () => void;
+  releaseAutomationRuleReply: () => void;
+  finishRuleNotification: () => void;
+  automationCancelReplyHeld: boolean;
+  releaseAutomationCancelReply: () => void;
   releaseDefinitionRead: () => void;
   holdNextFraming: () => void;
   setFramingResult: (page: FileReadResult) => void;
@@ -236,6 +246,7 @@ export async function seedWorkbenchFixture(
     openedConfiguration,
     connectionDefaults,
     device,
+    secondDevice,
     plugin,
     pendingTakeover,
     lanOwner,
@@ -272,6 +283,7 @@ export async function seedWorkbenchFixture(
     openedConfiguration?: SessionSnapshot["configuration"];
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     device?: DeviceDescriptor;
+    secondDevice?: DeviceDescriptor;
     pendingTakeover?: BrowserTakeoverRequest;
     lanOwner?: { hostId: string; address: string };
     nodeThemes?: FixtureNodeThemes;
@@ -284,6 +296,10 @@ export async function seedWorkbenchFixture(
     automation?: {
       action: ActionSpec;
       state: "ready" | "held" | "denied";
+      delayRuleReply?: "preflight" | "admission" | "cancelCheck";
+      delayFirstCancellationReply?: boolean;
+      calendarInitiallyQueued?: boolean;
+      delaySecondCalendarCheck?: boolean;
       sequenceRetry?: boolean;
       sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
@@ -526,7 +542,13 @@ export async function seedWorkbenchFixture(
     },
     "device.list": {
       kind: "devices",
-      value: { devices: [device ?? fixtureDevice], stale: false },
+      value: {
+        devices: [
+          device ?? fixtureDevice,
+          ...(secondDevice ? [secondDevice] : []),
+        ],
+        stale: false,
+      },
     },
     "recent.list": {
       kind: "recent",
@@ -581,6 +603,13 @@ export async function seedWorkbenchFixture(
       readOnly,
       configuration: openedConfiguration ?? fixtureSession.configuration,
     },
+    secondSession: secondDevice
+      ? {
+          ...fixtureSession,
+          sessionId: "second-session",
+          deviceId: secondDevice.deviceId,
+        }
+      : undefined,
     observationProfile: observations ?? null,
     captureTarget: captureTarget ?? null,
     transferSource,
@@ -622,6 +651,7 @@ export async function seedWorkbenchFixture(
       desktop,
       windowGeometry,
       openedSession,
+      secondSession,
       observationProfile,
       captureTarget,
       transferSource,
@@ -655,6 +685,26 @@ export async function seedWorkbenchFixture(
     let operationPosition = 0;
     let transferOperation: Operation | undefined;
     let sourceRead = "0";
+    let delayedCancellationReply = automation?.delayFirstCancellationReply;
+    let releaseCancellationReply: (() => void) | undefined;
+    let delayedRuleReply = automation?.delayRuleReply;
+    let releaseRuleReply: (() => void) | undefined;
+    async function holdRuleReply(
+      phase: "preflight" | "admission" | "cancelCheck",
+    ) {
+      if (delayedRuleReply !== phase) return;
+      delayedRuleReply = undefined;
+      fixture.automationRuleReplyHeld = phase;
+      await new Promise<void>((resolve) => {
+        releaseRuleReply = resolve;
+      });
+      releaseRuleReply = undefined;
+      fixture.automationRuleReplyHeld = null;
+    }
+    let ruleRuns = 0;
+    let calendarRuns = 0;
+    let calendarChecks = 0;
+    let releaseCalendarCheck: (() => void) | undefined;
     let suiteCase = 0;
     let automationFile = "";
     let framingOperation: Operation | undefined;
@@ -1087,6 +1137,60 @@ export async function seedWorkbenchFixture(
       filePickerCalls: [],
       automationCursorPosition: "0",
       automationObserveFailures: 0,
+      emitRuleOperation() {
+        if (!automationOperation?.actionId.endsWith(".rule"))
+          throw new Error("Expected published rule");
+        return broadcastOperation(automationOperation);
+      },
+      emitCalendarPeer() {
+        if (!automationOperation?.actionId.endsWith(".calendar"))
+          throw new Error("Expected a calendar operation");
+        return broadcastOperation({
+          ...automationOperation,
+          operationId: "fixture-calendar-peer",
+          rootOperationId: "fixture-calendar-peer",
+        });
+      },
+      calendarCheckHeld: false,
+      releaseCalendarCheck() {
+        if (!releaseCalendarCheck)
+          throw new Error("Expected calendar preflight");
+        releaseCalendarCheck();
+      },
+      automationRuleReplyHeld: null,
+      releaseAutomationRuleReply() {
+        if (!releaseRuleReply) throw new Error("Expected a held rule reply");
+        releaseRuleReply();
+      },
+      finishRuleNotification() {
+        if (
+          automationOperation?.state !== "running" ||
+          !automationOperation.actionId.endsWith(".rule")
+        )
+          throw new Error("Expected an armed rule");
+        automationOperation = {
+          ...automationOperation,
+          revision: "2",
+          state: "succeeded",
+          result: {
+            kind: "reference",
+            value: {
+              resultRef: {
+                kind: "plugin_result",
+                id: automationOperation.operationId,
+                hostId: automationOperation.executionHostId,
+                revision: "1",
+              },
+            },
+          },
+        };
+      },
+      automationCancelReplyHeld: false,
+      releaseAutomationCancelReply() {
+        if (!releaseCancellationReply)
+          throw new Error("No delayed cancellation response");
+        releaseCancellationReply();
+      },
       finishAutomationCancellation() {
         if (automationOperation?.state !== "cancel_requested")
           throw new Error("Expected accepted automation cancellation");
@@ -1576,7 +1680,9 @@ export async function seedWorkbenchFixture(
                 params: args.params,
               });
               if (connectFailure) throw connectFailure;
-              return openedSession;
+              return secondSession?.deviceId === args.deviceId
+                ? secondSession
+                : openedSession;
             case "host_raw_request":
             case "host_request": {
               const request = args.request as RpcRequest;
@@ -1588,6 +1694,14 @@ export async function seedWorkbenchFixture(
               ) {
                 const query = request.params;
                 fixture.hostQueries.push(query.actionId);
+                if (
+                  query.actionId === "session.get" &&
+                  secondSession?.sessionId === query.target.id
+                )
+                  return {
+                    ok: true,
+                    result: { kind: "session", value: secondSession },
+                  };
                 fixture.queryInputs.push(query);
                 switch (query.actionId) {
                   case "catalog.list":
@@ -1834,24 +1948,40 @@ export async function seedWorkbenchFixture(
               ) {
                 const call = request.params;
                 const sequence = call.actionId.endsWith(".sequence");
+                const rule = call.actionId.endsWith(".rule");
+                const calendar = call.actionId.endsWith(".calendar");
+                const waitingToArm =
+                  calendar && automation.calendarInitiallyQueued;
                 const retry = sequence && automation.sequenceRetry;
                 const suite = sequence
                   ? automation.sequenceSuiteOutcomes
                   : undefined;
                 const failed = suite?.[suiteCase] === "failed";
                 const written = suite?.[suiteCase] === "written";
-                const count = sequence
-                  ? retry || suite
-                    ? 1
-                    : 4
-                  : call.params.count;
+                const count = rule
+                  ? 1
+                  : sequence
+                    ? retry || suite
+                      ? 1
+                      : 4
+                    : calendar
+                      ? (call.params.count ?? 1)
+                      : call.params.count;
                 if (typeof count !== "number")
                   throw new Error("Expected automation count");
                 const id = suite
                   ? "suite-case-" + ++suiteCase
                   : sequence
                     ? "fixture-sequence"
-                    : "fixture-repeat";
+                    : rule
+                      ? ++ruleRuns === 1
+                        ? "fixture-rule"
+                        : "fixture-rule-" + ruleRuns
+                      : calendar
+                        ? ++calendarRuns === 1
+                          ? "fixture-calendar"
+                          : "fixture-calendar-" + calendarRuns
+                        : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
@@ -1866,12 +1996,24 @@ export async function seedWorkbenchFixture(
                   target: call.target,
                   requestId: call.requestId,
                   executionMode: call.executionMode ?? "independent",
-                  state: automation.state === "held" ? "running" : "succeeded",
-                  progress: {
-                    completed: "1",
-                    total: String(count),
-                    unit: sequence ? "steps" : "rounds",
-                  },
+                  state: waitingToArm
+                    ? "queued"
+                    : automation.state === "held"
+                      ? "running"
+                      : "succeeded",
+                  progress: waitingToArm
+                    ? undefined
+                    : {
+                        completed: "1",
+                        total: String(count),
+                        unit: calendar
+                          ? "slots"
+                          : rule
+                            ? "matches"
+                            : sequence
+                              ? "steps"
+                              : "rounds",
+                      },
                   result:
                     automation.state === "held"
                       ? undefined
@@ -1937,6 +2079,44 @@ export async function seedWorkbenchFixture(
                         ),
                       },
                 );
+                if (calendar) {
+                  const schedule = call.params.schedule;
+                  const at =
+                    schedule && typeof schedule === "object" && "at" in schedule
+                      ? schedule.at
+                      : call.params.endAt;
+                  if (typeof at !== "string")
+                    throw new Error("Expected calendar date");
+                  const scheduledMs = Date.parse(at);
+                  automationFile = JSON.stringify({
+                    outcome: "completed",
+                    runs: [
+                      {
+                        operationId: "calendar-tx-1",
+                        outcome: "written",
+                        scheduledMs,
+                        observedMs: scheduledMs,
+                      },
+                    ],
+                    skipped: [],
+                  });
+                }
+                if (rule) {
+                  automationFile = JSON.stringify({
+                    outcome: "notification",
+                    message: "Bench alert received",
+                    source: {
+                      hostId: call.target.hostId,
+                      sessionId: call.target.sessionId,
+                      sessionEpoch: call.target.sessionEpoch,
+                      direction: "rx",
+                      eventStart: "44",
+                      eventEnd: "45",
+                      byteStart: "2",
+                      byteEnd: "8",
+                    },
+                  });
+                }
                 if (suite) {
                   fixture.automationCursorPosition = String(
                     BigInt(fixture.automationCursorPosition) + 4n,
@@ -1971,6 +2151,7 @@ export async function seedWorkbenchFixture(
                     ],
                   });
                 }
+                if (rule) await holdRuleReply("admission");
                 return {
                   ok: true,
                   result: {
@@ -1996,6 +2177,23 @@ export async function seedWorkbenchFixture(
                   revision: "2",
                   state: "cancel_requested",
                 };
+                if (delayedCancellationReply) {
+                  delayedCancellationReply = false;
+                  fixture.automationCancelReplyHeld = true;
+                  await new Promise<void>((resolve) => {
+                    releaseCancellationReply = resolve;
+                  });
+                  releaseCancellationReply = undefined;
+                  fixture.automationCancelReplyHeld = false;
+                  return {
+                    ok: false,
+                    error: {
+                      code: "HOST_UNAVAILABLE",
+                      message: "Late cancellation response",
+                      retryable: false,
+                    },
+                  };
+                }
                 return {
                   ok: true,
                   result: {
@@ -2236,7 +2434,7 @@ export async function seedWorkbenchFixture(
                     },
                   };
                 if (manualSendReceipts) {
-                  const { target, requestId, expectedRevision } =
+                  const { target, requestId, expectedRevision, executionMode } =
                     request.params;
                   if (expectedRevision !== fixture.manualSendRevision)
                     return {
@@ -2261,6 +2459,7 @@ export async function seedWorkbenchFixture(
                     ...sentOperation,
                     target,
                     requestId,
+                    executionMode: executionMode ?? sentOperation.executionMode,
                     operationId,
                     rootOperationId: operationId,
                     result: {
@@ -2353,6 +2552,9 @@ export async function seedWorkbenchFixture(
                       configurationRevision:
                         fixture.suiteConfigurationRevision ??
                         openedSession.configurationRevision,
+                      revision:
+                        fixture.calendarSessionRevision ??
+                        openedSession.revision,
                     },
                   },
                 };
@@ -2939,7 +3141,21 @@ export async function seedWorkbenchFixture(
                 if (
                   automation &&
                   query.params.actionId === automation.action.actionId
-                )
+                ) {
+                  if (automation.action.actionId.endsWith(".rule"))
+                    await holdRuleReply("preflight");
+                  if (
+                    automation.action.actionId.endsWith(".calendar") &&
+                    automation.delaySecondCalendarCheck &&
+                    ++calendarChecks === 2
+                  ) {
+                    fixture.calendarCheckHeld = true;
+                    await new Promise<void>((resolve) => {
+                      releaseCalendarCheck = resolve;
+                    });
+                    fixture.calendarCheckHeld = false;
+                    releaseCalendarCheck = undefined;
+                  }
                   return {
                     ok: true,
                     result: {
@@ -2951,6 +3167,13 @@ export async function seedWorkbenchFixture(
                       },
                     },
                   };
+                }
+                if (
+                  query.params.actionId === "operation.cancel" &&
+                  automationOperation?.actionId.endsWith(".rule") &&
+                  query.target.id === automationOperation.operationId
+                )
+                  await holdRuleReply("cancelCheck");
                 const capture = query.params.actionId === "capture.tail";
                 if (capture)
                   fixture.capturePermissionChecks.push({
@@ -2993,8 +3216,8 @@ export async function seedWorkbenchFixture(
                       cursor: {
                         hostId: hostAttachment.attachment.hostId,
                         instanceEpoch: "1",
-                        scopeId: automation?.action.actionId.endsWith(
-                          ".sequence",
+                        scopeId: [".sequence", ".rule"].some((suffix) =>
+                          automation?.action.actionId.endsWith(suffix),
                         )
                           ? (fixture.automationCursorScope ??
                             [

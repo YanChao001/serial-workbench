@@ -219,6 +219,7 @@ export type HostContextValue = {
     operation: Operation,
     signal?: AbortSignal,
     until?: "running" | "succeeded",
+    pollIntervalMs?: number,
   ): Promise<Operation>;
   checkAction(
     input: HostActionCheckInput,

@@ -7,7 +7,13 @@ import {
   type ComponentProps,
 } from "react";
 import { cn } from "cn";
-import { matchesShortcut, type Shortcut } from "@/commands/shortcuts";
+import {
+  matchesShortcut,
+  REDO_EDIT_ALTERNATE,
+  REDO_EDIT_SHORTCUT,
+  UNDO_EDIT_SHORTCUT,
+  type Shortcut,
+} from "@/commands/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CLIENT_DRAFT_MAX_BYTES } from "@/lib/client-settings";
@@ -24,9 +30,7 @@ import {
 const INDENT: Shortcut = { key: "]", primary: true, allowInEditable: true };
 const OUTDENT: Shortcut = { key: "[", primary: true, allowInEditable: true };
 const COMMENT: Shortcut = { key: "/", primary: true, allowInEditable: true };
-const UNDO: Shortcut = { key: "z", primary: true, allowInEditable: true };
-const REDO: Shortcut = { ...UNDO, shift: true };
-const REDO_ALTERNATE: Shortcut = { ...UNDO, key: "y" };
+
 const FALLBACK_HISTORY = 24;
 
 type Command = "indent" | "outdent" | "comment";
@@ -257,11 +261,14 @@ export function SendDraftEditor({
             } else if (grammar === "mixed" && matchesShortcut(key, COMMENT)) {
               event.preventDefault();
               perform("comment");
-            } else if (matchesShortcut(key, UNDO) && restoreFallback("undo")) {
+            } else if (
+              matchesShortcut(key, UNDO_EDIT_SHORTCUT) &&
+              restoreFallback("undo")
+            ) {
               event.preventDefault();
             } else if (
-              (matchesShortcut(key, REDO) ||
-                matchesShortcut(key, REDO_ALTERNATE)) &&
+              (matchesShortcut(key, REDO_EDIT_SHORTCUT) ||
+                matchesShortcut(key, REDO_EDIT_ALTERNATE)) &&
               restoreFallback("redo")
             ) {
               event.preventDefault();

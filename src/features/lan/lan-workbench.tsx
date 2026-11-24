@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -23,7 +25,11 @@ import { getHostClient } from "@/lib/host-client";
 import { nativeErrorText } from "@/lib/native-error";
 import { hostSelectLanRoute, isTauri } from "@/lib/tauri";
 import { HostProvider } from "@/providers/host";
-import { useHost } from "@/providers/host-context";
+import {
+  HostContext,
+  useHost,
+  type HostContextValue,
+} from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { UnsavedWorkScope, useRequestLeave } from "@/providers/unsaved-work";
 import {
@@ -34,6 +40,33 @@ import {
 import { LanWorkbenchContext } from "./lan-workbench-context";
 
 const workbenchScope = "workbench-connection";
+const RoutedWorkbenchHost = createContext<HostContextValue | null>(null);
+
+function PreserveLocalHost({
+  local,
+  children,
+}: {
+  local: HostContextValue;
+  children: ReactNode;
+}) {
+  const routed = useHost();
+  return (
+    <RoutedWorkbenchHost.Provider value={routed}>
+      <HostContext.Provider value={local}>{children}</HostContext.Provider>
+    </RoutedWorkbenchHost.Provider>
+  );
+}
+
+export function LanWorkbenchPage({ children }: { children: ReactNode }) {
+  const routed = useContext(RoutedWorkbenchHost);
+  return routed ? (
+    <UnsavedWorkScope scope={workbenchScope}>
+      <HostContext.Provider value={routed}>{children}</HostContext.Provider>
+    </UnsavedWorkScope>
+  ) : (
+    children
+  );
+}
 
 export function LanWorkbench({ children }: { children: ReactNode }) {
   return isTauri() ? (
@@ -67,12 +100,12 @@ function DesktopLanWorkbench({ children }: { children: ReactNode }) {
     return connection;
   }, [route]);
   return (
-    <UnsavedWorkScope scope={workbenchScope}>
-      <HostProvider
-        enabled={route !== undefined}
-        connect={connect}
-        localWorkspace={local}
-      >
+    <HostProvider
+      enabled={route !== undefined}
+      connect={connect}
+      localWorkspace={local}
+    >
+      <PreserveLocalHost local={local}>
         <LanWorkbenchContext
           value={{
             route,
@@ -86,7 +119,9 @@ function DesktopLanWorkbench({ children }: { children: ReactNode }) {
         >
           {children}
         </LanWorkbenchContext>
-        {prompt && (
+      </PreserveLocalHost>
+      {prompt ? (
+        <UnsavedWorkScope scope={workbenchScope}>
           <LanConnectionDialog
             current={route}
             returnFocus={prompt.returnFocus}
@@ -96,9 +131,9 @@ function DesktopLanWorkbench({ children }: { children: ReactNode }) {
               setPrompt(undefined);
             }}
           />
-        )}
-      </HostProvider>
-    </UnsavedWorkScope>
+        </UnsavedWorkScope>
+      ) : null}
+    </HostProvider>
   );
 }
 

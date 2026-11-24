@@ -22,6 +22,8 @@ import {
   createCommandSequence,
 } from "./command-sequence.ts";
 import { createRepeatSend, repeatSendAction } from "./repeat-send.ts";
+import { createRuleTrigger, ruleTriggerAction } from "./rule-trigger.ts";
+import { calendarTaskAction, createCalendarTask } from "./calendar-task.ts";
 
 const action = "swb.reference.automation.run";
 const maxSteps = 8;
@@ -51,6 +53,8 @@ export const register: NodeRegister = (context) => {
   context.actions.register(modbusTransactionAction, modbusTransaction);
   context.actions.register(repeatSendAction, createRepeatSend());
   context.actions.register(commandSequenceAction, createCommandSequence());
+  context.actions.register(ruleTriggerAction, createRuleTrigger());
+  context.actions.register(calendarTaskAction, createCalendarTask());
   context.actions.register(action, async ({ target, params }, task) => {
     const { sessionId, sessionEpoch } = target;
     const {
