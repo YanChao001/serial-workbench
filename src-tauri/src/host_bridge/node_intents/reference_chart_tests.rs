@@ -101,7 +101,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             assert_eq!(serde_json::to_value(&sample.value).unwrap(), value);
             assert_eq!(sample.position.get(), index as u64 + 1);
             assert_eq!(sample.provenance.parser_id.as_str(), SAMPLE);
-            assert_eq!(sample.provenance.parser_version, "0.1.3");
+            assert_eq!(sample.provenance.parser_version, "0.1.4");
             assert_eq!(sample.provenance.unit.as_deref(), Some("V"));
             assert_eq!(sample.provenance.quality, [DerivedQuality::Complete, DerivedQuality::Transformed]);
             let [source] = &sample.provenance.sources[..] else { panic!("One exact RX source range"); };

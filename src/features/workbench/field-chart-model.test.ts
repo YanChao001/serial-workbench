@@ -4,6 +4,7 @@ import { compileProtocolFields } from "../../../packages/plugin-sdk/examples/ref
 import {
   chartValue,
   fieldChartFrames,
+  fieldChartPairs,
   fieldChartSelection,
   fieldChartSpans,
   locateChartSelection,
@@ -190,4 +191,47 @@ test("missing source, mismatched bytes and a failed checksum leave separate evid
     ),
   ).toEqual([undefined, undefined, undefined, 0.75]);
   expect(sharesChartSegment(badChecksum!, resumed!)).toBe(false);
+});
+
+test("paired fields use matching frames and leave a break at invalid intermediate points", () => {
+  const pairs = fieldChartFrames(
+    {
+      target,
+      frames,
+      items: [
+        source(11, 0, [255, 1]),
+        source(12, 2, [2, 3, 0]),
+        source(13, 5, [8, 8]),
+        source(14, 7, [0, 2, 0]),
+        source(15, 10, [0, 3, 3]),
+      ],
+    },
+    compileProtocolFields({
+      version: "1",
+      byteLength: 3,
+      fields: [
+        { id: "x", kind: "integer", byteOffset: 0, width: 1, order: "big" },
+        { id: "y", kind: "integer", byteOffset: 1, width: 1, order: "big" },
+        {
+          id: "sum",
+          kind: "checksum",
+          byteOffset: 2,
+          order: "big",
+          algorithm: "sum",
+          coverageStart: 0,
+          coverageEnd: 2,
+        },
+      ],
+    }),
+  );
+  expect(fieldChartPairs(pairs, 0, "x", "y")).toEqual([
+    [
+      { index: 0, x: 1, y: 2 },
+      { index: 1, x: 0, y: 8 },
+    ],
+    [{ index: 3, x: 0, y: 3 }],
+  ]);
+  expect(fieldChartPairs(pairs, 2, "x", "y")).toEqual([
+    [{ index: 3, x: 0, y: 3 }],
+  ]);
 });

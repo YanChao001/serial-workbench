@@ -1564,6 +1564,13 @@ test("the workbench scans only visible receive data through the Host action and 
       byteLength: 2,
       fields: [
         {
+          id: "reading",
+          kind: "integer",
+          byteOffset: 0,
+          width: 1,
+          order: "big",
+        },
+        {
           id: "crc",
           kind: "checksum",
           algorithm: "sum",
@@ -1590,6 +1597,12 @@ test("the workbench scans only visible receive data through the Host action and 
     "Checksum crc · received 0A · expected 41",
   );
   await expect(review.getByRole("listitem")).toContainText("Bytes 7 to 9");
+  await chart.getByRole("button", { name: "Plot fields" }).click();
+  await chart.getByText("Statistics", { exact: true }).click();
+  await expect(chart.getByText("1 / 1 (100%)", { exact: true })).toBeVisible();
+  await expect(
+    chart.getByRole("definition").filter({ hasText: "—" }),
+  ).toHaveCount(7);
   await definition.fill(
     JSON.stringify({
       version: "1",

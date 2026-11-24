@@ -7,6 +7,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import chart from "../crates/host/resources/node-packages/chart.json" with { type: "json" };
 import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.json" with { type: "json" };
 import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
@@ -106,14 +107,18 @@ export function inspectComponents(plan, outputDir) {
       protocol: hostCatalog.protocolVersion,
       target: plan.target,
       architecture: plan.target.split("-")[0],
-      bundledNodePackages: [framing, protocolFields, modbus, modbusSlave].map(
-        ({ id, version, archiveSha256 }) => ({
-          id,
-          version,
-          archiveSha256,
-          hostComponent: `serial-workbench-host${suffix}`,
-        }),
-      ),
+      bundledNodePackages: [
+        framing,
+        protocolFields,
+        modbus,
+        modbusSlave,
+        chart,
+      ].map(({ id, version, archiveSha256 }) => ({
+        id,
+        version,
+        archiveSha256,
+        hostComponent: `serial-workbench-host${suffix}`,
+      })),
       components: files.map(({ source, path }) => ({
         path,
         sha256: fileSha256(source),

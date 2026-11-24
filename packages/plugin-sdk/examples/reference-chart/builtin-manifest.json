@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.builtin.chart",
+  "version": "0.1.0",
+  "displayName": "Voltage Chart",
+  "description": "Plot voltage samples with source byte ranges, show sample statistics and export SVG",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "webUi": { "entry": "ui/index.html" },
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      { "permissions": ["content.read"], "targetKinds": ["session"] }
+    ],
+    "executionPurposes": ["chart"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [
+      {
+        "actionId": "swb.builtin.chart.exportSvg",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "default": "1"
+            },
+            "sampleCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128,
+              "default": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "x-swb-file-result": "image/svg+xml",
+          "maxLength": 32768
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": { "pageId": "plugins" }
+      }
+    ],
+    "queries": [],
+    "transports": [],
+    "parsers": [
+      {
+        "actionId": "swb.builtin.chart.sample",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "default": "1"
+            },
+            "sampleCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128,
+              "default": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "samples": { "type": "integer", "minimum": 1, "maximum": 128 },
+            "lastPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          "required": ["samples", "lastPosition"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins",
+          "panelId": "swb.builtin.chart.view"
+        }
+      }
+    ],
+    "views": [
+      {
+        "id": "swb.builtin.chart.view",
+        "actionId": "swb.builtin.chart.sample",
+        "stateScopes": [],
+        "feed": "derived"
+      }
+    ],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

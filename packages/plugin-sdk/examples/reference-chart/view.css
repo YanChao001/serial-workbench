@@ -64,6 +64,18 @@ summary:focus-visible {
   outline: 2px solid var(--trace);
   outline-offset: 4px;
 }
+dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 8px 0;
+  font-variant-numeric: tabular-nums;
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
 table {
   width: 100%;
   border-collapse: collapse;

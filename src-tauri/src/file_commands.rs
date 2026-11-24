@@ -14,8 +14,6 @@ use serial_workbench_core::{
 use std::{future::Future, path::PathBuf};
 use tauri_plugin_dialog::DialogExt;
 
-const CHART_SVG_ACTION: &str = "swb.reference.chart.exportSvg";
-const CHART_PACKAGE: &str = "swb.reference.chart";
 const MAX_CHART_SVG_BYTES: u64 = 24 * 1024;
 
 fn chart_save_error() -> HostError {
@@ -102,13 +100,15 @@ where
         return Err(chart_save_error());
     };
     let reference = output.result_ref;
-    if operation.action_id.as_str() != CHART_SVG_ACTION
-        || operation.state != OperationState::Succeeded
-        || !operation.dependencies.is_some_and(|dependencies| {
-            dependencies
-                .iter()
-                .any(|item| item.id.as_str() == CHART_PACKAGE)
-        })
+    let package = match operation.action_id.as_str() {
+        "swb.reference.chart.exportSvg" => "swb.reference.chart",
+        "swb.builtin.chart.exportSvg" => "swb.builtin.chart",
+        _ => return Err(chart_save_error()),
+    };
+    if operation.state != OperationState::Succeeded
+        || !operation
+            .dependencies
+            .is_some_and(|dependencies| dependencies.iter().any(|item| item.id.as_str() == package))
         || reference.kind.as_str() != "plugin_result"
     {
         return Err(chart_save_error());

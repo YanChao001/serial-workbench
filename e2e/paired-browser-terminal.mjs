@@ -389,14 +389,18 @@ try {
   const iframe = dialog.locator('iframe[title="' + packageName + '"]');
   const frame = dialog.frameLocator("iframe");
   const text = frame.getByLabel(/^(Serial data|串口数据)$/);
+  const samplesToggle = frame.locator("summary#samples");
+  const statisticsToggle = frame.locator("summary#statistics-label");
   const checkChart = async (values) => {
     await expect(
       frame.getByRole("img", {
         name: /^(Voltage by sample position|按序号显示电压)$/,
       }),
     ).toBeVisible(wait);
-    if (!(await frame.locator("details").evaluate((details) => details.open)))
-      await frame.locator("summary#samples").click();
+    if (
+      !(await samplesToggle.evaluate((summary) => summary.parentElement.open))
+    )
+      await samplesToggle.click();
     const rows = frame.locator("#values tr");
     await expect(rows).toHaveCount(values.length, wait);
     for (const [index, value] of values.entries()) {
@@ -406,6 +410,33 @@ try {
         [String(index + 1), String(value)],
         wait,
       );
+    }
+    if (mode !== "legacy") {
+      if (
+        !(await statisticsToggle.evaluate(
+          (summary) => summary.parentElement.open,
+        ))
+      )
+        await statisticsToggle.click();
+      const statistics = frame.locator("#statistics");
+      const mean = new Intl.NumberFormat("en", {
+        maximumSignificantDigits: 8,
+      }).format(values.reduce((sum, value) => sum + value, 0) / values.length);
+      const missing = `0 / ${values.length} (0%)`;
+      await expect(
+        statistics
+          .getByText(/^(Mean|均值)$/)
+          .locator("..")
+          .getByRole("definition"),
+      ).toHaveText(`${mean} V`, wait);
+      await expect(statistics.getByText(missing, { exact: true })).toBeVisible(
+        wait,
+      );
+      (terminal.statistics ??= []).push({
+        samples: values.length,
+        mean,
+        missing,
+      });
     }
   };
   const checkDisplay = async (marker) => {
@@ -519,6 +550,11 @@ try {
       await expect(
         frame.locator("#values tr").first().getByRole("cell"),
       ).toHaveText(["1", "1.25"], wait);
+      if (mode !== "legacy")
+        await expect(statisticsToggle).toHaveText(
+          viewLocale === "zh-CN" ? "统计" : "Statistics",
+          wait,
+        );
     } else {
       await expect(
         frame.getByLabel(viewLocale === "zh-CN" ? "串口数据" : "Serial data"),
