@@ -10,6 +10,7 @@ import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { startMcpFixture } from "./mcp-fixture.mjs";
+import { checkManualRecording } from "./paired-manual-recording.mjs";
 import { checkRuleCommand } from "./paired-rule-evidence.mjs";
 import { sessionScopes } from "./session-scopes.mjs";
 
@@ -495,6 +496,12 @@ try {
     firstExport,
     secondExport,
   );
+  async function readRaw(label, start = "1") {
+    const params = await readParams(label, start, "100");
+    const { result } = await query("stream.read", rawTargetPath, params);
+    assert.equal(result.value.hasMore, false);
+    return result.value;
+  }
   const ruleCommand = await checkRuleCommand({
     page,
     session: original,
@@ -510,12 +517,7 @@ try {
       return (await query("workspace.read", workspacePath)).result.value
         .document;
     },
-    async readRaw(label, start = "1") {
-      const params = await readParams(label, start, "100");
-      const { result } = await query("stream.read", rawTargetPath, params);
-      assert.equal(result.value.hasMore, false);
-      return result.value;
-    },
+    readRaw,
     async getOperation(id) {
       const { result } = await cli("operation", "get", id);
       return result.operation;
@@ -541,6 +543,11 @@ try {
         Buffer.from(result.value.bytesBase64, "base64").toString("utf8"),
       );
     },
+  });
+  const manualRecording = await checkManualRecording({
+    page,
+    readRaw,
+    source: firstExport,
   });
   const settingsPath = join(root, "settings.json");
   await writeFile(
@@ -745,6 +752,7 @@ try {
     sessionEpochPreserved: true,
     selectionDownloads,
     ruleCommand,
+    manualRecording,
     rawParity: {
       hostId: original.hostId,
       instanceEpoch: context.instanceEpoch,

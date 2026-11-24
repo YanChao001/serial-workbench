@@ -1279,7 +1279,7 @@ export const zhCN = {
   "testSuite.status.unverified": "无法确认",
   "manualRecording.title": "录制手工发送",
   "manualRecording.description":
-    "录制包含实际发送的字节和可确认的等待时间。录制期间请勿发送密钥。",
+    "录制发送区和已确认接收选区的实际字节及等待时间。录制期间请勿发送密钥。",
   "manualRecording.start": "开始录制",
   "manualRecording.stop": "停止录制",
   "manualRecording.review": "在命令序列中查看",

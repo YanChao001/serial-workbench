@@ -54,7 +54,11 @@ export function ManualRecordingControls({
           <CircleDotIcon aria-hidden="true" />
         </WorkbenchIconButton>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)]">
+      <PopoverContent
+        align="end"
+        aria-label={labels.title}
+        className="w-80 max-w-[calc(100vw-2rem)]"
+      >
         <PopoverTitle>{labels.title}</PopoverTitle>
         {!snapshot && <p className="text-sm">{labels.description}</p>}
         {snapshot && (

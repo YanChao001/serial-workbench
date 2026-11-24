@@ -1380,7 +1380,7 @@ export const en = {
   "testSuite.status.unverified": "Unverified",
   "manualRecording.title": "Record manual sends",
   "manualRecording.description":
-    "The recording contains sent bytes and confirmed wait times. Avoid sending secrets while recording.",
+    "Records bytes and wait times from the send panel and confirmed receive selections. Avoid sending secrets while recording.",
   "manualRecording.start": "Start recording",
   "manualRecording.stop": "Stop recording",
   "manualRecording.review": "Review in command sequence",

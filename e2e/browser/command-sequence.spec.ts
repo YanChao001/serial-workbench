@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
+import { workbenchStreamItems } from "./workbench-stream.fixture";
 import { builtinAutomation } from "./json-fixtures";
 import { builtinCommandSequenceAction } from "../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
 import { validateActionSpec } from "../../packages/contracts/src/generated/validators.mjs";
@@ -264,7 +265,7 @@ test("a cursor for another Raw scope cannot start a sequence", async ({
   ).toBe(0);
 });
 
-test("manual send recording opens a reviewable draft and runs only on request", async ({
+test("records composer bytes and confirmed receive selections, then replays only when asked", async ({
   page,
 }) => {
   await seedWorkbenchFixture(page, {
@@ -288,8 +289,50 @@ test("manual send recording opens a reviewable draft and runs only on request", 
   await recorder.click();
   await expect(page.getByText("Confirmed sends: 1.")).toBeVisible();
   await recorder.press("Escape");
-  await draft.fill("B");
-  await send.click();
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    workbenchStreamItems().filter(
+      (item) => item.kind === "source" && item.event.kind === "rx",
+    ),
+  );
+  const hex = log.locator("[data-direction=rx] [data-hex-source]");
+  await expect(hex).toHaveText("4F 4B 0D 0A");
+  const preview = page.getByRole("dialog", { name: "Preview send selection" });
+  async function previewSelection() {
+    await hex.evaluate((element) => {
+      const text = element.firstChild;
+      if (!text) throw new Error("Missing RX bytes");
+      document.getSelection()?.setBaseAndExtent(text, 0, text, 5);
+    });
+    await log.press("Shift+F10");
+    await page
+      .getByRole("menuitem", { name: "Preview send selection" })
+      .click();
+    await expect(preview.locator("pre")).toHaveText("4F 4B");
+  }
+  await previewSelection();
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+  await expect(log).toBeFocused();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    "QQ==",
+  ]);
+  await previewSelection();
+  await preview.getByRole("button", { name: "Confirm send" }).click();
+  await expect(preview.getByRole("status")).toContainText("manual-tx-2");
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+  await expect(draft).toHaveValue("A");
+  const writeWaitMs = await page.evaluate(() =>
+    Number(
+      window.workbenchFixture.invocations
+        .filter(({ actionId }) => actionId === "session.tx")
+        .at(-1)?.params.writeWaitMs,
+    ),
+  );
   await recorder.click();
   await page
     .getByRole("button", { name: "Stop recording", exact: true })
@@ -307,14 +350,14 @@ test("manual send recording opens a reviewable draft and runs only on request", 
   });
   await expect(editor).toBeVisible();
   await expect(dialog.getByText("Send 41", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Send 42", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Send 4F 4B", { exact: true })).toBeVisible();
   const definition = await editor.inputValue();
   expect(JSON.parse(definition)).toMatchObject({
     version: 1,
     steps: [
       { kind: "send", hex: "41", writeWaitMs: 1001 },
       { kind: "delay", milliseconds: expect.any(Number) },
-      { kind: "send", hex: "42", writeWaitMs: 1001 },
+      { kind: "send", hex: "4F 4B", writeWaitMs },
     ],
   });
   expect(
@@ -328,7 +371,7 @@ test("manual send recording opens a reviewable draft and runs only on request", 
       }),
       builtinCommandSequenceAction,
     ),
-  ).toEqual({ sent: ["QQ==", "Qg=="], automation: 0, saves: 0 });
+  ).toEqual({ sent: ["QQ==", "T0s="], automation: 0, saves: 0 });
   await dialog.getByRole("button", { name: "Run sequence" }).click();
   await expect(dialog.getByRole("status")).toContainText(
     "Command sequence completed.",

@@ -1843,8 +1843,12 @@ export function WorkspaceLayout({
       return host.send(target, bytes, signal, writeWaitMs);
     return host.send(target, bytes, signal, writeWaitMs, expectedRevision);
   }
-  function submitManualBytes(bytes: Uint8Array, signal?: AbortSignal) {
-    if (!session) return submitBytes(bytes, signal);
+  function submitManualBytes(
+    bytes: Uint8Array,
+    signal?: AbortSignal,
+    expectedRevision?: string,
+  ) {
+    if (!session) return submitBytes(bytes, signal, expectedRevision);
     const writeWaitMs = sendWaitMs(
       session.configuration,
       bytes.length,
@@ -1854,7 +1858,7 @@ export function WorkspaceLayout({
       submitBytes(
         bytes,
         signal,
-        guardRevision ? session.revision : undefined,
+        expectedRevision ?? (guardRevision ? session.revision : undefined),
         writeWaitMs,
       ),
     );
@@ -2351,7 +2355,7 @@ export function WorkspaceLayout({
                     scope: JSON.stringify([bookmarkScope, session.revision]),
                     port: historyDestination.port,
                     send: (bytes, signal) =>
-                      submitBytes(bytes, signal, session.revision),
+                      submitManualBytes(bytes, signal, session.revision),
                     wait: host.waitForOperation,
                   }
                 : undefined
