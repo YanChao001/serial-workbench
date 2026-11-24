@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test, type Locator } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import type { NodePackageInstallation, NodePackageSourceKey } from "@serial-workbench/contracts";
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
@@ -649,10 +655,23 @@ for (const { language, theme } of [
   });
 }
 
-test("professional window statistics distinguishes missing samples from unscheduled time slots", async ({
-  page,
-}, testInfo) => {
-  const t = createTranslator(getLocale("zh").messages);
+for (const presentation of [
+  { language: "zh", theme: "dark" },
+  { language: "en", theme: "light" },
+] as const) {
+  test(`professional window statistics preserves form and report order (${presentation.language})`, async ({
+    page,
+  }, testInfo) => {
+    await verifyWindowStatistics(page, testInfo, presentation);
+  });
+}
+
+async function verifyWindowStatistics(
+  page: Page,
+  testInfo: TestInfo,
+  { language, theme }: { language: "zh" | "en"; theme: "dark" | "light" },
+) {
+  const t = createTranslator(getLocale(language).messages);
   await page.setViewportSize({ width: 400, height: 640 });
   const plugin = statisticsPlugin();
   const { manifest, archiveSha256 } = plugin.installation;
@@ -678,8 +697,8 @@ test("professional window statistics distinguishes missing samples from unschedu
     };
   };
   await seedWorkbenchFixture(page, {
-    language: "zh",
-    theme: "dark",
+    language,
+    theme,
     sidebarCollapsed: true,
     plugin,
     framing: {
@@ -706,17 +725,52 @@ test("professional window statistics distinguishes missing samples from unschedu
   const result = panel.getByRole("region", {
     name: t("plugins.windows.result"),
   });
-  await panel
-    .getByRole("button", { name: t("plugins.windows.example") })
-    .click();
+  const example = panel.getByRole("button", {
+    name: t("plugins.windows.example"),
+  });
+  const mode = settings.getByRole("combobox", {
+    name: t("plugins.windows.kind"),
+  });
+  const length = settings.getByRole("textbox", {
+    name: t("plugins.windows.length"),
+  });
+  const step = settings.getByRole("textbox", {
+    name: t("plugins.windows.step"),
+  });
+  await example.click();
   const source = await sampleGrid.inputValue();
   await expectAnalysisLayout(panel, sampleGrid, settings, false);
-  await page.setViewportSize({ width: 1240, height: 840 });
-  const samplesBox = await sampleGrid.boundingBox();
-  const settingsBox = await settings.boundingBox();
-  if (!samplesBox || !settingsBox)
-    throw new Error("Missing window form geometry");
-  expect(settingsBox.x).toBeGreaterThan(samplesBox.x + samplesBox.width);
+  await expectAnalysisLayout(panel, example, sampleGrid, false);
+  await panel.locator("form").screenshot({
+    path: testInfo.outputPath("statistics-form-narrow.png"),
+  });
+  for (const viewport of [
+    { width: 400, height: 640 },
+    { width: 1240, height: 840 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const [modeBox, lengthBox, stepBox] = await Promise.all([
+      mode.boundingBox(),
+      length.boundingBox(),
+      step.boundingBox(),
+    ]);
+    if (!modeBox || !lengthBox || !stepBox)
+      throw new Error("Missing window settings geometry");
+    expect(lengthBox.height).toBe(modeBox.height);
+    expect(stepBox.height).toBe(modeBox.height);
+    if (viewport.width === 400) {
+      expect(stepBox.y).toBeGreaterThan(lengthBox.y + lengthBox.height);
+      expect(stepBox.x).toBeCloseTo(lengthBox.x);
+    } else {
+      expect(lengthBox.y + lengthBox.height).toBeCloseTo(
+        stepBox.y + stepBox.height,
+      );
+    }
+  }
+  await expectAnalysisLayout(panel, sampleGrid, settings, true);
+  await panel.locator("form").screenshot({
+    path: testInfo.outputPath("statistics-form-wide.png"),
+  });
   await page.setViewportSize({ width: 400, height: 640 });
 
   const parsed: unknown = JSON.parse(source);
@@ -734,7 +788,14 @@ test("professional window statistics distinguishes missing samples from unschedu
   await run.click();
   await expect(result.getByRole("status")).toContainText("[5, 9)");
   await expect(result.getByText("1 / 2 · 50%", { exact: true })).toBeVisible();
-  await result.getByText(t("plugins.windows.compare"), { exact: true }).click();
+  const selected = result.getByRole("region", {
+    name: t("plugins.windows.selected"),
+  });
+  const compareToggle = result.getByText(t("plugins.windows.compare"), {
+    exact: true,
+  });
+  await expectAnalysisLayout(result, selected, compareToggle, false);
+  await compareToggle.press("Enter");
   const comparison = result.getByRole("table", {
     name: t("plugins.windows.compare"),
   });
@@ -758,9 +819,6 @@ test("professional window statistics distinguishes missing samples from unschedu
     t("plugins.windows.tail"),
   );
 
-  const mode = settings.getByRole("combobox", {
-    name: t("plugins.windows.kind"),
-  });
   await mode.click();
   await page
     .getByRole("option", { name: t("plugins.windows.time"), exact: true })
@@ -794,12 +852,37 @@ test("professional window statistics distinguishes missing samples from unschedu
   );
   await run.click();
   await expect(result.getByRole("status")).toContainText(time.clockId);
-  const selected = result.getByRole("region", {
-    name: t("plugins.windows.selected"),
-  });
   await expect(
     selected.getByText("1.25", { exact: true }).first(),
   ).toBeVisible();
+  const lists = selected.locator("dl");
+  await expect(lists).toHaveCount(2);
+  await expectAnalysisLayout(selected, lists.first(), lists.last(), false);
+  await page.setViewportSize({ width: 1240, height: 840 });
+  await expectAnalysisLayout(selected, lists.first(), lists.last(), true);
+  expect(
+    await lists
+      .last()
+      .locator("dt")
+      .evaluateAll((labels) => {
+        const cells = labels.map((label) => ({
+          row: label.getBoundingClientRect().top,
+          baseline: label.nextElementSibling?.getBoundingClientRect().bottom,
+        }));
+        return cells.every((cell, index) => {
+          const previous = cells[index - 1];
+          return (
+            !previous ||
+            cell.row !== previous.row ||
+            cell.baseline === previous.baseline
+          );
+        });
+      }),
+  ).toBe(true);
+  await result.screenshot({
+    path: testInfo.outputPath("statistics-window-wide.png"),
+  });
+  await page.setViewportSize({ width: 400, height: 640 });
   const chooser = result.getByRole("combobox", {
     name: t("plugins.windows.selected"),
   });
@@ -850,6 +933,13 @@ test("professional window statistics distinguishes missing samples from unschedu
     t("plugins.windows.failed"),
   );
   await expect(result).toHaveCount(0);
+  await step.fill("0");
+  await run.click();
+  await expect(step).toBeFocused();
+  await expect(step).toHaveAttribute("aria-invalid", "true");
+  await expect(panel.getByRole("alert")).toHaveText(
+    t("plugins.windows.invalidSettings"),
+  );
   const calls = await page.evaluate(() =>
     window.workbenchFixture.invocations.filter(
       ({ actionId }) => actionId === "swb.reference.statistics.windows",
@@ -860,4 +950,4 @@ test("professional window statistics distinguishes missing samples from unschedu
     target: { kind: "host", id: fileRef.hostId },
     params: timedInput,
   });
-});
+}

@@ -70,6 +70,89 @@ export function WindowsResult({ report }: { report: WindowsReport }) {
           </p>
         )}
       </div>
+      <div className="grid min-w-0 justify-items-start gap-1.5">
+        <Label htmlFor={id + "-window"}>{t("plugins.windows.selected")}</Label>
+        <OptionsSelect
+          id={id + "-window"}
+          value={selected}
+          className="h-8 max-w-64"
+          options={report.windows.map((_, index) => ({
+            value: String(index),
+            label: t("plugins.windows.windowNumber", { number: index + 1 }),
+          }))}
+          onValueChange={setSelected}
+        />
+      </div>
+      <div
+        role="region"
+        aria-label={t("plugins.windows.selected")}
+        aria-live="polite"
+        className="grid min-w-0 gap-2 text-sm"
+      >
+        {row.partial && (
+          <p className="font-medium">{t("plugins.windows.tail")}</p>
+        )}
+        <div className="grid min-w-0 gap-3 @min-[42rem]/statistics:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @min-[42rem]/statistics:gap-5">
+          <dl className="grid min-w-0 content-start grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-x-4 gap-y-2 wrap-anywhere">
+            <div>
+              <dt className="text-muted-foreground">
+                {t("plugins.windows.positions")}
+              </dt>
+              <dd className="font-mono">{slots(row)}</dd>
+            </div>
+            {row.time && (
+              <div>
+                <dt className="text-muted-foreground">
+                  {t("plugins.windows.bounds")}
+                </dt>
+                <dd className="font-mono">{windowLabel(row)}</dd>
+              </div>
+            )}
+            <div className="tabular-nums">
+              <dt className="text-muted-foreground">
+                {t("plugins.windows.valid")}
+              </dt>
+              <dd>
+                {row.validCount} / {row.expectedCount}
+              </dd>
+            </div>
+            <div className="tabular-nums">
+              <dt className="text-muted-foreground">
+                {t("plugins.windows.missing")}
+              </dt>
+              <dd>
+                {row.missingCount} / {row.expectedCount} ·{" "}
+                {rate(row.missingRate)}
+              </dd>
+            </div>
+          </dl>
+          <div className="min-w-0 border-t pt-3 @min-[42rem]/statistics:border-s @min-[42rem]/statistics:border-t-0 @min-[42rem]/statistics:ps-4 @min-[42rem]/statistics:pt-0">
+            {row.metrics ? (
+              <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,7rem),1fr))] gap-x-4 gap-y-2">
+                {row.metrics.map(({ key, value }) => (
+                  <div
+                    key={key}
+                    className="grid min-w-0 grid-rows-[1fr_auto] gap-0.5 wrap-anywhere"
+                  >
+                    <dt className="text-muted-foreground">
+                      {t(`workbench.fieldChart.statistics.${key}`)}
+                    </dt>
+                    <dd className="tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p>
+                {t(
+                  row.expectedCount
+                    ? "plugins.windows.noSamples"
+                    : "plugins.windows.noSlots",
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
       <details className="min-w-0">
         <summary className="cursor-pointer rounded-sm py-1.5 font-medium">
           {t("plugins.windows.compare")}
@@ -137,76 +220,6 @@ export function WindowsResult({ report }: { report: WindowsReport }) {
           </Table>
         </div>
       </details>
-      <div className="grid min-w-0 justify-items-start gap-1.5">
-        <Label htmlFor={id + "-window"}>{t("plugins.windows.selected")}</Label>
-        <OptionsSelect
-          id={id + "-window"}
-          value={selected}
-          className="max-w-full"
-          options={report.windows.map((_, index) => ({
-            value: String(index),
-            label: t("plugins.windows.windowNumber", { number: index + 1 }),
-          }))}
-          onValueChange={setSelected}
-        />
-      </div>
-      <div
-        role="region"
-        aria-label={t("plugins.windows.selected")}
-        aria-live="polite"
-        className="grid min-w-0 gap-2 text-sm"
-      >
-        {row.partial && (
-          <p className="font-medium">{t("plugins.windows.tail")}</p>
-        )}
-        <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-2">
-          <div className="rounded-md border p-2 wrap-anywhere">
-            <dt>{t("plugins.windows.positions")}</dt>
-            <dd className="font-mono text-xs">{slots(row)}</dd>
-          </div>
-          {row.time && (
-            <div className="rounded-md border p-2 wrap-anywhere">
-              <dt>{t("plugins.windows.bounds")}</dt>
-              <dd className="font-mono text-xs">{windowLabel(row)}</dd>
-            </div>
-          )}
-          <div className="rounded-md border p-2 tabular-nums">
-            <dt>{t("plugins.windows.valid")}</dt>
-            <dd>
-              {row.validCount} / {row.expectedCount}
-            </dd>
-          </div>
-          <div className="rounded-md border p-2 tabular-nums">
-            <dt>{t("plugins.windows.missing")}</dt>
-            <dd>
-              {row.missingCount} / {row.expectedCount} · {rate(row.missingRate)}
-            </dd>
-          </div>
-        </dl>
-        {row.metrics ? (
-          <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,7.5rem),1fr))] gap-2">
-            {row.metrics.map(({ key, value }) => (
-              <div
-                key={key}
-                className="grid min-w-0 grid-rows-[1fr_auto] rounded-md border p-2"
-              >
-                <dt className="text-muted-foreground">
-                  {t(`workbench.fieldChart.statistics.${key}`)}
-                </dt>
-                <dd className="wrap-anywhere tabular-nums">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p>
-            {t(
-              row.expectedCount
-                ? "plugins.windows.noSamples"
-                : "plugins.windows.noSlots",
-            )}
-          </p>
-        )}
-      </div>
     </section>
   );
 }

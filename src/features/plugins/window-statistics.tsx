@@ -156,7 +156,9 @@ function WindowStatistics({ target, archiveSha256 }: Props) {
     const issue = inputIssue === field;
     return (
       <div className="grid min-w-0 content-start gap-1.5">
-        <Label htmlFor={control}>{t(`plugins.windows.${field}`)}</Label>
+        <Label htmlFor={control} className="leading-snug">
+          {t(`plugins.windows.${field}`)}
+        </Label>
         <Input
           id={control}
           name={field}
@@ -186,9 +188,23 @@ function WindowStatistics({ target, archiveSha256 }: Props) {
         <form className="grid min-w-0 gap-3" onSubmit={calculate}>
           <div className="grid min-w-0 gap-4 @min-[48rem]/statistics:grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)]">
             <div className="grid min-w-0 content-start gap-2">
-              <Label htmlFor={id + "-samples"}>
-                {t("plugins.windows.input")}
-              </Label>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <Label htmlFor={id + "-samples"} className="leading-snug">
+                  {t("plugins.windows.input")}
+                </Label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  disabled={busy || hasCustomSamples}
+                  onClick={() => {
+                    clearReport();
+                    setText(exampleText);
+                  }}
+                >
+                  {t("plugins.windows.example")}
+                </Button>
+              </div>
               <p id={id + "-help"} className="text-sm text-muted-foreground">
                 {t("plugins.windows.help")}
               </p>
@@ -226,7 +242,7 @@ function WindowStatistics({ target, archiveSha256 }: Props) {
               disabled={busy}
               className="grid min-w-0 content-start gap-3"
             >
-              <legend className="mb-2 text-sm font-medium">
+              <legend className="mb-2 flex min-h-7 items-center text-sm font-medium">
                 {t("plugins.windows.settings")}
               </legend>
               <div className="grid gap-1.5">
@@ -235,6 +251,7 @@ function WindowStatistics({ target, archiveSha256 }: Props) {
                 </Label>
                 <OptionsSelect
                   id={id + "-kind"}
+                  className="h-8"
                   value={options.kind}
                   options={[
                     { value: "count", label: t("plugins.windows.count") },
@@ -243,7 +260,7 @@ function WindowStatistics({ target, archiveSha256 }: Props) {
                   onValueChange={(kind) => replaceOptions({ kind })}
                 />
               </div>
-              <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3">
+              <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] items-end gap-3">
                 {option("length")}
                 {option("step")}
               </div>
@@ -273,29 +290,17 @@ function WindowStatistics({ target, archiveSha256 }: Props) {
             </fieldset>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" type="submit" disabled={busy || !text.trim()}>
+            <Button type="submit" disabled={busy || !text.trim()}>
               {t("plugins.windows.run")}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              type="button"
-              disabled={busy || hasCustomSamples}
-              onClick={() => {
-                clearReport();
-                setText(exampleText);
-              }}
-            >
-              {t("plugins.windows.example")}
-            </Button>
+            {busy && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {t("plugins.windows.running")}
+              </p>
+            )}
           </div>
-          {busy && (
-            <p role="status" className="text-sm text-muted-foreground">
-              {t("plugins.windows.running")}
-            </p>
-          )}
+          <PluginError error={error} message="plugins.windows.failed" />
         </form>
-        <PluginError error={error} message="plugins.windows.failed" />
         {result && <WindowsResult report={result} />}
       </section>
     </details>
