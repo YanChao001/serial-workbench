@@ -1405,6 +1405,11 @@ export const en = {
   "commandSequence.inputsHelp":
     "Enter HEX for each reference. The sequence file keeps only the references.",
   "commandSequence.inputsInvalid": "Check HEX and sequence limits at {path}.",
+  "commandSequence.chooseInputFileFor": "Choose file for {name}",
+  "commandSequence.inputFileBound": "Bound {bytes} bytes from a file.",
+  "commandSequence.inputFileSize": "Choose a file between 1 and {max} bytes.",
+  "commandSequence.inputFileRead":
+    "Could not read the selected file. Choose it again.",
   "commandSequence.previewInput": "Send input {name}",
   "commandSequence.previewSend": "Send",
   "commandSequence.previewWriteWait": "Write deadline {ms} ms",

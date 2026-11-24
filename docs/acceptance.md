@@ -307,7 +307,7 @@ UTC 预览 [武装] [停止]                 [次数] [发送字节 / 载入]
 
 打开可写会话，在发送区选择「录制手工发送」，明确开始后手工发送一段普通字节。从接收区选取连续 HEX 字节，先预览并取消，再打开预览并明确确认。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX、写入期限和有证据的等待。单次写入期限超出 5 秒时，录制保留已确认前缀。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
 
-用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/receive-context.spec.ts --workers 1` 核对录制稿、选区取消、精确修订和显式运行。真实配对浏览器沿用本章的 `e2e/paired-browser.mjs`。先用 CLI 核对取消选区预览后仅有原手工 TX，再确认发送两字节并立即关闭预览，观察录制仍保留两项真实回执。复核草稿的发送顺序、写入期限和选区 HEX，显式运行后用独立 Raw 读数核对新增两次 TX。`receipt.json` 的 `manualRecording` 保存证据。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、系统密钥解析和文件句柄重绑继续按同项验收。
+用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/receive-context.spec.ts --workers 1` 核对录制稿、选区取消、精确修订和显式运行。真实配对浏览器沿用本章的 `e2e/paired-browser.mjs`。先用 CLI 核对取消选区预览后仅有原手工 TX，再确认发送两字节并立即关闭预览，观察录制仍保留两项真实回执。复核草稿的发送顺序、写入期限和选区 HEX，显式运行后用独立 Raw 读数核对新增两次 TX。`receipt.json` 的 `manualRecording` 保存证据。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、系统密钥解析和长文件动作继续按同项验收。
 
 #### 录制字节的输入引用
 
@@ -323,6 +323,18 @@ UTC 预览 [武装] [停止]                 [次数] [发送字节 / 载入]
 ```
 
 从原录制切到引用模式，发送两段测试字节后生成草稿。核对 JSON 只含名称、占位符、顺序及时限。保存并重新打开，确认临时值为空。输入不完整的 HEX 时不接纳 Host 操作。输入替换字节后，预览显示引用，显式运行使用本次值。再次另存和重开均只含引用。退出面板或替换定义会清除临时输入。用独立 Raw 读端对照原发送与替换后的实际 TX。引用使用版本 1 的 `variables`，值为 `null`，须用于顶层发送步骤的完整 HEX 模板，原有字面变量继续适用。工作台在运行前绑定为普通版本 1 JSON。`manual-reference-sequence.json` 与收据 `manualRecording` 可从配对专项取用。
+
+每项引用可在掩码输入旁选择二进制文件。宽栏保持输入和「选择文件」并排，窄栏在同一引用下排列，状态紧随对应输入。选择后显示绑定的字节数。取消、空文件、超过 256 字节及读取失败保留该输入原有值。关闭工具或更换定义后忽略未完成的文件读取。
+
+```text
+宽栏                              窄栏
+recorded_send_2                   recorded_send_2
+[掩码 HEX] [选择文件]             [掩码 HEX]
+已绑定 4 字节                     [选择文件]
+                                  已绑定 4 字节
+```
+
+重新打开带引用的 JSON 后，用文件选择器为其中一项绑定含 00 和 FF 的短文件。复验取消、257 字节越界、重新导出、输入清空以及显式运行后的独立 Raw TX。序列不包含本地文件路径，打开时由用户重新选择。`receipt.json` 中的 `manualRecording.selectedFileHex` 记录独立 TX 已核对的四字节样本。无头回归持住已选文件的读取，关窗后重新导入同一引用，再释放旧读，核对新窗口仍缺输入且没有 Host 接纳。桌面原生文件选择器沿用隔离环境的原生窗口验收。
 
 ### 测试用例与断言（AUTO-05）
 

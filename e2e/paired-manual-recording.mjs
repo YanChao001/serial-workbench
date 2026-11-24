@@ -23,6 +23,8 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
     .getByRole("button", { name: /^(Start recording|开始录制)$/ })
     .click();
   const manual = "RECORD-ONE";
+  const recordedSelection = Buffer.from("<&");
+  const replacementFile = Buffer.from([0, 255, 63, 43]);
   const draft = send.getByRole("textbox", { name: /Send draft|发送草稿/ });
   await draft.fill(manual);
   await send.getByRole("button", { name: /^(Send|发送)$/ }).click();
@@ -64,7 +66,7 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
       .filter(({ kind }) => kind === "tx")
       .map(({ payload }) => {
         assert.equal(payload.outcome, "accepted");
-        return Buffer.from(payload.bytesBase64, "base64").toString("utf8");
+        return Buffer.from(payload.bytesBase64, "base64");
       });
   await openPreview();
   await page.keyboard.press("Escape");
@@ -72,7 +74,7 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
   await expect(log).toBeFocused();
   assert.deepEqual(
     sentBytes(await readRaw("manual-recording-cancel", before.nextEventSeq)),
-    [manual],
+    [Buffer.from(manual)],
   );
   await openPreview();
   await preview
@@ -127,12 +129,35 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
   const originalWrites = sentBytes(
     await readRaw("manual-recording-review", before.nextEventSeq),
   );
-  assert.deepEqual(originalWrites, [manual, "<&"]);
+  assert.deepEqual(originalWrites, [Buffer.from(manual), recordedSelection]);
   const run = sequence.getByRole("button", {
     name: /^(Run sequence|运行序列)$/,
   });
   const first = sequence.getByLabel(inputNames[0], { exact: true });
   const second = sequence.getByLabel(inputNames[1], { exact: true });
+  const chooseSecond = sequence.getByRole("button", {
+    name: /^(Choose file for recorded_send_2|为 recorded_send_2 选择文件)$/,
+  });
+  async function pickBinary(buffer) {
+    const picked = page.waitForEvent("filechooser");
+    await chooseSecond.click();
+    const chooser = await picked;
+    await chooser.setFiles(
+      buffer === undefined
+        ? []
+        : {
+            name: "bench-input.bin",
+            mimeType: "application/octet-stream",
+            buffer,
+          },
+    );
+  }
+  const bound = sequence
+    .getByRole("status")
+    .filter({ hasText: /Bound 4 bytes from a file|已从文件绑定 4 字节/ });
+  const invalidSize = sequence
+    .getByRole("status")
+    .filter({ hasText: /between 1 and 256 bytes|1 至 256 字节/ });
   const viewport = page.viewportSize();
   await page.setViewportSize({ width: 460, height: 640 });
   await expect(run).toBeDisabled();
@@ -148,7 +173,22 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
   ).toBeVisible();
   await second.fill("3F 2B");
   await expect(run).toBeEnabled();
-  await expect(sequence.getByText(/52 45 50 4C 41 59|3F 2B/)).toHaveCount(0);
+  await pickBinary(replacementFile);
+  await expect(bound).toBeVisible();
+  await expect(second).toHaveValue("00 FF 3F 2B");
+  await pickBinary(undefined);
+  await expect(second).toHaveValue("00 FF 3F 2B");
+  for (const invalid of [Buffer.alloc(0), Buffer.alloc(257)]) {
+    await pickBinary(invalid);
+    await expect(invalidSize).toBeVisible();
+    await expect(second).toHaveValue("00 FF 3F 2B");
+  }
+  await pickBinary(replacementFile);
+  await expect(invalidSize).toHaveCount(0);
+  await expect(
+    sequence.getByText(/52 45 50 4C 41 59|00 FF 3F 2B|bench-input.bin/),
+  ).toHaveCount(0);
+  await bound.scrollIntoViewIfNeeded();
   await sequence.screenshot({
     path: join(output, "manual-reference-inputs.png"),
   });
@@ -164,24 +204,33 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
   const unsaved = page.getByRole("dialog", {
     name: /^(Save unfinished work|保存未完成的工作)$/,
   });
-  await sequence.locator("input[type=file]").setInputFiles(saved);
+  await sequence.locator("input[type=file][accept]").setInputFiles(saved);
   await unsaved
     .getByRole("button", { name: /^(Discard and continue|放弃并继续)$/ })
     .click();
   await expect(editor).toHaveValue(serialized);
   await expect(first).toHaveValue("");
   await expect(second).toHaveValue("");
+  await expect(bound).toHaveCount(0);
   await expect(run).toBeDisabled();
   await first.fill("52 45 50 4C 41 59");
-  await second.fill("3F 2B");
+  await pickBinary(replacementFile);
+  await expect(bound).toBeVisible();
   await run.click();
-  await expect(sequence.getByRole("status")).toContainText(
-    /Command sequence completed\.|命令序列已完成。/,
-  );
+  await expect(
+    sequence
+      .getByRole("status")
+      .filter({ hasText: /Command sequence completed\.|命令序列已完成。/ }),
+  ).toBeVisible();
   const replayedWrites = sentBytes(
     await readRaw("manual-recording-replay", before.nextEventSeq),
   );
-  assert.deepEqual(replayedWrites, [manual, "<&", "REPLAY", "?+"]);
+  assert.deepEqual(replayedWrites, [
+    Buffer.from(manual),
+    recordedSelection,
+    Buffer.from("REPLAY"),
+    replacementFile,
+  ]);
   await expect(first).toHaveValue("");
   await expect(second).toHaveValue("");
   await sequence
@@ -197,6 +246,8 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
     savedContainsOnlyReferences: true,
     importClearedInputs: true,
     reboundAsExpected: true,
+    selectedFileHex: replacementFile.toString("hex"),
+    rejectedReplacementPreservedBinding: true,
     writeWaitMs: steps.map(({ writeWaitMs }) => writeWaitMs),
     durationBetweenWrites: definition.steps[1].milliseconds,
     cancelledPreviewTxCount: 0,

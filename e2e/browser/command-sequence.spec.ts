@@ -145,6 +145,97 @@ test("command sequence imports a definition and recovers an accepted task until 
   ).toBe(1);
 });
 
+test("closing a sequence drops a late binary input read and leaves its file reference unbound", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { automation: { action, state: "ready" } });
+  await selectSerial(page);
+  const dialog = await openSequence(page);
+  const referenced = {
+    version: 1,
+    variables: { fixture_bytes: null },
+    steps: [{ kind: "send", hex: "$" + "{fixture_bytes}" }],
+  };
+  const referenceFile = {
+    name: "reference.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(referenced)),
+  };
+  await dialog.locator("input[type=file][accept]").setInputFiles(referenceFile);
+  const value = dialog.getByLabel("fixture_bytes", { exact: true });
+  await expect(value).toHaveValue("");
+  await page.evaluate(() => {
+    const read = File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer = async function () {
+      if (this.name === "delayed-reference.bin") {
+        document.documentElement.dataset.sequenceRead = "waiting";
+        await new Promise<void>((resolve) => {
+          document.addEventListener(
+            "test-sequence-release-file",
+            () => resolve(),
+            { once: true },
+          );
+        });
+        File.prototype.arrayBuffer = read;
+        const bytes = await read.call(this);
+        document.documentElement.dataset.sequenceRead = "released";
+        return bytes;
+      }
+      return read.call(this);
+    };
+  });
+  const choose = dialog.getByRole("button", {
+    name: "Choose file for fixture_bytes",
+  });
+  const picked = page.waitForEvent("filechooser");
+  await choose.click();
+  await (
+    await picked
+  ).setFiles({
+    name: "delayed-reference.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from([0, 255]),
+  });
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-sequence-read",
+    "waiting",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Close view" }).click();
+  await expect(dialog).toBeHidden();
+  const reopened = await openSequence(page);
+  await reopened
+    .locator("input[type=file][accept]")
+    .setInputFiles(referenceFile);
+  await expect(
+    reopened.getByLabel("fixture_bytes", { exact: true }),
+  ).toHaveValue("");
+  await page.evaluate(() =>
+    document.dispatchEvent(new Event("test-sequence-release-file")),
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-sequence-read",
+    "released",
+  );
+  await expect(
+    reopened.getByLabel("fixture_bytes", { exact: true }),
+  ).toHaveValue("");
+  await expect(
+    reopened.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.workbenchFixture.invocations.filter(
+          ({ actionId }) => actionId === id,
+        ),
+      builtinCommandSequenceAction,
+    ),
+  ).toHaveLength(0);
+});
+
 test("command sequence uses Host authorization before admitting any send", async ({
   page,
 }) => {
