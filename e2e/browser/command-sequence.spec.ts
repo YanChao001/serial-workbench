@@ -263,3 +263,83 @@ test("a cursor for another Raw scope cannot start a sequence", async ({
     ),
   ).toBe(0);
 });
+
+test("manual send recording opens a reviewable draft and runs only on request", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready" },
+    manualSendReceipts: true,
+  });
+  await selectSerial(page);
+  const composer = page.getByRole("region", { name: "Send", exact: true });
+  const recorder = composer.getByRole("button", {
+    name: "Record manual sends",
+    exact: true,
+  });
+  const draft = composer.getByRole("textbox", { name: "Send draft" });
+  const send = composer.getByRole("button", { name: "Send", exact: true });
+  await recorder.click();
+  await page
+    .getByRole("button", { name: "Start recording", exact: true })
+    .click();
+  await draft.fill("A");
+  await send.click();
+  await recorder.click();
+  await expect(page.getByText("Confirmed sends: 1.")).toBeVisible();
+  await recorder.press("Escape");
+  await draft.fill("B");
+  await send.click();
+  await recorder.click();
+  await page
+    .getByRole("button", { name: "Stop recording", exact: true })
+    .click();
+  await expect(page.getByText("Confirmed sends: 2.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Review in command sequence" })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Command sequence",
+    exact: true,
+  });
+  const editor = dialog.getByRole("textbox", {
+    name: "Sequence definition (JSON)",
+  });
+  await expect(editor).toBeVisible();
+  await expect(dialog.getByText("Send 41", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Send 42", { exact: true })).toBeVisible();
+  const definition = await editor.inputValue();
+  expect(JSON.parse(definition)).toMatchObject({
+    version: 1,
+    steps: [
+      { kind: "send", hex: "41" },
+      { kind: "delay", milliseconds: expect.any(Number) },
+      { kind: "send", hex: "42" },
+    ],
+  });
+  expect(
+    await page.evaluate(
+      (actionId) => ({
+        sent: window.workbenchFixture.sentBytes,
+        automation: window.workbenchFixture.invocations.filter(
+          (call) => call.actionId === actionId,
+        ).length,
+        saves: window.workbenchFixture.savedTextExports.length,
+      }),
+      builtinCommandSequenceAction,
+    ),
+  ).toEqual({ sent: ["QQ==", "Qg=="], automation: 0, saves: 0 });
+  await dialog.getByRole("button", { name: "Run sequence" }).click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Command sequence completed.",
+  );
+  expect(
+    await page.evaluate(
+      (actionId) =>
+        window.workbenchFixture.invocations.find(
+          (call) => call.actionId === actionId,
+        )?.params,
+      builtinCommandSequenceAction,
+    ),
+  ).toMatchObject({ definition });
+});

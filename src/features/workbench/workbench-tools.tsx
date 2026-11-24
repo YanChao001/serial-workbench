@@ -108,7 +108,10 @@ export function WorkbenchTools({
   const [recentReload, setRecentReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const [sequenceDraft, setSequenceDraft] = useState<CommandSequenceDraft>({
-    definition: "",
+    definition:
+      tool === "commandSequence"
+        ? (context.sequenceRecording?.definition ?? "")
+        : "",
     saved: "",
   });
   const ready = host.state.status === "ready";

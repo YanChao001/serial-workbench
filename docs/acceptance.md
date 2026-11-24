@@ -242,6 +242,12 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 首方 `swb.builtin.automation` 0.1.1 在同一包登记 `swb.builtin.automation.sequence` 和原有定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对 0.1.1 归档和组件描述。Windows 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式安装继续专项验收。
 
+### 手工发送录制（AUTO-04）
+
+打开可写会话，在发送区选择「录制手工发送」，明确开始后分别手工发两段普通字节。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX 和有证据的等待。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
+
+用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对从发送区打开录制稿、预览以及显式运行。其他手工动作、资源和密钥引用继续按同项验收。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。
