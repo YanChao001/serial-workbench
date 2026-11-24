@@ -59,6 +59,7 @@ export const labels: WorkbenchLabels = {
   newUpdates: "Updates: {count}",
   returnToLatest: "Return to latest",
   clearDraft: "Clear send draft",
+  sendHistory: "Send history",
   restoreAccess: "Restore connection access",
   restoringAccess: "Restoring connection access…",
   operationInput: "View operation input",

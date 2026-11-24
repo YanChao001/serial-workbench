@@ -1,7 +1,9 @@
 import type { OperationText } from "./operation-text";
 import type { CaptureState } from "@serial-workbench/contracts";
 /** Supplied by the application dictionary; components never choose a locale. */
-export type WorkbenchLabels = Record<
+export type WorkbenchLabels = {
+  replayComparison?: (count: number) => string;
+} & Record<
   | "captureSource"
   | "captureFirstRecord"
   | "captureTail"
@@ -202,6 +204,7 @@ export type WorkbenchLabels = Record<
   | "startCapture"
   | "stopCapture"
   | "tasks"
+  | "sendHistory"
   | "activity"
   | "emptyTasks"
   | "mcpClient"
@@ -380,8 +383,8 @@ export type WorkbenchLabels = Record<
   | "unavailable",
   string
 > & {
-  operationText: OperationText;
-  takeoverPort: (port: string) => string;
-  requestTakeoverPort: (port: string) => string;
-  captureStates: Record<CaptureState, string>;
-};
+    operationText: OperationText;
+    takeoverPort: (port: string) => string;
+    requestTakeoverPort: (port: string) => string;
+    captureStates: Record<CaptureState, string>;
+  };

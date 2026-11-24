@@ -23,6 +23,7 @@ export type FramingInspection = {
   items: readonly StreamItem[];
   frames: readonly FramingFrame[];
   previous?: FramingFrame;
+  frameStart?: { eventSeq: string; byteStart?: string };
   endEventSeq?: string;
   recordOrdinals?: ReadonlyMap<string, string>;
   breaks?: ReadonlySet<string>;

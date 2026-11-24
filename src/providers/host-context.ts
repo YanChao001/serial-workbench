@@ -119,6 +119,10 @@ export type HostContextValue = {
   metrics(signal?: AbortSignal): Promise<HostMetrics>;
   sessionMetrics(target: Target, signal?: AbortSignal): Promise<SessionMetrics>;
   sessionInputs(target: Target, signal?: AbortSignal): Promise<SessionInputs>;
+  readOperationSummary?(
+    operationId: string,
+    signal?: AbortSignal,
+  ): Promise<OperationSummary>;
   operationInput(
     operationId: string,
     signal?: AbortSignal,

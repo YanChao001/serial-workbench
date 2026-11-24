@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import Ajv from "ajv";
 import { register } from "../packages/plugin-sdk/examples/reference-protocol-fields/main.ts";
 
 const handlers = new Map();
@@ -186,4 +188,182 @@ test("field actions reject ambiguous documents and keep one-based locations", as
     assert.ok(result.position.line >= 1, source);
     assert.ok(result.position.column >= 1, source);
   }
+});
+
+const comparisonSpec = JSON.parse(
+  readFileSync(
+    new URL(
+      "../packages/plugin-sdk/examples/reference-protocol-fields/manifest.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+).contributes.parsers.find(
+  ({ actionId }) => actionId === "swb.reference.fields.compareSessions",
+);
+const ajv = new Ajv({ strict: false });
+const validateComparisonInput = ajv.compile(comparisonSpec.inputSchema);
+const validateComparisonOutput = ajv.compile(comparisonSpec.outputSchema);
+
+function capturedFrame(position, bytes, time) {
+  return {
+    position: String(position),
+    bytesBase64: Buffer.from(bytes).toString("base64"),
+    ...(time ? { time } : {}),
+  };
+}
+
+test("session comparison returns aligned rows with paged byte and field details", async () => {
+  const time = (clockId, monoNs, segment = 0) => ({ clockId, monoNs, segment });
+  const frameDefinition = JSON.stringify({
+    version: "1",
+    byteLength: 3,
+    fields: ["unit", "register", "value"].map((id, byteOffset) => ({
+      id,
+      byteOffset,
+      kind: "integer",
+      width: 1,
+      order: "big",
+    })),
+  });
+  const params = {
+    baseline: [
+      capturedFrame(1, [1, 8, 11], time("base", "9007199254740993")),
+      capturedFrame(4, [2, 7, 13], time("base", "9007199254741014")),
+    ],
+    candidate: [
+      capturedFrame(1, [1, 8, 77], time("candidate", "9007199254800000")),
+      capturedFrame(2, [3, 6, 1], time("candidate", "9007199254800005")),
+      capturedFrame(3, [2, 7, 13], time("candidate", "9007199254800015")),
+    ],
+    alignment: { kind: "fields", ids: ["unit", "register"] },
+    definition: frameDefinition,
+    detail: { rowIndex: 0 },
+  };
+  assert.equal(
+    validateComparisonInput(params),
+    true,
+    JSON.stringify(validateComparisonInput.errors),
+  );
+  const result = await call("compareSessions", params);
+  assert.equal(
+    validateComparisonOutput(result),
+    true,
+    JSON.stringify(validateComparisonOutput.errors),
+  );
+  assert.deepEqual(
+    result.rows.map(
+      ({ baselinePosition, candidatePosition, elapsedDeltaNs }) => [
+        baselinePosition,
+        candidatePosition,
+        elapsedDeltaNs,
+      ],
+    ),
+    [
+      ["1", "1", "0"],
+      ["4", "3", "-6"],
+      [null, "2", null],
+    ],
+  );
+  assert.equal(result.rows[0].changedBytes, 1);
+  assert.deepEqual(result.detail, {
+    rowIndex: 0,
+    byteRanges: { offset: 0, total: 1, items: [{ start: 2, end: 3 }] },
+    fields: {
+      offset: 0,
+      total: 1,
+      items: [
+        {
+          id: "value",
+          baseline: { value: "11", rawHex: "0B", rawValue: "11" },
+          candidate: { value: "77", rawHex: "4D", rawValue: "77" },
+        },
+      ],
+    },
+  });
+});
+
+test("session comparison pages large byte and field change sets without discarding the totals", async () => {
+  const baseline = Buffer.alloc(4096),
+    candidate = Buffer.alloc(4096);
+  for (let i = 0; i < candidate.length; i += 2) candidate[i] = 1;
+  const large = {
+    baseline: [capturedFrame(1, baseline)],
+    candidate: [capturedFrame(1, candidate)],
+    alignment: { kind: "ordinal" },
+    detail: { rowIndex: 0, byteOffset: 1920 },
+  };
+  const result = await call("compareSessions", large);
+  assert.equal(validateComparisonOutput(result), true);
+  assert.equal(result.rows[0].changedBytes, 2048);
+  assert.equal(result.detail.byteRanges.total, 2048);
+  assert.equal(result.detail.byteRanges.items.length, 128);
+  assert.deepEqual(result.detail.byteRanges.items.at(-1), {
+    start: 4094,
+    end: 4095,
+  });
+  const byteLength = 9;
+  const frames = {
+    baseline: [capturedFrame(1, Buffer.alloc(byteLength))],
+    candidate: [capturedFrame(1, Buffer.alloc(byteLength, 1))],
+    alignment: { kind: "ordinal" },
+    detail: { rowIndex: 0, fieldOffset: 8 },
+    definition: JSON.stringify({
+      version: "1",
+      byteLength,
+      fields: Array.from({ length: byteLength }, (_, i) => ({
+        id: "f" + i,
+        kind: "integer",
+        width: 1,
+        order: "big",
+        byteOffset: i,
+      })),
+    }),
+  };
+  const fields = await call("compareSessions", frames);
+  assert.equal(validateComparisonOutput(fields), true);
+  assert.equal(fields.rows[0].changedFields, 9);
+  assert.equal(fields.detail.fields.total, 9);
+  assert.deepEqual(
+    fields.detail.fields.items.map(({ id }) => id),
+    ["f8"],
+  );
+});
+
+test("session comparison reports invalid frame positions and windows without turning cancellation into input errors", async () => {
+  const params = {
+    baseline: [capturedFrame(1, [1])],
+    candidate: [],
+    alignment: { kind: "ordinal" },
+  };
+  assert.deepEqual(
+    await call("compareSessions", {
+      ...params,
+      baseline: [capturedFrame(0, [1])],
+    }),
+    { status: "invalid", path: "baseline[0].position" },
+  );
+  assert.deepEqual(
+    await call("compareSessions", {
+      ...params,
+      baseline: [capturedFrame("18446744073709551616", [1])],
+    }),
+    { status: "invalid", path: "baseline[0].position" },
+  );
+  assert.deepEqual(
+    await call("compareSessions", {
+      ...params,
+      baseline: Array.from({ length: 17 }, (_, i) =>
+        capturedFrame(i + 1, Buffer.alloc(4096)),
+      ),
+    }),
+    { status: "invalid", path: "baseline" },
+  );
+  assert.deepEqual(
+    await call("compareSessions", { ...params, detail: { rowIndex: 1 } }),
+    { status: "invalid", path: "detail.rowIndex" },
+  );
+  await assert.rejects(call("compareSessions", params, AbortSignal.abort()), {
+    name: "AbortError",
+  });
 });

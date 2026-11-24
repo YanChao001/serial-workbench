@@ -1510,6 +1510,15 @@ test("the workbench scans only visible receive data through the Host action and 
     "Event 4 · Bytes [7, 8)",
   );
   await expect(chart.getByRole("listitem").getByText("41")).toBeVisible();
+  await dialog.getByText("Bus load", { exact: true }).click();
+  const bus = dialog.getByRole("region", { name: "Bus load" });
+  await expect(bus.getByText(/Clock fixture-clock/)).toBeVisible();
+  await expect(bus.getByText("2 B observed")).toBeVisible();
+  await expect(bus.getByText("Partial", { exact: true })).toBeVisible();
+  await expect(
+    bus.getByRole("columnheader", { name: "Protocol errors" }),
+  ).toBeVisible();
+  await dialog.getByText("Bus load", { exact: true }).click();
   await expect(reading).toHaveAttribute("data-chart-selected", "true");
   await dialog
     .getByRole("button", { name: en["workbench.fields.edit"] })
@@ -1641,4 +1650,151 @@ test("the workbench scans only visible receive data through the Host action and 
   await expect
     .poll(() => page.evaluate(() => document.getSelection()?.toString()))
     .toBe("41");
+});
+
+test("bus load marks earlier windows as uncovered after moving to the next frame page", async ({
+  page,
+}) => {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-framing/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid framing catalog fixture");
+  const action = manifest.contributes.parsers[0];
+  if (!action) throw new Error("Missing framing catalog fixture");
+  const prototype = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (prototype?.kind !== "source") throw new Error("Missing Raw RX fixture");
+  const reference = {
+    hostId: prototype.event.hostId,
+    kind: "plugin_result",
+    id: "paged-framing-fixture",
+    revision: "1",
+  };
+  const { sessionId, sessionEpoch } = prototype.event;
+  function file(body: unknown) {
+    const data = Buffer.from(JSON.stringify(body));
+    return {
+      fileRef: reference,
+      offset: "0",
+      nextOffset: String(data.length),
+      totalBytes: String(data.length),
+      bytesBase64: data.toString("base64"),
+      fingerprint: createHash("sha256").update(data).digest("hex"),
+      atEnd: true,
+    };
+  }
+  const blocks = [
+    { seq: 3, ms: 0, start: 0, data: "A".repeat(127) },
+    { seq: 4, ms: 100, start: 127, data: "BCD" },
+    { seq: 5, ms: 250, start: 130, data: "E" },
+    { seq: 6, ms: 300, start: 131, data: "F" },
+  ];
+  const frames = blocks.flatMap(({ seq, start, data }) =>
+    Array.from(data, (character, offset) => ({
+      bytesBase64: Buffer.from(character).toString("base64"),
+      source: {
+        hostId: reference.hostId,
+        sessionId,
+        sessionEpoch,
+        direction: "rx",
+        byteStart: String(start + offset),
+        byteEnd: String(start + offset + 1),
+        eventStart: String(seq),
+        eventEnd: String(seq + 1),
+      },
+    })),
+  );
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    framing: {
+      action,
+      page: file({
+        frames: frames.slice(0, 128),
+        incompleteBytes: 0,
+        nextCursor: { eventSeq: "4", byteStart: "128" },
+      }),
+    },
+  });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const events = blocks.map(({ seq, ms, start, data }) => ({
+    kind: "source" as const,
+    event: {
+      ...prototype.event,
+      kind: "rx" as const,
+      eventSeq: String(seq),
+      time: {
+        ...prototype.event.time,
+        sourceMonoNs: String(1000000 + ms * 1000000),
+      },
+      payload: {
+        bytesBase64: Buffer.from(data).toString("base64"),
+        byteStart: String(start),
+        byteEnd: String(start + data.length),
+      },
+    },
+  }));
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    events,
+  );
+  await expect(page.getByRole("log")).toContainText("BCD");
+  await page.getByRole("button", { name: en["workbench.tools.more"] }).click();
+  await page
+    .getByRole("menuitem", { name: en["workbench.tools.framing"] })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: en["workbench.tools.framing"],
+  });
+  await dialog
+    .getByRole("combobox", { name: en["workbench.framing.mode"] })
+    .click();
+  await page
+    .getByRole("option", { name: en["workbench.framing.fixed"], exact: true })
+    .click();
+  await dialog
+    .getByLabel(en["workbench.framing.fixedLength"], { exact: true })
+    .fill("1");
+  await dialog
+    .getByRole("button", { name: en["workbench.framing.scan"] })
+    .click();
+  const next = dialog.getByRole("button", {
+    name: en["workbench.framing.next"],
+  });
+  await expect(next).toBeVisible();
+  await dialog.getByText("Bus load", { exact: true }).click();
+  const bus = dialog.getByRole("region", { name: "Bus load" });
+  const row = (range: string) =>
+    bus.getByRole("row").filter({
+      has: page.getByRole("rowheader", { name: range, exact: true }),
+    });
+  await expect(row("0–100").getByRole("cell").nth(3)).toHaveText("1,270");
+  await page.evaluate(
+    (data) => window.workbenchFixture.setFramingResult(data),
+    file({ frames: frames.slice(128), incompleteBytes: 0 }),
+  );
+  await next.click();
+  await expect(next).toHaveCount(0);
+  await expect(row("0–100").getByRole("cell").nth(0)).toHaveText("1,270");
+  await expect(row("0–100").getByRole("cell").nth(3)).toHaveText("—");
+  await expect(row("100–200").getByRole("cell").nth(3)).toHaveText("—");
+  await expect(row("0–100")).toContainText(
+    "Raw complete · partial frame coverage",
+  );
+  await expect(row("200–300").getByRole("cell").nth(3)).toHaveText("10");
 });

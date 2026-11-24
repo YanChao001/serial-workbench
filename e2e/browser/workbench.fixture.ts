@@ -94,6 +94,8 @@ export type WorkbenchFixture = {
   queryInputs: Query[];
   configureCheckDelayMs: number;
   configureAllowed: boolean;
+  deniedReplayReads: string[];
+  sendHistoryReadable: boolean;
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
@@ -213,6 +215,7 @@ export async function seedWorkbenchFixture(
     workspace,
     captureTails,
     replay,
+    replayPeer,
     connectFailure,
     connectionDefaults,
     device,
@@ -222,6 +225,7 @@ export async function seedWorkbenchFixture(
     nodeThemes = [],
     framing,
     definitionFiles,
+    sendHistory = false,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -231,6 +235,7 @@ export async function seedWorkbenchFixture(
     theme?: "light" | "dark";
     sharedSettings?: Partial<SharedSettings>;
     observations?: ObservationFixture;
+    sendHistory?: boolean;
     readOnly?: boolean;
     captureTarget?: SelectedFileResource;
     fileMetadata?: FileMetadata;
@@ -241,6 +246,7 @@ export async function seedWorkbenchFixture(
     workspace?: WorkspaceDocument;
     captureTails?: CaptureTailFixture;
     replay?: ReplayLayoutFixture;
+    replayPeer?: ReplayLayoutFixture;
     connectFailure?: HostError;
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     device?: DeviceDescriptor;
@@ -375,6 +381,54 @@ export async function seedWorkbenchFixture(
         acceptedAt: replayOperation.acceptedAt,
       }
     : null;
+  const peerScope = replayPeer
+    ? {
+        scopeId: "session.replay-layout-peer",
+        target: {
+          hostId,
+          kind: "session",
+          id: replayPeer.session.sessionId,
+          sessionId: replayPeer.session.sessionId,
+          sessionEpoch: replayPeer.session.sessionEpoch,
+        },
+      }
+    : null;
+  const peerOperation: Operation | null =
+    replayPeer && replayOperation
+      ? {
+          ...replayOperation,
+          operationId: "fixture-attached-replay-peer",
+          rootOperationId: "fixture-attached-replay-peer",
+          target: {
+            hostId,
+            kind: "capture",
+            id: "explicit-replay-layout-peer",
+          },
+          revealTarget: {
+            pageId: "workbench",
+            sessionId: replayPeer.session.sessionId,
+            panelId: "replay",
+          },
+          result: {
+            kind: "opened",
+            value: {
+              sessionId: replayPeer.session.sessionId,
+              sessionEpoch: replayPeer.session.sessionEpoch,
+              revision: replayPeer.session.revision,
+              reused: false,
+            },
+          },
+        }
+      : null;
+  const peerSummary =
+    peerOperation && replaySummary
+      ? {
+          ...replaySummary,
+          operationId: peerOperation.operationId,
+          target: peerOperation.target,
+          revealTarget: peerOperation.revealTarget,
+        }
+      : null;
   const settingsDocument: SettingsDocumentResult = {
     scope: settingsScope,
     document: {
@@ -414,15 +468,16 @@ export async function seedWorkbenchFixture(
                 },
               ]
             : []),
-          ...(replayScope
+          ...(replayScope || sendHistory
             ? [
                 {
                   scopeId: "host.operations",
                   target: { hostId, kind: "host", id: hostId },
                 },
-                replayScope,
               ]
             : []),
+          ...(replayScope ? [replayScope] : []),
+          ...(peerScope ? [peerScope] : []),
         ],
       },
     },
@@ -492,6 +547,7 @@ export async function seedWorkbenchFixture(
     captureTarget: captureTarget ?? null,
     fileMetadata: fileMetadata ?? null,
     sentOperation: fixtureOperation,
+    sendHistory,
     txMaxBytes: TX_MAX_BYTES,
     hostStart,
     hostFailure,
@@ -501,6 +557,10 @@ export async function seedWorkbenchFixture(
     replayScope,
     replayOperation,
     replaySummary,
+    replayPeer,
+    peerScope,
+    peerOperation,
+    peerSummary,
     connectFailure: connectFailure ?? null,
     plugin,
     pendingTakeover,
@@ -525,6 +585,7 @@ export async function seedWorkbenchFixture(
       captureTarget,
       fileMetadata,
       sentOperation,
+      sendHistory,
       txMaxBytes,
       hostStart,
       hostFailure,
@@ -534,6 +595,10 @@ export async function seedWorkbenchFixture(
       replayScope,
       replayOperation,
       replaySummary,
+      replayPeer,
+      peerScope,
+      peerOperation,
+      peerSummary,
       connectFailure,
       plugin,
       pendingTakeover,
@@ -828,6 +893,8 @@ export async function seedWorkbenchFixture(
       queryInputs: [],
       configureCheckDelayMs: 0,
       configureAllowed: true,
+      deniedReplayReads: [],
+      sendHistoryReadable: true,
       invocations: [],
       clientStateReads: 0,
       sentBytes: [],
@@ -1138,6 +1205,13 @@ export async function seedWorkbenchFixture(
                 generation: String(args.generation),
                 captureNameHint: args.captureNameHint as CaptureNameHint | null,
               });
+              if (args.role === "captureSource" && peerOperation)
+                return {
+                  reference: { ...peerOperation.target, revision: "1" },
+                  name: "comparison.swbc",
+                  length: "64",
+                  mime: "application/octet-stream",
+                };
               if (args.role === "captureTarget" && captureTarget)
                 return captureTarget;
               if (args.role === "protocolDefinitionSource" && definitionFiles) {
@@ -1427,6 +1501,21 @@ export async function seedWorkbenchFixture(
               if (request.method === "action.invoke")
                 fixture.invocations.push(request.params);
               if (
+                peerOperation &&
+                request.method === "action.invoke" &&
+                request.params.actionId === "replay.open" &&
+                request.params.target.id === peerOperation.target.id
+              )
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...peerOperation,
+                      requestId: request.params.requestId,
+                    },
+                  },
+                };
+              if (
                 framing &&
                 nextFramingResult &&
                 request.method === "action.invoke" &&
@@ -1699,6 +1788,49 @@ export async function seedWorkbenchFixture(
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
               if (
+                sendHistory &&
+                query.params.operationId === sentOperation.operationId
+              ) {
+                if (!fixture.sendHistoryReadable)
+                  return {
+                    ok: false,
+                    error: {
+                      code: "PERMISSION_DENIED",
+                      message: "History permission revoked",
+                      retryable: false,
+                    },
+                  };
+                if (query.actionId === "operation.input") {
+                  if (
+                    command !== "host_raw_request" ||
+                    query.target.kind !== "host" ||
+                    query.target.id !== hostAttachment.attachment.hostId
+                  )
+                    throw new Error("Invalid send history input query");
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "operation_input",
+                      value: {
+                        kind: "tx",
+                        value: {
+                          bytesBase64: "U1RBVFVTPw==",
+                          writeWaitMs: "100",
+                        },
+                      },
+                    },
+                  };
+                }
+                if (query.actionId === "operation.get")
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "operation",
+                      value: { operation: sentOperation },
+                    },
+                  };
+              }
+              if (
                 framingOperation &&
                 query.actionId === "operation.get" &&
                 query.params.operationId === framingOperation.operationId
@@ -1883,6 +2015,47 @@ export async function seedWorkbenchFixture(
                 return {
                   ok: true,
                   result: { kind: "session", value: replayProfile.session },
+                };
+              if (
+                replayPeer &&
+                peerScope &&
+                query.target.id === peerScope.target.id
+              ) {
+                if (query.actionId === "session.get")
+                  return {
+                    ok: true,
+                    result: { kind: "session", value: replayPeer.session },
+                  };
+                if (query.actionId === "replay.read") {
+                  if (
+                    command !== "host_raw_request" ||
+                    args.generation !== hostAttachment.generation ||
+                    query.target.hostId !== peerScope.target.hostId ||
+                    query.target.kind !== "session" ||
+                    query.params.sessionId !== peerScope.target.sessionId ||
+                    query.params.sessionEpoch !==
+                      peerScope.target.sessionEpoch ||
+                    query.params.maxRecords !== "100" ||
+                    query.params.maxBytes !== "65536"
+                  )
+                    throw new Error("Invalid comparison replay target");
+                  return {
+                    ok: true,
+                    result: { kind: "replay_read", value: replayPeer.page },
+                  };
+                }
+              }
+              if (
+                peerOperation &&
+                query.actionId === "operation.get" &&
+                query.params.operationId === peerOperation.operationId
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "operation",
+                    value: { operation: peerOperation },
+                  },
                 };
               if (replayProfile && query.actionId === "replay.read") {
                 const singleStep = query.params.singleStep === true;
@@ -2140,6 +2313,21 @@ export async function seedWorkbenchFixture(
                     },
                   };
                 }
+                if (
+                  query.params.actionId === "replay.read" &&
+                  fixture.deniedReplayReads.includes(query.target.id)
+                )
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "action_check",
+                      value: {
+                        actionId: "replay.read",
+                        target: query.target,
+                        allowed: false,
+                      },
+                    },
+                  };
                 const capture = query.params.actionId === "capture.tail";
                 if (capture)
                   fixture.capturePermissionChecks.push({
@@ -2162,7 +2350,12 @@ export async function seedWorkbenchFixture(
                     value: {
                       actionId: query.params.actionId,
                       target: query.target,
-                      allowed: !capture || tailPermission === "allow",
+                      allowed:
+                        sendHistory &&
+                        (query.params.actionId === "operation.get" ||
+                          query.params.actionId === "operation.input")
+                          ? fixture.sendHistoryReadable
+                          : !capture || tailPermission === "allow",
                     },
                   },
                 };
@@ -2195,6 +2388,57 @@ export async function seedWorkbenchFixture(
                 };
               if (query.actionId === "state.snapshot") {
                 const scopeId = query.params.scopeId;
+                if (scopeId === "host.operations" && sendHistory) {
+                  const {
+                    operationId,
+                    executionHostId,
+                    actorId,
+                    actionId,
+                    target,
+                    executionMode,
+                    state,
+                    revision,
+                    revealTarget,
+                    acceptedAt,
+                  } = sentOperation;
+                  const { hostId, instanceEpoch } = hostAttachment.attachment;
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "snapshot",
+                      value: {
+                        hostId,
+                        instanceEpoch,
+                        revision: "1",
+                        cursor: {
+                          hostId,
+                          instanceEpoch,
+                          scopeId,
+                          position: "0",
+                        },
+                        state: {
+                          // 重载后模拟操作已移出投影，但仍可按 ID 查询。
+                          items: retained?.client.state.sendHistoryPins?.length
+                            ? []
+                            : [
+                                {
+                                  operationId,
+                                  executionHostId,
+                                  actorId,
+                                  actionId,
+                                  target,
+                                  executionMode,
+                                  state,
+                                  revision,
+                                  revealTarget,
+                                  acceptedAt,
+                                },
+                              ],
+                        },
+                      },
+                    },
+                  };
+                }
                 if (scopeId === "host.activity" && pendingTakeover)
                   return {
                     ok: true,
@@ -2221,7 +2465,8 @@ export async function seedWorkbenchFixture(
                   replayOperation &&
                   typeof scopeId === "string" &&
                   (scopeId === "host.operations" ||
-                    scopeId === replayScope.scopeId)
+                    scopeId === replayScope.scopeId ||
+                    scopeId === peerScope?.scopeId)
                 )
                   return {
                     ok: true,
@@ -2240,8 +2485,15 @@ export async function seedWorkbenchFixture(
                         },
                         state:
                           scopeId === "host.operations"
-                            ? { items: [replaySummary] }
-                            : replayProfile.session,
+                            ? {
+                                items: [
+                                  replaySummary,
+                                  ...(peerSummary ? [peerSummary] : []),
+                                ],
+                              }
+                            : scopeId === peerScope?.scopeId && replayPeer
+                              ? replayPeer.session
+                              : replayProfile.session,
                       },
                     },
                   };

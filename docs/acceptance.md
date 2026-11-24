@@ -347,6 +347,10 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 在同一固定运行时环境执行 `cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_ -- --ignored --nocapture`。用独立 profile 验证首次自动登记、真实 Node 解析器发布、重启后 Host 换代及安装 revision 保持。产品单测另验取消后重试、同 ID 本地包保持原信任，以及停用和卸载后继续尊重用户选择。断网安装、打开真实桌面和线路样本按发行与实机专项覆盖。
 
+### 会话对比（PROTO-11）
+
+运行 `pnpm exec vitest run src/features/workbench/session-comparison-model.test.ts`。使用相同帧长读取两段只读录制，以原始事件和字节界限核对数据。位置模式保留已知缺失帧的序号，前缀和多字段模式分别用插入帧、重复键、无法解码的键及乱序设备地址核对配对。字节差检查零基半开区间，字段差检查同字段的原值和解码值。右侧相对耗时减左侧相对耗时，跨时钟、采集缺口或非单调时间返回未知。夹具校对高位纳秒、跨接收块来源及两侧边界。打开两份只读回放，各读取需要对照的页，在字段图表输入已知帧起点和帧长。把第一份用作基准、第二份用作对照，再从回放工具栏打开「会话对比」。切换对齐键后重新计算，展开结果行核对原始 HEX、事件和录制序号，以及右侧相对时间减左侧相对时间。运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts --grep "two recordings compare" --workers=1`，模拟 Host 对照两份样本并验证访问撤销后收回原始内容。通过当前有内容读取权限的会话调用字段包动作 `swb.reference.fields.compareSessions`。每侧传入有序的 `position` 和 `bytesBase64`，可提供精确纳秒和连续片段编号。首次读取核对全窗摘要，使用零基 `detail.rowIndex` 选择明细，分别用 `byteOffset` 和 `fieldOffset` 分页。运行 `node --test scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对契约、签名包一致性及分页金样。原生固定 Node 用例 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对未授权拒绝、授权后读回原始差异与精确时差。对 0.1.0 和 0.2.0 分别核对启用、停用、卸载和重复启动后身份保持。
+
 ### 帧字段定义与报文构造（PROTO-02、PROTO-05、PROTO-07、PROTO-19）
 
 在分帧结果选择一帧，然后选择 JSON 或 YAML，填写版本为字符串 `"1"` 的定义。`byteLength` 是整帧字节数。每个字段用 `id`、`kind`、`byteOffset` 和宽度或校验算法描述。字节偏移位于帧内，结果显示折算后的半开原始字节范围和实际 HEX。十进制比例 `scale` 与偏移 `bias` 使用字符串，枚举 `labels` 以原始整数为键，可选 `unit`。整数和位域使用指定端序与符号位。校验字段以 `coverageStart` 和 `coverageEnd` 选定计算区间。
@@ -367,6 +371,10 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 `swb.reference.fields.identifyCrc` 以目标会话为范围。输入 `samples` 中每项含 `bytesBase64` 与 `checksumBase64`，最多 16 项，每项覆盖字节最多 4096。可传 `width` 与 `order`。核对未授权拒绝、获准后读取实际结果引用、不同样本数、候选参数和补样本提示。运行 `node --test scripts/crc-recognition.test.mjs scripts/protocol-field-actions.test.mjs` 和上述分帧浏览器、原生启动用例。
 
+### 总线负载（VIZ-10）
+
+在实时或回放的字段工具完成分帧后，展开「总线负载」，选择 10、100 或 1000 ms 窗口。检查源时钟、最大时间刻度和观测范围。只统计 RX 字节区间及 TX 最终回执的已确认区间，发送意图与未知部分不进入已确认速率。分帧核对留存来源，以帧末时间入窗，启用字段定义后再核对协议错误率。跨源或缺口不能补成完整窗口，最后一个未观测完的窗口显示已知量。翻至分帧续页或从回放块内选定起点时，检查分帧范围不足的窗口仍保留已知原始吞吐，帧率和协议错误率留空。运行 `pnpm exec vitest run src/features/workbench/bus-load-model.test.ts` 核对边界、坏校验、部分发送和高位源时间。物理线路奇偶校验和帧错误待受控设备及独立仪器核对。
+
 ### 帧异常检查（PROTO-08）
 
 在「协议分帧」扫描有权读取的会话范围，再在「协议字段」下打开「帧异常」。字段定义提供期望长度、校验字段和可选整数或位序号。填入序号字段、允许推断的最大缺帧数及帧间时限。相邻序号按字段位宽回绕。有限的向前缺失显示实收序号和预期序号，越过界限显示跳变。也可显式开启相邻完整字节重复检查。
@@ -379,7 +387,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 整数与位字段可用 `kind: "table"`、`revision` 和按原始码值递增的 `points`。每点含十进制字符串 `raw` 与 `value`。默认采用精确查表。选择 `interpolation: "linear"` 时，以单调标定点验证升序、降序与分段插值。表外应显示未映射并保留原始证据。构造须能反解至唯一原始码值。运行 `node --test scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs` 和 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "packet editor constructs"`。
 
-字段签名包由 0.1.0 升至 0.2.0。独立 profile 分别核对已启用、已停用和已卸载三种状态，重复初始化核对快照幂等。真实 Host 在有权会话中调用随包的构造与解码动作，检查标定版本、物理值和原字节同时命中。图表追溯、独立设备、发行实装与版本回退按同一候选继续专项验收。
+字段签名包分别从 0.1.0、0.2.0 升至 0.3.0。每条路径在独立 profile 核对已启用、已停用和已卸载三种状态，重复初始化核对快照幂等。真实 Host 在有权会话中调用随包的构造与解码动作，检查标定版本、物理值和原字节同时命中。图表追溯、独立设备、发行实装与版本回退按同一候选继续专项验收。
 
 ### 字段图表 CSV（VIZ-13）
 
@@ -440,6 +448,12 @@ FC01/02 的独立响应保留装有位值和填充的 `bitBytes`，FC03/04 响�
 在「协议分帧」展开「AT 响应」，载入示例并核对 `AT+CREG?` 回显、`+CREG: 5` 主动上报、`+CREG: 2,5` 查询响应和 `OK` 结果。可留空命令独立浏览接收记录。在 ATV0 下用数字 `2` 与 `0` 核对来电和结束结果。另核对输入提示、`+CME ERROR`、`+CMS ERROR`、`CONNECT` 后数据和原始行号。只分析一条在途命令，使用 CR、LF 或 CRLF 分行，留空不将结果归给特定命令。
 
 收到 SMS PDU 头时按声明长度验证后续十六进制行。文本短信或损坏 PDU 的正文边界无法确定时保留后续原文，并避免把其中的 `OK` 当成终态。粘贴的发送短信样本若混有输入提示之后的正文回显，先按采集边界选取设备响应。随包动作 `swb.reference.fields.at` 接收 `text` 及可选 `command`、`format`，`format` 缺省为 `verbose`。运行 `node --test scripts/at-response.test.mjs` 验证交错结果、PDU 边界和输入上限。实际调制解调器、不同厂商的专有上报与离线发行实装继续按设备及包件验收。 [ITU-T V.250](https://www.itu.int/rec/T-REC-V.250-200307-I) · [3GPP TS 27.007](https://www.etsi.org/deliver/etsi_ts/127000_127099/127007/18.07.00_60/ts_127007v180700p.pdf) · [3GPP TS 27.005](https://www.etsi.org/deliver/etsi_ts/127000_127099/127005/18.00.00_60/ts_127005v180000p.pdf)
+
+### 发送历史（IO-06）
+
+在工作台菜单打开「发送历史」，按端口、时间和会话搜索。固定一条留存记录，关闭桌面后重开同一窗口，或重载配对工作台的同一标签页，核对固定记录随窗口存档恢复。旧操作移出当前投影后按 ID 查询，验证撤权清除记录内容。选择多条并预览原请求字节，核对可写目标的端口、会话和代次。浏览记录、固定及预览期间 TX 接纳数应保持为零。重发按选取顺序，每条等待其新操作的完整写入回执。部分写入、未知终态、输入发生变化、撤销权限和停止等待均阻止后续项，已接纳的操作仍可在任务中核对。
+
+用 `pnpm exec vitest run src/features/workbench/send-history.test.tsx` 验证输入撤权、字节变化和部分结算。用 `pnpm test:ui e2e/browser/workbench-tools-layout.spec.ts --grep "send history"` 核对完整工作台入口。Rust ClientState 测试核对桌面存档、窗口隔离与无效输入保护。实际串口及发行候选继续验证。
 
 ### 发送草稿转义（IO-03）
 

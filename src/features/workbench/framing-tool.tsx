@@ -150,6 +150,16 @@ export function FramingTool({
           target,
           items: framingSourceItems(items, target, snapshot),
           frames: page.frames,
+          frameStart:
+            typeof query.startEventSeq === "string"
+              ? {
+                  eventSeq: query.startEventSeq,
+                  byteStart:
+                    typeof query.startByte === "string"
+                      ? query.startByte
+                      : undefined,
+                }
+              : undefined,
           previous: clear
             ? undefined
             : (previous?.page.frames.at(-1) ?? previous?.inspection.previous),

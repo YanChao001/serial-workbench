@@ -9,6 +9,11 @@ import { streamSourceKey } from "@/lib/stream-source";
 import ProtocolFieldPreview from "./protocol-field-preview";
 import { replayFieldPage, replayFieldSources } from "./replay-field-source";
 import {
+  projectReplayComparison,
+  type ComparisonSide,
+  type ReplayComparisonSample,
+} from "./session-comparison-model";
+import {
   streamHexEventSource,
   type ChartSourceSelection,
 } from "./stream-chart-selection";
@@ -17,10 +22,15 @@ export default function ReplayFieldChart({
   records,
   sourceSelection,
   onRevealSource,
+  onStageComparison,
 }: {
   records: readonly CaptureRecord[];
   sourceSelection?: ChartSourceSelection;
   onRevealSource?: (source: ChartSourceSelection) => void;
+  onStageComparison?: (
+    side: ComparisonSide,
+    sample: ReplayComparisonSample,
+  ) => void;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -74,6 +84,12 @@ export default function ReplayFieldChart({
       width,
       result: replayFieldPage(records, source, at, length),
     });
+  }
+
+  function stage(side: ComparisonSide) {
+    if (!outcome || at === undefined || !onStageComparison) return;
+    const sample = projectReplayComparison(outcome, at, length);
+    if (sample.frames.length) onStageComparison(side, sample);
   }
 
   return (
@@ -133,6 +149,26 @@ export default function ReplayFieldChart({
               ? ` · ${t("workbench.fieldChart.replayLimit")}`
               : ""}
           </p>
+          {onStageComparison && outcome.inspection.frames.length ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => stage("baseline")}
+              >
+                {t("workbench.comparison.stageBaseline")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => stage("candidate")}
+              >
+                {t("workbench.comparison.stageCandidate")}
+              </Button>
+            </div>
+          ) : null}
         </>
       ) : null}
       {attempt ? (

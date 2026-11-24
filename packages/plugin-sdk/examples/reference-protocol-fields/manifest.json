@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.fields",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "Serial Workbench Protocol Fields",
-  "description": "Decode or construct fields from JSON and YAML definitions with precise positions",
+  "description": "Decode or construct protocol fields and compare bounded capture frame windows",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE", "third-party/yaml.LICENSE"],
   "hostProtocolVersion": "0.1",
@@ -1501,6 +1501,437 @@
               "additionalProperties": false
             }
           ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.compareSessions",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "baseline": {
+              "$ref": "#/definitions/window"
+            },
+            "candidate": {
+              "$ref": "#/definitions/window"
+            },
+            "alignment": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "ordinal"
+                    }
+                  },
+                  "required": ["kind"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "prefix"
+                    },
+                    "length": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 32
+                    }
+                  },
+                  "required": ["kind", "length"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "fields"
+                    },
+                    "ids": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 4,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": ["kind", "ids"],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "definition": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "definitionFormat": {
+              "enum": ["json", "yaml"]
+            },
+            "detail": {
+              "type": "object",
+              "properties": {
+                "rowIndex": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "byteOffset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2048
+                },
+                "fieldOffset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 128
+                }
+              },
+              "required": ["rowIndex"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["baseline", "candidate", "alignment"],
+          "additionalProperties": false,
+          "definitions": {
+            "window": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "bytesBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 5464,
+                    "contentEncoding": "base64"
+                  },
+                  "time": {
+                    "type": "object",
+                    "properties": {
+                      "clockId": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                      },
+                      "monoNs": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]{0,19})$"
+                      },
+                      "segment": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      }
+                    },
+                    "required": ["clockId", "monoNs", "segment"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["position", "bytesBase64"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16385
+                    },
+                    "col": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16385
+                    }
+                  },
+                  "required": ["line", "col"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "compared"
+                },
+                "rows": {
+                  "type": "array",
+                  "maxItems": 256,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "baselinePosition": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9][0-9]{0,19}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "candidatePosition": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[1-9][0-9]{0,19}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "keyAvailable": {
+                        "type": "boolean"
+                      },
+                      "repeatedKey": {
+                        "type": "boolean"
+                      },
+                      "changedBytes": {
+                        "oneOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4096
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "changedFields": {
+                        "oneOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 128
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "elapsedDeltaNs": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^-?(0|[1-9][0-9]{0,19})$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "baselineDecodeFailure": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "candidateDecodeFailure": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "baselinePosition",
+                      "candidatePosition",
+                      "keyAvailable",
+                      "repeatedKey",
+                      "changedBytes",
+                      "changedFields",
+                      "elapsedDeltaNs",
+                      "baselineDecodeFailure",
+                      "candidateDecodeFailure"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "detail": {
+                  "type": "object",
+                  "properties": {
+                    "rowIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "byteRanges": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "offset": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 2048
+                            },
+                            "total": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 2048
+                            },
+                            "items": {
+                              "type": "array",
+                              "maxItems": 128,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "start": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 4095
+                                  },
+                                  "end": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 4096
+                                  }
+                                },
+                                "required": ["start", "end"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": ["offset", "total", "items"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fields": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "offset": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 128
+                            },
+                            "total": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 128
+                            },
+                            "items": {
+                              "type": "array",
+                              "maxItems": 4,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  },
+                                  "baseline": {
+                                    "$ref": "#/definitions/reading"
+                                  },
+                                  "candidate": {
+                                    "$ref": "#/definitions/reading"
+                                  }
+                                },
+                                "required": ["id", "baseline", "candidate"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": ["offset", "total", "items"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["rowIndex", "byteRanges", "fields"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["status", "rows"],
+              "additionalProperties": false
+            }
+          ],
+          "definitions": {
+            "reading": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "rawHex": {
+                  "type": "string"
+                },
+                "rawValue": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["value", "rawHex", "rawValue"],
+              "additionalProperties": false
+            }
+          }
         },
         "targetKinds": ["session"],
         "executionLocation": "resource_host",

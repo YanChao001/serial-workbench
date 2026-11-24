@@ -19,6 +19,7 @@ import {
   Brackets,
   Stethoscope,
   ListTodo,
+  History,
   Gauge,
   RotateCw,
   ScrollText,
@@ -101,7 +102,7 @@ export function WorkbenchConnection({
   toolsAvailable: boolean;
   onDeviceChange: (id: string) => void;
   onTool: (
-    tool: WorkbenchTool | "tasks" | "metrics" | "logs",
+    tool: WorkbenchTool | "tasks" | "metrics" | "logs" | "sendHistory",
     returnPoint?: HTMLElement | null,
   ) => void;
   onOpen: () => void;
@@ -390,6 +391,12 @@ export function WorkbenchConnection({
                   {toolLabels.framing}
                 </DropdownMenuItem>
               ) : null}
+              <DropdownMenuItem
+                onSelect={() => onTool("sendHistory", menuTrigger.current)}
+              >
+                <History aria-hidden="true" />
+                {labels.sendHistory}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => onTool("tasks", menuTrigger.current)}
               >

@@ -1133,3 +1133,83 @@ for (const sample of [
     expect(unexpected).toEqual([]);
   });
 }
+
+test("send history restores pins after page reload and resends only on confirmation", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { sendHistory: true });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Virtual serial", exact: true }),
+  ).toBeVisible();
+  await openTool(page, "Send history");
+  const dialog = page.getByRole("dialog", {
+    name: "Send history",
+    exact: true,
+  });
+  const search = dialog.getByRole("searchbox");
+  await search.fill("unmatched");
+  await expect(dialog.getByText("No matching retained sends.")).toBeVisible();
+  await search.fill("Virtual serial");
+  await expect(
+    dialog.getByRole("checkbox", { name: /Virtual serial.*ui-send/ }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Pin", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Unpin", exact: true }),
+  ).toBeEnabled();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.workbenchFixture.clientStateWrites
+          .at(-1)
+          ?.sendHistoryPins?.map((pin) => pin.operationId),
+      ),
+    )
+    .toEqual(["ui-send"]);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await openTool(page, "Send history");
+  await dialog
+    .getByText("Pins outside visible history (1)", { exact: true })
+    .click();
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.hostQueries.includes("operation.get"),
+    ),
+  ).toBe(false);
+  await dialog.getByRole("button", { name: "Read pinned record" }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Unpin", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const pinnedRow = dialog.getByRole("checkbox", { name: /ui-send/ });
+  await expect(pinnedRow).toBeVisible();
+  await page.evaluate(() => {
+    window.workbenchFixture.sendHistoryReadable = false;
+  });
+  await expect(pinnedRow).toBeHidden();
+  await page.evaluate(() => {
+    window.workbenchFixture.sendHistoryReadable = true;
+  });
+  await pinnedRow.check();
+  await dialog.getByRole("button", { name: "Preview selected bytes" }).click();
+  await expect(
+    dialog.getByText(/Resend to Virtual serial · session/),
+  ).toBeVisible();
+  await expect(dialog.getByText("53 54 41 54 55 53 3F")).toBeVisible();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await dialog.getByRole("button", { name: "Resend in preview order" }).click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "All 1 writes confirmed.",
+  );
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    "U1RBVFVTPw==",
+  ]);
+});

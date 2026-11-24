@@ -190,6 +190,11 @@ test("replay chart traces a compacted and filtered field to both original captur
   });
   await chart.getByRole("button", { name: "Plot fields" }).click();
   await expect(chart.getByRole("status")).toHaveText("Frame 32 · 16 V");
+  await dialog.getByText("Bus load", { exact: true }).click();
+  const bus = dialog.getByRole("region", { name: "Bus load" });
+  await expect(bus.getByText(/Clock capture-clock/)).toBeVisible();
+  await expect(bus.getByText("Source gap", { exact: true })).toBeVisible();
+  await dialog.getByText("Bus load", { exact: true }).click();
   const drawn = chart.getByRole("img");
   await expect(drawn.locator("polyline")).toHaveCount(2);
   await chart.getByText("Statistics", { exact: true }).click();
@@ -794,4 +799,211 @@ test("attached read-only replay steps, changes speed and stops before its breakp
   expect(evidence.rawSubscriptions).toEqual([]);
   expect(evidence.connectCalls).toEqual([]);
   expect(evidence.sentBytes).toEqual([]);
+});
+
+test("two recordings compare frame bytes, field values and elapsed time and honor access revocation", async ({
+  page,
+}) => {
+  function profile(
+    label: string,
+    origin: bigint,
+    start: number,
+    records: number,
+    values: number[][],
+    offsets: number[],
+  ): ReplayLayoutFixture {
+    return {
+      session: { ...session("replay-" + label), readOnly: true },
+      files: {},
+      page: {
+        readerGeneration: "1",
+        nextRecord: String(records + values.length),
+        atEnd: true,
+        records: values.map((bytes, index) => ({
+          kind: "inline",
+          record: {
+            recordOrdinal: String(records + index),
+            entry: {
+              kind: "event",
+              value: {
+                hostId: "workbench-gui-host",
+                instanceEpoch: "1",
+                sessionId: "recorded-" + label,
+                sessionEpoch: "2",
+                configurationRevision: "1",
+                eventSeq: String(15 + index),
+                time: {
+                  sourceMonoNs: String(origin + BigInt(offsets[index]!)),
+                  clockId: label + "-clock",
+                  receivedWallTime: "2026-11-24T00:00:00Z",
+                  precision: {
+                    source: "host_read",
+                    resolutionNs: "1",
+                    syncMethod: "none",
+                  },
+                },
+                kind: "rx",
+                payload: {
+                  bytesBase64: Buffer.from(bytes).toString("base64"),
+                  byteStart: String(start + index * 3),
+                  byteEnd: String(start + (index + 1) * 3),
+                },
+              },
+            },
+          },
+        })),
+      },
+    };
+  }
+  const baseline = profile(
+    "baseline",
+    9_007_199_254_740_993n,
+    100,
+    40,
+    [
+      [1, 8, 11],
+      [2, 7, 13],
+    ],
+    [0, 21],
+  );
+  const candidate = profile(
+    "candidate",
+    9_007_199_254_800_000n,
+    200,
+    80,
+    [
+      [1, 8, 77],
+      [2, 7, 13],
+    ],
+    [0, 15],
+  );
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    replay: baseline,
+    replayPeer: candidate,
+  });
+  await page.goto("./#/");
+  await expect(page.locator(".workbench")).toBeVisible();
+
+  async function stage(start: string, action: string) {
+    const replay = page.getByRole("region", { name: "Replay", exact: true });
+    await replay.getByRole("button", { name: "Read replay" }).click();
+    await replay
+      .getByRole("button", { name: "Replay field chart", exact: true })
+      .click();
+    const chart = page.getByRole("dialog", { name: "Replay field chart" });
+    await chart
+      .getByRole("textbox", { name: "First frame byte offset" })
+      .fill(start);
+    await chart
+      .getByRole("textbox", {
+        name: en["workbench.framing.fixedLength"],
+        exact: true,
+      })
+      .fill("3");
+    await chart
+      .getByRole("button", { name: en["workbench.framing.scan"] })
+      .click();
+    await chart.getByRole("button", { name: action }).click();
+    await expect(chart).toHaveCount(0);
+  }
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Activity" })
+    .getByRole("button", {
+      name: "Locate fixture-attached-replay",
+      exact: true,
+    })
+    .click();
+  await stage("100", "Use as baseline");
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Open replay", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.workbenchFixture.invocations.filter(
+            ({ actionId }) => actionId === "replay.open",
+          ).length,
+      ),
+    )
+    .toBe(1);
+  await expect(
+    page.getByRole("button", { name: "Replay field chart", exact: true }),
+  ).toBeDisabled();
+  await stage("200", "Use as comparison");
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.queryInputs.some(
+        ({ actionId, target }) =>
+          actionId === "replay.read" && target.id === "replay-candidate",
+      ),
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: "Recording comparison (2/2)" })
+    .click();
+
+  const dialog = page.getByRole("dialog", { name: "Recording comparison" });
+  await expect(
+    dialog.getByText("recorded-baseline @ 2", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("recorded-candidate @ 2", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("combobox", { name: "Frame alignment" }).click();
+  await page
+    .getByRole("option", { name: "Protocol fields", exact: true })
+    .click();
+  await dialog
+    .getByRole("textbox", { name: /Field IDs/ })
+    .fill("unit,register");
+  await dialog
+    .getByRole("textbox", { name: "Protocol field definition", exact: true })
+    .fill(
+      JSON.stringify({
+        version: "1",
+        byteLength: 3,
+        fields: ["unit", "register", "value"].map((id, byteOffset) => ({
+          id,
+          kind: "integer",
+          width: 1,
+          order: "big",
+          byteOffset,
+        })),
+      }),
+    );
+  await dialog.getByRole("button", { name: "Compare frames" }).click();
+  const report = dialog.getByRole("region", { name: "Comparison results" });
+  await expect(report.getByText("01 08 0B", { exact: true })).toBeVisible();
+  await expect(report.getByText("01 08 4D", { exact: true })).toBeVisible();
+  await expect(
+    report.getByText("Capture records 40–40", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    report.getByText("Capture records 80–80", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    report.getByText("value · 11 [0B] → 77 [4D]", { exact: true }),
+  ).toBeVisible();
+  await expect(report.getByText("[2, 3)", { exact: true })).toBeVisible();
+  await expect(
+    report.getByRole("cell", { name: "-6", exact: true }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    window.workbenchFixture.deniedReplayReads.push("replay-baseline");
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(report).toHaveCount(0);
+  await expect(
+    dialog.getByText("No source selected", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("recorded-candidate @ 2", { exact: true }),
+  ).toBeVisible();
 });

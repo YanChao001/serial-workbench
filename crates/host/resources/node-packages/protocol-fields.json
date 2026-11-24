@@ -1,16 +1,16 @@
 {
   "id": "swb.reference.fields",
-  "version": "0.2.0",
-  "archiveSha256": "cf223e7967acb6f81b76f800eeaeb818855063e084d439232b199e986da72da7",
-  "compiledModuleSha256": "8e703b5cae0abf7c1c69b1db1dba05cba57d80443fa5d8e36e3617d3b92babc0",
-  "manifestSha256": "aa6056b2fac6b9c490123ecebcaf493d081628134ae85a00247e16081f9cd6dd",
+  "version": "0.3.0",
+  "archiveSha256": "57436f2dd8e3f82f8278927b915b00d62fbe9255f70c37311c941ae1684ecdf2",
+  "compiledModuleSha256": "104b0823695481b9300c7d7836b4a12b9aa449a04ce687c2e688911d4acc9ae1",
+  "manifestSha256": "ac9c4f81132f51be4ecee48b02f79e6bef946a9bce92505427a963ab88188aff",
   "sourceApproval": {
-    "keyId": "built-in-protocol-fields-0.2.0",
+    "keyId": "built-in-protocol-fields-0.3.0",
     "publicKey": [
-      131, 70, 96, 15, 56, 248, 2, 71, 43, 72, 15, 215, 174, 9, 132, 255, 76,
-      90, 107, 216, 152, 51, 83, 4, 109, 202, 117, 60, 48, 134, 52, 104
+      114, 21, 208, 208, 116, 59, 142, 28, 208, 229, 53, 215, 221, 188, 58, 151,
+      80, 95, 236, 7, 147, 153, 180, 14, 147, 37, 147, 233, 28, 36, 62, 157
     ],
-    "publicKeySha256": "b2ff86d1e6f66ed8ee6b04991def3a148e7768e2566dcce9c0e5bb31ad3b5101",
+    "publicKeySha256": "2c64a0349338ec7589d5ca3530a78778c6102efc01c3694cc79c67690eb8189d",
     "source": "swb.product"
   }
 }

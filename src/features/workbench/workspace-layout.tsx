@@ -1,5 +1,7 @@
 import type { StreamHighlightRule } from "./stream-highlight";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -47,6 +49,7 @@ import { InfoIcon, LockKeyholeIcon } from "lucide-react";
 import type { WorkbenchLabels } from "./labels";
 import { WorkbenchDialog, WorkbenchPanels } from "./workbench-dialog";
 import { WorkbenchConnection } from "./workbench-connection";
+import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
@@ -87,6 +90,7 @@ import type { ReceiptReader } from "./transfer-receipts";
 import { type MetricsReader } from "./metrics-panel";
 import type { CaptureStatusReader, CaptureStopper } from "./capture-status";
 import { ReplayPanel, type ReplayPanelProps } from "./replay-panel";
+import { useReplayComparison } from "./use-replay-comparison";
 import type { StreamPresentationLabels } from "./stream-presentation";
 import type { OperationInputReader } from "./operation-input";
 import {
@@ -94,6 +98,8 @@ import {
   type WindowViewModes,
 } from "./window-layout-template";
 import "./workbench.css";
+
+const ReplayComparisonDialog = lazy(() => import("./replay-comparison-dialog"));
 
 type TabNameSource = { sourceKey?: string; sessionKey?: string; name?: string };
 function sameActionInput(
@@ -128,6 +134,7 @@ export type WorkbenchHost = Pick<
   | "open"
   | "send"
   | "waitForOperation"
+  | "readOperationSummary"
   | "takeover"
   | "watchSession"
   | "setReceiveIdleMs"
@@ -148,7 +155,13 @@ export type WorkbenchTool =
   | "framing"
   | "diagnostics";
 type WorkbenchPanel =
-  WorkbenchTool | "capture" | "activity" | "tasks" | "metrics" | "logs";
+  | WorkbenchTool
+  | "capture"
+  | "activity"
+  | "tasks"
+  | "metrics"
+  | "logs"
+  | "sendHistory";
 type ActivityLocation = Pick<
   ActivitySummary,
   "operationId" | "target" | "revealTarget" | "actionId"
@@ -171,6 +184,7 @@ function activityPanel(
     case "capture":
     case "activity":
     case "tasks":
+    case "sendHistory":
     case "metrics":
     case "logs":
       return panel;
@@ -232,6 +246,7 @@ export type WorkspaceLayoutProps = {
   formatError?: (error: { code?: string }) => string;
   unboundDraftMessage?: string;
   workspaceKey?: string;
+  workspaceId?: string;
   commandLibrary?: CommandLibrarySource;
   /** 持久草稿归属，不包含连接代次。 */
   draftScopeKey?: string;
@@ -346,6 +361,7 @@ export function WorkspaceLayout({
   renderTool,
   toolLabels,
   workspaceKey,
+  workspaceId,
   commandLibrary,
   draftScopeKey: receivedDraftScope,
   workspaceRevision,
@@ -1662,6 +1678,23 @@ export function WorkspaceLayout({
               nativeErrorCode(value.error) === "PERMISSION_DENIED"),
         )));
   const sendAllowed = !isReplay && !!target && mayAttempt("session.tx");
+  const historyHostId = host.connection?.attachment.hostId;
+  const historyDestination =
+    sendAllowed &&
+    !isCapture &&
+    target &&
+    session?.state === "open" &&
+    !session.readOnly &&
+    session.txGate === "ready"
+      ? {
+          target,
+          port:
+            state.devices.find((item) => item.deviceId === session.deviceId)
+              ?.systemName ?? session.deviceId,
+          send: submitBytes,
+          wait: host.waitForOperation,
+        }
+      : undefined;
   const invoke = host.invoke;
   const cancelOperation = onCancelOperation;
   const paste =
@@ -1874,6 +1907,17 @@ export function WorkspaceLayout({
       };
     });
   }
+  const comparisonScope = JSON.stringify([
+    captureOwnerScope,
+    host.connection?.attachment.actorId,
+  ]);
+  const comparison = useReplayComparison({
+    scope: comparisonScope,
+    hostId: labelHostId,
+    sessions: state.sessions,
+    ready: !disabled && state.status === "ready",
+    watchActions: watchAvailableActions,
+  });
   const chartScope = JSON.stringify([
     workspaceKey,
     selected,
@@ -1899,6 +1943,15 @@ export function WorkspaceLayout({
       aria-label={labels.title}
     >
       <h1 className="sr-only">{labels.title}</h1>
+      {comparison.open ? (
+        <Suspense>
+          <ReplayComparisonDialog
+            scope={comparisonScope}
+            closeLabel={labels.closeView}
+            comparison={comparison}
+          />
+        </Suspense>
+      ) : null}
       <WorkbenchCommands
         catalog={state.catalog}
         bindings={[
@@ -2137,6 +2190,17 @@ export function WorkspaceLayout({
             session={session}
             labels={labels}
             disabled={disabled || session.state !== "open"}
+            comparison={
+              labels.replayComparison
+                ? {
+                    label: labels.replayComparison(comparison.count),
+                    count: comparison.count,
+                    stage: (side, sample) =>
+                      comparison.stage(session, side, sample),
+                    open: comparison.show,
+                  }
+                : undefined
+            }
           />
         ) : (
           <StreamView
@@ -2405,7 +2469,13 @@ export function WorkspaceLayout({
           dialog
             ? (toolLabels?.[dialog as WorkbenchTool] ??
               labels[
-                dialog as "capture" | "activity" | "tasks" | "metrics" | "logs"
+                dialog as
+                  | "capture"
+                  | "activity"
+                  | "tasks"
+                  | "metrics"
+                  | "logs"
+                  | "sendHistory"
               ])
             : ""
         }
@@ -2525,10 +2595,43 @@ export function WorkspaceLayout({
               />
             )}
             {dialog === "logs" && <WorkbenchLogPanel />}
+            {dialog === "sendHistory" &&
+              !disabled &&
+              historyHostId &&
+              readOperationInput && (
+                <SendHistoryTool
+                  key={JSON.stringify([
+                    workspaceKey,
+                    workspaceId,
+                    historyHostId,
+                    host.connection?.attachment.instanceEpoch,
+                    host.connection?.generation,
+                    target?.id,
+                    target?.sessionEpoch,
+                    session?.configurationRevision,
+                    writeWaitMode,
+                  ])}
+                  hostId={historyHostId}
+                  workspaceId={workspaceId}
+                  summaries={state.operationSummaries}
+                  sessions={state.sessions}
+                  devices={state.devices}
+                  readSummary={host.readOperationSummary}
+                  destination={historyDestination}
+                  read={readOperationInput}
+                  watchActions={watchAvailableActions}
+                  labels={labels}
+                />
+              )}
             {dialog &&
-              !["capture", "tasks", "metrics", "activity", "logs"].includes(
-                dialog,
-              ) &&
+              ![
+                "capture",
+                "tasks",
+                "metrics",
+                "activity",
+                "logs",
+                "sendHistory",
+              ].includes(dialog) &&
               renderTool?.(dialog as WorkbenchTool, {
                 trackCapture,
                 selectedViewId: isCapture ? undefined : selectedTab?.id,
