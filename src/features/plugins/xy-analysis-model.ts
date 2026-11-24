@@ -1,13 +1,12 @@
 import {
   ContractValidationError,
-  validateJsonValue,
   type Target,
 } from "@serial-workbench/contracts";
-import { readVerifiedFile } from "@/lib/host-reader";
+import { parseAnalysisInput, readAnalysisReport } from "./analysis-report";
 import { parseU64 } from "@/lib/u64";
 import type { HostContextValue } from "@/providers/host-context";
 
-export const statisticsPackage = "swb.reference.statistics";
+export { statisticsPackage } from "./analysis-report";
 export const alignXyAction = "swb.reference.statistics.alignXY";
 export const maxAnalysisInput = 32768;
 
@@ -184,20 +183,7 @@ export type XyReport = ReturnType<typeof parseXyReport>;
 export type XyPair = XyReport["pairs"][number];
 
 export function parseXyInput(text: string) {
-  if (text.length > maxAnalysisInput) return undefined;
-  try {
-    const value: unknown = JSON.parse(text);
-    if (
-      validateJsonValue(value) &&
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value)
-    )
-      return value;
-  } catch {
-    // Syntax and nesting errors are reported beside the editor.
-  }
-  return undefined;
+  return parseAnalysisInput(text, maxAnalysisInput);
 }
 
 export async function runXyAnalysis(
@@ -207,37 +193,14 @@ export async function runXyAnalysis(
   params: NonNullable<ReturnType<typeof parseXyInput>>,
   signal: AbortSignal,
 ) {
-  const accepted = await host.invoke(
-    { actionId: alignXyAction, target, params, executionMode: "independent" },
-    signal,
+  return parseXyReport(
+    await readAnalysisReport(
+      host,
+      target,
+      archiveSha256,
+      alignXyAction,
+      params,
+      signal,
+    ),
   );
-  const finished = await host.waitForOperation(accepted, signal);
-  signal.throwIfAborted();
-  const file =
-    finished.result?.kind === "reference"
-      ? finished.result.value.resultRef
-      : undefined;
-  if (
-    finished.state !== "succeeded" ||
-    finished.actionId !== alignXyAction ||
-    finished.operationId !== accepted.operationId ||
-    finished.target.kind !== "host" ||
-    finished.target.hostId !== target.hostId ||
-    finished.target.id !== target.id ||
-    !finished.dependencies?.some(
-      ({ id, digest }) => id === statisticsPackage && digest === archiveSha256,
-    ) ||
-    file?.hostId !== target.hostId ||
-    file.kind !== "plugin_result" ||
-    file.id !== finished.operationId
-  )
-    throw new ContractValidationError(
-      "XY report belongs to another operation or package",
-    );
-  const bytes = await readVerifiedFile(file, host.readFile, signal);
-  const contents: unknown = JSON.parse(
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-  );
-  signal.throwIfAborted();
-  return parseXyReport(contents);
 }

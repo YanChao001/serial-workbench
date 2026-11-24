@@ -31,7 +31,10 @@ import {
   type Confirmation,
 } from "./node-management";
 
+import { spectrumAction } from "./spectrum-report";
+
 const XyAnalysis = lazy(() => import("./xy-analysis"));
+const SpectrumAnalysis = lazy(() => import("./spectrum-analysis"));
 
 export function PackageDetails({
   connection,
@@ -202,18 +205,38 @@ export function PackageDetails({
       executionApproved &&
       (!connection.browser || verified) &&
       phase === "active" &&
-      id === statisticsPackage &&
-      manifest.contributes.actions.some(
-        (action) =>
-          action.actionId === alignXyAction &&
-          action.targetKinds.includes("host"),
-      ) ? (
+      id === statisticsPackage ? (
         <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
-          <XyAnalysis
-            key={JSON.stringify([archiveSha256, runtime.generation])}
-            target={connection.hostTarget}
-            archiveSha256={archiveSha256}
-          />
+          {manifest.contributes.actions.some(
+            (action) =>
+              action.actionId === alignXyAction &&
+              action.targetKinds.includes("host"),
+          ) ? (
+            <XyAnalysis
+              key={JSON.stringify([
+                alignXyAction,
+                archiveSha256,
+                runtime.generation,
+              ])}
+              target={connection.hostTarget}
+              archiveSha256={archiveSha256}
+            />
+          ) : null}
+          {manifest.contributes.actions.some(
+            (action) =>
+              action.actionId === spectrumAction &&
+              action.targetKinds.includes("host"),
+          ) ? (
+            <SpectrumAnalysis
+              key={JSON.stringify([
+                spectrumAction,
+                archiveSha256,
+                runtime.generation,
+              ])}
+              target={connection.hostTarget}
+              archiveSha256={archiveSha256}
+            />
+          ) : null}
         </Suspense>
       ) : null}
 

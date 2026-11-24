@@ -5,6 +5,8 @@ import type { NodePackageSourceKey } from "@serial-workbench/contracts";
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { alignXY } from "../../packages/plugin-sdk/examples/reference-statistics/align-xy";
+import { spectrum } from "../../packages/plugin-sdk/examples/reference-statistics/spectrum";
+import { xyCaptureFixture } from "./xy-capture.fixture";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const manifestDocument: unknown = JSON.parse(
@@ -378,5 +380,110 @@ test("professional XY displays the verified result and inspects calibrated sampl
   expect(calls[0]).toMatchObject({
     target: { kind: "host", id: fileRef.hostId },
     params: example,
+  });
+});
+
+test("professional spectrum shows window peaks, missing waterfall rows and observed histogram counts", async ({
+  page,
+}, testInfo) => {
+  const { plugin } = xyCaptureFixture();
+  const { manifest, archiveSha256 } = plugin.installation;
+  const action = manifest.contributes.actions.find(
+    ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
+  );
+  if (!action) throw new Error("Missing spectrum action");
+  const reference = {
+    kind: "plugin_result",
+    id: "spectrum-result",
+    hostId: "workbench-gui-host",
+  };
+  function reportFile(value: unknown) {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return {
+      fileRef: reference,
+      offset: "0",
+      nextOffset: String(bytes.length),
+      totalBytes: String(bytes.length),
+      bytesBase64: bytes.toString("base64"),
+      atEnd: true,
+      fingerprint: createHash("sha256").update(bytes).digest("hex"),
+    };
+  }
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    theme: "light",
+    plugin,
+    framing: {
+      action,
+      page: reportFile(null),
+      dependencies: [
+        { id: manifest.id, version: manifest.version, digest: archiveSha256 },
+      ],
+    },
+  });
+  await page.goto("./#/plugins");
+  await page
+    .getByRole("button", {
+      name: /Sample Window Statistics and XY Alignment.*Enabled/,
+    })
+    .click();
+  await page.getByText("Spectrum and distribution", { exact: true }).click();
+  const panel = page.getByRole("region", { name: "Spectrum and distribution" });
+  await panel.getByRole("button", { name: "Load frequency example" }).click();
+  const draft = panel.getByRole("textbox", { name: "Sample grid (JSON)" });
+  const input: unknown = JSON.parse(await draft.inputValue());
+  const output = spectrum(input, new AbortController().signal);
+  await page.evaluate(
+    (file) => window.workbenchFixture.setFramingResult(file),
+    reportFile(output),
+  );
+  await panel.getByRole("button", { name: "Calculate spectrum" }).click();
+  const result = panel.getByRole("region", { name: "Spectrum result" });
+  await expect(result.getByRole("status")).toContainText("1,000 Hz");
+  await expect(result.getByRole("status")).toContainText("16/24 observed");
+  await expect(
+    result.getByRole("img", { name: "Amplitude by frequency and time window" }),
+  ).toBeVisible();
+  await expect(
+    result.getByRole("img", { name: "Amplitude spectrum for this window" }),
+  ).toBeVisible();
+  await expect(
+    result.getByText("250 Hz · 6.021 dB", { exact: true }),
+  ).toBeVisible();
+  const histogram = result.getByRole("region", { name: "Histogram" });
+  await expect(
+    histogram.getByRole("row", { name: /0–1/ }).getByRole("cell"),
+  ).toHaveText("4");
+  const windowChoice = result.getByRole("combobox", { name: "Time window" });
+  await windowChoice.click();
+  await page
+    .getByRole("option", { name: "8000000–16000000 ns", exact: true })
+    .click();
+  await expect(
+    result.getByText("500 Hz · 12.041 dB", { exact: true }),
+  ).toBeVisible();
+  await result.screenshot({
+    path: testInfo.outputPath("professional-spectrum.png"),
+  });
+  await windowChoice.click();
+  await page
+    .getByRole("option", { name: "16000000–24000000 ns", exact: true })
+    .click();
+  await expect(
+    result.getByText(/No observed samples.*8 missing/),
+  ).toBeVisible();
+  await expect(
+    result.getByRole("img", { name: "Amplitude spectrum for this window" }),
+  ).toHaveCount(0);
+
+  const calls = await page.evaluate(() =>
+    window.workbenchFixture.invocations.filter(
+      ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
+    ),
+  );
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatchObject({
+    target: { kind: "host", id: reference.hostId },
+    params: input,
   });
 });

@@ -386,3 +386,226 @@ test("XY enforces clock evidence, source order, bounded input, and cancellation"
     (error) => error === "cancelled",
   );
 });
+
+const spectrumAction = "swb.reference.statistics.spectrum";
+const firstSpectrumPosition = 9007199254740993n;
+
+function spectrumRequest(
+  samples,
+  expectedSlots = samples.length,
+  overrides = {},
+) {
+  return {
+    clockId: "spectrum-source",
+    unit: "V",
+    firstPosition: String(firstSpectrumPosition),
+    expectedSlots,
+    periodNs: "1000000",
+    samples: samples.flatMap((value, i) =>
+      value === null
+        ? []
+        : [
+            {
+              position: String(firstSpectrumPosition + BigInt(i)),
+              value: String(value),
+            },
+          ],
+    ),
+    window: {
+      size: 8,
+      hop: 8,
+      shape: "rectangular",
+      detrend: "none",
+      missing: "skip",
+    },
+    histogram: { bins: 4 },
+    ...overrides,
+  };
+}
+
+test("spectrum labels a coherent sine, does not double DC or Nyquist, and reports exact window offsets", () => {
+  const size = 32;
+  const wave = Array.from(
+    { length: size },
+    (_, i) => 3 + 2 * Math.sin((2 * Math.PI * i * 3) / size) + 0.5 * (-1) ** i,
+  );
+  const request = spectrumRequest(wave, size, {
+    window: {
+      size,
+      hop: size,
+      shape: "rectangular",
+      detrend: "none",
+      missing: "skip",
+    },
+  });
+  const run = handler(spectrumAction);
+  const result = run(request);
+  const spec = manifest.contributes.actions.find(
+    ({ actionId }) => actionId === spectrumAction,
+  );
+  const ajv = new Ajv();
+  const verifyInput = ajv.compile(spec.inputSchema);
+  const verifyOutput = ajv.compile(spec.outputSchema);
+  assert.ok(verifyInput(request), JSON.stringify(verifyInput.errors));
+  assert.ok(verifyOutput(result), JSON.stringify(verifyOutput.errors));
+  assert.equal(result.sampleRateHz, 1000);
+  assert.equal(result.frequenciesHz[3], 93.75);
+  assert.equal(result.frequenciesHz.at(-1), 500);
+  const [row] = result.windows;
+  assert.equal(row.fromPosition, "9007199254740993");
+  assert.equal(row.toPosition, "9007199254741025");
+  assert.equal(row.fromOffsetNs, "0");
+  assert.equal(row.toOffsetNs, "32000000");
+  assert.equal(row.peakBin, 0);
+  const expected = new Map([
+    [0, 3],
+    [3, 2],
+    [16, 0.5],
+  ]);
+  for (const [bin, amplitude] of expected)
+    assert.ok(
+      Math.abs(row.amplitudeDb[bin] - 20 * Math.log10(amplitude)) < 1e-10,
+    );
+  const detrended = run({
+    ...request,
+    window: { ...request.window, detrend: "mean" },
+  }).windows[0];
+  assert.equal(detrended.peakBin, 3);
+  assert.ok(
+    detrended.amplitudeDb[0] === null || detrended.amplitudeDb[0] < -250,
+  );
+});
+
+test("periodic Hann normalization and waterfall row order agree with a direct DFT", () => {
+  const N = 16;
+  const wave = Array.from(
+    { length: N },
+    (_, i) => 1.25 * Math.cos((Math.PI * i) / 4) + 0.125 * (i % 3),
+  );
+  const request = spectrumRequest(
+    [...wave, ...wave.map((sample) => sample * 2)],
+    N * 2,
+    {
+      window: {
+        size: N,
+        hop: N,
+        shape: "hann",
+        detrend: "none",
+        missing: "skip",
+      },
+    },
+  );
+  const { windows } = handler(spectrumAction)(request);
+  assert.deepEqual(
+    windows.map((row) => row.fromOffsetNs),
+    ["0", "16000000"],
+  );
+  assert.deepEqual(
+    windows.map((row) => row.peakBin),
+    [2, 2],
+  );
+  for (const [bin, amplitudeDb] of windows[0].amplitudeDb.entries()) {
+    let real = 0;
+    let imag = 0;
+    for (let i = 0; i < N; i++) {
+      const sample = wave[i] * 0.5 * (1 - Math.cos((2 * Math.PI * i) / N));
+      const angle = (-2 * Math.PI * bin * i) / N;
+      real += sample * Math.cos(angle);
+      imag += sample * Math.sin(angle);
+    }
+    const factor = bin > 0 && bin < N / 2 ? 2 : 1;
+    const direct = 20 * Math.log10((factor * Math.hypot(real, imag)) / (N / 2));
+    assert.ok(Math.abs(amplitudeDb - direct) < 1e-9);
+    assert.ok(
+      Math.abs(windows[1].amplitudeDb[bin] - amplitudeDb - 20 * Math.log10(2)) <
+        1e-9,
+    );
+  }
+});
+
+test("waterfall retains skipped and empty rows, and zero fill never enters histogram counts", () => {
+  const values = [1, 1, 1, null, 1, 1, 1, 1, ...Array(8).fill(null), 4, 8];
+  const request = spectrumRequest(values, values.length, {
+    histogram: { bins: 2, domain: { min: "0", max: "4" } },
+  });
+  const run = handler(spectrumAction);
+  const skipped = run(request);
+  const filled = run({
+    ...request,
+    window: { ...request.window, missing: "zero" },
+  });
+  assert.equal(skipped.uncoveredTailSlots, 2);
+  assert.equal(skipped.validCount, 9);
+  assert.equal(skipped.missingCount, 9);
+  assert.deepEqual(
+    skipped.windows.map((row) => [
+      row.status,
+      row.missingCount,
+      row.amplitudeDb,
+    ]),
+    [
+      ["skipped", 1, null],
+      ["empty", 8, null],
+    ],
+  );
+  assert.equal(filled.windows[0].status, "zero_filled");
+  assert.equal(filled.windows[0].amplitudeDb.length, 5);
+  assert.equal(filled.windows[1].amplitudeDb, null);
+  assert.deepEqual(filled.histogram, skipped.histogram);
+  assert.deepEqual(filled.histogram.bins, [
+    { from: 0, to: 2, count: 7 },
+    { from: 2, to: 4, count: 1 },
+  ]);
+  assert.equal(filled.histogram.above, 1);
+});
+
+test("large and constant histogram domains, sparse input, and window budgets are explicit", () => {
+  const run = handler(spectrumAction);
+  const maximum = Number.MAX_VALUE;
+  const extremes = run(spectrumRequest([-maximum, 0, maximum]));
+  assert.equal(extremes.windows.length, 0);
+  assert.deepEqual(
+    extremes.histogram.bins.map(({ count }) => count),
+    [1, 0, 1, 1],
+  );
+  assert.ok(
+    extremes.histogram.bins.every(
+      ({ from, to }) => Number.isFinite(from) && Number.isFinite(to),
+    ),
+  );
+  assert.deepEqual(run(spectrumRequest([5, 5, 5])).histogram.bins, [
+    { from: 5, to: 5, count: 3 },
+  ]);
+  const input = spectrumRequest(Array(8).fill(0));
+  assert.deepEqual(run(input).windows[0].amplitudeDb, Array(5).fill(null));
+  assert.equal(run(input).windows[0].peakBin, null);
+  assert.throws(
+    () => run({ ...input, expectedSlots: 270 }),
+    /more than 32 windows/,
+  );
+  assert.throws(
+    () =>
+      run({
+        ...input,
+        samples: [...input.samples.slice(0, 7), input.samples[0]],
+      }),
+    /duplicated/,
+  );
+  assert.throws(
+    () => run({ ...input, periodNs: "18446744073709551615" }),
+    /grid exceeds u64/,
+  );
+  assert.throws(
+    () => run({ ...input, window: { ...input.window, size: 10 } }),
+    /power of two/,
+  );
+  assert.throws(
+    () =>
+      run({ ...input, histogram: { bins: 3, domain: { min: "5", max: "5" } } }),
+    /below max/,
+  );
+  assert.throws(
+    () => run(input, AbortSignal.abort("cancelled")),
+    (error) => error === "cancelled",
+  );
+});

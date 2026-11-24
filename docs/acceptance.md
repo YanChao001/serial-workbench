@@ -401,6 +401,14 @@ recorded_send_2                   recorded_send_2
 
 四目标原生检查复用实际 Host 的 `native_node_dynamic_statistics_reads_windows_from_signed_package`。用 `pnpm plugin-sdk:fixture` 编译时纳入同源窗口扩展，测试按真实包清单和临时密钥签名。核对来源验证、显式执行信任、启用、Host 调用和有界结果读取，同时检查高位时间边界及两类空窗。
 
+### 专业频谱、瀑布图与直方图（VIZ-04）
+
+通过签名统计扩展调用 Host 动作 `swb.reference.statistics.spectrum`。声明 `clockId`、`firstPosition`、`expectedSlots` 和 `periodNs`，提交带十进制字符串位置及数值的 `samples`。遗漏槽位即缺样。在 `window` 选 8 至 512 点的二次幂长度，设定不大于长度的 `hop`，选择矩形或周期 Hann 窗、保留均值或去均值，以及缺样跳过（`skip`）或补零（`zero`）。跨越末尾的不足窗保留尾部数量。每次最多 4096 个计划槽及 32 个完整窗。
+
+已知金样用 1 ms 间隔输入 `0, 2, 0, -2, 0, 2, 0, -2`，选 8 点矩形窗。核对 1000 Hz 采样率、250 Hz 主峰和约 6.021 dB 幅度。直方图范围选 0 至 2、分两箱，低于范围的计数为 2，范围内依次为 4 和 2。另接八个缺样槽时，瀑布图第二行仍保留起止位置、相对时间与空窗标记。用混合正弦和周期 Hann 窗对照逐频点直接 DFT。相关命令为 `node --test scripts/reference-statistics.test.mjs`。签名 Host 用例在同一包中实际调用频谱动作并读回报告。
+
+启用受信统计扩展，在插件详情展开「频谱与分布」，载入频率示例并计算。核对首窗 250 Hz、第二窗 500 Hz、第三窗全缺样，以及两端在内的分箱计数和上下溢出。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional spectrum" --workers=1`，以模拟 Host 的有界结果读取验证界面和选窗。设备实录和市场发行分别保留独立证据。
+
 ### 专业跨源 XY 与李萨如（VIZ-06）
 
 通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间严格递增的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。

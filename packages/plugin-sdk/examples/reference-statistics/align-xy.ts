@@ -1,4 +1,10 @@
-import { positive, record, seriesIdentifier, u64 } from "./sample-input.ts";
+import {
+  decimal,
+  positive,
+  record,
+  seriesIdentifier,
+  u64,
+} from "./sample-input.ts";
 
 const maxSamples = 128;
 
@@ -25,15 +31,8 @@ function readSeries(input: unknown, axis: "x" | "y") {
     if (monoNs <= previous)
       throw new Error(path + ".monoNs must be strictly increasing");
     previous = monoNs;
-    const value = sample.value;
-    if (
-      value !== null &&
-      (typeof value !== "string" ||
-        value.length > 32 ||
-        !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value) ||
-        !Number.isFinite(Number(value)))
-    )
-      throw new Error(path + ".value must be a finite decimal string or null");
+    const value =
+      sample.value === null ? null : decimal(sample.value, path + ".value", 32);
     if (sample.gapBefore !== undefined && typeof sample.gapBefore !== "boolean")
       throw new Error(path + ".gapBefore must be a boolean");
     return { index, monoNs, value, gapBefore: sample.gapBefore === true };

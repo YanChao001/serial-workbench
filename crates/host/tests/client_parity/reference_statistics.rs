@@ -176,7 +176,67 @@ async fn native_node_dynamic_statistics_reads_windows_from_signed_package() {
         })
     );
 
+    let samples = ["0", "2", "0", "-2", "0", "2", "0", "-2"]
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            json!({
+                "position": (9_007_199_254_740_993u64 + index as u64).to_string(),
+                "value": value
+            })
+        })
+        .collect::<Vec<_>>();
+    let spectrum_params = json!({
+        "clockId": "scope-sampling-clock",
+        "firstPosition": "9007199254740993",
+        "expectedSlots": 17,
+        "periodNs": "1000000",
+        "unit": "V",
+        "samples": samples,
+        "window": {
+            "size": 8,
+            "hop": 8,
+            "shape": "rectangular",
+            "detrend": "none",
+            "missing": "skip"
+        },
+        "histogram": {"bins": 2, "domain":{"min":"0","max":"2"}}
+    });
+    let spectrum = fixture
+        .invoke(
+            &fixture.client,
+            fixture.call(
+                &fixture.client,
+                &fixture.target,
+                "swb.reference.statistics.spectrum",
+                spectrum_params,
+            ),
+        )
+        .await;
+    let settled = fixture.wait(&fixture.client, &spectrum.operation_id).await;
+    assert_eq!(settled.state, OperationState::Succeeded, "{settled:?}");
+    let spectrum_report = fixture.result(&fixture.client, &settled).await;
+    assert_eq!(spectrum_report["clockId"], "scope-sampling-clock");
+    assert_eq!(spectrum_report["sampleRateHz"].as_f64(), Some(1000.0));
+    assert_eq!(spectrum_report["frequenciesHz"][2].as_f64(), Some(250.0));
+    assert_eq!(spectrum_report["histogram"]["below"], 2);
+    assert_eq!(spectrum_report["histogram"]["bins"][0]["count"], 4);
+    assert_eq!(spectrum_report["histogram"]["bins"][1]["count"], 2);
+    let windows = spectrum_report["windows"].as_array().unwrap();
+    assert_eq!(windows.len(), 2);
+    assert_eq!(windows[0]["fromPosition"], "9007199254740993");
+    assert_eq!(windows[0]["peakBin"], 2);
+    let peak = windows[0]["amplitudeDb"][2].as_f64().unwrap();
+    assert!((peak - 20.0 * 2.0_f64.log10()).abs() < 1e-10);
+    assert_eq!(windows[1]["status"], "empty");
+    assert!(windows[1]["amplitudeDb"].is_null());
+    assert_eq!(spectrum_report["uncoveredTailSlots"], 1);
+
     let _ = fixture.finish().await;
+    eprintln!(
+        "statistics_spectrum_signed archive={} operation={} peak_hz=250 waterfall_rows=2 missing_slots=9",
+        package.archive_sha256, spectrum.operation_id
+    );
     eprintln!(
         "statistics_xy_signed archive={} operation={} pairs=2 interpolation=2/3",
         package.archive_sha256, alignment.operation_id

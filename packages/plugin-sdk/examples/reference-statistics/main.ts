@@ -2,6 +2,7 @@ import type { NodeRegister } from "@serial-workbench/plugin-sdk/node";
 import { sampleStatistics } from "../reference-chart/sample-statistics.ts";
 
 import { alignXY } from "./align-xy.ts";
+import { spectrum } from "./spectrum.ts";
 import {
   maxU64,
   positive,
@@ -132,6 +133,9 @@ export const register: NodeRegister = (context) => {
     task.signal.throwIfAborted();
     return alignXY(call.params, task.signal);
   });
+  context.actions.register("swb.reference.statistics.spectrum", (call, task) =>
+    spectrum(call.params, task.signal),
+  );
   context.contributions.register({
     actions: [],
     queries: [],

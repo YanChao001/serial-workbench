@@ -3,7 +3,7 @@
   "id": "swb.reference.statistics",
   "version": "0.1.0",
   "displayName": "Sample Window Statistics and XY Alignment",
-  "description": "Summarize declared sample windows and align XY channels across calibrated monotonic clocks",
+  "description": "Analyze sampled windows, calibrated XY channels, and spectra with histograms",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE"],
   "hostProtocolVersion": "0.1",
@@ -604,6 +604,355 @@
               "additionalProperties": false
             }
           }
+        },
+        "targetKinds": ["host"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins"
+        }
+      },
+      {
+        "actionId": "swb.reference.statistics.spectrum",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "clockId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "firstPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "expectedSlots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "periodNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "samples": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+                    "maxLength": 64
+                  }
+                },
+                "required": ["position", "value"],
+                "additionalProperties": false
+              }
+            },
+            "window": {
+              "type": "object",
+              "properties": {
+                "size": {
+                  "type": "integer",
+                  "enum": [8, 16, 32, 64, 128, 256, 512]
+                },
+                "hop": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 512
+                },
+                "shape": {
+                  "type": "string",
+                  "enum": ["rectangular", "hann"]
+                },
+                "detrend": {
+                  "type": "string",
+                  "enum": ["none", "mean"]
+                },
+                "missing": {
+                  "type": "string",
+                  "enum": ["skip", "zero"]
+                }
+              },
+              "required": ["size", "hop", "shape", "detrend", "missing"],
+              "additionalProperties": false
+            },
+            "histogram": {
+              "type": "object",
+              "properties": {
+                "bins": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "domain": {
+                  "type": "object",
+                  "properties": {
+                    "min": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+                      "maxLength": 64
+                    },
+                    "max": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+                      "maxLength": 64
+                    }
+                  },
+                  "required": ["min", "max"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["bins"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "clockId",
+            "firstPosition",
+            "expectedSlots",
+            "periodNs",
+            "samples",
+            "window",
+            "histogram"
+          ],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "clockId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "firstPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "expectedSlots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "validCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "missingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "uncoveredTailSlots": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "periodNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "sampleRateHz": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "binWidthHz": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "frequenciesHz": {
+              "type": "array",
+              "maxItems": 257,
+              "items": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "window": {
+              "type": "object",
+              "properties": {
+                "size": {
+                  "type": "integer",
+                  "enum": [8, 16, 32, 64, 128, 256, 512]
+                },
+                "hop": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 512
+                },
+                "shape": {
+                  "type": "string",
+                  "enum": ["rectangular", "hann"]
+                },
+                "detrend": {
+                  "type": "string",
+                  "enum": ["none", "mean"]
+                },
+                "missing": {
+                  "type": "string",
+                  "enum": ["skip", "zero"]
+                }
+              },
+              "required": ["size", "hop", "shape", "detrend", "missing"],
+              "additionalProperties": false
+            },
+            "windows": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fromPosition": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "toPosition": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "fromOffsetNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "toOffsetNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "missingCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 512
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["empty", "skipped", "zero_filled", "complete"]
+                  },
+                  "amplitudeDb": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "maxItems": 257,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "peakBin": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "fromPosition",
+                  "toPosition",
+                  "fromOffsetNs",
+                  "toOffsetNs",
+                  "missingCount",
+                  "status",
+                  "amplitudeDb",
+                  "peakBin"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "histogram": {
+              "type": "object",
+              "properties": {
+                "requestedBins": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "bins": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "number"
+                      },
+                      "to": {
+                        "type": "number"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4096
+                      }
+                    },
+                    "required": ["from", "to", "count"],
+                    "additionalProperties": false
+                  }
+                },
+                "below": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "above": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              },
+              "required": ["requestedBins", "bins", "below", "above"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "clockId",
+            "firstPosition",
+            "expectedSlots",
+            "validCount",
+            "missingCount",
+            "uncoveredTailSlots",
+            "periodNs",
+            "sampleRateHz",
+            "binWidthHz",
+            "frequenciesHz",
+            "window",
+            "windows",
+            "histogram"
+          ],
+          "additionalProperties": false
         },
         "targetKinds": ["host"],
         "executionLocation": "resource_host",

@@ -28,3 +28,14 @@ export function seriesIdentifier(value: unknown, path: string) {
     throw new Error(path + " must be a valid identifier");
   return value;
 }
+
+export function decimal(value: unknown, path: string, maxLength = 64) {
+  if (
+    typeof value !== "string" ||
+    value.length > maxLength ||
+    !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value) ||
+    !Number.isFinite(Number(value))
+  )
+    throw new Error(path + " must be a finite decimal string");
+  return value;
+}
