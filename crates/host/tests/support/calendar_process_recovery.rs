@@ -39,6 +39,16 @@ fn checked(reply: RpcReply) -> RpcResult {
 }
 
 async fn invoke(client: &HostClient, scope: Target, action: &str, params: Value) -> Operation {
+    invoke_at_revision(client, scope, action, params, None).await
+}
+
+async fn invoke_at_revision(
+    client: &HostClient,
+    scope: Target,
+    action: &str,
+    params: Value,
+    expected_revision: Option<U64>,
+) -> Operation {
     let query = scoped_query(client, scope, action, params);
     let call = Call {
         protocol_version: query.protocol_version,
@@ -51,7 +61,7 @@ async fn invoke(client: &HostClient, scope: Target, action: &str, params: Value)
         params: query.params,
         reveal_target: query.reveal_target,
         request_context: client.attachment().request_context.clone(),
-        expected_revision: None,
+        expected_revision,
         lease_id: None,
         execution_mode: (action == CALENDAR).then_some(ExecutionMode::Independent),
     };
@@ -74,6 +84,33 @@ async fn operation(client: &HostClient, operation_id: &Id) -> Operation {
         panic!("Missing stored operation");
     };
     receipt.operation
+}
+
+async fn calendar_result(client: &HostClient, operation: &Operation) -> Value {
+    let Some(ActionResult::Reference(result)) = &operation.result else {
+        panic!("Missing signed calendar result: {operation:?}");
+    };
+    let reference = &result.result_ref;
+    assert_eq!(reference.host_id, client.attachment().host_id);
+    let request = RpcRequest::Query(scoped_query(
+        client,
+        target(client, "plugin_result", reference.id.clone()),
+        "file.read",
+        json!({"fileRef":reference,"offset":"0","maxBytes":"65536"}),
+    ));
+    let RpcResult::Query(QueryResult::FileRead(result)) = checked(
+        client
+            .connect_raw()
+            .await
+            .unwrap()
+            .request(request)
+            .await
+            .unwrap(),
+    ) else {
+        panic!("Missing persisted calendar result bytes");
+    };
+    assert!(result.at_end);
+    serde_json::from_slice(&STANDARD.decode(result.bytes_base64.as_str()).unwrap()).unwrap()
 }
 
 async fn wait_operation(
@@ -229,7 +266,7 @@ async fn schedule(
     .await
 }
 
-async fn raw_io(client: &HostClient, session: &Target) -> (Vec<u8>, Vec<u8>) {
+async fn raw_io(client: &HostClient, session: &Target) -> (Vec<TxReceipt>, Vec<u8>) {
     let raw = client.connect_raw().await.unwrap();
     let request = RpcRequest::StreamRead(scoped_query(
         client,
@@ -249,7 +286,7 @@ async fn raw_io(client: &HostClient, session: &Target) -> (Vec<u8>, Vec<u8>) {
     for event in page.events {
         match event.payload {
             RawPayload::Tx(bytes) => {
-                tx.extend(STANDARD.decode(bytes.bytes_base64.as_str()).unwrap())
+                tx.push(*bytes);
             }
             RawPayload::Rx(bytes) => {
                 rx.extend(STANDARD.decode(bytes.bytes_base64.as_str()).unwrap())
@@ -260,9 +297,7 @@ async fn raw_io(client: &HostClient, session: &Target) -> (Vec<u8>, Vec<u8>) {
     (tx, rx)
 }
 
-#[tokio::test]
-#[ignore = "Requires a prepared production Host layout and an isolated headless environment"]
-async fn signed_calendar_does_not_replay_after_host_process_loss() {
+fn evidence_paths() -> (PathBuf, PathBuf) {
     let executable = PathBuf::from(
         std::env::var_os("SWB_TEST_CALENDAR_HOST_BIN")
             .expect("Absolute production Host executable with verified bundled Node"),
@@ -274,32 +309,32 @@ async fn signed_calendar_does_not_replay_after_host_process_loss() {
     );
     assert!(output.is_absolute());
     fs::create_dir_all(&output).unwrap();
-    let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
-    let (mut first, actor, control) =
-        launch(&executable, profile.path(), &output, "before-crash", None).await;
-    let identity = actor.attachment().clone();
+    (executable, output)
+}
+
+async fn grant_calendar_actor(actor: &HostClient, control: &HostClient) {
+    let identity = actor.attachment();
     let grant = invoke(
-        &control,
-        target(&control, "host", identity.host_id.clone()),
+        control,
+        target(control, "host", identity.host_id.clone()),
         "auth.authorize",
         json!({
             "clientId":identity.client_id,
             "permissions":["metadata.read","content.read","device.modify"],
-            "targets":[target(&actor, "host", identity.host_id.clone())],
+            "targets":[target(actor, "host", identity.host_id.clone())],
         }),
     )
     .await;
     assert_eq!(
-        wait_operation(&control, &grant.operation_id, |op| op.state.is_terminal())
+        wait_operation(control, &grant.operation_id, |op| op.state.is_terminal())
             .await
             .state,
         OperationState::Succeeded
     );
-    let bundle = automation_runtime(&actor).await;
-    let (session, revision) = open_echo(&actor).await;
-    let due = Utc::now() + chrono::Duration::seconds(24);
-    let pending = schedule(&actor, &session, revision, due, b"OLD:CAL\n").await;
-    let armed = wait_operation(&actor, &pending.operation_id, |op| {
+}
+
+async fn wait_armed(actor: &HostClient, pending: &Operation) {
+    let armed = wait_operation(actor, &pending.operation_id, |op| {
         op.state == OperationState::Running
             && op
                 .progress
@@ -309,6 +344,47 @@ async fn signed_calendar_does_not_replay_after_host_process_loss() {
     .await;
     assert_eq!(armed.child_high_watermark, 0.into());
     assert_eq!(armed.owner.id.as_str(), "swb.builtin.automation");
+}
+
+async fn wait_echo(actor: &HostClient, session: &Target, fresh_bytes: &[u8]) {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let (receipts, rx) = raw_io(actor, session).await;
+            let mut confirmed = Vec::new();
+            for receipt in receipts {
+                assert!(receipt.unknown_ranges.is_empty(), "{receipt:?}");
+                if receipt.outcome == TxOutcome::Rejected {
+                    assert!(receipt.accepted_ranges.is_empty(), "{receipt:?}");
+                    continue;
+                }
+                assert_eq!(receipt.outcome, TxOutcome::Accepted, "{receipt:?}");
+                confirmed.extend(STANDARD.decode(receipt.bytes_base64.as_str()).unwrap());
+            }
+            assert!(fresh_bytes.starts_with(&confirmed) && fresh_bytes.starts_with(&rx));
+            if confirmed == fresh_bytes && rx == fresh_bytes {
+                break;
+            }
+            sleep(Duration::from_millis(40)).await;
+        }
+    })
+    .await
+    .expect("Fresh signed schedule produced exactly one matched Virtual Echo round trip");
+}
+
+#[tokio::test]
+#[ignore = "Requires a prepared production Host layout and an isolated headless environment"]
+async fn signed_calendar_does_not_replay_after_host_process_loss() {
+    let (executable, output) = evidence_paths();
+    let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let (mut first, actor, control) =
+        launch(&executable, profile.path(), &output, "before-crash", None).await;
+    let identity = actor.attachment().clone();
+    grant_calendar_actor(&actor, &control).await;
+    let bundle = automation_runtime(&actor).await;
+    let (session, revision) = open_echo(&actor).await;
+    let due = Utc::now() + chrono::Duration::seconds(24);
+    let pending = schedule(&actor, &session, revision, due, b"OLD:CAL\n").await;
+    wait_armed(&actor, &pending).await;
     assert_eq!(raw_io(&actor, &session).await, (Vec::new(), Vec::new()));
     assert!(Utc::now() < due);
     first
@@ -374,18 +450,7 @@ async fn signed_calendar_does_not_replay_after_host_process_loss() {
         settled.error
     );
     assert_eq!(settled.child_high_watermark, 1.into());
-    timeout(Duration::from_secs(5), async {
-        loop {
-            let (tx, rx) = raw_io(&actor, &new_session).await;
-            assert!(fresh_bytes.starts_with(&tx) && fresh_bytes.starts_with(&rx));
-            if tx == fresh_bytes && rx == fresh_bytes {
-                break;
-            }
-            sleep(Duration::from_millis(40)).await;
-        }
-    })
-    .await
-    .expect("Fresh signed schedule produced exactly one matched Virtual Echo round trip");
+    wait_echo(&actor, &new_session, fresh_bytes).await;
     assert_eq!(operation(&actor, &pending.operation_id).await, recovered);
     invoke(
         &control,
@@ -413,6 +478,167 @@ async fn signed_calendar_does_not_replay_after_host_process_loss() {
         "freshOperation":settled.operation_id,
         "freshConfirmedBytes":fresh_bytes.len(),
         "sameActor":true,
+    });
+    fs::write(
+        output.join("receipt.json"),
+        serde_json::to_vec_pretty(&receipt).unwrap(),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "Requires a prepared production Host layout and an isolated headless environment"]
+async fn signed_calendar_checks_reconfiguration_and_revocation_before_writing() {
+    let (executable, output) = evidence_paths();
+    let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let (mut host, actor, control) = launch(
+        &executable,
+        profile.path(),
+        &output,
+        "guarded-calendar",
+        None,
+    )
+    .await;
+    let scope = target(&actor, "host", actor.attachment().host_id.clone());
+    grant_calendar_actor(&actor, &control).await;
+    let bundle = automation_runtime(&actor).await;
+    let (session, revision) = open_echo(&actor).await;
+
+    let stale_due = Utc::now() + chrono::Duration::seconds(5);
+    let stale = schedule(&actor, &session, revision, stale_due, b"OLD:CONFIG\n").await;
+    wait_armed(&actor, &stale).await;
+    let requested = SerialConfiguration {
+        baud_rate: PositiveU64::try_from(U64::from(19200)).unwrap(),
+        ..SerialConfiguration::default()
+    };
+    let configure = invoke_at_revision(
+        &actor,
+        session.clone(),
+        "session.configure",
+        json!({"requested": requested}),
+        Some(revision),
+    )
+    .await;
+    let confirmed =
+        wait_operation(&actor, &configure.operation_id, |op| op.state.is_terminal()).await;
+    assert_eq!(confirmed.state, OperationState::Succeeded, "{confirmed:?}");
+    let Some(ActionResult::Configuration(configuration)) = confirmed.result else {
+        panic!("Missing actual Virtual Echo configuration receipt");
+    };
+    assert_eq!(configuration.requested, requested);
+    assert_eq!(
+        configuration.readback["baudRate"],
+        JsonValue::String("19200".into())
+    );
+    assert_eq!(configuration.tx_gate, TxGate::Ready);
+    assert!(configuration.revision > revision);
+    assert!(Utc::now() < stale_due);
+    let stale = wait_operation(&actor, &stale.operation_id, |op| op.state.is_terminal()).await;
+    assert_eq!(stale.state, OperationState::Succeeded, "{stale:?}");
+    assert_eq!(stale.child_high_watermark, 1.into(), "{stale:?}");
+    let stale_result = calendar_result(&actor, &stale).await;
+    assert_eq!(stale_result["outcome"], "transmit_unconfirmed");
+    let (stale_writes, stale_rx) = raw_io(&actor, &session).await;
+    assert!(stale_rx.is_empty());
+    let [rejected] = stale_writes.as_slice() else {
+        panic!("Expected one stale-revision TX receipt: {stale_writes:?}");
+    };
+    assert_eq!(
+        stale_result["runs"][0]["operationId"],
+        rejected.operation_id.as_str()
+    );
+    assert_eq!(rejected.outcome, TxOutcome::Rejected);
+    assert_eq!(
+        rejected.backend_error.as_ref().unwrap().code,
+        "REVISION_CONFLICT"
+    );
+    assert!(rejected.accepted_ranges.is_empty() && rejected.unknown_ranges.is_empty());
+    assert_eq!(
+        STANDARD.decode(rejected.bytes_base64.as_str()).unwrap(),
+        b"OLD:CONFIG\n"
+    );
+
+    let revoked_due = Utc::now() + chrono::Duration::seconds(5);
+    let pending = schedule(
+        &actor,
+        &session,
+        configuration.revision,
+        revoked_due,
+        b"OLD:AUTH\n",
+    )
+    .await;
+    wait_armed(&actor, &pending).await;
+    let revoke = invoke(
+        &control,
+        scope.clone(),
+        "auth.revoke",
+        json!({
+            "actorId": actor.attachment().actor_id,
+            "permissions": ["device.modify"],
+            "targets": [scope],
+        }),
+    )
+    .await;
+    let revoke = wait_operation(&control, &revoke.operation_id, |op| op.state.is_terminal()).await;
+    assert_eq!(revoke.state, OperationState::Succeeded, "{revoke:?}");
+    let revoked = wait_operation(&actor, &pending.operation_id, |op| op.state.is_terminal()).await;
+    assert_eq!(revoked.state, OperationState::Interrupted, "{revoked:?}");
+    assert_eq!(revoked.error.as_ref().unwrap().code, "PERMISSION_DENIED");
+    assert!(Utc::now() < revoked_due);
+
+    let checked_after = revoked_due + chrono::Duration::seconds(3);
+    timeout(Duration::from_secs(12), async {
+        while Utc::now() < checked_after {
+            sleep(Duration::from_millis(80)).await;
+        }
+    })
+    .await
+    .expect("Wait past the revoked calendar dispatch window");
+    assert_eq!(operation(&actor, &pending.operation_id).await, revoked);
+    assert_eq!(operation(&actor, &stale.operation_id).await, stale);
+    let (observed_writes, observed_rx) = raw_io(&actor, &session).await;
+    assert_eq!(observed_writes, stale_writes);
+    assert!(observed_rx.is_empty());
+    assert_eq!(revoked.child_high_watermark, 0.into(), "{revoked:?}");
+
+    grant_calendar_actor(&actor, &control).await;
+    let fresh_bytes = b"NEW:AUTH\n";
+    let fresh = schedule(
+        &actor,
+        &session,
+        configuration.revision,
+        Utc::now() + chrono::Duration::seconds(3),
+        fresh_bytes,
+    )
+    .await;
+    let settled = wait_operation(&actor, &fresh.operation_id, |op| op.state.is_terminal()).await;
+    assert_eq!(settled.state, OperationState::Succeeded, "{settled:?}");
+    assert_eq!(settled.child_high_watermark, 1.into());
+    wait_echo(&actor, &session, fresh_bytes).await;
+    assert_eq!(operation(&actor, &pending.operation_id).await, revoked);
+    invoke(&control, scope, "host.shutdown", json!({})).await;
+    assert!(exit(&mut host).await.success());
+
+    let receipt = json!({
+        "hostBinarySha256": format!("{:x}", Sha256::digest(fs::read(&executable).unwrap())),
+        "automationArchiveSha256": bundle,
+        "hostId": actor.attachment().host_id,
+        "sessionEpoch": session.session_epoch,
+        "oldRevision": revision,
+        "newRevision": configuration.revision,
+        "configurationOperation": confirmed.operation_id,
+        "staleDue": stale_due.to_rfc3339(),
+        "staleOperation": stale,
+        "staleResult": stale_result,
+        "staleTxReceipt": rejected,
+        "revokeOperation": revoke.operation_id,
+        "revokedDue": revoked_due.to_rfc3339(),
+        "checkedAfterLatenessWindow": checked_after.to_rfc3339(),
+        "revokedOperation": revoked,
+        "oldConfirmedTxBytes": 0,
+        "oldRawRxBytes": 0,
+        "freshOperation": settled.operation_id,
+        "freshConfirmedBytes": fresh_bytes.len(),
     });
     fs::write(
         output.join("receipt.json"),
