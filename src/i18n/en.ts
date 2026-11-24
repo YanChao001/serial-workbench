@@ -52,6 +52,7 @@ export const en = {
   "plugins.openView": "Open plugin",
   "plugins.exportChartSvg": "Save SVG…",
   "plugins.exportChartCsv": "Save CSV…",
+  "plugins.exportChartPng": "Save PNG…",
   "plugins.chartSaved": "Chart saved.",
   "plugins.chartExportError":
     "Could not save the chart. Check that the session has enough samples and try again.",

@@ -40,6 +40,7 @@ const chartFormats = [
     label: "plugins.exportChartSvg",
   },
   { suffix: "exportCsv", mime: "text/csv", label: "plugins.exportChartCsv" },
+  { suffix: "exportPng", mime: "image/png", label: "plugins.exportChartPng" },
 ] as const;
 
 function retiredFeed(reason: unknown) {

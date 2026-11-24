@@ -14,6 +14,9 @@ use std::{
 
 /// 签名动作声明此字段后，Host 将解码后的输出保存为结果文件。
 pub const NODE_FILE_RESULT_KEY: &str = "x-swb-file-result";
+pub const NODE_CSV_RESULT_MAX_BYTES: usize = 64 * 1024;
+pub const NODE_PNG_RESULT_MAX_BYTES: usize = 64 * 1024;
+pub const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
 fn invalid_metadata() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid Node package metadata")
@@ -620,7 +623,7 @@ impl NodePackageManifest {
                 if let Some(format) = spec.output_schema.get(NODE_FILE_RESULT_KEY) {
                     let has_schema_value = |key, expected: &str| matches!(spec.output_schema.get(key), Some(SchemaValue::String(value)) if value == expected);
                     if spec.kind != ActionKind::Action
-                        || !matches!(format, SchemaValue::String(value) if matches!(value.as_str(), "image/svg+xml" | "text/csv"))
+                        || !matches!(format, SchemaValue::String(value) if matches!(value.as_str(), "image/svg+xml" | "text/csv" | "image/png"))
                         || !has_schema_value("type", "string")
                         || !has_schema_value("contentEncoding", "base64")
                     {

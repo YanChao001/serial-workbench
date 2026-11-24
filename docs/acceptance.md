@@ -183,9 +183,9 @@ pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts
 
 在独立 Virtual Echo 会话安装签名包，确认执行信任后启用。核对签名清单的解析器通过 Host 目录可发现，跨 RX 事件拼成的样本携带实际事件游标与原始字节区间。CLI 和实际 stdio MCP 对照桌面桥的分页结果。验证普通身份的会话授权边界及撤销执行信任后的目录撤回。超长输入失败时保留原始输入和此前样本，用受控 SDK 输入验证未完成记录不会跨缺口发布。
 
-桌面桥接用例在生产 Operation 运行中开启图表。首个样本发布前视图保持等待，输入两个完整样本后先读取这两项，再发送最后一段并经同一视图读完。重开后对照留存页，撤销执行信任后复查读页。用例还经真实 MCP 发起离屏 SVG 和 CSV 导出，核对同一结果引用的字节与桌面保存的文件一致。CSV 列出样本序号、十进制电压及确切会话的事件和字节区间。无头 Chromium 用实际壳和图表脚本验证 iframe 隔离、留存缺口、曲线与样本值。
+桌面桥接用例在生产 Operation 运行中开启图表。首个样本发布前视图保持等待，输入两个完整样本后先读取这两项，再发送最后一段并经同一视图读完。重开后对照留存页，撤销执行信任后复查读页。用例还经真实 MCP 发起离屏 SVG、PNG 和 CSV 导出，核对同一结果引用的字节与桌面保存的文件一致。CSV 列出样本序号、十进制电压及确切会话的事件和字节区间。PNG 为 640 × 360，验证文件签名、分块校验、刻度及与 SVG 对应的采样像素。无头 Chromium 用实际壳和图表脚本验证 iframe 隔离、留存缺口、曲线与样本值。
 
-实际图表窗口可在[手动 CI](../.github/workflows/ci.yml)选择 `native_preflight=true`、目标和 `native_preflight_chart=true`。独立桌面上经插件页安装签名包，开窗后切回工作台发送一组电压。第一个样本获实际隔离 iframe 确认后关闭图表，再发送两个样本。回到插件页分别选择「另存为 SVG…」和「另存为 CSV…」，核对曲线坐标、CSV 样本与范围，以及两个文件的摘要。Windows CI 通过实际系统保存对话框选择目标并记录焦点返回，其他平台由夹具提供目标。重开图表并核对同一任务的三项样本。随后让 runner 停止并重启持有的 Host，核对新进程和代次，以及重开的原生窗口随旧连接关闭。SVG、收据与原始日志保存在 `artifacts/e2e/signed-chart-*`。需验收图表的完整四目标候选设置 `desktop_chart=true`，Windows 桌面作业共用一套构建和固定 Node，并执行签名终端及图表场景。
+实际图表窗口可在[手动 CI](../.github/workflows/ci.yml)选择 `native_preflight=true`、目标和 `native_preflight_chart=true`。独立桌面上经插件页安装签名包，开窗后切回工作台发送一组电压。第一个样本获实际隔离 iframe 确认后关闭图表，再发送两个样本。回到插件页分别选择「另存为 SVG…」「另存为 CSV…」和「另存为 PNG…」，核对曲线坐标、CSV 样本与范围、PNG 画面和三个文件的摘要。Windows CI 通过实际系统保存对话框选择目标并记录焦点返回，其他平台由夹具提供目标。重开图表并核对同一任务的三项样本。随后让 runner 停止并重启持有的 Host，核对新进程和代次，以及重开的原生窗口随旧连接关闭。SVG、收据与原始日志保存在 `artifacts/e2e/signed-chart-*`。需验收图表的完整四目标候选设置 `desktop_chart=true`，Windows 桌面作业共用一套构建和固定 Node，并执行签名终端及图表场景。
 
 ### 自动化参考包后台应答
 
@@ -385,7 +385,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 在实时分帧或回放字段图表绘制数值字段，点击「导出 CSV」。打开压缩曲线后核对 CSV 行数仍与当前范围的帧数一致。再选择「最近 32 帧」及 XY，核对 CSV 从原图表帧序号开始，包含同一帧的 X 和 Y、原始码值以及各自来源。已确认的采集缺口保留缺失帧数，校验失败和无法确认来源的帧标为无效。对跨收块样本检查事件和字节半开区间、录制序号及原始 HEX。取消系统保存对话框时界面不显示保存成功。
 
-运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。原生对话框、离屏 PNG 和 MDF4 继续专项验收。
+运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。原生对话框、离屏 PNG 的独立 CI 和 MDF4 继续专项验收。
 
 ### Modbus 报文模板（PROTO-04、PROTO-20）
 

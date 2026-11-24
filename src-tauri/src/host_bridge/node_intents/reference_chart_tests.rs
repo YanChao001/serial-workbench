@@ -5,6 +5,7 @@ use tokio::time::timeout;
 const SAMPLE: &str = "swb.reference.chart.sample";
 const EXPORT_SVG: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportSvg";
 const EXPORT_CSV: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportCsv";
+const EXPORT_PNG: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportPng";
 
 #[tokio::test]
 #[ignore = "requires prepared Node, the signed chart receipt and same-source CLI/MCP"]
@@ -245,7 +246,11 @@ async fn verify_chart_exports(
     session: &Target,
 ) {
     let sdk = start_reference_mcp(profile).await;
-    for (tool, extension) in [(EXPORT_SVG, "svg"), (EXPORT_CSV, "csv")] {
+    for (tool, extension) in [
+        (EXPORT_SVG, "svg"),
+        (EXPORT_CSV, "csv"),
+        (EXPORT_PNG, "png"),
+    ] {
         let accepted = timeout(
             Duration::from_secs(10),
             parity_clients::tool_reply(
@@ -264,7 +269,7 @@ async fn verify_chart_exports(
             panic!("Chart export did not settle with a result reference: {settled:?}");
         };
         let target = resource_target(&output.result_ref);
-        let params = json!({"fileRef":output.result_ref,"offset":"0","maxBytes":"8192"});
+        let params = json!({"fileRef":output.result_ref,"offset":"0","maxBytes":"65536"});
         let mcp = timeout(
             Duration::from_secs(10),
             parity_clients::tool_reply(sdk.peer(), "swb_file_x2E_read", &target, params),
@@ -275,21 +280,27 @@ async fn verify_chart_exports(
         let mcp: FileReadResult = serde_json::from_value(parity_clients::structured(mcp)).unwrap();
         assert!(mcp.at_end);
         let bytes = STANDARD.decode(mcp.bytes_base64.as_str()).unwrap();
-        let contents = std::str::from_utf8(&bytes).unwrap();
         if tool == EXPORT_SVG {
+            let contents = std::str::from_utf8(&bytes).unwrap();
             assert!(contents.starts_with("<svg "));
             assert!(contents.ends_with("</svg>"));
             assert!(
                 contents.contains("points=\"72.00,154.25 344.00,295.64 616.00,56.36\""),
                 "{contents}"
             );
-        } else {
+        } else if tool == EXPORT_CSV {
+            let contents = std::str::from_utf8(&bytes).unwrap();
             let rows = contents.lines().collect::<Vec<_>>();
             assert_eq!(rows.len(), 4);
             assert!(rows[0].starts_with("sample_index,value_v,host_id,session_id,"));
             assert!(rows[1].starts_with("1,1.25,") && rows[1].ends_with(",0,6"));
             assert!(rows[2].starts_with("2,-2,") && rows[2].ends_with(",6,9"));
             assert!(rows[3].starts_with("3,3.5,") && rows[3].ends_with(",9,13"));
+        } else {
+            assert!(bytes.starts_with(serial_workbench_core::PNG_SIGNATURE));
+            assert_eq!(&bytes[12..16], b"IHDR");
+            assert_eq!(u32::from_be_bytes(bytes[16..20].try_into().unwrap()), 640);
+            assert_eq!(u32::from_be_bytes(bytes[20..24].try_into().unwrap()), 360);
         }
         let saved = profile.join(format!("chart.{extension}"));
         assert!(

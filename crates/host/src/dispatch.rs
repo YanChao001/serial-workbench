@@ -2831,6 +2831,7 @@ mod tests {
                     (&chart, "swb.builtin.chart.sample"),
                     (&chart, "swb.builtin.chart.exportSvg"),
                     (&chart, "swb.builtin.chart.exportCsv"),
+                    (&chart, "swb.builtin.chart.exportPng"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3028,6 +3029,10 @@ mod tests {
                 "swb.builtin.chart.exportCsv",
                 serde_json::json!({"sampleCount":2}),
             ),
+            (
+                "swb.builtin.chart.exportPng",
+                serde_json::json!({"sampleCount":2}),
+            ),
         ] {
             assert_eq!(
                 host.invoke(&actor, call(&session, action, params))
@@ -3100,6 +3105,10 @@ mod tests {
                 "swb.builtin.chart.exportCsv",
                 b"sample_index,value_v,".as_slice(),
             ),
+            (
+                "swb.builtin.chart.exportPng",
+                serial_workbench_core::PNG_SIGNATURE.as_slice(),
+            ),
         ] {
             let exporting = host
                 .invoke(&actor, call(&session, action, sample_params.clone()))
@@ -3124,7 +3133,7 @@ mod tests {
             let bytes = STANDARD.decode(file.bytes_base64.as_str()).unwrap();
             assert!(bytes.starts_with(prefix), "{action}");
         }
-        eprintln!("bundled_chart authorized=true samples=2 raw_bytes=8 svg=true csv=true");
+        eprintln!("bundled_chart authorized=true samples=2 raw_bytes=8 svg=true csv=true png=true");
         let yaml = "version: \"1\"\nbyteLength: 1\nfields:\n  - id: reading\n    kind: integer\n    byteOffset: 0\n    width: 1\n    order: big\n    scale: \"0.5\"\n    bias: \"1\"";
         for (action, params, expected_status) in [
             (

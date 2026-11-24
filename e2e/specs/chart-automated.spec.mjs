@@ -83,7 +83,7 @@ describe("Signed chart on the real desktop", () => {
 
     await showPluginDetails("Serial Workbench Chart");
     const receipts = {};
-    for (const extension of ["svg", "csv"]) {
+    for (const extension of ["svg", "csv", "png"]) {
       const save = button(`Save ${extension.toUpperCase()}…`);
       const filename = `exported-chart.${extension}`;
       const exportPath = join(directory, filename);
@@ -99,7 +99,7 @@ describe("Signed chart on the real desktop", () => {
             directory,
             extension === "svg"
               ? "native-chart-save.json"
-              : "native-chart-save-csv.json",
+              : `native-chart-save-${extension}.json`,
           ),
           JSON.stringify(picker, null, 2),
           { flag: "wx" },
@@ -118,15 +118,18 @@ describe("Signed chart on the real desktop", () => {
         },
       );
       const exported = readFileSync(exportPath);
-      const content = exported.toString("utf8");
       if (extension === "svg") {
+        const content = exported.toString("utf8");
         assert.ok(content.startsWith("<svg "));
         assert.match(
           content,
           /points="72\.00,154\.25 344\.00,295\.64 616\.00,56\.36"/u,
         );
-      } else {
-        const [header, ...rows] = content.trimEnd().split("\r\n");
+      } else if (extension === "csv") {
+        const [header, ...rows] = exported
+          .toString("utf8")
+          .trimEnd()
+          .split("\r\n");
         assert.equal(
           header,
           "sample_index,value_v,host_id,session_id,session_epoch,event_start,event_end,byte_start,byte_end",
@@ -143,6 +146,14 @@ describe("Signed chart on the real desktop", () => {
             ["8", "12"],
           ],
         );
+      } else {
+        assert.deepEqual(
+          exported.subarray(0, 8),
+          Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        );
+        assert.equal(exported.subarray(12, 16).toString("ascii"), "IHDR");
+        assert.equal(exported.readUInt32BE(16), 640);
+        assert.equal(exported.readUInt32BE(20), 360);
       }
       receipts[extension] = {
         file: filename,
@@ -180,6 +191,7 @@ describe("Signed chart on the real desktop", () => {
           restart,
           exportReceipt: receipts.svg,
           csvExportReceipt: receipts.csv,
+          pngExportReceipt: receipts.png,
         },
         null,
         2,

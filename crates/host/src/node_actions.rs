@@ -2,7 +2,10 @@
 use super::node_queries::QueryAuthority;
 use super::*;
 use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
-use serial_workbench_core::{NODE_FILE_RESULT_KEY, SchemaValue};
+use serial_workbench_core::{
+    NODE_CSV_RESULT_MAX_BYTES, NODE_FILE_RESULT_KEY, NODE_PNG_RESULT_MAX_BYTES, PNG_SIGNATURE,
+    SchemaValue,
+};
 
 pub(super) struct ActionAuthority {
     host: Host,
@@ -424,9 +427,16 @@ impl Host {
                     .as_str()
                     .and_then(|encoded| STANDARD.decode(encoded).ok())
                     .filter(|bytes| !bytes.is_empty())
-                    .filter(|bytes| {
-                        !matches!(format, SchemaValue::String(mime) if mime == "text/csv")
-                            || (bytes.len() <= 64 * 1024 && std::str::from_utf8(bytes).is_ok())
+                    .filter(|bytes| match format {
+                        SchemaValue::String(mime) if mime == "text/csv" => {
+                            bytes.len() <= NODE_CSV_RESULT_MAX_BYTES
+                                && std::str::from_utf8(bytes).is_ok()
+                        }
+                        SchemaValue::String(mime) if mime == "image/png" => {
+                            bytes.len() <= NODE_PNG_RESULT_MAX_BYTES
+                                && bytes.starts_with(PNG_SIGNATURE)
+                        }
+                        _ => true,
                     })
                     .ok_or_else(|| {
                         HostError::new(

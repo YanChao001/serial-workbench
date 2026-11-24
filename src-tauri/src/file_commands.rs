@@ -8,8 +8,8 @@ use crate::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serial_workbench_core::{
-    ActionResult, HostError, HostResult, Id, OperationState, QueryResult, ResourceKind, RpcRequest,
-    RpcResult, Target, U64,
+    ActionResult, HostError, HostResult, Id, NODE_CSV_RESULT_MAX_BYTES, NODE_PNG_RESULT_MAX_BYTES,
+    OperationState, PNG_SIGNATURE, QueryResult, ResourceKind, RpcRequest, RpcResult, Target, U64,
 };
 use std::{future::Future, path::PathBuf};
 use tauri_plugin_dialog::DialogExt;
@@ -18,6 +18,7 @@ use tauri_plugin_dialog::DialogExt;
 pub(crate) enum ChartArtifact {
     Svg,
     Csv,
+    Png,
 }
 
 impl ChartArtifact {
@@ -25,19 +26,22 @@ impl ChartArtifact {
         match self {
             Self::Svg => "svg",
             Self::Csv => "csv",
+            Self::Png => "png",
         }
     }
 
     fn max_bytes(self) -> u64 {
         match self {
             Self::Svg => 24 * 1024,
-            Self::Csv => 64 * 1024,
+            Self::Csv => NODE_CSV_RESULT_MAX_BYTES as u64,
+            Self::Png => NODE_PNG_RESULT_MAX_BYTES as u64,
         }
     }
 
     fn valid_contents(self, bytes: &[u8]) -> bool {
         match self {
             Self::Svg => bytes.starts_with(b"<svg "),
+            Self::Png => bytes.starts_with(PNG_SIGNATURE),
             Self::Csv => {
                 bytes.starts_with(b"sample_index,value_v,") && std::str::from_utf8(bytes).is_ok()
             }
@@ -53,6 +57,7 @@ fn chart_artifact(action: &str) -> Option<(&str, ChartArtifact)> {
     let artifact = match action {
         "exportSvg" => ChartArtifact::Svg,
         "exportCsv" => ChartArtifact::Csv,
+        "exportPng" => ChartArtifact::Png,
         _ => return None,
     };
     Some((package, artifact))
