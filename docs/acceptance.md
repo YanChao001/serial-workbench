@@ -172,7 +172,7 @@ Windows 四目标桌面作业和 Windows 原生预检各用真实系统对话框
 
 ### 图表参考包后台采样
 
-执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。将签名 stdout 保存为收据，并把 `SWB_TEST_SIGNED_CHART_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 分别指向同源 CLI 和 MCP 程序。
+执行 `pnpm plugin-sdk:fixture`。图表后台编译为单个入口，签名归档从该文件读取 `dist/main.mjs`。复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。将签名 stdout 保存为收据，并把 `SWB_TEST_SIGNED_CHART_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 分别指向同源 CLI 和 MCP 程序。
 
 ```sh
 cargo run --locked -p serial-workbench-host --example sign_reference_chart -- .cache/plugin-sdk/examples/reference-chart/main.js <测试种子文件> <新ZIP绝对路径> chart-reference local-acceptance
