@@ -23,7 +23,7 @@ use std::{
     },
 };
 const BLOCK: usize = 16384;
-const MAX_FILE: u64 = 1024 * 1024 * 1024;
+pub(crate) const MAX_FILE: u64 = 1024 * 1024 * 1024;
 const PROOF_BUDGET: u64 = 8 * 1024 * 1024;
 const PROOF_ENTRIES: usize = 64;
 type ReadProofs = Arc<Mutex<VecDeque<(ObjectRef, Arc<ReadProof>)>>>;

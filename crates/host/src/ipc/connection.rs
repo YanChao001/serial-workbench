@@ -74,6 +74,9 @@ impl Drop for ConnectionGuard {
                 sessions.remove(token);
             }
         }
+        if let Some(upload) = &self.context.browser_upload {
+            upload.close();
+        }
         self.handler.disconnected(&self.context);
         if self.token.is_none() {
             self.session.raw_attached.store(false, Ordering::Release);
@@ -295,6 +298,8 @@ impl ConnectionState {
             connection_id: session.connection_id.clone(),
             actor: session.actor.clone(),
             channel,
+            browser_upload: (channel == IpcChannel::Control && browser_stopped.is_some())
+                .then(|| Arc::new(crate::dispatch::browser_file::BrowserUploadSlot::default())),
             browser_stopped,
             supports_events: writer.supports_events(),
             events: events_tx,
@@ -1089,6 +1094,7 @@ mod tests {
                 actor: actor.clone(),
                 channel: IpcChannel::Raw,
                 browser_stopped: None,
+                browser_upload: None,
                 supports_events: true,
                 events,
                 event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
@@ -2169,6 +2175,7 @@ mod tests {
             actor: actor.clone(),
             channel: IpcChannel::Control,
             browser_stopped: None,
+            browser_upload: None,
             supports_events: true,
             events,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),

@@ -1,3 +1,5 @@
+#[path = "browser_pairing/file_handoff.rs"]
+mod file_handoff;
 #[path = "browser_pairing/signed_terminal.rs"]
 mod signed_terminal;
 
@@ -900,6 +902,16 @@ async fn local_user_control_revokes_browser_access_without_closing_the_serial_se
         )
         .await,
         IpcMessage::RawAttached {}
+    ));
+    let handoff = request(RpcRequest::BrowserFileHandoff(
+        BrowserFileHandoffParams::Begin {
+            target: session_target.clone(),
+            length: 1.into(),
+        },
+    ));
+    assert!(matches!(
+        self::reply(exchange(&mut control, IpcChannel::Control, handoff).await),
+        RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"
     ));
     let cursor = query(
         &attachment,

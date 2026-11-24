@@ -1,4 +1,6 @@
 //! 统一动作接纳与连接适配；持久操作由 Store 持有，执行任务由 Host 持有。
+#[path = "browser_file.rs"]
+pub(crate) mod browser_file;
 #[path = "browser_takeover.rs"]
 mod browser_takeover;
 #[path = "node_actions.rs"]
@@ -46,6 +48,7 @@ struct HostInner {
     registry: Arc<Registry>,
     documents: Arc<crate::documents::DocumentService>,
     files: crate::files::FileService,
+    browser_file_budget: browser_file::BrowserFileBudget,
     node_packages: Arc<crate::node_packages::NodePackageManager>,
     node_query_capacity: Arc<Semaphore>,
     node_raw_read_capacity: Arc<Semaphore>,
@@ -335,6 +338,7 @@ impl Host {
                 store,
                 auth,
                 files,
+                browser_file_budget: browser_file::BrowserFileBudget::new(),
                 node_packages,
                 node_query_capacity: Arc::new(Semaphore::new(2)),
                 node_raw_read_capacity: Arc::new(Semaphore::new(
@@ -2436,6 +2440,9 @@ impl RequestHandler for Host {
             let actor = context.actor.clone();
             let mut raw_output_lease = None;
             let result = match request {
+                RpcRequest::BrowserFileHandoff(params) => {
+                    host.browser_file_handoff(context, params).await?
+                }
                 RpcRequest::BrowserTakeover(params) => {
                     host.browser_takeover(context, params).await?
                 }

@@ -68,6 +68,7 @@ impl RequestDiagnostic {
         let (method, action) = match request {
             RpcRequest::Attach(_) => ("host.attach", None),
             RpcRequest::BrowserAccess(_) => ("browser.access", None),
+            RpcRequest::BrowserFileHandoff(_) => ("browser.fileHandoff", None),
             RpcRequest::BrowserTakeover(_) => ("browser.takeover", None),
             RpcRequest::LanAccess(_) => ("lan.access", None),
             RpcRequest::Invoke(call) => ("action.invoke", Some(&call.action_id)),
@@ -557,6 +558,7 @@ fn request_id(request: &RpcRequest) -> RequestId {
     match request {
         RpcRequest::Attach(_)
         | RpcRequest::BrowserAccess(_)
+        | RpcRequest::BrowserFileHandoff(_)
         | RpcRequest::BrowserTakeover(_)
         | RpcRequest::LanAccess(_)
         | RpcRequest::InvokeChild(_)

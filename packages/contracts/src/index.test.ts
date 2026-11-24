@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   ContractValidationError,
   parseReply,
+  parseWireFrame,
   parseOperationsSnapshot,
   parseCaptureRecord,
   defaults,
@@ -36,6 +37,46 @@ describe("parseReply", () => {
   )("rejects an invalid unknown reply: $value", ({ value }) => {
     expect(() => parseReply(value)).toThrow(ContractValidationError);
   });
+});
+
+it("validates a browser handoff block and its sealed receipt with the generated wire schemas", () => {
+  const params = {
+    kind: "append",
+    uploadId: "upload-test",
+    offset: "0",
+    bytesBase64: "AP8=",
+  };
+  const body = {
+    type: "request",
+    request: { method: "browser.fileHandoff", params },
+  };
+  const frame = {
+    requestId: "12345678-1234-4abc-8000-0123456789ab",
+    channel: "control",
+    body,
+  };
+  expect(parseWireFrame(frame)).toEqual(frame);
+  expect(() =>
+    parseWireFrame({
+      ...frame,
+      body: {
+        ...body,
+        request: { ...body.request, params: { ...params, path: "host-file" } },
+      },
+    }),
+  ).toThrow(ContractValidationError);
+  const reply = {
+    ok: true,
+    result: {
+      uploadId: "upload-test",
+      receivedBytes: "2",
+      totalBytes: "2",
+      sealedFingerprint: "a".repeat(64),
+    },
+  };
+  expect(
+    parseWireFrame({ ...frame, body: { type: "reply", reply } }).body,
+  ).toEqual({ type: "reply", reply });
 });
 
 describe("Rust capture storage limits contract", () => {

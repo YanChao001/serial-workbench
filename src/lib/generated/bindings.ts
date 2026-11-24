@@ -558,6 +558,72 @@ export type BrowserEntry = {
   clientId: Id;
 };
 
+export type BrowserFileHandoffParams =
+  BrowserFileHandoffParams_Serialize | BrowserFileHandoffParams_Deserialize;
+
+export type BrowserFileHandoffParams_Deserialize =
+  | ({ kind: "begin"; target: Target_Deserialize; length: U64 } & {
+      bytesBase64?: never;
+      offset?: never;
+      uploadId?: never;
+    })
+  | ({ kind: "append"; uploadId: Id; offset: U64; bytesBase64: Bytes } & {
+      length?: never;
+      target?: never;
+    })
+  | ({ kind: "seal"; uploadId: Id } & {
+      bytesBase64?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "discard"; uploadId: Id } & {
+      bytesBase64?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    });
+
+export type BrowserFileHandoffParams_Serialize =
+  | ({ kind: "begin"; target: Target_Serialize; length: U64 } & {
+      bytesBase64?: never;
+      offset?: never;
+      uploadId?: never;
+    })
+  | ({ kind: "append"; uploadId: Id; offset: U64; bytesBase64: Bytes } & {
+      length?: never;
+      target?: never;
+    })
+  | ({ kind: "seal"; uploadId: Id } & {
+      bytesBase64?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "discard"; uploadId: Id } & {
+      bytesBase64?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    });
+
+export type BrowserFileHandoffProgress =
+  BrowserFileHandoffProgress_Serialize | BrowserFileHandoffProgress_Deserialize;
+
+export type BrowserFileHandoffProgress_Deserialize = {
+  uploadId: Id;
+  receivedBytes: U64;
+  totalBytes: U64;
+  sealedFingerprint?: Digest;
+};
+
+export type BrowserFileHandoffProgress_Serialize = {
+  uploadId: Id;
+  receivedBytes: U64;
+  totalBytes: U64;
+  sealedFingerprint?: Digest;
+};
+
 export type BrowserTakeoverParams =
   BrowserTakeoverParams_Serialize | BrowserTakeoverParams_Deserialize;
 
@@ -4515,6 +4581,10 @@ export type RpcRequest = RpcRequest_Serialize | RpcRequest_Deserialize;
 
 export type RpcRequest_Deserialize =
   | { method: "browser.access"; params: BrowserAccessParams }
+  | {
+      method: "browser.fileHandoff";
+      params: BrowserFileHandoffParams_Deserialize;
+    }
   | { method: "browser.takeover"; params: BrowserTakeoverParams_Deserialize }
   | { method: "lan.access"; params: LanAccessParams_Deserialize }
   | { method: "client.register"; params: ClientRegisterParams }
@@ -4537,6 +4607,10 @@ export type RpcRequest_Deserialize =
 
 export type RpcRequest_Serialize =
   | { method: "browser.access"; params: BrowserAccessParams }
+  | {
+      method: "browser.fileHandoff";
+      params: BrowserFileHandoffParams_Serialize;
+    }
   | { method: "browser.takeover"; params: BrowserTakeoverParams_Serialize }
   | { method: "lan.access"; params: LanAccessParams_Serialize }
   | { method: "client.register"; params: ClientRegisterParams }
@@ -4561,6 +4635,7 @@ export type RpcResult = RpcResult_Serialize | RpcResult_Deserialize;
 
 export type RpcResult_Deserialize =
   | BrowserAccessResult
+  | BrowserFileHandoffProgress_Deserialize
   | LanAccessResult_Deserialize
   | ClientRegistration_Deserialize
   | ClientEffectAcknowledged
@@ -4577,6 +4652,7 @@ export type RpcResult_Deserialize =
 
 export type RpcResult_Serialize =
   | BrowserAccessResult
+  | BrowserFileHandoffProgress_Serialize
   | LanAccessResult_Serialize
   | ClientRegistration_Serialize
   | ClientEffectAcknowledged

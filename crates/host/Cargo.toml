@@ -10,6 +10,7 @@ serial-workbench-core = { path = "../core" }
 serial-workbench-ipc = { path = "../ipc" }
 tokio = { version = "1", features = ["net", "io-util", "rt-multi-thread", "sync", "time", "macros", "process", "signal"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+tempfile = "3"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
@@ -36,6 +37,5 @@ windows-sys = { version = "0.61", features = ["Win32_Devices_Communication", "Wi
 libc = "0.2"
 
 [dev-dependencies]
-tempfile = "3"
 tokio-tungstenite = "=0.29.0"
 rmcp = { version = "=3.9.0", default-features = false, features = ["client", "transport-child-process"] }

@@ -15820,6 +15820,75 @@
             }
           ]
         },
+        "BrowserFileHandoffParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "begin",
+                  "type": "string"
+                },
+                "length": {
+                  "$ref": "#/definitions/U64"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "length"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bytesBase64": {
+                  "$ref": "#/definitions/Bytes"
+                },
+                "kind": {
+                  "const": "append",
+                  "type": "string"
+                },
+                "offset": {
+                  "$ref": "#/definitions/U64"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "offset", "bytesBase64"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "seal",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "discard",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            }
+          ]
+        },
         "BrowserTakeoverParams": {
           "oneOf": [
             {
@@ -15857,6 +15926,10 @@
               "type": "object"
             }
           ]
+        },
+        "Bytes": {
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+          "type": "string"
         },
         "Call": {
           "additionalProperties": false,
@@ -17049,6 +17122,20 @@
                 },
                 "params": {
                   "$ref": "#/definitions/BrowserAccessParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "browser.fileHandoff",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserFileHandoffParams"
                 }
               },
               "required": ["method", "params"],
@@ -18262,6 +18349,94 @@
             }
           },
           "required": ["url", "pairingCode", "clientId"],
+          "type": "object"
+        },
+        "BrowserFileHandoffParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "begin",
+                  "type": "string"
+                },
+                "length": {
+                  "$ref": "#/definitions/U64"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "length"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bytesBase64": {
+                  "$ref": "#/definitions/Bytes"
+                },
+                "kind": {
+                  "const": "append",
+                  "type": "string"
+                },
+                "offset": {
+                  "$ref": "#/definitions/U64"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "offset", "bytesBase64"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "seal",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "discard",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserFileHandoffProgress": {
+          "additionalProperties": false,
+          "properties": {
+            "receivedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "sealedFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "totalBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "uploadId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["uploadId", "receivedBytes", "totalBytes"],
           "type": "object"
         },
         "BrowserTakeoverParams": {
@@ -23592,6 +23767,20 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "browser.fileHandoff",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserFileHandoffParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "browser.takeover",
                   "type": "string"
                 },
@@ -23860,6 +24049,9 @@
           "anyOf": [
             {
               "$ref": "#/definitions/BrowserAccessResult"
+            },
+            {
+              "$ref": "#/definitions/BrowserFileHandoffProgress"
             },
             {
               "$ref": "#/definitions/LanAccessResult"
@@ -51400,6 +51592,25 @@
           "required": ["url", "pairingCode", "clientId"],
           "type": "object"
         },
+        "BrowserFileHandoffProgress": {
+          "additionalProperties": false,
+          "properties": {
+            "receivedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "sealedFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "totalBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "uploadId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["uploadId", "receivedBytes", "totalBytes"],
+          "type": "object"
+        },
         "ByteRange": {
           "additionalProperties": false,
           "properties": {
@@ -56189,6 +56400,9 @@
               "$ref": "#/definitions/BrowserAccessResult"
             },
             {
+              "$ref": "#/definitions/BrowserFileHandoffProgress"
+            },
+            {
               "$ref": "#/definitions/LanAccessResult"
             },
             {
@@ -57643,6 +57857,75 @@
             }
           ]
         },
+        "BrowserFileHandoffParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "begin",
+                  "type": "string"
+                },
+                "length": {
+                  "$ref": "#/definitions/U64"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "length"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bytesBase64": {
+                  "$ref": "#/definitions/Bytes"
+                },
+                "kind": {
+                  "const": "append",
+                  "type": "string"
+                },
+                "offset": {
+                  "$ref": "#/definitions/U64"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "offset", "bytesBase64"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "seal",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "discard",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            }
+          ]
+        },
         "BrowserTakeoverParams": {
           "oneOf": [
             {
@@ -57680,6 +57963,10 @@
               "type": "object"
             }
           ]
+        },
+        "Bytes": {
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+          "type": "string"
         },
         "Call": {
           "additionalProperties": false,
@@ -58945,6 +59232,20 @@
           "additionalProperties": false,
           "properties": {
             "method": {
+              "const": "browser.fileHandoff",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/BrowserFileHandoffParams"
+            }
+          },
+          "required": ["method", "params"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
               "const": "browser.takeover",
               "type": "string"
             },
@@ -59215,6 +59516,9 @@
       "anyOf": [
         {
           "$ref": "#/definitions/BrowserAccessResult"
+        },
+        {
+          "$ref": "#/definitions/BrowserFileHandoffProgress"
         },
         {
           "$ref": "#/definitions/LanAccessResult"
@@ -60040,6 +60344,25 @@
             }
           },
           "required": ["url", "pairingCode", "clientId"],
+          "type": "object"
+        },
+        "BrowserFileHandoffProgress": {
+          "additionalProperties": false,
+          "properties": {
+            "receivedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "sealedFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "totalBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "uploadId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["uploadId", "receivedBytes", "totalBytes"],
           "type": "object"
         },
         "ByteRange": {
@@ -73023,6 +73346,94 @@
           "required": ["url", "pairingCode", "clientId"],
           "type": "object"
         },
+        "BrowserFileHandoffParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "begin",
+                  "type": "string"
+                },
+                "length": {
+                  "$ref": "#/definitions/U64"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "length"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bytesBase64": {
+                  "$ref": "#/definitions/Bytes"
+                },
+                "kind": {
+                  "const": "append",
+                  "type": "string"
+                },
+                "offset": {
+                  "$ref": "#/definitions/U64"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "offset", "bytesBase64"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "seal",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "discard",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserFileHandoffProgress": {
+          "additionalProperties": false,
+          "properties": {
+            "receivedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "sealedFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "totalBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "uploadId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["uploadId", "receivedBytes", "totalBytes"],
+          "type": "object"
+        },
         "BrowserTakeoverParams": {
           "oneOf": [
             {
@@ -78680,6 +79091,20 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "browser.fileHandoff",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserFileHandoffParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "browser.takeover",
                   "type": "string"
                 },
@@ -78948,6 +79373,9 @@
           "anyOf": [
             {
               "$ref": "#/definitions/BrowserAccessResult"
+            },
+            {
+              "$ref": "#/definitions/BrowserFileHandoffProgress"
             },
             {
               "$ref": "#/definitions/LanAccessResult"

@@ -1934,6 +1934,7 @@ impl DesktopHostBridge {
             &request,
             RpcRequest::Attach(_)
                 | RpcRequest::BrowserAccess(_)
+                | RpcRequest::BrowserFileHandoff(_)
                 | RpcRequest::BrowserTakeover(_)
                 | RpcRequest::LanAccess(_)
                 | RpcRequest::ClientRegister(_)

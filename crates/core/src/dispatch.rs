@@ -166,6 +166,7 @@ impl RpcRequest {
         let (id, expected) = match self {
             Self::Attach(_)
             | Self::BrowserAccess(_)
+            | Self::BrowserFileHandoff(_)
             | Self::BrowserTakeover(_)
             | Self::LanAccess(_)
             | Self::ClientRegister(_)
