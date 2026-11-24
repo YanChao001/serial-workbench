@@ -51,6 +51,8 @@ export const en = {
     "Connect a device in the workbench to open this plugin.",
   "plugins.openView": "Open plugin",
   "plugins.exportChartSvg": "Save SVG…",
+  "plugins.exportChartCsv": "Save CSV…",
+  "plugins.exportChartPng": "Save PNG…",
   "plugins.chartSaved": "Chart saved.",
   "plugins.chartExportError":
     "Could not save the chart. Check that the session has enough samples and try again.",
@@ -1560,6 +1562,10 @@ export const en = {
   "workbench.fieldChart.sourceUnavailable":
     "This byte is outside the verified source of the selected field.",
   "workbench.fieldChart.plot": "Plot fields",
+  "workbench.fieldChart.exportCsv": "Export CSV",
+  "workbench.fieldChart.csvSaved": "Field chart CSV saved.",
+  "workbench.fieldChart.csvFailed":
+    "Could not save the field chart CSV. Try a smaller range or another location.",
   "workbench.fieldChart.plotLabel": "Field value by frame order",
   "workbench.fieldChart.noNumericField":
     "No numeric fields could be decoded in this page.",

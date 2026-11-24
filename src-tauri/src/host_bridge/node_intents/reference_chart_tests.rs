@@ -4,6 +4,8 @@ use tokio::time::timeout;
 
 const SAMPLE: &str = "swb.reference.chart.sample";
 const EXPORT_SVG: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportSvg";
+const EXPORT_CSV: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportCsv";
+const EXPORT_PNG: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportPng";
 
 #[tokio::test]
 #[ignore = "requires prepared Node, the signed chart receipt and same-source CLI/MCP"]
@@ -101,7 +103,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             assert_eq!(serde_json::to_value(&sample.value).unwrap(), value);
             assert_eq!(sample.position.get(), index as u64 + 1);
             assert_eq!(sample.provenance.parser_id.as_str(), SAMPLE);
-            assert_eq!(sample.provenance.parser_version, "0.1.4");
+            assert_eq!(sample.provenance.parser_version, "0.1.5");
             assert_eq!(sample.provenance.unit.as_deref(), Some("V"));
             assert_eq!(sample.provenance.quality, [DerivedQuality::Complete, DerivedQuality::Transformed]);
             let [source] = &sample.provenance.sources[..] else { panic!("One exact RX source range"); };
@@ -122,7 +124,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         let cli = parity_clients::Cli { binary: parity_clients::binary("SWB_TEST_CLI_BIN", "serial-workbench-cli"), profile: profile.to_path_buf() };
         assert_eq!(derived(success(cli.query_reply("stream.derivedRead", &session, &first_params).await)), first);
         verify_mcp_pages(profile, &session, [(first_params, &first), (last_params, &last)]).await;
-        verify_svg_export(profile, &bridge, business, desktop.generation, &session).await;
+        verify_chart_exports(profile, &bridge, business, desktop.generation, &session).await;
         let RpcResult::Operation(owned) = success(parser_request(&parser_client, &session).await) else {
             panic!("missing authorized parser operation");
         };
@@ -236,7 +238,7 @@ async fn parser_request(client: &HostClient, session: &Target) -> RpcReply {
         .unwrap()
 }
 
-async fn verify_svg_export(
+async fn verify_chart_exports(
     profile: &Path,
     bridge: &DesktopHostBridge,
     business: &AttachResult,
@@ -244,68 +246,84 @@ async fn verify_svg_export(
     session: &Target,
 ) {
     let sdk = start_reference_mcp(profile).await;
-    let accepted = timeout(
-        Duration::from_secs(10),
-        parity_clients::tool_reply(
-            sdk.peer(),
-            EXPORT_SVG,
-            session,
-            json!({"startEventSeq":"1","sampleCount":3}),
-        ),
-    )
-    .await
-    .expect("MCP SVG export admission timed out")
-    .unwrap();
-    let accepted = serde_json::from_value(parity_clients::structured(accepted)).unwrap();
-    let settled = wait(bridge, business, accepted).await;
-    let Some(ActionResult::Reference(output)) = settled.result else {
-        panic!("SVG export did not settle with a result reference: {settled:?}");
-    };
-    let target = resource_target(&output.result_ref);
-    let params = json!({"fileRef":output.result_ref,"offset":"0","maxBytes":"8192"});
-    let RpcResult::Query(QueryResult::FileRead(desktop)) =
-        read_reference_raw(bridge, business, &target, "file.read", params.clone()).await
-    else {
-        panic!("Desktop failed to read the chart result");
-    };
-    let mcp = timeout(
-        Duration::from_secs(10),
-        parity_clients::tool_reply(sdk.peer(), "swb_file_x2E_read", &target, params),
-    )
-    .await
-    .expect("MCP SVG read timed out")
-    .unwrap();
-    let mcp: FileReadResult = serde_json::from_value(parity_clients::structured(mcp)).unwrap();
+    for (tool, extension) in [
+        (EXPORT_SVG, "svg"),
+        (EXPORT_CSV, "csv"),
+        (EXPORT_PNG, "png"),
+    ] {
+        let accepted = timeout(
+            Duration::from_secs(10),
+            parity_clients::tool_reply(
+                sdk.peer(),
+                tool,
+                session,
+                json!({"startEventSeq":"1","sampleCount":3}),
+            ),
+        )
+        .await
+        .expect("MCP chart export admission timed out")
+        .unwrap();
+        let accepted = serde_json::from_value(parity_clients::structured(accepted)).unwrap();
+        let settled = wait(bridge, business, accepted).await;
+        let Some(ActionResult::Reference(output)) = settled.result else {
+            panic!("Chart export did not settle with a result reference: {settled:?}");
+        };
+        let target = resource_target(&output.result_ref);
+        let params = json!({"fileRef":output.result_ref,"offset":"0","maxBytes":"65536"});
+        let mcp = timeout(
+            Duration::from_secs(10),
+            parity_clients::tool_reply(sdk.peer(), "swb_file_x2E_read", &target, params),
+        )
+        .await
+        .expect("MCP chart read timed out")
+        .unwrap();
+        let mcp: FileReadResult = serde_json::from_value(parity_clients::structured(mcp)).unwrap();
+        assert!(mcp.at_end);
+        let bytes = STANDARD.decode(mcp.bytes_base64.as_str()).unwrap();
+        if tool == EXPORT_SVG {
+            let contents = std::str::from_utf8(&bytes).unwrap();
+            assert!(contents.starts_with("<svg "));
+            assert!(contents.ends_with("</svg>"));
+            assert!(
+                contents.contains("points=\"72.00,154.25 344.00,295.64 616.00,56.36\""),
+                "{contents}"
+            );
+        } else if tool == EXPORT_CSV {
+            let contents = std::str::from_utf8(&bytes).unwrap();
+            let rows = contents.lines().collect::<Vec<_>>();
+            assert_eq!(rows.len(), 4);
+            assert!(rows[0].starts_with("sample_index,value_v,host_id,session_id,"));
+            assert!(rows[1].starts_with("1,1.25,") && rows[1].ends_with(",0,6"));
+            assert!(rows[2].starts_with("2,-2,") && rows[2].ends_with(",6,9"));
+            assert!(rows[3].starts_with("3,3.5,") && rows[3].ends_with(",9,13"));
+        } else {
+            assert!(bytes.starts_with(serial_workbench_core::PNG_SIGNATURE));
+            assert_eq!(&bytes[12..16], b"IHDR");
+            assert_eq!(u32::from_be_bytes(bytes[16..20].try_into().unwrap()), 640);
+            assert_eq!(u32::from_be_bytes(bytes[20..24].try_into().unwrap()), 360);
+        }
+        let saved = profile.join(format!("chart.{extension}"));
+        assert!(
+            crate::file_commands::save_chart_artifact(
+                bridge,
+                "main",
+                generation,
+                settled.operation_id,
+                |_| std::future::ready(Ok(Some(saved.clone()))),
+            )
+            .await
+            .unwrap()
+        );
+        assert_eq!(std::fs::read(saved).unwrap(), bytes);
+        eprintln!(
+            "reference_chart_{extension} actual_mcp_action=true saved_file_matches_mcp=true bytes={}",
+            bytes.len()
+        );
+    }
     timeout(Duration::from_secs(12), sdk.cancel())
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(desktop, mcp);
-    assert!(desktop.at_end);
-    let svg = String::from_utf8(STANDARD.decode(desktop.bytes_base64.as_str()).unwrap()).unwrap();
-    assert!(svg.starts_with("<svg "));
-    assert!(svg.ends_with("</svg>"));
-    assert!(
-        svg.contains("points=\"72.00,154.25 344.00,295.64 616.00,56.36\""),
-        "{svg}"
-    );
-    let saved = profile.join("chart.svg");
-    assert!(
-        crate::file_commands::save_chart_svg(
-            bridge,
-            "main",
-            generation,
-            settled.operation_id,
-            || std::future::ready(Ok(Some(saved.clone()))),
-        )
-        .await
-        .unwrap()
-    );
-    assert_eq!(std::fs::read(saved).unwrap(), svg.as_bytes());
-    eprintln!(
-        "reference_chart_svg actual_mcp_action=true saved_file_matches_mcp=true bytes={}",
-        svg.len()
-    );
 }
 
 async fn verify_mcp_pages(

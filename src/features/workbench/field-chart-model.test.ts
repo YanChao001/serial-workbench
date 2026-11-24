@@ -1,6 +1,7 @@
 import type { RawEvent, StreamItem, Target } from "@serial-workbench/contracts";
 import { expect, test } from "vitest";
 import { compileProtocolFields } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
+import { fieldChartCsv } from "./field-chart-csv";
 import {
   chartValue,
   fieldChartFrames,
@@ -167,6 +168,48 @@ test("field cursor keeps exact Raw byte pieces for a reading split across RX eve
     startEventSeq: "11",
     endEventSeq: "14",
   });
+});
+
+test("chart CSV preserves exact byte offsets and separates invalid values from evidence", () => {
+  const inspection = {
+    target,
+    frames,
+    items: [
+      source(11, 0, [255, 1]),
+      source(12, 2, [2, 3, 0]),
+      source(13, 5, [8, 8]),
+      source(14, 7, [0, 2, 0]),
+    ],
+    recordOrdinals: new Map([
+      ["11", "39"],
+      ["12", "40"],
+    ]),
+  };
+  const entries = fieldChartFrames(inspection, codec);
+  const primary = {
+    ...entries[0]!.readings![0]!,
+    unit: '=HYPERLINK("sample")',
+  };
+  const rows = fieldChartCsv({
+    inspection,
+    entries,
+    start: 0,
+    mode: "trace",
+    primary,
+  })
+    .trimEnd()
+    .split("\r\n");
+  expect(rows).toHaveLength(5);
+  expect(rows[1]).toContain(
+    '1,trace,start,,true,host,2,session,3,1,test-clock,11,13,9007199254740994,9007199254740997,value,64.5,"\'=HYPERLINK(""sample"")",258,',
+  );
+  expect(rows[1]).toContain(
+    '""event"":""12"",""start"":""9007199254740995"",""end"":""9007199254740996"",""hex"":""02"",""record"":""40""',
+  );
+  expect(rows[3]).toContain(
+    '3,trace,continuous,0,false,host,2,session,3,1,test-clock,14,15,9007199254741000,9007199254741003,value,,"\'=HYPERLINK(""sample"")",2,',
+  );
+  expect(rows[4]).toMatch(/^4,trace,gap,,false,{11}value,,/u);
 });
 
 test("missing source, mismatched bytes and a failed checksum leave separate evidence gaps", () => {

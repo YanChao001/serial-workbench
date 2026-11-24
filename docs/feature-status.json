@@ -2205,7 +2205,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/67"]
       },
       "hardware": {
         "status": "not-started",
@@ -2222,7 +2222,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/67"]
       },
       "hardware": {
         "status": "not-started",

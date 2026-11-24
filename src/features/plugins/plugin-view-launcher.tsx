@@ -18,7 +18,7 @@ import { BrowserPluginView, type BrowserViewOpen } from "./browser-plugin-view";
 import {
   hostCloseNodeView,
   hostOpenNodeView,
-  hostSaveChartSvg,
+  hostSaveChartArtifact,
 } from "@/lib/tauri";
 import { useI18n } from "@/providers/i18n";
 import { useHost } from "@/providers/host-context";
@@ -33,6 +33,15 @@ type DerivedFeed = {
 };
 const derivedFeeds = new WeakMap<HostConnection, Map<string, DerivedFeed>>();
 const chartPackages = ["swb.reference.chart", "swb.builtin.chart"];
+const chartFormats = [
+  {
+    suffix: "exportSvg",
+    mime: "image/svg+xml",
+    label: "plugins.exportChartSvg",
+  },
+  { suffix: "exportCsv", mime: "text/csv", label: "plugins.exportChartCsv" },
+  { suffix: "exportPng", mime: "image/png", label: "plugins.exportChartPng" },
+] as const;
 
 function retiredFeed(reason: unknown) {
   const code = nativeErrorCode(reason);
@@ -85,23 +94,30 @@ export function PluginViewLauncher({
   const session =
     sessions.find((session) => sessionKey(session) === selected) ??
     (selected === "" && sessions.length === 1 ? sessions[0] : undefined);
-  const chartExportAction = chartPackages.includes(packageId)
-    ? `${packageId}.exportSvg`
-    : undefined;
-  const canExport =
-    !connection.browser &&
-    chartExportAction !== undefined &&
-    state.catalog.some(
-      (action) =>
-        action.actionId === chartExportAction &&
-        action.targetKinds.includes("session") &&
-        action.outputSchema["x-swb-file-result"] === "image/svg+xml",
-    );
-  if (!available.length && !canExport) return null;
+  const exports =
+    !connection.browser && chartPackages.includes(packageId)
+      ? chartFormats
+          .map((format) => ({
+            ...format,
+            actionId: `${packageId}.${format.suffix}`,
+          }))
+          .filter(({ actionId, mime }) =>
+            state.catalog.some(
+              (action) =>
+                action.actionId === actionId &&
+                action.targetKinds.includes("session") &&
+                action.outputSchema["x-swb-file-result"] === mime,
+            ),
+          )
+      : [];
+  if (!available.length && !exports.length) return null;
 
-  async function run(view?: NodePackageView, opener?: HTMLElement) {
-    const actionId = view?.actionId ?? chartExportAction;
-    if (!session || pending.current || !actionId) return;
+  async function run(
+    actionId: string,
+    view?: NodePackageView,
+    opener?: HTMLElement,
+  ) {
+    if (!session || pending.current) return;
     const owner = new AbortController();
     pending.current = owner;
     setBusy(true);
@@ -199,7 +215,7 @@ export function PluginViewLauncher({
         }
       }
       if (!view) {
-        const written = await hostSaveChartSvg(
+        const written = await hostSaveChartArtifact(
           connection.generation,
           operationId,
         );
@@ -293,23 +309,26 @@ export function PluginViewLauncher({
             key={view.id}
             size="sm"
             disabled={!session || busy}
-            onClick={(event) => void run(view, event.currentTarget)}
+            onClick={(event) =>
+              void run(view.actionId, view, event.currentTarget)
+            }
           >
             {available.length === 1
               ? t("plugins.openView")
               : t("plugins.openViewNumber", { number: index + 1 })}
           </Button>
         ))}
-        {canExport ? (
+        {exports.map(({ actionId, label }) => (
           <Button
+            key={actionId}
             size="sm"
             variant="outline"
             disabled={!session || busy}
-            onClick={() => void run()}
+            onClick={() => void run(actionId)}
           >
-            {t("plugins.exportChartSvg")}
+            {t(label)}
           </Button>
-        ) : null}
+        ))}
       </div>
       {browserView ? (
         <BrowserPluginView

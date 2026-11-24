@@ -1,8 +1,9 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { OptionsSelect } from "@/components/options-select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { saveTextExport } from "@/lib/tauri";
 import { parseU64 } from "@/lib/u64";
 import { useI18n } from "@/providers/i18n";
 import { sampleStatistics } from "../../../packages/plugin-sdk/examples/reference-chart/sample-statistics";
@@ -24,10 +25,10 @@ import {
   type FieldChartFrame,
 } from "./field-chart-model";
 import type { ChartSourceSelection } from "./stream-chart-selection";
+import { fieldChartCsv, type FieldChartMode } from "./field-chart-csv";
 import { FieldXyPlot } from "./field-xy-plot";
 
 type Point = { index: number; value: number };
-type PlotMode = "trace" | "xy" | "scatter";
 const statisticMetrics = [
   "minimum",
   "maximum",
@@ -94,11 +95,21 @@ export function FieldChart({
   const id = useId();
   const [plot, setPlot] = useState<Plot>();
   const [compact, setCompact] = useState(false);
-  const [mode, setMode] = useState<PlotMode>("trace");
+  const [mode, setMode] = useState<FieldChartMode>("trace");
   const [yField, setYField] = useState("");
   const [recent, setRecent] = useState(false);
   const [lookup, setLookup] = useState({ event: "", byte: "" });
   const [lookupMissed, setLookupMissed] = useState(false);
+  const savingCsv = useRef(false);
+  const [csvPending, setCsvPending] = useState(false);
+  const [csvResult, setCsvResult] = useState<{
+    plot: Plot;
+    start: number;
+    mode: FieldChartMode;
+    primary: string;
+    paired?: string;
+    status: "saved" | "error";
+  }>();
   const current =
     plot?.source === inspection &&
     plot.definition === definition &&
@@ -122,6 +133,50 @@ export function FieldChart({
   const showRecent = recent && selected >= recentStart;
   const start = showRecent ? recentStart : 0;
   const active = entries[selected];
+  const chartMode = paired ? mode : "trace";
+  const visibleCsvResult =
+    csvResult?.plot === current &&
+    csvResult?.start === start &&
+    csvResult.mode === chartMode &&
+    csvResult.primary === channel?.id &&
+    csvResult.paired === paired?.id
+      ? csvResult.status
+      : undefined;
+
+  async function handleSaveCsv() {
+    if (!current || !channel || savingCsv.current) return;
+    savingCsv.current = true;
+    setCsvPending(true);
+    setCsvResult(undefined);
+    const scope = {
+      plot: current,
+      start,
+      mode: chartMode,
+      primary: channel.id,
+      paired: paired?.id,
+    };
+    try {
+      const content = fieldChartCsv({
+        inspection,
+        entries,
+        start,
+        mode: chartMode,
+        primary: channel,
+        paired,
+      });
+      const saved = await saveTextExport(
+        "serial-workbench-field-chart.csv",
+        content,
+      );
+      if (saved !== null) setCsvResult({ ...scope, status: "saved" });
+    } catch {
+      setCsvResult({ ...scope, status: "error" });
+    } finally {
+      savingCsv.current = false;
+      setCsvPending(false);
+    }
+  }
+
   const segments: Point[][] = [];
   const validValues: number[] = [];
   let segment: Point[] | undefined;
@@ -378,7 +433,27 @@ export function FieldChart({
                   {t("workbench.fieldChart.compact")}
                 </label>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSaveCsv}
+                disabled={csvPending}
+              >
+                {t("workbench.fieldChart.exportCsv")}
+              </Button>
             </div>
+            <div aria-live="polite">
+              {visibleCsvResult === "saved" ? (
+                <p className="text-muted-foreground">
+                  {t("workbench.fieldChart.csvSaved")}
+                </p>
+              ) : null}
+            </div>
+            {visibleCsvResult === "error" ? (
+              <p role="alert" className="text-destructive">
+                {t("workbench.fieldChart.csvFailed")}
+              </p>
+            ) : null}
             {paired ? (
               <FieldXyPlot
                 entries={entries}

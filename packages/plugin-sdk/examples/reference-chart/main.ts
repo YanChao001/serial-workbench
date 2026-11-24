@@ -6,6 +6,10 @@ import type {
   SourceRange,
 } from "@serial-workbench/plugin-sdk/node";
 
+import { chartCanvas, chartGeometry } from "./chart-geometry.ts";
+import { csvCell, spreadsheetText } from "./csv.ts";
+import { renderPng } from "./render-png.ts";
+
 const maxFrameBytes = 64;
 const maxIdleMs = 5000;
 const voltage = /^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)\r?$/;
@@ -13,7 +17,11 @@ const voltage = /^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)\r?$/;
 async function readSamples(
   { target, params }: Readonly<Call>,
   task: NodeTaskContext,
-  receive: (value: number, source: SourceRange) => void | Promise<void>,
+  receive: (
+    value: number,
+    source: SourceRange,
+    decimal: string,
+  ) => void | Promise<void>,
 ) {
   const { hostId, sessionId, sessionEpoch } = target;
   const { startEventSeq = "1", sampleCount = 3 } = params;
@@ -99,7 +107,7 @@ async function readSamples(
           byteStart: String(frameStart),
           byteEnd: String(start + BigInt(index) + 1n),
         };
-        await receive(value, source);
+        await receive(value, source, line.trimEnd().replace(/^\+/u, ""));
         length = 0;
         sampled++;
         task.progress.report({
@@ -118,33 +126,20 @@ async function readSamples(
 }
 
 function renderSvg(samples: number[]) {
-  const low = Math.min(...samples);
-  const high = Math.max(...samples);
-  const padding = (high - low) * 0.06 || 0.5;
-  const min = low - padding;
-  const max = high + padding;
-  const left = 72;
-  const right = 616;
-  const top = 42;
-  const bottom = 310;
-  const y = (value: number) =>
-    bottom - ((value - min) / (max - min)) * (bottom - top);
-  const coordinates = samples.map((value, index) => ({
-    x: (
-      left +
-      (index * (right - left)) / Math.max(samples.length - 1, 1)
-    ).toFixed(2),
-    y: y(value).toFixed(2),
+  const { width, height, left, right } = chartCanvas;
+  const { coordinates, ticks } = chartGeometry(samples);
+  const points = coordinates.map(({ x, y }) => ({
+    x: x.toFixed(2),
+    y: y.toFixed(2),
   }));
-  const grid = Array.from({ length: 5 }, (_, index) => {
-    const value = min + (index * (max - min)) / 4;
-    const row = y(value).toFixed(2);
-    return `<path d="M ${left} ${row} H ${right}" stroke="#d7dee7"/><text x="64" y="${row}" text-anchor="end" dominant-baseline="middle">${Number(value.toPrecision(5))}</text>`;
+  const grid = ticks.map((tick) => {
+    const row = tick.y.toFixed(2);
+    return `<path d="M ${left} ${row} H ${right}" stroke="#d7dee7"/><text x="64" y="${row}" text-anchor="end" dominant-baseline="middle">${tick.label}</text>`;
   });
   return [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
     "<title>Voltage by sample</title>",
-    '<rect width="640" height="360" fill="#fff"/>',
+    `<rect width="${width}" height="${height}" fill="#fff"/>`,
     '<g font-family="sans-serif" font-size="12" fill="#394454">',
     `<text x="${left}" y="24">Voltage (V)</text>`,
     ...grid,
@@ -155,8 +150,8 @@ function renderSvg(samples: number[]) {
         ]
       : []),
     "</g>",
-    `<polyline points="${coordinates.map(({ x, y }) => `${x},${y}`).join(" ")}" fill="none" stroke="#226350" stroke-width="2"/>`,
-    ...coordinates.map(
+    `<polyline points="${points.map(({ x, y }) => `${x},${y}`).join(" ")}" fill="none" stroke="#226350" stroke-width="2"/>`,
+    ...points.map(
       ({ x, y }) => `<circle cx="${x}" cy="${y}" r="3" fill="#226350"/>`,
     ),
     "</svg>",
@@ -166,6 +161,8 @@ function renderSvg(samples: number[]) {
 export function chartRegistration(packageId: string): NodeRegister {
   const sample = `${packageId}.sample`;
   const exportSvg = `${packageId}.exportSvg`;
+  const exportCsv = `${packageId}.exportCsv`;
+  const exportPng = `${packageId}.exportPng`;
   return (context) => {
     context.parsers.register(sample, async (call, task) => {
       let lastPosition = "0";
@@ -180,12 +177,41 @@ export function chartRegistration(packageId: string): NodeRegister {
       });
       return { samples, lastPosition };
     });
-    context.actions.register(exportSvg, async (call, task) => {
-      const samples: number[] = [];
-      await readSamples(call, task, (value) => {
-        samples.push(value);
+    for (const [id, render] of [
+      [exportSvg, (samples: number[]) => Buffer.from(renderSvg(samples))],
+      [exportPng, renderPng],
+    ] as const) {
+      context.actions.register(id, async (call, task) => {
+        const samples: number[] = [];
+        await readSamples(call, task, (value) => {
+          samples.push(value);
+        });
+        task.signal.throwIfAborted();
+        return render(samples).toString("base64");
       });
-      return Buffer.from(renderSvg(samples)).toString("base64");
+    }
+    context.actions.register(exportCsv, async (call, task) => {
+      const rows = [
+        "sample_index,value_v,host_id,session_id,session_epoch,event_start,event_end,byte_start,byte_end",
+      ];
+      await readSamples(call, task, (_value, source, decimal) => {
+        rows.push(
+          [
+            String(rows.length),
+            decimal,
+            spreadsheetText(source.hostId),
+            spreadsheetText(source.sessionId),
+            source.sessionEpoch,
+            source.eventStart,
+            source.eventEnd,
+            source.byteStart,
+            source.byteEnd,
+          ]
+            .map(csvCell)
+            .join(","),
+        );
+      });
+      return Buffer.from(rows.join("\r\n") + "\r\n").toString("base64");
     });
     context.contributions.register({
       actions: [],

@@ -44,6 +44,8 @@ export const zhCN = {
   "plugins.noViewSession": "在工作台连接设备后即可打开此插件。",
   "plugins.openView": "打开插件",
   "plugins.exportChartSvg": "另存为 SVG…",
+  "plugins.exportChartCsv": "另存为 CSV…",
+  "plugins.exportChartPng": "另存为 PNG…",
   "plugins.chartSaved": "图表已保存。",
   "plugins.chartExportError":
     "无法保存图表。请确认会话中有足够的样本，然后重试。",
@@ -1448,6 +1450,10 @@ export const zhCN = {
   "workbench.fieldChart.sourceUnavailable":
     "所选字段的已核对来源不包含这个字节。",
   "workbench.fieldChart.plot": "绘制字段",
+  "workbench.fieldChart.exportCsv": "导出 CSV",
+  "workbench.fieldChart.csvSaved": "已保存字段图表 CSV。",
+  "workbench.fieldChart.csvFailed":
+    "无法保存字段图表 CSV，请缩小范围或选择其他保存位置。",
   "workbench.fieldChart.plotLabel": "按帧顺序显示字段值",
   "workbench.fieldChart.noNumericField": "本页未解码出数值字段。",
   "workbench.fieldChart.compact": "压缩曲线",

@@ -198,6 +198,14 @@ test("replay chart traces a compacted and filtered field to both original captur
   await chart.getByRole("checkbox", { name: "Compact curve" }).check();
   expect(await drawn.locator("circle").count()).toBeLessThan(46);
   await expect(missing).toHaveText("1 / 47 (2.13%)");
+  const csv = chart.getByRole("button", { name: "Export CSV", exact: true });
+  const exported = () =>
+    page.evaluate(() => window.workbenchFixture.savedTextExports.at(-1));
+  await csv.click();
+  await expect(chart.getByText("Field chart CSV saved.")).toBeVisible();
+  const fullExport = await exported();
+  expect(fullExport?.name).toBe("serial-workbench-field-chart.csv");
+  expect(fullExport?.content.trimEnd().split("\r\n")).toHaveLength(47);
 
   await chart.getByText("Locate by source byte", { exact: true }).click();
   await chart.getByRole("textbox", { name: "Source event number" }).fill("52");
@@ -261,6 +269,17 @@ test("replay chart traces a compacted and filtered field to both original captur
   await expect(xy.locator("polyline")).toHaveCount(1);
   await expect(xy.locator("circle")).toHaveCount(32);
   await expect(chart.getByText(/32 same-frame pairs/)).toBeVisible();
+  await csv.click();
+  await expect(chart.getByText("Field chart CSV saved.")).toBeVisible();
+  const filteredRows = (await exported())?.content.trimEnd().split("\r\n");
+  expect(filteredRows).toHaveLength(33);
+  expect(filteredRows?.[1]).toMatch(/^15,xy,start,,true,/u);
+  expect(filteredRows?.at(-1)).toMatch(/^46,xy,gap,1,true,/u);
+  expect(filteredRows?.at(-1)).toContain(",voltage,45,V,90,");
+  expect(filteredRows?.at(-1)).toContain(",channel,0,,0,");
+  expect(filteredRows?.at(-1)).toContain(
+    '""event"":""54"",""start"":""193"",""end"":""194"",""hex"":""5A"",""record"":""42""',
+  );
   await xy.locator("circle").last().click();
   await expect(chart.getByRole("status")).toHaveText("Frame 46 · X 45 V · Y 0");
   await expect(
