@@ -628,6 +628,12 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。原生对话框、离屏 PNG 的独立 CI 和 MDF4 继续专项验收。
 
+### MDF4 专业导出（VIZ-13）
+
+专业动作 `swb.pro.mdf4.exportMdf4` 接收 `startTimeNs`（UTC 起点）、1 至 16 个 `channels` 和至多 256 个 `samples`。每个样本含 `elapsedNs` 及与通道顺序对应的 `values`。时间、浮点和整数均以十进制字符串提交，`null` 标记该通道缺值。输出为有序 MDF 4.10，保留秒主通道、精确纳秒列、单位和无效位。
+
+运行 `node --test scripts/mdf4-export.test.mjs` 核对格式标识、上下界、倒退时间和取消。可将 `asammdf==8.8.33` 安装到独立目录，将 `SWB_MDF4_READER_ROOT` 设为其绝对路径后复验。读取器检查三个不等间隔样本、UTF-8 单位、缺值过滤、超安全整数的定位及有符号 64 位边界。用 `pnpm plugin-sdk:fixture` 准备专业包入口，再用 `sign_reference_mdf4` 对编译后的 `.cache/plugin-sdk/examples/reference-mdf4/main.mjs` 签名。工作台图表快照接入、实际签名包安装、桌面/MCP 文件比对、MATLAB 交叉验证与市场发行单独验收。 [ASAM MDF](https://www.asam.net/standards/detail/mdf/) · [asammdf](https://pypi.org/project/asammdf/8.8.33/)
+
 ### Modbus 报文模板（PROTO-04、PROTO-20）
 
 工作台「协议分帧」的「Modbus 报文」支持 RTU、ASCII、TCP，方向明确选择请求或响应。以读取 10 个保持寄存器的请求为例，报文 JSON 使用 `{"unitId":1,"pdu":{"functionCode":3,"address":0,"quantity":10}}`。RTU 预览为 `01 03 00 00 00 0A C5 CD`，ASCII 预览为 `:01030000000AF2` 后接 CRLF。添加 `"transactionId":1` 再构造 TCP，预览为 `00 01 00 00 00 06 01 03 00 00 00 0A`。用同一面板回读并核对单元号、零基地址、数量和事务 ID。 [Modbus 应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
