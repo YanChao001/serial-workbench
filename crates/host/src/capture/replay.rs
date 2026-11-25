@@ -437,6 +437,13 @@ mod format_tests {
             .unwrap();
         assert_eq!(unavailable.code, "REPLAY_CLOCK_UNAVAILABLE");
         let mut reader = ReplayReader::open(&path, ReplayMode::Fastest).unwrap();
+        assert_eq!(
+            reader
+                .set_rate(ReplayRate::Timed { speed_percent: 100 }, 0)
+                .unwrap_err()
+                .code,
+            "REPLAY_CLOCK_UNAVAILABLE",
+        );
         assert_eq!(reader.step(0).unwrap().next_record, U64::from(2));
         assert!(reader.step(0).unwrap().at_end);
     }
