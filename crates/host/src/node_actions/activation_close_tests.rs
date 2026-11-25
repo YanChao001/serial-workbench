@@ -12,23 +12,27 @@ async fn native_node_activation_close_quiesce_cannot_reinsert_prepared_request()
         .activation_before_enqueue
         .arm();
     let mut signalled = fixture.host.inner.node_test_gates.quiesce_signalled.arm();
-    let reply = fixture.client.request(RpcRequest::Invoke(fixture.call(
-        &fixture.client,
-        &fixture.target,
-        "example.terminal.compute",
-        json!({"value":10}),
-    )));
-    let close = async {
-        enqueue.entered().await;
+    let reply = {
+        let request = fixture.client.request(RpcRequest::Invoke(fixture.call(
+            &fixture.client,
+            &fixture.target,
+            "example.terminal.compute",
+            json!({"value":10}),
+        )));
+        tokio::pin!(request);
+        tokio::select! {
+            () = enqueue.entered() => {}
+            _ = &mut request => panic!("The request must reach the activation admission gate"),
+        }
         let manager = fixture.host.inner.node_packages.clone();
         let closing = tokio::task::spawn_blocking(move || manager.request_quiesce(true));
         signalled.entered().await;
         enqueue.release();
-        closing
+        let observed = tokio::time::timeout(Duration::from_secs(4), request).await;
+        signalled.release();
+        closing.await.unwrap();
+        observed
     };
-    let (reply, closing) = tokio::join!(tokio::time::timeout(Duration::from_secs(4), reply), close);
-    signalled.release();
-    closing.await.unwrap();
     wait_supervisor(&fixture).await;
     rejected(
         reply

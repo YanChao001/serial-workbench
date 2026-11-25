@@ -186,7 +186,7 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 本机传输使用四字节大端长度和 UTF-8 JSON，帧体为 `WireFrame {requestId,channel,body}`。`channel` 为 `control/raw/state`，`body.type` 选择生成的消息类型；先检查 1 MiB 长度上限再读取正文。只有完整帧边界的 EOF 表示正常关闭，半帧、非法 UTF-8/JSON 或未知字段均拒绝。公共类型由 core 导出，平台连接、受保护秘密与有界帧 IO 由共享 IPC crate 实现。
 
-Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID。Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。OS 实例锁覆盖整个 Host 生命周期。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录。记录包含身份、epoch、endpoint、PID 和格式版本。历史字段 `protocolVersion` 按发现格式 `0.1` 发布，原有客户端可读取 endpoint，再通过握手得到受支持的 RPC 版本和升级目标。启动时复核原 profile 的身份，保留发现记录并正常换代。
+Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID。Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。OS 实例锁覆盖整个 Host 生命周期。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录。记录包含身份、epoch、endpoint、PID 和格式版本。历史字段 `protocolVersion` 按发现格式 `0.1` 发布，原有客户端可读取 endpoint，再通过握手得到受支持的 RPC 版本和升级目标。启动时复核原 profile 的身份。新进程在请求处理器及所选入口准备完成后才发布本次发现记录，再交付启动 capability 或启用入口的回执。上个代次的发现记录保留到正常换代。
 
 客户端先发送 nonce，验证绑定协议版本、hostId、epoch 和双方 nonce 的 Host proof，再提交自己的凭据。身份 pin 从受保护本地存储取得，不能从发现记录自建信任。新外部客户端只注册元数据身份；已有 clientId 的错误或缺失凭据不能覆盖原授权。控制连接与原始流连接分开，raw attach token 绑定活控制连接、actor 和 epoch；控制连接结束后 token 失效。Host 分配的 connectionId 只用于连接资源和投递归属，不进入 Call 或去重身份。同 actor 的另一连接退出不能清除本连接订阅，也不能停止 Host 业务任务。
 
