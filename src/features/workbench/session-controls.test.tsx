@@ -69,8 +69,14 @@ it("holds control buttons until the admitted operation actually finishes", async
   for (let index = 0; index < 20; index++)
     fireEvent.click(screen.getByRole("button", { name: "RTS on" }));
   expect(invoke).toHaveBeenCalledOnce();
+  expect(
+    screen.getByText("Waiting for the device to confirm DTR on."),
+  ).toHaveAttribute("role", "status");
   expect(screen.getByRole("button", { name: "DTR on" })).toBeDisabled();
   await act(async () => finish({ ...accepted, state: "succeeded" }));
+  expect(
+    screen.queryByText("Waiting for the device to confirm DTR on."),
+  ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "DTR on" })).toBeEnabled();
 });
 

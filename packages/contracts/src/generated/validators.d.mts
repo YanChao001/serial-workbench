@@ -101,6 +101,9 @@ import type {
   EventTime,
   ExecutionLocation,
   ExecutionMode,
+  ExperimentExportParams,
+  ExperimentInspection,
+  ExperimentPackage,
   ExplicitLeaseKind,
   FavoritesSaveParams,
   FieldStatus,
@@ -584,6 +587,15 @@ export declare function validateExecutionLocation(
 export declare function validateExecutionMode(
   value: unknown,
 ): value is ExecutionMode;
+export declare function validateExperimentExportParams(
+  value: unknown,
+): value is ExperimentExportParams;
+export declare function validateExperimentInspection(
+  value: unknown,
+): value is ExperimentInspection;
+export declare function validateExperimentPackage(
+  value: unknown,
+): value is ExperimentPackage;
 export declare function validateExplicitLeaseKind(
   value: unknown,
 ): value is ExplicitLeaseKind;

@@ -148,7 +148,25 @@ export interface TransportWriteOptions {
   readonly signal: AbortSignal;
 }
 
+export type TransportOutputLine = "dtr" | "rts";
+export type TransportLineResult =
+  { kind: "confirmed"; actual: boolean } | { kind: "not_applied" };
+
+export interface TransportLineControls {
+  readonly dtr: boolean;
+  readonly rts: boolean;
+  /** 应答明确时返回实际值。能证明未提交时报告 not_applied。提交后结果不明时抛出错误。 */
+  set(options: {
+    line: TransportOutputLine;
+    value: boolean;
+    waitMs: number;
+    signal: AbortSignal;
+  }): TransportLineResult | Promise<TransportLineResult>;
+}
+
 export interface TransportConnection {
+  /** 只在当前连接确实支持的线路上声明此能力。 */
+  readonly lineControls?: TransportLineControls;
   /** 最多返回 maxBytes 字节。空数组表示本次没有数据，null 表示输入已结束。 */
   read(
     options: TransportReadOptions,

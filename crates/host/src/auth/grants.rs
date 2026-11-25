@@ -34,6 +34,9 @@ struct BoundRule {
 }
 
 impl GrantStamp {
+    pub(crate) fn revision_and_expiry(&self) -> (U64, Option<u64>) {
+        (self.revision, self.deadline_ns)
+    }
     fn permits(&self, record: &ClientRecord, now: u64) -> bool {
         record.actor_id == self.grant_actor_id
             && self.deadline_ns.is_none_or(|deadline| now < deadline)

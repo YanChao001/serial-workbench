@@ -283,6 +283,8 @@ pub struct CatalogListResult {
 pub enum RpcRequest {
     #[serde(rename = "browser.access")]
     BrowserAccess(BrowserAccessParams),
+    #[serde(rename = "browser.fileHandoff")]
+    BrowserFileHandoff(BrowserFileHandoffParams),
     #[serde(rename = "browser.takeover")]
     BrowserTakeover(BrowserTakeoverParams),
     #[serde(rename = "lan.access")]
@@ -326,6 +328,7 @@ pub enum RpcRequest {
 #[serde(untagged)]
 pub enum RpcResult {
     BrowserAccess(BrowserAccessResult),
+    BrowserFileHandoff(BrowserFileHandoffProgress),
     LanAccess(LanAccessResult),
     ClientRegistration(ClientRegistration),
     ClientEffectAcknowledged(ClientEffectAcknowledged),
@@ -339,6 +342,51 @@ pub enum RpcResult {
     Object(ObjectReadResult),
     StreamRead(StreamReadResult),
     StreamCredit(StreamCreditResult),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum BrowserFileHandoffParams {
+    Begin {
+        target: Target,
+        length: U64,
+    },
+    Append {
+        upload_id: Id,
+        offset: U64,
+        bytes_base64: Bytes,
+    },
+    Seal {
+        upload_id: Id,
+    },
+    Submit {
+        upload_id: Id,
+        call: Box<Call>,
+    },
+    Discard {
+        upload_id: Id,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserFileHandoffProgress {
+    pub upload_id: Id,
+    pub received_bytes: U64,
+    pub total_bytes: U64,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "Digest")]
+    #[specta(type = Digest, optional)]
+    pub sealed_fingerprint: Option<Digest>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]

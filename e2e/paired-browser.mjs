@@ -3,13 +3,16 @@ import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { startMcpFixture } from "./mcp-fixture.mjs";
+import { checkManualRecording } from "./paired-manual-recording.mjs";
+import { checkMultiportBroadcast } from "./paired-multiport-broadcast.mjs";
+import { checkRuleCommand } from "./paired-rule-evidence.mjs";
 import { sessionScopes } from "./session-scopes.mjs";
 
 const [hostPath, cliPath, assetsPath, outputPath, mcpPath] =
@@ -83,6 +86,131 @@ async function startAssistant(clientId) {
 const frames = [];
 const rawBatches = [];
 let collectingRawEvidence = false;
+
+async function checkSelectionDownloads(page, first, second) {
+  const browserTextMode = /^(Text|文本)$/;
+  const title = /^(Byte selection|字节选区)$/;
+  const terminal = page.getByRole("region", { name: /^(Receive|接收)$/ });
+  const panel = page.getByRole("dialog", { name: title });
+  const firstBytes = Buffer.from(first.payload.bytesBase64, "base64");
+  const selected = Buffer.concat([
+    firstBytes.subarray(firstBytes.length - 2),
+    Buffer.from(second.payload.bytesBase64, "base64").subarray(0, 2),
+  ]);
+  assert.equal(first.payload.byteEnd, second.payload.byteStart);
+  assert.equal(selected.toString("utf8"), '<&>"');
+  const start = BigInt(first.payload.byteEnd) - 2n;
+  const end = start + BigInt(selected.length);
+  const initialViewport = page.viewportSize();
+  const filters = terminal.getByRole("button", {
+    name: /^(Record filters|记录筛选)$/,
+  });
+  async function chooseDirection(option) {
+    await filters.click();
+    await page.getByRole("combobox", { name: /^(Direction|方向)$/ }).click();
+    await page.getByRole("option", { name: option, exact: true }).click();
+    await page.keyboard.press("Escape");
+  }
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  await terminal
+    .getByRole("button", { name: /^(Search bytes|查找字节)$/ })
+    .click();
+  await chooseDirection("RX");
+  await page.setViewportSize({ width: 420, height: 600 });
+  const hex = (event) =>
+    terminal.locator(
+      `[data-direction="rx"] [data-hex-source][data-hex-byte-start="${event.payload.byteStart}"]`,
+    );
+  await expect(hex(first)).toBeVisible();
+  await expect(hex(second)).toBeVisible();
+  await terminal.evaluate(
+    (root, { firstStart, secondStart, from }) => {
+      const row = (offset) =>
+        root.querySelector(
+          `[data-direction="rx"] [data-hex-source][data-hex-byte-start="${offset}"]`,
+        )?.firstChild;
+      const head = row(firstStart);
+      const tail = row(secondStart);
+      if (!head || !tail)
+        throw new Error("Missing original RX selection nodes");
+      document.getSelection()?.setBaseAndExtent(head, from, tail, 5);
+    },
+    {
+      firstStart: first.payload.byteStart,
+      secondStart: second.payload.byteStart,
+      from: (firstBytes.length - 2) * 3,
+    },
+  );
+  await terminal.getByRole("button", { name: title }).click();
+  await expect(panel).toContainText("RX · 4 B");
+
+  async function choose(label, option) {
+    await panel.getByRole("combobox", { name: label }).click();
+    await page.getByRole("option", { name: option }).click();
+  }
+
+  async function save({ format, theme, extension, suffix, themeMarkup }) {
+    await choose(/^(Selection format|选区格式)$/, format);
+    await choose(/^(Export theme|导出主题)$/, theme);
+    await expect(panel.locator("pre")).toContainText("3C 26 3E 22");
+    const action = panel.getByRole("button", {
+      name: /^(Save selection|保存选区)$/,
+    });
+    await expect(action).toBeInViewport();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      action.click(),
+    ]);
+    const expectedName = `serial-selection-rx-${start}${suffix}.${extension}`;
+    assert.equal(download.suggestedFilename(), expectedName);
+    const path = join(output, expectedName);
+    await download.saveAs(path);
+    const content = await readFile(path, "utf8");
+    assert.ok(content.includes(`[${start}, ${end})`));
+    assert.ok(content.includes("|&lt;&amp;&gt;&quot;|"));
+    assert.ok(content.includes("3C 26 3E 22"));
+    assert.ok(content.includes(themeMarkup));
+    await expect(panel.getByRole("status")).toContainText(
+      /Selection saved|已保存选区/,
+    );
+    return expectedName;
+  }
+
+  const html = await save({
+    format: "HTML",
+    theme: /^(Dark|深色)$/,
+    extension: "html",
+    suffix: "",
+    themeMarkup: "color-scheme:dark",
+  });
+  const svg = await save({
+    format: "SVG",
+    theme: /^(Light|浅色)$/,
+    extension: "svg",
+    suffix: "-p1",
+    themeMarkup: 'fill="#ffffff"',
+  });
+  await panel.screenshot({
+    path: join(output, "receive-selection-download.png"),
+  });
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  if (initialViewport) await page.setViewportSize(initialViewport);
+  await chooseDirection(/^(Both directions|收发双向)$/);
+  await terminal
+    .getByRole("button", { name: /^(Close search|关闭查找)$/ })
+    .click();
+  await terminal.getByRole("radio", { name: browserTextMode }).click();
+  return {
+    firstRxEvent: first.eventSeq,
+    lastRxEvent: second.eventSeq,
+    start: String(start),
+    end: String(end),
+    html,
+    svg,
+  };
+}
+
 function recordWire(socket, direction) {
   socket.on(direction, ({ payload }) => {
     if (typeof payload !== "string") return;
@@ -278,13 +406,18 @@ try {
     { flag: "wx" },
   );
   await cli("authorize", "--params-json", rawGrantPath);
-  const readParams = async (name, startEventSeq, maxEvents) => {
+  const readParams = async (
+    name,
+    startEventSeq,
+    maxEvents,
+    target = original,
+  ) => {
     const path = join(root, name + ".json");
     await writeFile(
       path,
       JSON.stringify({
-        sessionId: original.id,
-        sessionEpoch: original.sessionEpoch,
+        sessionId: target.id,
+        sessionEpoch: target.sessionEpoch,
         startEventSeq,
         maxEvents,
         maxBytes: "262144",
@@ -343,6 +476,149 @@ try {
     );
     assert.deepEqual(local, event, "WebSocket and IPC Raw events differ");
   }
+
+  collectingRawEvidence = true;
+  const downloadSamples = [await echo("EXPORT<&"), await echo('>"EXPORT')].map(
+    (events) => events.find(({ event }) => event.kind === "rx").event,
+  );
+  collectingRawEvidence = false;
+  rawBatches.length = 0;
+  const exportRead = await readParams(
+    "raw-export",
+    downloadSamples[0].eventSeq,
+    "100",
+  );
+  const exportEvents = (await query("stream.read", rawTargetPath, exportRead))
+    .result.value.events;
+  const [firstExport, secondExport] = downloadSamples.map((event) => {
+    const actual = exportEvents.find(
+      ({ eventSeq }) => eventSeq === event.eventSeq,
+    );
+    assert.deepEqual(actual, event);
+    return actual;
+  });
+  const selectionDownloads = await checkSelectionDownloads(
+    page,
+    firstExport,
+    secondExport,
+  );
+  async function readRaw(label, start = "1") {
+    const params = await readParams(label, start, "100");
+    const { result } = await query("stream.read", rawTargetPath, params);
+    assert.equal(result.value.hasMore, false);
+    return result.value;
+  }
+  const ruleCommand = await checkRuleCommand({
+    page,
+    session: original,
+    ruleInvocationCount: () =>
+      frames.filter(
+        ({ direction, method, action }) =>
+          direction === "framesent" &&
+          method === "action.invoke" &&
+          action === "swb.builtin.automation.rule",
+      ).length,
+    screenshotPath: join(output, "rule-incompatible-effect.png"),
+    async readWorkspace() {
+      return (await query("workspace.read", workspacePath)).result.value
+        .document;
+    },
+    readRaw,
+    async getOperation(id) {
+      const { result } = await cli("operation", "get", id);
+      return result.operation;
+    },
+    async readResult(label, fileRef) {
+      const fileTarget = join(root, label + "-target.json");
+      const params = join(root, label + "-params.json");
+      await writeFile(
+        fileTarget,
+        JSON.stringify({
+          hostId: fileRef.hostId,
+          kind: fileRef.kind,
+          id: fileRef.id,
+        }),
+      );
+      await writeFile(
+        params,
+        JSON.stringify({ fileRef, offset: "0", maxBytes: "65536" }),
+      );
+      const { result } = await query("file.read", fileTarget, params);
+      assert.equal(result.value.atEnd, true);
+      return JSON.parse(
+        Buffer.from(result.value.bytesBase64, "base64").toString("utf8"),
+      );
+    },
+  });
+  const manualRecording = await checkManualRecording({
+    page,
+    readRaw,
+    source: firstExport,
+    output,
+  });
+  await expect
+    .poll(async () => {
+      const { result } = await query("device.refresh", hostTargetPath);
+      return result.value.devices.some(
+        ({ systemName, driver }) =>
+          systemName === "swb.builtin.tcp.transport" &&
+          driver === "swb.builtin.tcp",
+      );
+    })
+    .toBe(true);
+  const multiportBroadcast = await checkMultiportBroadcast({
+    page,
+    output,
+    original,
+    readEcho: readRaw,
+    async listSessions() {
+      const { result } = await query("state.scopes", hostTargetPath);
+      return sessionScopes(result.value.scopes).map(({ target }) => target);
+    },
+    async prepareTcpRaw(target) {
+      const path = join(root, "broadcast-tcp-target.json");
+      const grant = join(root, "broadcast-tcp-grant.json");
+      await writeFile(path, JSON.stringify(target), { flag: "wx" });
+      await writeFile(
+        grant,
+        JSON.stringify({
+          clientId: context.clientId,
+          permissions: ["content.read"],
+          targets: [target],
+        }),
+        { flag: "wx" },
+      );
+      await cli("authorize", "--params-json", grant);
+      return async (label, start = "1") => {
+        const params = await readParams(label, start, "100", target);
+        const { result } = await query("stream.read", path, params);
+        assert.equal(result.value.hasMore, false);
+        return result.value;
+      };
+    },
+    async operation(id) {
+      return (await cli("operation", "get", id)).result.operation;
+    },
+    submittedTx() {
+      return frames.filter(
+        ({ direction, action }) =>
+          direction === "framesent" && action === "session.tx",
+      ).length;
+    },
+  });
+  const priorWorkspace = (await query("workspace.read", workspacePath)).result
+    .value.document;
+  await page
+    .getByRole("button", { name: /保存当前布局|Save current layout/ })
+    .click();
+  await expect
+    .poll(async () => {
+      const { result } = await query("workspace.read", workspacePath);
+      return (
+        BigInt(result.value.document.revision) > BigInt(priorWorkspace.revision)
+      );
+    })
+    .toBe(true);
   const settingsPath = join(root, "settings.json");
   await writeFile(
     settingsPath,
@@ -544,6 +820,10 @@ try {
     cliObservedSettingsSavedByBrowser: true,
     virtualEchoRxBeforeAndAfterReload: true,
     sessionEpochPreserved: true,
+    selectionDownloads,
+    ruleCommand,
+    manualRecording,
+    multiportBroadcast,
     rawParity: {
       hostId: original.hostId,
       instanceEpoch: context.instanceEpoch,

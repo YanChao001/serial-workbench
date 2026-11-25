@@ -381,10 +381,18 @@ it.each(["host", "workspace", "unmount"] as const)(
       const next = workspace();
       if (kind === "host") next.scope.target.hostId = "other-host";
       else next.scope.target.id = "other-workspace";
+      const devices =
+        kind === "host"
+          ? [
+              device(),
+              { ...device("device-b"), hostId: next.scope.target.hostId },
+            ]
+          : base.devices;
       view.rerender(
         <StrictMode>
           <DeviceLibrary
             {...base}
+            devices={devices}
             workspace={next}
             onRebindDevice={onRebindDevice}
             onAcknowledged={onAcknowledged}

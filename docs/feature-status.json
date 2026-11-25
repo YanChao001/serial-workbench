@@ -235,7 +235,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1199,7 +1199,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
       },
       "hardware": {
         "status": "not-started",
@@ -2651,7 +2651,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
       },
       "hardware": {
         "status": "not-started",
@@ -2668,7 +2668,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
       },
       "hardware": {
         "status": "not-started",
@@ -2835,7 +2835,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -2920,7 +2920,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -3316,7 +3316,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
       },
       "hardware": {
         "status": "not-started",
@@ -3390,7 +3390,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
       },
       "hardware": {
         "status": "not-started",
@@ -4299,7 +4299,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {

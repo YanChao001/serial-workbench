@@ -246,12 +246,13 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 ### 规则触发（AUTO-07）
 
-工具窗先列目标会话，再给规则编辑器。定义错误紧随编辑器，成功验证后在操作按钮前展示条件、效果和时限。载入、保存、武装与停止共用工具窗小尺寸。宽窗按钮并排，窄窗自然换行。接纳、武装、取消与结果放在独立状态区，长操作标识和通知消息在区内换行。显式武装时将初始状态带入可见范围，键盘焦点留在原来的控件。
+工具窗先列目标会话，再给规则编辑器。定义错误紧随编辑器，成功验证后在操作按钮前展示条件、效果和时限。载入、保存、武装与停止共用工具窗小尺寸。宽窗按钮并排，窄窗自然换行。接纳、武装、取消与结果放在独立状态区，长操作标识和通知消息在区内换行。显式武装时将初始状态带入可见范围，键盘焦点留在原来的控件。命令效果使用当前 Host 目录的动作类型和目标。在宽窄窗都把未登记、不能从会话执行或应改用专用效果的提示紧贴定义字段。错误沿用主题语义色和现有字号，自然换行并关联键盘焦点。在可用命令点击武装后，沿用下方任务状态区反馈当前授权结果。编辑和保存仍可继续，窄窗按钮依旧按空间换行。
 
 ```text
 宽窗                                  窄窗
 目标会话                              目标会话
 [规则定义编辑器]                      [规则定义编辑器]
+定义或动作目标反馈                    定义或动作目标反馈
 条件、效果和时限                      条件、效果和时限
 [载入示例] [保存] [武装] [停止]         [载入示例] [保存]
 任务状态与来源                        [武装] [停止]
@@ -265,6 +266,8 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 分别在权限预检和 Host 接纳回执期间停止。预检中止后没有派发请求，已派发时等待确切的操作标识再申请取消。关闭面板后切到设置，等候通知并重开面板核对来源。再验证任务结果早于接纳回执到达，以及关闭面板时已发起的取消继续结算。
 
 定向软件验证使用 `node --test scripts/rule-condition.test.mjs scripts/rule-trigger.test.mjs scripts/product-automation.test.mjs` 和 `pnpm test:ui e2e/browser/rule-trigger.spec.ts --workers=1`。隔离原生环境沿用随包自动化首次登记与重启专项，真实设备与发行分别收集独立证据。
+
+带固定 Node 布局的生产 Host 使用本章的 `e2e/paired-browser.mjs`。在配对浏览器武装规则后关闭面板，确认放弃未保存的定义。向 Virtual Echo 发送带起始换行的 `RULE:BENCH` 行，重开面板查看同一任务和命令序列回执。用 CLI 核对两个操作的共同根、会话代次、规则命中的 11 字节来源，以及序列一次写出并匹配的 `RULE:ACK`。将 `workspace.save` 设为规则效果，核对 420 像素宽窗提示目标不支持，武装按钮不可用，WebSocket 没有发送该规则，工作区内容和修订保持一致。浏览器夹具还验证未登记和保留动作的提示、精确会话参数的 Host 预检、拒权后保留草稿，以及修正定义时清除旧反馈。`receipt.json` 的 `ruleCommand` 保留配对证据。单独的写库插件、实机对端和发行安装仍按本项验收。
 
 ### 日历定时任务（AUTO-08）
 
@@ -283,13 +286,57 @@ UTC 预览 [武装] [停止]                 [次数] [发送字节 / 载入]
 
 首方自动化 0.1.5 和参考自动化 0.1.10 分别登记 `swb.builtin.automation.calendar` 与 `swb.reference.automation.calendar`。在工作台菜单打开「日历定时任务」，选择指定时刻或 cron，填写发送字节或导入当前发送草稿。核对目标会话和 UTC 预览，在明确武装后检查独立任务。Host 接纳后先等待武装进度。关闭并重新打开面板，按原操作 ID 等待停止终态或查看回执。同会话有另一活动计划时，继续核对原操作。未提交的表单由未保存工作确认保护。一次执行提供 `schedule: { kind: "once", at }`，`at` 带明确的 UTC 偏移。循环执行提供 `schedule: { kind: "cron", expression, timeZone }` 和带偏移的 `endAt`。cron 按分钟、小时、日、月、星期填写，支持列表、区间、步进和英文月、星期缩写。指定日期和星期范围时任一匹配即可，两者之一覆盖全部范围时按另一字段。时区采用 IANA 名称。还须传当前会话修订 `sessionRevision` 和 `bytesBase64`，循环可设置 1–32 次尝试，默认 1 次。Host 已确认零写入的超窗尝试计入次数并留存操作 ID。单次武装的结束时间最多距 Host 当前时间 366 天。
 
-运行 `node --test scripts/calendar-*.test.mjs` 核对夏令时跨越、已过期定点、休眠后跳过错过的时隙、回拨、派发前再次复核、取消、用完和归还配额，以及真实回执结构下的逐次结算。检查每轮操作 ID、计划与观察时间、跳过的区间和写入确认。运行 `cargo test --locked -p serial-workbench-host --lib tx_calendar_window_is_checked_at_device_dispatch_after_host_waiting`，用可控 Host 时钟核对有效窗口、已过期的请求，以及正常接纳后停在设备派发前直至过期的请求。用 `pnpm test:ui e2e/browser/calendar-schedule.spec.ts --workers=1` 验证入口、无效日期、权威会话修订变更和关闭面板后的停止。隔离真实 Host 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对签名登记、定点写入和实际子回执。另武装一个未来计划后正常关停，重启后复用原授权身份。经过原时隙及迟到窗口，复核原操作的真实非成功终态、修订和零子操作保持一致。改参数、撤权和异常退出按独立对端场景补验。真实设备与正式安装环境分别收集证据。
+运行 `node --test scripts/calendar-*.test.mjs` 核对夏令时跨越、已过期定点、休眠后跳过错过的时隙、回拨、派发前再次复核、取消、用完和归还配额，以及真实回执结构下的逐次结算。检查每轮操作 ID、计划与观察时间、跳过的区间和写入确认。运行 `cargo test --locked -p serial-workbench-host --lib tx_calendar_window_is_checked_at_device_dispatch_after_host_waiting`，用可控 Host 时钟核对有效窗口、已过期的请求，以及正常接纳后停在设备派发前直至过期的请求。用 `pnpm test:ui e2e/browser/calendar-schedule.spec.ts --workers=1` 验证入口、无效日期、权威会话修订变更和关闭面板后的停止。隔离真实 Host 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对签名登记、定点写入和实际子回执。另武装一个未来计划后正常关停，重启后复用原授权身份。经过原时隙及迟到窗口，复核原操作的真实非成功终态、修订和零子操作保持一致。独立设备对端与正式安装环境另行收集证据。
+
+异常退出专项使用独立临时 profile。将 `SWB_TEST_CALENDAR_HOST_BIN` 设为已准备固定 Node 布局中的 Host 程序绝对路径，将 `SWB_TEST_CALENDAR_CRASH_OUTPUT` 设为新证据目录的绝对路径。运行 `cargo test --locked -p serial-workbench-host --test startup_main calendar_process_recovery::signed_calendar_does_not_replay_after_host_process_loss -- --ignored --exact --test-threads=1`。测试在计划武装后、原时隙前终止自己启动的 Host。重启后核对 Host 与操作者身份、递增的 Host 与会话代次，以及已派发父任务的 `unknown` 终态。跨过原时隙和迟到窗口后，核对修订稳定、零子操作及零原始收发。显式武装新计划应产生一次 Virtual Echo 收发。`receipt.json` 记录程序和签名归档摘要、代次和两项操作。
+
+改参数和撤权专项使用相同环境变量与另一个证据目录。运行 `cargo test --locked -p serial-workbench-host --test startup_main calendar_process_recovery::signed_calendar_checks_reconfiguration_and_revocation_before_writing -- --ignored --exact --test-threads=1`。先在任务已武装后将 Virtual Echo 从 9600 改为 19200，核对配置回读和新修订。原计划应留下 `transmit_unconfirmed` 结果，指向以 `REVISION_CONFLICT` 拒绝的子写入，已接纳与未知范围均为空。再武装一个新计划并撤销发起者的 `device.modify`。计划应在到期前以 `PERMISSION_DENIED` 中止，无子写入。跨过两个原时隙及迟到窗口后对照 Raw，确认零实际写入、零回显。恢复权限后显式武装新计划，核对精确收发字节以及两个旧终态保持稳定。
 
 ### 手工发送录制（AUTO-04）
 
-打开可写会话，在发送区选择「录制手工发送」，明确开始后分别手工发两段普通字节。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX、写入期限和有证据的等待。单次写入期限超出 5 秒时，录制保留已确认前缀。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
+沿用接收区确认窗和发送区录制弹层。宽窗按目标、HEX、确认与回执顺序。窄窗同一列换行，保持原有共用按钮高度。取消或关闭预览保留接收区焦点，仅确认发送可加入录制。录制计数继续显示已确认的动作，另在命令序列查看发送顺序。
 
-用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对从发送区打开录制稿、预览以及显式运行。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、资源和密钥引用继续按同项验收。
+```text
+宽窗                            窄窗
+目标 · 字节数 · 来源            目标 · 字节数
+[原始 HEX 预览]                 来源
+[确认发送] [实际回执]           [原始 HEX 预览]
+                                [确认发送]
+                                实际回执
+```
+
+打开可写会话，在发送区选择「录制手工发送」，明确开始后手工发送一段普通字节。从接收区选取连续 HEX 字节，先预览并取消，再打开预览并明确确认。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX、写入期限和有证据的等待。单次写入期限超出 5 秒时，录制保留已确认前缀。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
+
+用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/receive-context.spec.ts --workers 1` 核对录制稿、选区取消、精确修订和显式运行。真实配对浏览器沿用本章的 `e2e/paired-browser.mjs`。先用 CLI 核对取消选区预览后仅有原手工 TX，再确认发送两字节并立即关闭预览，观察录制仍保留两项真实回执。复核草稿的发送顺序、写入期限和选区 HEX，显式运行后用独立 Raw 读数核对新增两次 TX。`receipt.json` 的 `manualRecording` 保存证据。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、系统密钥解析和长文件动作继续按同项验收。
+
+#### 录制字节的输入引用
+
+在原录制弹层用共享复选框选择「将发送字节保存为输入引用」。默认保留原录制方式。引用模式按确认顺序给每段发送分配名称。命令序列工具内沿用已有的定义和预览分栏，临时 HEX 字段置于预览栏。窄窗先显示定义和文件操作，再显示临时输入与预览。输入用共享高度、等宽字体和掩码，长名称可换行。未填或无效时可导出定义，运行保持不可用。
+
+```text
+宽窗                                  窄窗
+[JSON 定义]   [运行所需输入]           [JSON 定义]
+[另存 JSON]   [recorded_send_1]       [另存 JSON]
+              [发送引用、等待]         [运行所需输入]
+[运行]         任务状态                [recorded_send_1]
+                                      [发送引用、等待] [运行]
+```
+
+从原录制切到引用模式，发送两段测试字节后生成草稿。核对 JSON 只含名称、占位符、顺序及时限。保存并重新打开，确认临时值为空。输入不完整的 HEX 时不接纳 Host 操作。输入替换字节后，预览显示引用，显式运行使用本次值。再次另存和重开均只含引用。退出面板或替换定义会清除临时输入。用独立 Raw 读端对照原发送与替换后的实际 TX。引用使用版本 1 的 `variables`，值为 `null`，须用于顶层发送步骤的完整 HEX 模板，原有字面变量继续适用。工作台在运行前绑定为普通版本 1 JSON。`manual-reference-sequence.json` 与收据 `manualRecording` 可从配对专项取用。
+
+每项引用可在掩码输入旁选择二进制文件。宽栏保持输入和「选择文件」并排，窄栏在同一引用下排列，状态紧随对应输入。选择后显示绑定的字节数。取消、空文件、超过 256 字节及读取失败保留该输入原有值。关闭工具或更换定义后忽略未完成的文件读取。
+
+```text
+宽栏                              窄栏
+recorded_send_2                   recorded_send_2
+[掩码 HEX] [选择文件]             [掩码 HEX]
+已绑定 4 字节                     [选择文件]
+                                  已绑定 4 字节
+```
+
+重新打开带引用的 JSON 后，用文件选择器为其中一项绑定含 00 和 FF 的短文件。复验取消、257 字节越界、重新导出、输入清空以及显式运行后的独立 Raw TX。序列不包含本地文件路径，打开时由用户重新选择。`receipt.json` 中的 `manualRecording.selectedFileHex` 记录独立 TX 已核对的四字节样本。无头回归持住已选文件的读取，关窗后重新导入同一引用，再释放旧读，核对新窗口仍缺输入且没有 Host 接纳。桌面原生文件选择器沿用隔离环境的原生窗口验收。
+
+为含输入引用的发送步骤配置三个重试帧，其中一个由普通变量展开为 `00`。打开草稿能预览全部重试，输入绑定为 `00` 后定位到冲突的重试帧并禁用运行。改用不同的输入后，显式运行只提交一次，Host 入参包含实际绑定值。配对验收先通过独立 Raw 端确认冲突期间没有新增 TX，再由 Virtual Echo 返回预期应答，核对实际文件字节及匹配后没有多发重试帧。
 
 ### 测试用例与断言（AUTO-05）
 
@@ -408,9 +455,54 @@ pnpm plugin-sdk:fixture
 cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
 ```
 
-用例安装实际签名参考包，通过标准 Host IPC 对批准的插件设备执行打开、写入和关闭。独立本机 TCP 对端核对实际二进制字节，Raw 核对 Host 实例、会话代次和来源。未经授权的打开不能到达对端，撤销用户读取授权终止其 Raw 交付。显式关闭、重新打开的新会话代次和停用后的实际对端断开分别核对。故障用例单独签名测试包装，实际写入后在返回线路回执前退出所属 Node 进程。TCP 对端核对已到达的字节和关闭，Host 核对派发区间仍为 `unknown`、卸下设备目录条目并拒绝过期操作。四目标 CI 的原生运行时检查包含两条用例。桌面参数输入、跨机适配和发行候选证据沿用各阶段的专项。
+用例安装实际签名参考包，通过标准 Host IPC 对批准的插件设备执行打开、写入和关闭。独立本机 TCP 对端核对实际二进制字节，Raw 核对 Host 实例、会话代次和来源。未经授权的打开不能到达对端，撤销用户读取授权终止其 Raw 交付。显式关闭、重新打开的新会话代次和停用后的实际对端断开分别核对。故障用例单独签名测试包装，实际写入后在返回线路回执前退出所属 Node 进程。TCP 对端核对已到达的字节和关闭，Host 核对派发区间仍为 `unknown`、卸下设备目录条目并拒绝过期操作。四目标 CI 的原生运行时检查运行主动连接、侦听与进程退出三种用例。桌面参数输入、跨机适配和发行候选证据沿用各阶段的专项。
 
 桌面参数入口运行 `pnpm test:ui e2e/browser/plugin-transport.spec.ts`，检查显式提交、失败保留输入和成功清理草稿登记。Host 参数校验和实际 TCP 对端继续通过签名传输用例检查。
+
+TCP 参考包兼容原有的端口参数。添加 `role` 选择 `client` 或 `server`，可用 `host` 指定目标地址或要侦听的本机 IP。默认 `127.0.0.1`。侦听用例先核对未授权的请求未占用端口、无对端写入的回执无接纳或未知区间，再由独立对端核对双向二进制字节、Raw 会话代次、重开和停用。运行 `node --test scripts/reference-transport.test.mjs` 复验端口占用、取消打开和读取、不会接纳第二位对端以及先交付半关闭前已收到的字节。
+
+首方 `swb.builtin.tcp` 0.1.0 与参考包共用 TCP 实现，归档摘要进入 Host 组件清单。隔离启动核对首次自动登记与同一 profile 重启。通过设备目录打开两种角色后，以独立 TCP 对端核对零字节、FF 和其他二进制字节及关闭。工作台 TCP 表单另以无头 Chromium 核对中英、明暗、宽窄、键盘、无效配置不提交、Host 拒绝保留草稿及唯一错误提示。
+
+```sh
+cargo test --locked -p serial-workbench-host --lib native_node_bundled_ -- --ignored --test-threads=1 --nocapture
+node --test scripts/reference-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
+```
+
+重建包时以 esbuild 针对 Node 26 打包 `reference-transport/builtin.ts`，使用 `sign_builtin_tcp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。收到验签结果后登记归档、入口、清单摘要与来源公钥。正式发行与跨设备收发继续按 T11 和 T14 验收。
+
+#### RFC 2217（NET-06）
+
+参考包 `reference.rfc2217` 使用独立设备贡献 `reference.rfc2217.transport`。通过已有插件参数入口指定 `host`、`port` 与整数 `baudRate`。默认 8N1、无流控，可显式提交 `dataBits`、`parity`、`stopBits`、`flowControl`、`dtr`、`rts`。停止位取字符串 `1`、`1.5`、`2`，1.5 适用于 5 数据位。选用硬件流控时由流控管理 RTS。 [RFC 2217](https://www.rfc-editor.org/rfc/rfc2217)
+
+```sh
+pnpm plugin-sdk:fixture
+node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- .cache/plugin-sdk/examples/reference-rfc2217/main.js <32字节种子文件> <新归档> <可信来源ID> <keyID>
+```
+
+用独立本机对端验证七项串口设置、确认值不同、拒绝选项、取消、超时、Telnet 分段、控制通知隔离和流控暂停。签名 Host 场景请求 115200 波特率并由对端应答 9600，核对打开失败及实际断连。重新协商成功后核对线路上的八个 Telnet 字节和 Host Raw 中的七个原始字节，末尾验收撤权、重开和停用。
+
+首方 `swb.builtin.rfc2217` 0.1.1 随 Host 登记。工作台从设备下拉选择「RFC 2217 远程串口」，输入远端地址、端口与波特率。展开线路设置以修改串口格式、流控和控制线。使用 [宽窄草稿](./ui-design.md#rfc-2217-连接草稿) 核对输入高度、字段对齐、短窗滚动、错误全文和焦点。选用硬件流控时，RTS 由对端流控接管，表单保留切换前的手动选项。Host 使用同次已确认的波特率、数据位、校验位、停止位和流控构建会话，调用方设置的本地等待和退避时间继续生效。签名场景故意提交不同的会话线路参数，通过 `session.get` 核对实际协商值。主按钮显示协商等待，失败保留草稿供重试。
+
+```sh
+cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
+node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
+```
+
+生成首方归档时以 esbuild 针对 Node 26 打包 `reference-rfc2217/builtin.ts`。使用 `sign_builtin_rfc2217 <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`，登记并核对归档、入口、清单摘要和来源公钥。原生首启重启用例以实际归档摘要核对来源、激活状态和设备登记。
+
+打开失败继续报告 `PLUGIN_TRANSPORT_OPEN_FAILED`。当前请求的终态可附带 `details.protocol = rfc2217`、`reason` 和具体 `field`。参数不符时提供 `requestedValue` 与 `reportedValue`。无效应答只保留可核验的请求值。工作台按字段显示可读值，例如波特率用 bit/s，流控和控制线复用已有名称。未识别的故障继续显示通用提示。
+
+再次使用签名参考包场景。独立对端回报不同波特率和完全静默时，分别核对 `different_value` 与 `timeout` 终态、确切值和实际断连，再建立新会话核对 Raw。窄窗复验错误全文、重复提示、重试和还原焦点。
+
+进入已打开连接的「控制线与回执」。在宽窗核对两组等高按钮同行，在窄窗核对 DTR 和 RTS 各自同排。等待时显示当前操作。若线路由硬件流控接管，保持该组禁用并显示原因。回执保留请求值、实际值和确认状态。 [会话控制草稿](./ui-design.md#rfc-2217-会话控制草稿)
+
+独立对端复验 DTR 请求置位但回报复位，以及 RTS 确认置位。发送 Raw 字节后再回复 DTR，检查 Host 的回执前 Raw 已推进。无权限的命令不得上网，流控暂停期间超时的待提交命令可明确结算未发送。发出后静默则观察未知终态、实际断连和新一代会话。用 `cargo test --locked -p serial-workbench-host --lib known_predecessor_upgrades_and_preserves_the_profile_decision` 复验 0.1.0 的启用、停用和卸载意图能正确迁移。
+
+第三方 RFC 2217 设备和发行继续验收。
 
 ### 有序会话钩子
 
@@ -642,7 +734,7 @@ Windows 签名终端原生专项在独立 runner 的同一桌面应用中使用�
 
 从接收区的 HEX 或 ASCII 选取同一方向的连续原始字节。打开字节选区，确认方向、起止字节和总数，再选择 HTML 或 SVG。两种格式用同一份 HEX 和可打印 ASCII 展示数据。宽弹层将格式、主题和分页放在标签右侧，窄弹层按标签、选项与预览顺序纵排。保存按钮紧随预览，取消文件对话框保留当前选择。
 
-HTML 保存完整范围，打印时按段分页。SVG 每页最多 64 个十六字节行，一次保存当前页，选择器标明页号，文件内保留该页和完整范围。浅色或深色由用户明确选择。ASCII 中的尖括号、引号和 `&` 只作为文字输出。复验 64 位字节偏移、跨事件连续选区、缺口拒绝、短末页、权限变化及键盘选择。原生保存对话框和发行包按[桌面边界](./testing.md#桌面边界)验收。
+HTML 保存完整范围，打印时按段分页。SVG 每页最多 64 个十六字节行，一次保存当前页，选择器标明页号，文件内保留该页和完整范围。浅色或深色由用户明确选择。ASCII 中的尖括号、引号和 `&` 只作为文字输出。复验 64 位字节偏移、跨事件连续选区、缺口拒绝、短末页、权限变化及键盘选择。配对浏览器沿用本章的 `e2e/paired-browser.mjs`。通过「查找字节」的「记录筛选」选择 RX，在 420 像素宽度下跨两条记录选取 4 字节。以独立 CLI 读取的 Raw 事件核对下载的深色 HTML 和浅色 SVG 的文件名、字节范围、HEX、ASCII 转义和背景。结果记录在 `receipt.json` 的 `selectionDownloads`。原生保存对话框和发行包按[桌面边界](./testing.md#桌面边界)验收。
 
 ### 多端口广播（IO-17）
 
@@ -661,9 +753,58 @@ COM15  终态                       COM14  已接纳 [停止]
 
 并行送入各自的 Host TX 队列。验证两路相同字节、第三路拒权或配置修订变化、既有发送仲裁和独立完成顺序。接纳前取消不得投递。接纳响应在途时记录停止意图，收到确切操作 ID 后请求停止。检查部分、未知和失去观察的状态。重查只读取原操作。实际两设备、独立 Host 目标和正式发行分别记录已验证范围。
 
+运行 `e2e/paired-browser.mjs` 时，使用含固定 Node 和首方 TCP 包的 Host，在同一独立 profile 打开 Virtual Echo 与 TCP 侦听。先不连接 TCP 对端，确认预览阶段没有提交。显式广播 `00 A5 FF 0A` 后，Virtual Echo 接纳并回显四字节，TCP 回执为拒绝、零接纳、零未确认。连接独立 TCP 对端后广播 `00 FF 0D 0A 80`，两路各接纳五字节，TCP 对端只收到这一帧。逐路用 CLI 对照操作 ID、会话代次和 Raw TX 回执，重开工具确认沿用原回执。关闭会话后由对端确认实际断连，关闭临时页签并保存测试布局后继续 MCP 验收。结果保存为 `receipt.json` 中的 `multiportBroadcast`，保留宽窄逐端口截图。
+
 ### 文件拖放发送（IO-18）
 
-在可写的本机桌面会话打开「文件传输」，将单个普通文件拖到源文件字段。核对字段显示文件名和大小，范围按整份文件初始化。调整范围并检查 Host 到确认时才接纳发送。拖到字段外、同时拖入多个文件、切换窗口、重载或换代后使用旧票据，均不应将该文件带入预览。复用物理串口对端核对确认后的实际字节。用 `pnpm test:ui e2e/browser/transfer-progress.spec.ts --workers=1` 验证落点、代次和确认，桌面 Rust 单测核对票据归属、一次性、过期及多文件限制。三平台操作系统的实际拖放、配对浏览器文件交接、预定义命令槽和正式发行继续验收。
+在可写的本机桌面会话打开「文件传输」，将单个普通文件拖到源文件字段。核对字段显示文件名和大小，范围按整份文件初始化。调整范围并检查 Host 到确认时才接纳发送。拖到字段外、同时拖入多个文件、切换窗口、重载或换代后使用旧票据，均不应将该文件带入预览。复用物理串口对端核对确认后的实际字节。用 `pnpm test:ui e2e/browser/transfer-progress.spec.ts --workers=1` 验证落点、代次和确认，桌面 Rust 单测核对票据归属、一次性、过期及多文件限制。三平台操作系统的实际拖放、配对浏览器文件交接和正式发行继续验收。桌面命令槽的专项场景见下文。
+
+#### 浏览器交接草稿
+
+配对浏览器打开与桌面共用的文件传输工具。只读配对显示当前权限和禁用原因。有操作权限时可选择一个文件或将它拖到源文件字段。字段显示可读取的完整文件名和大小，范围以原始字节计。样本区用等宽字显示所选范围开头的少量十六进制字节及实际偏移，窄窗在样本区内换行。选择或拖放只在浏览器更新预览。确认后显示交接进度与取消入口。提交接纳期间保留同一请求号，连接恢复后按原请求查回执。Host 接纳后显示设备写入进度和停止入口，等待停止结果后才显示实际终态。切换会话、换源或关页后，迟到结果归原请求。已接纳的任务可从任务列表按原操作继续查看。只在当前标签页保留待查的提交信封，信封按 Host 代次、配对身份和目标隔离。回执不明时先丢弃可能仍在的交接文件，再按原请求号查回执。没有接纳记录时恢复选取或确认入口。浏览器端保持共享文件字段、控件尺寸、表单边距和按钮层级。全文件名可键盘读取，字节预览限制为选区开头 16 字节。 常规页将大小放在源文件标签旁，偏移和长度并排，选区预览紧跟两个输入。速率与分块参数一起放进高级页，让矮窗同时能看到文件名、范围、预览和确认操作。
+
+```text
+宽窗                           窄窗
+源文件 [firmware.bin][浏览]   源文件
+范围   [起始][长度]           [firmware.bin][浏览]
+选区字节数 / 选区开头         范围 [起始][长度]
+高级 [速率与分块参数]         选区字节数 / 选区开头
+                [确认发送]    高级 [速率与分块参数]
+交接进度 [取消] 或停止发送                 [确认发送]
+                               交接进度 [取消]
+                               写入进度 [停止发送]
+```
+
+交接软测以真实配对连接和 Virtual Echo 比较范围对应的原始字节，分别触发接纳前关页、撤销、断开重连，以及接纳后停止和回执重查。检查第二个连接无法复用临时引用，失败和重启回收磁盘，用户确认前设备保持静默。
+
+Host 分块交接运行 `cargo test --locked -p serial-workbench-host --lib --test browser_pairing browser_file -- --test-threads=1`，核对磁盘上的封存字节、SHA-256、错序、写失败、闲置回收、连接隔离、撤权后重新授权与撤销配对。封存 `00 FF 24 7B` 后选择偏移 1、长度 2，使用 Virtual Echo 的独立 Raw 读端核对恰好收到 `FF 24`。发起连接取得接纳回执后断开，从同一配对身份的另一个连接以原请求号查询同一操作。修改选区后复用请求号应拒绝，另起请求也无法再使用已转移或已丢弃的封存文件。完整配对回归另外覆盖只读权限、连接来源与通道边界。配对 Chromium 复验先运行 `pnpm build:web`，将 `SWB_TEST_BROWSER_TRANSFER_OUTPUT` 指向验收产物目录，再执行上述 `browser_pairing` 专项。测试由隔离 Host 服务 `dist-web`，经真实配对进入 Virtual Echo，在 420×610 和 1240×820 检查文件选取、拖放命中、长文件名、完整选区预览及硬盘文件交接前的静默。确认后核对同一调用信封、2 B 写入回执和独立 Raw 读端的 `FE 23`，保存宽窄截图和脱敏回执。物理串口、三平台系统拖放和正式发行继续专项验收。
+
+#### 命令槽文件导入
+
+浏览器与桌面共用正文标题、载入按钮及预览。宽窗在正文标题右侧放载入按钮，窄窗在各自容器内换行。预览展示完整文件名、字节数和开头的 HEX。已有正文时给出替换提示，取消将焦点还给载入按钮，确认将焦点移到正文。保存按钮沿用编辑器固定操作栏。
+
+```text
+宽窗                                      窄窗
+命令正文  拖入一个文件          [载入文件]   命令正文           [载入文件]
+[正文编辑区，文件只接受此区拖放]             拖入一个文件
+文件名  字节数  HEX     [取消] [替换正文]    [正文编辑区]
+                                    [预览文件名、字节数和 HEX]
+                                           [取消] [替换正文]
+```
+
+浏览器只读取用户选择的单个非空文件，读取前检查正文预算。选取和预览在当前标签内完成。显式应用只写入本地命令草稿，保存时使用现有工作区修订合同提交正文。取消、关闭编辑器、切换命令或 Host 换代后，迟到的文件结果不能修改当前草稿。桌面仍通过当前窗口持有的票据读取并校验 Host 文件。
+
+预定义命令槽从所选分组的命令编辑页接收单个文件。正文区使用同高的文件入口，可用键盘选择。把文件的原始字节填入 HEX 草稿，保留名称、备注、选定编码和命令行尾，并明确标出待保存状态。已有正文先提示替换，取消时保留原稿及焦点。正文预算按现有命令库序列化上限计算。空文件、超出预算和读取错误提示原因，原草稿可继续编辑。Host 换代后旧票据和迟到读取无法应用。保存沿用命令库的修订号和真实回执。之后可从命令库载入发送稿并走独立确认。
+
+用中文窄窗和英文宽窗键盘完成文件选择、确认和取消。核对有效落点、多个文件、长文件名、任意二进制、空文件和边界尺寸。命令槽运行 `pnpm test:ui e2e/browser/command-library.spec.ts e2e/browser/transfer-progress.spec.ts --workers=1`。核对拖放落点和代次、键盘浏览、取消后焦点、HEX 替换和撤销、准确的最大长度、空文件与越界、关闭后忽略迟到读取、保存后再次打开还原相同 HEX。真实配对复用 `SWB_TEST_BROWSER_TRANSFER_OUTPUT` 场景，在浏览器新建命令分组，核对单文件落点、多文件拒绝以及 0、21,845、21,846 字节的边界。确认替换后保留备注，将 `09 FF 00 41` 随修订保存并重开确认。命令槽选取和应用期间无文件发送交接请求。真实系统拖放、独立设备及正式发行分别留存证据。
+
+### 复现实验包（SESS-09）
+
+从「工作区配置」进入「复现实验包」。按[宽窄草稿](./ui-design.md#复现实验包草稿)核对导出证据选择、脱敏预览、文件保存、导入依赖检查和配置替换。
+
+Host 软件验收应核对一致修订、篡改与未来版本、源访问受限、解析器已禁用、录制缺失或摘要不符、空工作区、仅只读检查和导入后设备重新绑定。注入命令正文、USB 序列号、路径及错误详情作为样本，核对它们没有进入导出的 JSON。工作台验收另核对宽窄布局、稳定错误、键盘操作、保存取消、修改冲突和跨 Host 提示。
+
+跨 Host 软件验收先运行 `pnpm build:web`，将 `SWB_TEST_EXPERIMENT_BROWSER_OUTPUT` 指向新的绝对证据目录，然后运行 `cargo test --locked -p serial-workbench-host --test capture_api_host experiment_browser::paired_browsers_exchange_experiment_between_two_hosts -- --ignored --exact --test-threads=1`。场景启动两个隔离 Host 和无头 Chromium。源端封存 Virtual Echo 录制，从配对浏览器下载脱敏包。目标端检查解析器缺失和异机录制，确认前保持工作区，确认后按修订保存。设备库只列出目标工作区 Host 上可供重新绑定的设备，用户确认后保留原线路配置并使用新设备身份。查看浏览器动作收据、Host 修订及截图。实体串口、不同机器与正式安装另按相应环境复验。
 
 ### 会话模板（SESS-03）
 

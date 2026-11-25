@@ -57,6 +57,25 @@ import type { SessionTemplateConnection } from "./session-template-tool";
 import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
+import { TcpConnectionParameters } from "./tcp-connection-parameters";
+import {
+  rfc2217OpenDiagnostic,
+  rfc2217OpenDiagnosticText,
+  type Rfc2217OpenDiagnostic,
+} from "./rfc2217-open-diagnostic";
+import {
+  Rfc2217ConnectionParameters,
+  type Rfc2217SerialConfiguration,
+} from "./rfc2217-connection-parameters";
+import {
+  builtinRfc2217PackageId,
+  builtinRfc2217ProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint";
+import { useI18n } from "@/providers/i18n";
+import {
+  builtinTcpPackageId,
+  builtinTcpProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-transport/tcp-endpoint";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { CommandLibrarySource } from "./command-library";
@@ -258,6 +277,10 @@ export type WorkbenchToolContext = {
   chartSelection?: ChartSourceSelection;
   onRevealChartSource?: (source: ChartSourceSelection) => void;
 };
+type WorkbenchActionFailure = Omit<WorkbenchFailure, "message"> & {
+  rfc2217?: Rfc2217OpenDiagnostic;
+};
+
 export type WorkspaceLayoutProps = {
   receiveHistory?: StreamViewProps["historyLimits"];
   onReceiveHistoryChange?: StreamViewProps["onHistoryLimitsChange"];
@@ -436,6 +459,7 @@ export function WorkspaceLayout({
   formatError,
   unboundDraftMessage,
 }: WorkspaceLayoutProps) {
+  const { t } = useI18n();
   const { state, watchSession, watchActions } = host;
   const [highlightRules, setHighlightRules] = useState<StreamHighlightRule[]>(
     [],
@@ -579,7 +603,7 @@ export function WorkspaceLayout({
   const [opening, setOpening] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
   const choosingResource = useRef(false);
-  const [error, setError] = useState<Omit<WorkbenchFailure, "message">>();
+  const [error, setError] = useState<WorkbenchActionFailure>();
   const lastFailure = useRef(0);
   const failure = error
     ? {
@@ -672,6 +696,21 @@ export function WorkspaceLayout({
             entry.fingerprint.transport === "plugin",
         )
       : undefined;
+  const tcpPrompt =
+    promptDevice?.systemName === builtinTcpProviderId &&
+    promptDevice.driver === builtinTcpPackageId;
+  const rfc2217Prompt =
+    promptDevice?.systemName === builtinRfc2217ProviderId &&
+    promptDevice.driver === builtinRfc2217PackageId;
+  const promptFailure =
+    openError && promptDevice && failure?.deviceId === promptDevice.deviceId
+      ? failure
+      : undefined;
+  const TransportParameters = rfc2217Prompt
+    ? Rfc2217ConnectionParameters
+    : tcpPrompt
+      ? TcpConnectionParameters
+      : PluginTransportParameters;
   useEffect(() => {
     if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
   }, [promptDevice, transportPrompt]);
@@ -1449,9 +1488,11 @@ export function WorkspaceLayout({
     reason: unknown,
     module: UserLogModule,
     failedDeviceId?: string,
-  ): Omit<WorkbenchFailure, "message"> {
+  ): WorkbenchActionFailure {
     return {
       code: nativeErrorCode(reason),
+      rfc2217:
+        module === "connection" ? rfc2217OpenDiagnostic(reason) : undefined,
       occurrence: ++lastFailure.current,
       module,
       eventKey: operationFailureEventKey(reason),
@@ -1464,6 +1505,7 @@ export function WorkspaceLayout({
     deviceId: string,
     transportParams?: OpenParams["transportParams"],
     template?: SerialConfiguration,
+    transportConfiguration?: Rfc2217SerialConfiguration,
   ) {
     if (connectionDefaultsLoading) return;
     focusRevision.current++;
@@ -1506,7 +1548,10 @@ export function WorkspaceLayout({
       const configuration =
         existing && !existing.readOnly
           ? existing.configuration
-          : (template ?? requestedConfiguration(deviceId));
+          : (template ?? {
+              ...requestedConfiguration(deviceId),
+              ...transportConfiguration,
+            });
       const opened =
         transportParams === undefined
           ? await connect(deviceId, controller.signal, configuration)
@@ -1843,8 +1888,12 @@ export function WorkspaceLayout({
       return host.send(target, bytes, signal, writeWaitMs);
     return host.send(target, bytes, signal, writeWaitMs, expectedRevision);
   }
-  function submitManualBytes(bytes: Uint8Array, signal?: AbortSignal) {
-    if (!session) return submitBytes(bytes, signal);
+  function submitManualBytes(
+    bytes: Uint8Array,
+    signal?: AbortSignal,
+    expectedRevision?: string,
+  ) {
+    if (!session) return submitBytes(bytes, signal, expectedRevision);
     const writeWaitMs = sendWaitMs(
       session.configuration,
       bytes.length,
@@ -1854,7 +1903,7 @@ export function WorkspaceLayout({
       submitBytes(
         bytes,
         signal,
-        guardRevision ? session.revision : undefined,
+        expectedRevision ?? (guardRevision ? session.revision : undefined),
         writeWaitMs,
       ),
     );
@@ -2272,6 +2321,7 @@ export function WorkspaceLayout({
       <WorkbenchNotice
         noticeKey={`action:${failure?.occurrence ?? ""}`}
         eventKey={failure?.eventKey}
+        inline={!!promptFailure}
         log={
           failure
             ? {
@@ -2351,7 +2401,7 @@ export function WorkspaceLayout({
                     scope: JSON.stringify([bookmarkScope, session.revision]),
                     port: historyDestination.port,
                     send: (bytes, signal) =>
-                      submitBytes(bytes, signal, session.revision),
+                      submitManualBytes(bytes, signal, session.revision),
                     wait: host.waitForOperation,
                   }
                 : undefined
@@ -2596,24 +2646,38 @@ export function WorkspaceLayout({
       <WorkbenchDialog
         open={!!promptDevice}
         scopeKey={transportScope}
-        title={labels.pluginTransportParameters}
+        title={
+          rfc2217Prompt
+            ? t("rfc2217Connection.title")
+            : tcpPrompt
+              ? t("tcpConnection.title")
+              : labels.pluginTransportParameters
+        }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
         onRequestClose={() => setTransportPrompt(undefined)}
       >
         {promptDevice && (
-          <PluginTransportParameters
+          <TransportParameters
             key={promptDevice.deviceId}
             device={promptDevice.systemName}
             labels={labels}
             opening={opening === promptDevice.deviceId}
             error={
-              openError && failure?.deviceId === promptDevice.deviceId
-                ? failure?.message
-                : undefined
+              rfc2217Prompt && promptFailure?.rfc2217
+                ? rfc2217OpenDiagnosticText(promptFailure.rfc2217, t)
+                : promptFailure?.message
             }
-            onSubmit={(params) => {
-              void open(promptDevice.deviceId, params);
+            onSubmit={(
+              params: NonNullable<OpenParams["transportParams"]>,
+              lineConfiguration?: Rfc2217SerialConfiguration,
+            ) => {
+              void open(
+                promptDevice.deviceId,
+                params,
+                undefined,
+                lineConfiguration,
+              );
             }}
           />
         )}

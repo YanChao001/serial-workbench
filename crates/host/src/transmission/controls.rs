@@ -67,6 +67,19 @@ impl TransmissionService {
                             actual: Some(value),
                         })))
                     }
+                    Ok(ControlResult::LineUnknown { line, error }) if line == params.line => {
+                        self.devices.persist(session).await?;
+                        Ok(Completion {
+                            state: OperationState::Unknown,
+                            result: ActionResult::Control(ControlReceipt {
+                                line,
+                                requested: params.value,
+                                status: ControlStatus::Unknown,
+                                actual: None,
+                            }),
+                            error: Some(error),
+                        })
+                    }
                     Ok(_) => Err(invalid()),
                     Err(error) => Err(*error.error),
                 }

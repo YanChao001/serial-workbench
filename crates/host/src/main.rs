@@ -69,20 +69,21 @@ async fn run() -> HostResult<()> {
             ContextToken::try_from(std::str::from_utf8(&secret).map_err(|_| invalid_args())?)?;
         return serial_workbench_ipc::write_bootstrap_capability(token.as_str().as_bytes());
     }
-    let mut host = HostServer::bind(profile).await?;
-    if matches!(transfer, StartupTransfer::Bootstrap) {
-        host.write_bootstrap_capability()?;
-    }
+    let mut host = HostServer::prepare(profile).await?;
     let handler = Host::with_startup_config(host.store(), host.auth(), startup.snapshot()).await?;
-    let entry = match transfer {
+    let entry = match &transfer {
         StartupTransfer::Browser(assets) => {
-            Some(serde_json::to_vec(&host.enable_browser(&assets).await?))
+            Some(serde_json::to_vec(&host.enable_browser(assets).await?))
         }
         StartupTransfer::HttpControl => {
             Some(serde_json::to_vec(&host.enable_http_control().await?))
         }
         _ => None,
     };
+    host.publish_discovery().await?;
+    if matches!(transfer, StartupTransfer::Bootstrap) {
+        host.write_bootstrap_capability()?;
+    }
     if let Some(encoded) = entry {
         serial_workbench_ipc::write_bootstrap_capability(&encoded.map_err(|_| invalid_args())?)?;
     }

@@ -95,6 +95,78 @@ impl RegisteredTransport {
         self.handler.normalize_parameters(params)
     }
 
+    fn is_rfc2217(&self) -> bool {
+        matches!(
+            (
+                self.handler.package().as_str(),
+                self.spec().action_id.as_str()
+            ),
+            ("swb.builtin.rfc2217", "swb.builtin.rfc2217.transport")
+                | ("reference.rfc2217", "reference.rfc2217.transport")
+        )
+    }
+
+    pub(crate) fn apply_session_configuration(
+        &self,
+        params: &JsonObject,
+        configuration: &mut SerialConfiguration,
+    ) -> HostResult<()> {
+        if !self.is_rfc2217() {
+            return Ok(());
+        }
+        let invalid = || HostError::new("INVALID_ARGUMENT", "Invalid RFC 2217 serial settings");
+        let integer = |value: &SafeInteger| {
+            serde_json::to_value(value)
+                .ok()
+                .and_then(|encoded| encoded.as_u64())
+                .ok_or_else(invalid)
+        };
+        let baud_rate = match params.get("baudRate") {
+            Some(JsonValue::Number(value)) => {
+                u32::try_from(integer(value)?).map_err(|_| invalid())?
+            }
+            _ => return Err(invalid()),
+        };
+        configuration.baud_rate = PositiveU64::try_from(U64::from(u64::from(baud_rate)))?;
+        configuration.data_bits = match params.get("dataBits") {
+            None => DataBits::Eight,
+            Some(JsonValue::Number(value)) => match integer(value)? {
+                5 => DataBits::Five,
+                6 => DataBits::Six,
+                7 => DataBits::Seven,
+                8 => DataBits::Eight,
+                _ => return Err(invalid()),
+            },
+            _ => return Err(invalid()),
+        };
+        let setting = |name, default| match params.get(name) {
+            Some(JsonValue::String(value)) => Ok(value.as_str()),
+            None => Ok(default),
+            _ => Err(invalid()),
+        };
+        configuration.parity = match setting("parity", "none")? {
+            "none" => Parity::None,
+            "odd" => Parity::Odd,
+            "even" => Parity::Even,
+            "mark" => Parity::Mark,
+            "space" => Parity::Space,
+            _ => return Err(invalid()),
+        };
+        configuration.stop_bits = match setting("stopBits", "1")? {
+            "1" => StopBits::One,
+            "1.5" => StopBits::OnePointFive,
+            "2" => StopBits::Two,
+            _ => return Err(invalid()),
+        };
+        configuration.flow_control = match setting("flowControl", "none")? {
+            "none" => FlowControl::None,
+            "hardware" => FlowControl::RtsCts,
+            "software" => FlowControl::XonXoff,
+            _ => return Err(invalid()),
+        };
+        Ok(())
+    }
+
     pub(crate) fn open(
         &self,
         params: JsonObject,
@@ -102,7 +174,8 @@ impl RegisteredTransport {
     ) -> BackendResult<Box<dyn Transport>> {
         self.current()?;
         authorize()?;
-        let waiting = PendingPluginTransport::listen()?;
+        let rfc2217 = self.is_rfc2217();
+        let waiting = PendingPluginTransport::listen()?.with_rfc2217_diagnostics(rfc2217);
         let endpoint = TransportEndpoint {
             address: waiting.address().to_string(),
             credential: waiting.credential().clone(),
@@ -144,12 +217,12 @@ impl RegisteredTransport {
                     "backendTransportStartUnconfirmed",
                 )
             })??;
-        waiting
-            .with_cleanup(cleanup)
-            .accept(Duration::from_secs(2), || {
-                self.current()?;
-                authorize()
-            })
+        // RFC 2217 先完成自己的三秒有界协商与断连，再回报终态。
+        let open_wait = Duration::from_secs(if rfc2217 { 4 } else { 2 });
+        waiting.with_cleanup(cleanup).accept(open_wait, || {
+            self.current()?;
+            authorize()
+        })
     }
 }
 

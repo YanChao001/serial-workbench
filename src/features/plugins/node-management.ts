@@ -161,9 +161,10 @@ export function queryNode(
 export async function loadInstalledPlugins(
   connection: HostConnection,
   signal?: AbortSignal,
+  filter: Pick<NodePackageListParams, "parserOnly"> = {},
 ) {
   const packages: NodePackageSummary[] = [];
-  let input: NodePackageListParams = {};
+  let input: NodePackageListParams = filter;
   const seen = new Set<string>();
   for (;;) {
     const result = await queryNode(
@@ -183,7 +184,7 @@ export async function loadInstalledPlugins(
     if (nextAfter === undefined) return { revision, packages };
     if (seen.has(nextAfter)) throw new ContractValidationError();
     seen.add(nextAfter);
-    input = { after: nextAfter, expectedRevision: revision };
+    input = { ...filter, after: nextAfter, expectedRevision: revision };
   }
 }
 

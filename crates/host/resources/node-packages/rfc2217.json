@@ -1,0 +1,16 @@
+{
+  "id": "swb.builtin.rfc2217",
+  "version": "0.1.1",
+  "archiveSha256": "362ba1f1ade3ca61adf03a5d382c1c79e1428120217ec985ce08c95b3920ba97",
+  "compiledModuleSha256": "35f5ec8be15651989795a291b7e4711a26758087009ef657f52df4e25e4432cf",
+  "manifestSha256": "bb0b26e1901508b7d26d4eeba44a57ab64585375edbd314f78aaf8152e37db2d",
+  "sourceApproval": {
+    "keyId": "built-in-rfc2217-0.1.1",
+    "publicKey": [
+      11, 34, 11, 23, 253, 79, 190, 209, 56, 185, 53, 140, 173, 110, 144, 98,
+      156, 253, 62, 226, 88, 200, 244, 196, 240, 222, 87, 66, 212, 101, 206, 53
+    ],
+    "publicKeySha256": "e401572a4684e4c5490844a52730fc30377fe906d9584aec2835915c1508e4fd",
+    "source": "swb.product"
+  }
+}

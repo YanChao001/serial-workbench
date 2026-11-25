@@ -26,12 +26,14 @@ const HELLO_WAIT: Duration = Duration::from_millis(500);
 const READ_REPLY_GRACE: Duration = Duration::from_secs(2);
 const CLOSE_WAIT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_millis(1);
-const QUEUE_CAPACITY: usize = 4;
+const QUEUE_CAPACITY: usize = 6;
+const LINE_WAIT_MS: u64 = 1_500;
 
 pub(crate) struct PendingPluginTransport {
     listener: TcpListener,
     address: SocketAddr,
     credential: ContextToken,
+    report_rfc2217: bool,
     cleanup: Option<Arc<dyn BackendCleanup>>,
 }
 
@@ -44,6 +46,7 @@ impl PendingPluginTransport {
             listener,
             address,
             credential: random_token(),
+            report_rfc2217: false,
             cleanup: None,
         })
     }
@@ -54,6 +57,11 @@ impl PendingPluginTransport {
 
     pub(crate) fn credential(&self) -> &ContextToken {
         &self.credential
+    }
+
+    pub(crate) fn with_rfc2217_diagnostics(mut self, enabled: bool) -> Self {
+        self.report_rfc2217 = enabled;
+        self
     }
 
     pub(crate) fn with_cleanup(mut self, cleanup: Arc<dyn BackendCleanup>) -> Self {
@@ -99,16 +107,25 @@ impl PendingPluginTransport {
         }
         wire.queue(&Request::Start)?;
         match wire.receive_until(deadline, MAX_HELLO_BYTES) {
-            Ok(Response::Opened) if wire.output.is_empty() => Ok(Box::new(PluginTransport {
-                lane: Arc::new(Mutex::new(Lane::new(wire))),
-                cleanup: self.cleanup,
-            })),
+            Ok(Response::Opened { line_controls }) if wire.output.is_empty() => {
+                Ok(Box::new(PluginTransport {
+                    lane: Arc::new(Mutex::new(Lane::new(wire))),
+                    cleanup: self.cleanup,
+                    output_lines: line_controls.unwrap_or_default(),
+                }))
+            }
             // Provider 明确返回失败，连接未交给 Host。
-            Ok(Response::Error { id: None }) if wire.output.is_empty() => Err(HostError::new(
-                "PLUGIN_TRANSPORT_OPEN_FAILED",
-                "Plugin transport could not open the connection",
-            )
-            .into()),
+            Ok(Response::Error {
+                id: None,
+                negotiation,
+            }) if wire.output.is_empty() => {
+                let negotiation = if self.report_rfc2217 {
+                    negotiation
+                } else {
+                    None
+                };
+                Err(plugin_open_failure(negotiation).into())
+            }
             outcome => {
                 let error = match outcome {
                     Ok(_) => protocol_error(),
@@ -152,6 +169,12 @@ enum Request<'a> {
         bytes: &'a str,
         wait_ms: u64,
     },
+    SetLine {
+        id: u64,
+        line: ControlLine,
+        value: bool,
+        wait_ms: u64,
+    },
     Cancel {
         id: u64,
     },
@@ -161,11 +184,30 @@ enum Request<'a> {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Response {
-    Hello { credential: ContextToken },
-    Opened,
-    Read { id: u64, bytes: String, eof: bool },
-    Written { id: u64, accepted: usize },
-    Error { id: Option<u64> },
+    Hello {
+        credential: ContextToken,
+    },
+    Opened {
+        #[serde(rename = "lineControls")]
+        line_controls: Option<OutputLines>,
+    },
+    Line {
+        id: u64,
+        actual: Option<bool>,
+    },
+    Read {
+        id: u64,
+        bytes: String,
+        eof: bool,
+    },
+    Written {
+        id: u64,
+        accepted: usize,
+    },
+    Error {
+        id: Option<u64>,
+        negotiation: Option<serde_json::Value>,
+    },
     Closed,
 }
 
@@ -239,7 +281,9 @@ impl Wire {
         bytes.extend_from_slice(&(body.len() as u32).to_be_bytes());
         bytes.extend_from_slice(&body);
         let operation_id = match request {
-            Request::Read { id, .. } | Request::Write { id, .. } => Some(*id),
+            Request::Read { id, .. } | Request::Write { id, .. } | Request::SetLine { id, .. } => {
+                Some(*id)
+            }
             _ => None,
         };
         self.output.push_back(Outbound {
@@ -314,12 +358,20 @@ struct WriteRequest {
     cancel_sent: bool,
 }
 
+struct LineRequest {
+    id: u64,
+    line: ControlLine,
+    result: Option<HostResult<ControlResult>>,
+    cancel_sent: bool,
+}
+
 struct Lane {
     wire: Wire,
     state: LaneState,
     next_id: u64,
     reading: Option<ReadRequest>,
     writing: Option<WriteRequest>,
+    controlling: Option<LineRequest>,
 }
 
 impl Lane {
@@ -330,6 +382,7 @@ impl Lane {
             next_id: 1,
             reading: None,
             writing: None,
+            controlling: None,
         }
     }
 
@@ -416,8 +469,8 @@ impl Lane {
 
     fn poll_responses(&mut self) -> HostResult<()> {
         self.wire.flush()?;
-        // 一轮最多有读、写和关闭三个回执。无响应时立即归还 owner 的控制轮次。
-        for _ in 0..3 {
+        // 一轮最多收取读、写、线路控制和关闭回执。
+        for _ in 0..4 {
             let Some(response) = self
                 .wire
                 .reader
@@ -448,7 +501,11 @@ impl Lane {
         let operation_id = match &response {
             Response::Read { id, .. }
             | Response::Written { id, .. }
-            | Response::Error { id: Some(id) } => Some(*id),
+            | Response::Line { id, .. }
+            | Response::Error {
+                id: Some(id),
+                negotiation: None,
+            } => Some(*id),
             _ => None,
         };
         if operation_id.is_some_and(|id| !self.wire.is_dispatched(id)) {
@@ -491,7 +548,21 @@ impl Lane {
                     }),
                 });
             }
-            Response::Error { id: Some(id) } => {
+            Response::Line { id, actual } => {
+                let pending = self.pending_line(id).ok_or_else(protocol_error)?;
+                pending.result = Some(
+                    actual
+                        .map(|value| ControlResult::Line {
+                            line: pending.line,
+                            value,
+                        })
+                        .ok_or_else(line_not_applied),
+                );
+            }
+            Response::Error {
+                id: Some(id),
+                negotiation: None,
+            } => {
                 if let Some(read) = self
                     .reading
                     .as_mut()
@@ -507,6 +578,11 @@ impl Lane {
                     .filter(|write| write.id == id && write.result.is_none())
                 {
                     write.result = Some(unknown_write(write.bytes.len(), close_unknown()));
+                } else if let Some(control) = self.pending_line(id) {
+                    control.result = Some(Ok(ControlResult::LineUnknown {
+                        line: control.line,
+                        error: close_unknown(),
+                    }));
                 } else {
                     return Err(protocol_error());
                 }
@@ -519,6 +595,12 @@ impl Lane {
             _ => return Err(protocol_error()),
         }
         Ok(())
+    }
+
+    fn pending_line(&mut self, id: u64) -> Option<&mut LineRequest> {
+        self.controlling
+            .as_mut()
+            .filter(|pending| pending.id == id && pending.result.is_none())
     }
 
     fn take_read(&mut self, limit: usize) -> Option<HostResult<ReadBlock>> {
@@ -566,14 +648,35 @@ impl Lane {
     }
 }
 
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OutputLines {
+    dtr: bool,
+    rts: bool,
+}
+
+impl OutputLines {
+    fn supports(self, line: ControlLine) -> bool {
+        match line {
+            ControlLine::Dtr => self.dtr,
+            ControlLine::Rts => self.rts,
+        }
+    }
+}
+
 struct PluginTransport {
     lane: Arc<Mutex<Lane>>,
     cleanup: Option<Arc<dyn BackendCleanup>>,
+    output_lines: OutputLines,
 }
 
 impl Transport for PluginTransport {
     fn capabilities(&self) -> TransportCapabilities {
-        capabilities()
+        TransportCapabilities {
+            dtr: self.output_lines.dtr,
+            rts: self.output_lines.rts,
+            ..capabilities()
+        }
     }
 
     fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock> {
@@ -638,6 +741,58 @@ impl Transport for PluginTransport {
 
     fn control(&mut self, _: ControlCommand) -> BackendResult<ControlResult> {
         Err(unsupported().into())
+    }
+
+    fn begin_line_control(
+        &mut self,
+        line: ControlLine,
+        value: bool,
+        cancelled: Arc<AtomicBool>,
+        closing: Arc<AtomicBool>,
+    ) -> Option<BackendResult<Box<dyn PendingLineControl>>> {
+        Some((|| {
+            if !self.output_lines.supports(line) {
+                return Err(HostError::new(
+                    "UNSUPPORTED_CAPABILITY",
+                    "Plugin transport cannot set this output line",
+                )
+                .into());
+            }
+            if cancelled.load(Ordering::SeqCst) || closing.load(Ordering::SeqCst) {
+                return Err(line_not_applied().into());
+            }
+            let mut lane = self.lane.lock().map_err(|_| disconnected())?;
+            lane.drive();
+            lane.require_open()?;
+            if lane.controlling.is_some() {
+                return Err(
+                    HostError::new("HOST_BUSY", "Plugin transport output line is pending").into(),
+                );
+            }
+            let id = lane.next_id()?;
+            lane.wire.queue(&Request::SetLine {
+                id,
+                line,
+                value,
+                wait_ms: LINE_WAIT_MS,
+            })?;
+            lane.controlling = Some(LineRequest {
+                id,
+                line,
+                result: None,
+                cancel_sent: false,
+            });
+            lane.drive();
+            let pending: Box<dyn PendingLineControl> = Box::new(PluginLineControl {
+                id,
+                line,
+                lane: self.lane.clone(),
+                deadline: Instant::now() + Duration::from_millis(LINE_WAIT_MS) + READ_REPLY_GRACE,
+                cancelled,
+                closing,
+            });
+            Ok(pending)
+        })())
     }
 
     fn begin_drain(&mut self, _: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
@@ -792,8 +947,225 @@ fn uncertain(error: HostError, cleanup: Option<Arc<dyn BackendCleanup>>) -> Back
     }
 }
 
+struct PluginLineControl {
+    id: u64,
+    line: ControlLine,
+    lane: Arc<Mutex<Lane>>,
+    deadline: Instant,
+    cancelled: Arc<AtomicBool>,
+    closing: Arc<AtomicBool>,
+}
+
+impl PendingLineControl for PluginLineControl {
+    fn poll(&mut self) -> Option<BackendResult<ControlResult>> {
+        let unknown = || ControlResult::LineUnknown {
+            line: self.line,
+            error: close_unknown(),
+        };
+        let Ok(mut lane) = self.lane.lock() else {
+            return Some(Ok(unknown()));
+        };
+        lane.drive();
+        let ended = matches!(lane.state, LaneState::Closed | LaneState::Broken(_));
+        let Some(pending) = lane
+            .controlling
+            .as_mut()
+            .filter(|pending| pending.id == self.id)
+        else {
+            return Some(Ok(unknown()));
+        };
+        if let Some(result) = pending.result.take() {
+            lane.controlling = None;
+            return Some(result.map_err(BackendError::from));
+        }
+        if ended {
+            lane.controlling = None;
+            return Some(Ok(unknown()));
+        }
+        if Instant::now() >= self.deadline {
+            lane.break_lane(close_unknown());
+            lane.controlling = None;
+            return Some(Ok(unknown()));
+        }
+        if !pending.cancel_sent
+            && (self.cancelled.load(Ordering::SeqCst) || self.closing.load(Ordering::SeqCst))
+        {
+            pending.cancel_sent = true;
+            if let Err(error) = lane.wire.queue(&Request::Cancel { id: self.id }) {
+                lane.break_lane(error);
+                lane.controlling = None;
+                return Some(Ok(unknown()));
+            }
+            lane.drive();
+        }
+        None
+    }
+}
+
+fn line_not_applied() -> HostError {
+    HostError::new(
+        "CONTROL_NOT_APPLIED",
+        "Plugin transport did not submit the line command",
+    )
+}
+
 fn disconnected() -> HostError {
     HostError::new("BACKEND_DISCONNECTED", "Plugin transport connection ended")
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum Rfc2217Field {
+    Options,
+    Binary,
+    ComPort,
+    BaudRate,
+    DataBits,
+    Parity,
+    StopBits,
+    FlowControl,
+    Dtr,
+    Rts,
+}
+
+impl Rfc2217Field {
+    fn value(self, hex: Option<&str>) -> Option<u32> {
+        let width = match self {
+            Self::Options => return None,
+            Self::Binary | Self::ComPort => 4,
+            Self::BaudRate => 8,
+            _ => 2,
+        };
+        let hex = hex.filter(|value| value.len() == width)?;
+        if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        u32::from_str_radix(hex, 16).ok()
+    }
+
+    fn accepts_request(self, value: u32) -> bool {
+        match self {
+            Self::BaudRate => value > 0,
+            Self::DataBits => (5..=8).contains(&value),
+            Self::Parity => (1..=5).contains(&value),
+            Self::StopBits | Self::FlowControl => (1..=3).contains(&value),
+            Self::Dtr => matches!(value, 8 | 9),
+            Self::Rts => matches!(value, 11 | 12),
+            Self::Options | Self::Binary | Self::ComPort => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Rfc2217Reason {
+    Refused,
+    DifferentValue,
+    InvalidReply,
+    Timeout,
+    Disconnected,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Rfc2217OpenFailure {
+    reason: Rfc2217Reason,
+    field: Rfc2217Field,
+    requested_hex: Option<String>,
+    reply_hex: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Rfc2217Protocol {
+    Rfc2217,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Rfc2217OpenDetail {
+    protocol: Rfc2217Protocol,
+    reason: Rfc2217Reason,
+    field: Rfc2217Field,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requested_value: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reported_value: Option<u32>,
+}
+
+impl Rfc2217OpenDetail {
+    fn valid(&self) -> bool {
+        let requested = self.requested_value;
+        let reported = self.reported_value;
+        let field = self.field;
+        if !requested.is_none_or(|value| field.accepts_request(value)) {
+            return false;
+        }
+        match self.reason {
+            Rfc2217Reason::Refused => {
+                requested.is_none()
+                    && matches!(
+                        (field, reported),
+                        (Rfc2217Field::Binary, Some(0xfc00 | 0xfe00))
+                            | (Rfc2217Field::ComPort, Some(0xfe2c))
+                    )
+            }
+            Rfc2217Reason::Timeout | Rfc2217Reason::Disconnected => reported.is_none(),
+            Rfc2217Reason::InvalidReply => requested.is_some() && reported.is_none(),
+            Rfc2217Reason::DifferentValue => {
+                requested.is_some()
+                    && reported.is_some_and(|value| {
+                        Some(value) != requested
+                            && (matches!(field, Rfc2217Field::BaudRate)
+                                || value <= u32::from(u8::MAX))
+                    })
+            }
+        }
+    }
+}
+
+// 公开操作回执继续裁剪私有诊断，只保留这个固定形状的可操作线路证据。
+pub(crate) fn is_public_rfc2217_open_detail(details: &JsonObject) -> bool {
+    serde_json::to_value(details)
+        .and_then(serde_json::from_value::<Rfc2217OpenDetail>)
+        .is_ok_and(|details| details.valid())
+}
+
+fn plugin_open_failure(negotiation: Option<serde_json::Value>) -> HostError {
+    let mut error = HostError::new(
+        "PLUGIN_TRANSPORT_OPEN_FAILED",
+        "Plugin transport could not open the connection",
+    );
+    let Some(failure) =
+        negotiation.and_then(|value| serde_json::from_value::<Rfc2217OpenFailure>(value).ok())
+    else {
+        return error;
+    };
+    let field = failure.field;
+    let requested = field.value(failure.requested_hex.as_deref());
+    let reported = field.value(failure.reply_hex.as_deref());
+    let reply = Rfc2217OpenDetail {
+        protocol: Rfc2217Protocol::Rfc2217,
+        reason: match failure.reason {
+            Rfc2217Reason::DifferentValue if reported.is_none() => Rfc2217Reason::InvalidReply,
+            Rfc2217Reason::InvalidReply => return error,
+            reason => reason,
+        },
+        field,
+        requested_value: requested,
+        reported_value: reported,
+    };
+    if reply.valid() {
+        error.retryable = matches!(
+            reply.reason,
+            Rfc2217Reason::Timeout | Rfc2217Reason::Disconnected
+        );
+        error.details = serde_json::to_value(reply)
+            .and_then(serde_json::from_value)
+            .ok()
+            .map(Box::new);
+    }
+    error
 }
 
 fn open_timeout() -> HostError {
@@ -828,6 +1200,55 @@ mod tests {
     use serde_json::{Value, json};
 
     const TEST_WAIT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn rfc2217_open_failure_keeps_only_verified_field_and_bounded_values() {
+        let mismatch = plugin_open_failure(Some(json!({
+            "reason": "different_value", "field": "baudRate",
+            "requestedHex": "0001c200", "replyHex": "00002580",
+        })));
+        assert_eq!(mismatch.code, "PLUGIN_TRANSPORT_OPEN_FAILED");
+        let known = mismatch.details.as_deref().unwrap();
+        assert!(is_public_rfc2217_open_detail(known));
+        let mut with_private = known.clone();
+        with_private.insert(
+            "privateDiagnostic".into(),
+            JsonValue::String("secret".into()),
+        );
+        assert!(!is_public_rfc2217_open_detail(&with_private));
+        assert_eq!(
+            serde_json::to_value(mismatch.details).unwrap(),
+            json!({"protocol":"rfc2217","reason":"different_value","field":"baudRate","requestedValue":115200,"reportedValue":9600})
+        );
+
+        let malformed = plugin_open_failure(Some(json!({
+            "reason": "different_value", "field": "stopBits",
+            "requestedHex": "01", "replyHex": "0001020304",
+        })));
+        assert_eq!(
+            serde_json::to_value(malformed.details).unwrap(),
+            json!({"protocol":"rfc2217","reason":"invalid_reply","field":"stopBits","requestedValue":1})
+        );
+
+        let refused = plugin_open_failure(Some(json!({
+            "reason": "refused", "field": "binary", "replyHex": "fe00",
+        })));
+        assert_eq!(
+            serde_json::to_value(refused.details).unwrap(),
+            json!({"protocol":"rfc2217","reason":"refused","field":"binary","reportedValue":0xfe00})
+        );
+
+        for payload in [
+            json!({"reason":"different_value","field":"host","requestedHex":"01","replyHex":"02"}),
+            json!({"reason":"different_value","field":"parity","requestedHex":"01","replyHex":"01"}),
+            json!({"reason":"refused","field":"comPort","replyHex":"fd2c"}),
+            json!({"reason":"timeout","field":"options","message":"private endpoint"}),
+        ] {
+            let generic = plugin_open_failure(Some(payload));
+            assert_eq!(generic.code, "PLUGIN_TRANSPORT_OPEN_FAILED");
+            assert!(generic.details.is_none());
+        }
+    }
 
     fn peer(address: SocketAddr) -> TcpStream {
         let peer = TcpStream::connect(address).unwrap();

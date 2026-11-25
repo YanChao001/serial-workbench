@@ -24,6 +24,8 @@ const WAIT: Duration = Duration::from_secs(5);
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TransportScenario {
     Normal,
+    Server,
+    Rfc2217,
     OwnerExit,
 }
 
@@ -64,15 +66,41 @@ async fn native_node_dynamic_transport_owns_tcp_session_source_and_closes_peer()
 
 #[tokio::test]
 #[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_listens_for_one_peer_per_generation() {
+    signed_transport(TransportScenario::Server).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
 async fn native_node_dynamic_transport_owner_exit_preserves_unknown_tx() {
     signed_transport(TransportScenario::OwnerExit).await;
 }
 
+#[tokio::test]
+#[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_rfc2217_requires_confirmed_serial_settings() {
+    signed_transport(TransportScenario::Rfc2217).await;
+}
+
 async fn signed_transport(scenario: TransportScenario) {
+    let rfc2217 = scenario == TransportScenario::Rfc2217;
+    let (package_id, provider_id, example) = if rfc2217 {
+        (
+            "reference.rfc2217",
+            "reference.rfc2217.transport",
+            "reference-rfc2217",
+        )
+    } else {
+        (PACKAGE, PROVIDER, "reference-transport")
+    };
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let program =
-        std::fs::read(package_root.join(".cache/plugin-sdk/examples/reference-transport/main.js"))
-            .expect("Compile the public SDK transport fixture");
+    let program = std::fs::read(
+        package_root
+            .join(".cache/plugin-sdk/examples")
+            .join(example)
+            .join("main.js"),
+    )
+    .expect("Compile the public SDK transport fixture");
     let profile = support::Profile::isolated("host-node-transport-public-");
     let runtime = tokio::task::spawn_blocking(|| {
         let root = std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT")
@@ -145,15 +173,23 @@ async fn signed_transport(scenario: TransportScenario) {
             &host_target,
             &["plugins.manage", "content.read", "metadata.read"],
         );
-        let enabled =
-            install_signed_provider(&admin, &manager, &host_target, &path, program, scenario).await;
+        let enabled = install_signed_provider(
+            &admin,
+            &manager,
+            &host_target,
+            &path,
+            program,
+            scenario,
+            package_id,
+        )
+        .await;
         let RpcResult::Query(QueryResult::NodePackageRuntime(runtime_status)) = success(
             manager
                 .request(RpcRequest::Query(query(
                     &manager,
                     "node.packages.runtime",
                     &host_target,
-                    json!({"id": PACKAGE}),
+                    json!({"id": package_id}),
                 )))
                 .await
                 .unwrap(),
@@ -196,23 +232,43 @@ async fn signed_transport(scenario: TransportScenario) {
             .into_iter()
             .filter(|device| {
                 device.fingerprint.transport == DeviceTransportKind::Plugin
-                    && device.system_name == PROVIDER
+                    && device.system_name == provider_id
             })
             .collect::<Vec<_>>();
         let [provider] = providers.as_slice() else {
             panic!("Expected exactly one signed provider: {providers:?}");
         };
         assert_eq!(provider.host_id, host_id);
+        assert_eq!(provider.driver.as_deref(), Some(package_id));
         assert_eq!(provider.capabilities.semantics, TransportSemantics::Stream);
         let device = Target {
             kind: ResourceKind::try_from("device").unwrap(),
             id: provider.device_id.clone(),
             ..host_target.clone()
         };
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let endpoint = reserved.local_addr().unwrap();
+        let (listener, transport_params) = if scenario == TransportScenario::Server {
+            drop(reserved);
+            (None, json!({"role":"server","port":endpoint.port()}))
+        } else {
+            let params = if rfc2217 {
+                json!({"port": endpoint.port(), "baudRate": 115200})
+            } else {
+                json!({"port":endpoint.port()})
+            };
+            (Some(reserved), params)
+        };
+        let mut requested = SerialConfiguration::default();
+        if rfc2217 {
+            requested.data_bits = DataBits::Seven;
+            requested.parity = Parity::Odd;
+            requested.stop_bits = StopBits::Two;
+            requested.flow_control = FlowControl::RtsCts;
+        }
         let open_params = json!({
-            "configuration": SerialConfiguration::default(),
-            "transportParams": {"port": listener.local_addr().unwrap().port()},
+            "configuration": requested,
+            "transportParams": transport_params,
         });
         denied(
             client
@@ -225,54 +281,62 @@ async fn signed_transport(scenario: TransportScenario) {
                 .await
                 .unwrap(),
         );
-        assert!(
-            timeout(Duration::from_millis(100), listener.accept())
-                .await
-                .is_err()
-        );
-
-        grant(&auth, &operator, &client, &device, &["device.modify"]);
-        let first = open_session(&client, &host_target, &device, open_params.clone()).await;
-        let (mut peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
-        assert!(address.ip().is_loopback());
-        if scenario == TransportScenario::OwnerExit {
-            grant(
-                &auth,
-                &operator,
-                &client,
-                &first,
-                &["content.read", "device.modify"],
-            );
-            verify_owner_exit(&client, &manager, &host_target, &device, &first, &mut peer).await;
-            assert!(path.join(OWNER_EXIT_MARKER).is_file());
-            let attempt = client
-                .request(RpcRequest::Invoke(call(
-                    &client,
-                    "device.open",
-                    &device,
-                    open_params,
-                )))
-                .await
-                .unwrap();
-            let fault = match attempt {
-                RpcReply::Failure { error, .. } => error,
-                reply => wait_for_terminal(&client, &host_target, success(reply))
-                    .await
-                    .error
-                    .expect("Open must fail for a disappeared provider"),
-            };
-            assert_eq!(fault.code, "DEVICE_NOT_FOUND");
+        if let Some(listener) = &listener {
             assert!(
                 timeout(Duration::from_millis(100), listener.accept())
                     .await
                     .is_err()
             );
-            eprintln!(
-                "transport owner_exit signed_archive={} status=failed directory_unloaded=true open_rejected=true fixture_reactivation_gated=true",
-                enabled.package.archive_sha256,
-            );
-            return;
+        } else {
+            let unused = TcpListener::bind(endpoint)
+                .await
+                .expect("Unauthorized open reserved the TCP port");
+            drop(unused);
         }
+
+        grant(&auth, &operator, &client, &device, &["device.modify"]);
+        if rfc2217 {
+            let listener = listener.as_ref().unwrap();
+            let open_failure =
+                |params| rfc2217_open_failure(&client, &host_target, &device, params);
+            let peer = async {
+                let mut peer = accept_rfc2217(listener, true).await;
+                peer_eof(&mut peer).await;
+            };
+            let (mismatch, ()) = tokio::join!(open_failure(open_params.clone()), peer);
+            assert!(!mismatch.retryable);
+            assert_eq!(
+                serde_json::to_value(mismatch.details.unwrap()).unwrap(),
+                json!({"protocol":"rfc2217","reason":"different_value","field":"baudRate","requestedValue":115200,"reportedValue":9600})
+            );
+            eprintln!("rfc2217_mismatched_baud requested=115200 reported=9600 closed=true");
+
+            let silent_peer = async {
+                let mut peer = timeout(WAIT, listener.accept()).await.unwrap().unwrap().0;
+                let mut options = [0; 9];
+                timeout(WAIT, peer.read_exact(&mut options))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(options, [255, 251, 0, 255, 253, 0, 255, 251, 44]);
+                peer_eof(&mut peer).await;
+            };
+            let (expired, ()) = tokio::join!(open_failure(open_params.clone()), silent_peer);
+            assert!(expired.retryable);
+            assert_eq!(
+                serde_json::to_value(expired.details.unwrap()).unwrap(),
+                json!({"protocol":"rfc2217","reason":"timeout","field":"options"})
+            );
+            eprintln!("rfc2217_silent_peer reason=timeout field=options closed=true");
+        }
+        let opening = open_session(&client, &host_target, &device, open_params.clone());
+        let (first, configured_peer) = if rfc2217 {
+            let (session, peer) =
+                tokio::join!(opening, accept_rfc2217(listener.as_ref().unwrap(), false));
+            (session, Some(peer))
+        } else {
+            (opening.await, None)
+        };
         let raw = client.connect_raw().await.unwrap();
         let read_params = json!({
             "sessionId":first.session_id, "sessionEpoch":first.session_epoch,
@@ -293,10 +357,100 @@ async fn signed_transport(scenario: TransportScenario) {
             &operator,
             &client,
             &first,
-            &["content.read", "device.modify"],
+            &["content.read", "device.modify", "metadata.read"],
         );
 
+        if rfc2217 {
+            let QueryResult::Session(snapshot) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        &client,
+                        "session.get",
+                        &first,
+                        json!({}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected the confirmed serial configuration");
+            };
+            assert_eq!(
+                snapshot.configuration,
+                SerialConfiguration {
+                    baud_rate: PositiveU64::try_from(U64::from(115_200)).unwrap(),
+                    ..SerialConfiguration::default()
+                }
+            );
+            eprintln!(
+                "rfc2217_session_configuration baud=115200 data_bits=8 parity=none stop_bits=1 flow=none"
+            );
+        }
+
+        if scenario == TransportScenario::Server {
+            let empty = wait_for_terminal(
+                &client,
+                &host_target,
+                success(
+                    client
+                        .request(RpcRequest::Invoke(tx_call(&client, &first, &[0xEE])))
+                        .await
+                        .unwrap(),
+                ),
+            )
+            .await;
+            let Some(ActionResult::Tx(receipt)) = empty.result else {
+                panic!("Expected an explicit no-peer TX receipt: {empty:?}");
+            };
+            assert!(
+                receipt.accepted_ranges.is_empty() && receipt.unknown_ranges.is_empty(),
+                "{receipt:?}"
+            );
+        }
+        let mut peer = if let Some(peer) = configured_peer {
+            peer
+        } else {
+            connect_peer(listener.as_ref(), endpoint).await
+        };
+        if scenario == TransportScenario::OwnerExit {
+            verify_owner_exit(&client, &manager, &host_target, &device, &first, &mut peer).await;
+            assert!(path.join(OWNER_EXIT_MARKER).is_file());
+            let attempt = client
+                .request(RpcRequest::Invoke(call(
+                    &client,
+                    "device.open",
+                    &device,
+                    open_params,
+                )))
+                .await
+                .unwrap();
+            let fault = match attempt {
+                RpcReply::Failure { error, .. } => error,
+                reply => wait_for_terminal(&client, &host_target, success(reply))
+                    .await
+                    .error
+                    .expect("Open must fail for a disappeared provider"),
+            };
+            assert_eq!(fault.code, "DEVICE_NOT_FOUND");
+            assert!(
+                timeout(
+                    Duration::from_millis(100),
+                    listener.as_ref().unwrap().accept()
+                )
+                .await
+                .is_err()
+            );
+            eprintln!(
+                "transport owner_exit signed_archive={} status=failed directory_unloaded=true open_rejected=true fixture_reactivation_gated=true",
+                enabled.package.archive_sha256,
+            );
+            return;
+        }
         let sent = [0, b'T', 13, 10, 255, 128, b'C'];
+        let expected_wire = if rfc2217 {
+            vec![0, b'T', 13, 10, 255, 255, 128, b'C']
+        } else {
+            sent.to_vec()
+        };
         let accepted = success(
             client
                 .request(RpcRequest::Invoke(tx_call(&client, &first, &sent)))
@@ -304,12 +458,12 @@ async fn signed_transport(scenario: TransportScenario) {
                 .unwrap(),
         );
         let (settled, ()) = tokio::join!(settlement(&client, &host_target, accepted), async {
-            let mut received = [0; 7];
+            let mut received = vec![0; expected_wire.len()];
             timeout(WAIT, peer.read_exact(&mut received))
                 .await
                 .unwrap()
                 .unwrap();
-            assert_eq!(received, sent);
+            assert_eq!(received, expected_wire);
             timeout(WAIT, peer.write_all(&received))
                 .await
                 .unwrap()
@@ -373,6 +527,117 @@ async fn signed_transport(scenario: TransportScenario) {
                 |event| matches!(&event.payload, RawPayload::Tx(tx) if tx.as_ref() == &receipt)
             )
         );
+        if rfc2217 {
+            let dtr = |actor: &HostClient| {
+                call(
+                    actor,
+                    "session.control",
+                    &first,
+                    json!({"line":"dtr","value":true}),
+                )
+            };
+            denied(
+                manager
+                    .request(RpcRequest::Invoke(dtr(&manager)))
+                    .await
+                    .unwrap(),
+            );
+            let admitted = success(
+                client
+                    .request(RpcRequest::Invoke(dtr(&client)))
+                    .await
+                    .unwrap(),
+            );
+            let settle = wait_for_terminal(&client, &host_target, admitted);
+            let observe = async {
+                let mut command = [0; 7];
+                timeout(WAIT, peer.read_exact(&mut command))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(command, [255, 250, 44, 5, 8, 255, 240]);
+                peer.write_all(&[b'L', 255, 255, 10]).await.unwrap();
+                timeout(Duration::from_millis(900), async {
+                    loop {
+                        let RpcResult::Query(QueryResult::StreamRead(page)) = success(
+                            raw.request(RpcRequest::Query(query(
+                                &client,
+                                "stream.read",
+                                &first,
+                                read_params.clone(),
+                            )))
+                            .await
+                            .unwrap(),
+                        ) else {
+                            panic!("Expected an active Raw page")
+                        };
+                        if rx_bytes(&page.events).ends_with(&[b'L', 255, 10]) {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .expect("Raw reception must keep advancing before the line reply");
+                peer.write_all(&[255, 250, 44, 105, 9, 255, 240])
+                    .await
+                    .unwrap();
+            };
+            let (result, ()) = tokio::join!(settle, observe);
+            assert_eq!(result.state, OperationState::Succeeded, "{result:?}");
+            assert!(
+                matches!(
+                    result.result,
+                    Some(ActionResult::Control(ControlReceipt {
+                        line: ControlLine::Dtr,
+                        requested: true,
+                        status: ControlStatus::Confirmed,
+                        actual: Some(false)
+                    }))
+                ),
+                "{result:?}"
+            );
+            let confirmed_rts = async {
+                completed(
+                    &client,
+                    &host_target,
+                    call(
+                        &client,
+                        "session.control",
+                        &first,
+                        json!({"line":"rts","value":true}),
+                    ),
+                )
+                .await
+            };
+            let observe_rts = async {
+                let mut command = [0; 7];
+                timeout(WAIT, peer.read_exact(&mut command))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(command, [255, 250, 44, 5, 11, 255, 240]);
+                peer.write_all(&[255, 250, 44, 105, 11, 255, 240])
+                    .await
+                    .unwrap();
+            };
+            let (result, ()) = tokio::join!(confirmed_rts, observe_rts);
+            assert!(
+                matches!(
+                    result.result,
+                    Some(ActionResult::Control(ControlReceipt {
+                        line: ControlLine::Rts,
+                        requested: true,
+                        status: ControlStatus::Confirmed,
+                        actual: Some(true)
+                    }))
+                ),
+                "{result:?}"
+            );
+            eprintln!(
+                "rfc2217_live_controls denial_before_wire=true dtr_requested=true dtr_actual=false rts_actual=true raw_before_ack=true"
+            );
+        }
         completed(
             &client,
             &host_target,
@@ -381,11 +646,17 @@ async fn signed_transport(scenario: TransportScenario) {
         .await;
         peer_eof(&mut peer).await;
 
-        let second = open_session(&client, &host_target, &device, open_params).await;
+        let reopening = open_session(&client, &host_target, &device, open_params.clone());
+        let (second, mut peer) = if rfc2217 {
+            tokio::join!(reopening, accept_rfc2217(listener.as_ref().unwrap(), false))
+        } else {
+            (
+                reopening.await,
+                connect_peer(listener.as_ref(), endpoint).await,
+            )
+        };
         assert_eq!(second.id, first.id);
         assert!(second.session_epoch > first.session_epoch);
-        let (mut peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
-        assert!(address.ip().is_loopback());
         grant(
             &auth,
             &operator,
@@ -465,18 +736,76 @@ async fn signed_transport(scenario: TransportScenario) {
             .unwrap()
             .unwrap();
         assert_eq!(payload, [0x5a]);
+        if rfc2217 {
+            let control = async {
+                let request = call(
+                    &manager,
+                    "session.control",
+                    &second,
+                    json!({"line":"dtr","value":false}),
+                );
+                let admitted = success(manager.request(RpcRequest::Invoke(request)).await.unwrap());
+                wait_for_terminal(&manager, &host_target, admitted).await
+            };
+            let silent = async {
+                let mut command = [0; 7];
+                timeout(WAIT, peer.read_exact(&mut command))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(command, [255, 250, 44, 5, 9, 255, 240]);
+                peer_eof(&mut peer).await;
+            };
+            let (result, ()) = tokio::join!(control, silent);
+            assert_eq!(result.state, OperationState::Unknown, "{result:?}");
+            assert!(
+                matches!(
+                    result.result,
+                    Some(ActionResult::Control(ControlReceipt {
+                        line: ControlLine::Dtr,
+                        requested: false,
+                        status: ControlStatus::Unknown,
+                        actual: None
+                    }))
+                ),
+                "{result:?}"
+            );
+            grant(&auth, &operator, &manager, &device, &["device.modify"]);
+            let (third, new_peer) = tokio::join!(
+                open_session(&manager, &host_target, &device, open_params),
+                accept_rfc2217(listener.as_ref().unwrap(), false),
+            );
+            assert!(third.session_epoch > second.session_epoch);
+            peer = new_peer;
+            eprintln!("rfc2217_live_control_unknown closed=true new_session_epoch=true");
+        }
         let disabled = package_change(
             &manager,
             &host_target,
             "node.packages.setEnabled",
-            json!({"id":PACKAGE,"archiveSha256":enabled.package.archive_sha256,"enabled":false}),
+            json!({"id":package_id,"archiveSha256":enabled.package.archive_sha256,"enabled":false}),
             enabled.revision,
         )
         .await;
         assert!(!disabled.package.enabled);
         peer_eof(&mut peer).await;
+        if rfc2217 {
+            eprintln!(
+                "rfc2217_verified configured_baud=115200 raw_bytes=7 telnet_bytes=8 rejected_mismatch_before_session=true reopened_and_peer_closed=true"
+            );
+        }
+        if listener.is_none() {
+            TcpListener::bind(endpoint)
+                .await
+                .expect("The provider left the TCP port open");
+        }
         eprintln!(
-            "transport signed_archive={} device={} session={} epochs={:?}/{:?} tcp_tx_rx_bytes={} peer_closed=true",
+            "transport role={} signed_archive={} device={} session={} epochs={:?}/{:?} tcp_tx_rx_bytes={} peer_closed=true",
+            if listener.is_some() {
+                "client"
+            } else {
+                "server"
+            },
             enabled.package.archive_sha256,
             device.id,
             first.id,
@@ -616,6 +945,90 @@ async fn open_session(
     }
 }
 
+async fn connect_peer(listener: Option<&TcpListener>, endpoint: std::net::SocketAddr) -> TcpStream {
+    if let Some(listener) = listener {
+        let (peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
+        assert!(address.ip().is_loopback());
+        peer
+    } else {
+        timeout(WAIT, TcpStream::connect(endpoint))
+            .await
+            .unwrap()
+            .unwrap()
+    }
+}
+
+async fn rfc2217_open_failure(
+    client: &HostClient,
+    host_target: &Target,
+    device: &Target,
+    open_params: Value,
+) -> HostError {
+    let request = call(client, "device.open", device, open_params);
+    let attempt = client
+        .request(RpcRequest::Invoke(request.clone()))
+        .await
+        .unwrap();
+    let terminal = wait_for_terminal(client, host_target, success(attempt)).await;
+    assert_eq!(terminal.state, OperationState::Failed, "{terminal:?}");
+    assert!(terminal.result.is_none(), "{terminal:?}");
+    let repeated = client.request(RpcRequest::Invoke(request)).await.unwrap();
+    let RpcResult::Operation(repeated) = success(repeated) else {
+        panic!("Expected the replayed operation");
+    };
+    assert_eq!(repeated.operation.operation_id, terminal.operation_id);
+    assert_eq!(repeated.operation.error, terminal.error);
+    let error = terminal.error.unwrap();
+    assert_eq!(error.code, "PLUGIN_TRANSPORT_OPEN_FAILED");
+    error
+}
+
+async fn accept_rfc2217(listener: &TcpListener, different_baud: bool) -> TcpStream {
+    let (mut peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
+    assert!(address.ip().is_loopback());
+    let mut options = [0; 9];
+    timeout(WAIT, peer.read_exact(&mut options))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(options, [255, 251, 0, 255, 253, 0, 255, 251, 44]);
+    timeout(
+        WAIT,
+        peer.write_all(&[255, 253, 0, 255, 251, 0, 255, 253, 44]),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let expected: &[&[u8]] = &[&[1, 0, 1, 194, 0], &[2, 8], &[3, 1], &[4, 1], &[5, 1]];
+    for &setting in expected {
+        let mut frame = vec![255, 250, 44];
+        frame.extend_from_slice(setting);
+        frame.extend_from_slice(&[255, 240]);
+        let mut received = vec![0; frame.len()];
+        timeout(WAIT, peer.read_exact(&mut received))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received, frame);
+        if different_baud {
+            timeout(
+                WAIT,
+                peer.write_all(&[255, 250, 44, 101, 0, 0, 37, 128, 255, 240]),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            return peer;
+        }
+        frame[3] += 100;
+        timeout(WAIT, peer.write_all(&frame))
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    peer
+}
+
 async fn peer_eof(peer: &mut TcpStream) {
     let mut byte = [0];
     assert_eq!(
@@ -726,6 +1139,7 @@ async fn install_signed_provider(
     profile: &Path,
     program: Vec<u8>,
     scenario: TransportScenario,
+    package_id: &str,
 ) -> NodePackageChangeResult {
     let key = SigningKey::from_bytes(&[7; 32]).verifying_key().to_bytes();
     let key_digest = format!("{:x}", Sha256::digest(key));
@@ -738,7 +1152,9 @@ async fn install_signed_provider(
     approve.expected_revision = Some(0.into());
     completed(admin, host, approve).await;
     let (entry, wrapped) = match scenario {
-        TransportScenario::Normal => (program, None),
+        TransportScenario::Normal | TransportScenario::Server | TransportScenario::Rfc2217 => {
+            (program, None)
+        }
         TransportScenario::OwnerExit => (
             EXIT_DURING_WRITE
                 .replace(
@@ -752,10 +1168,17 @@ async fn install_signed_provider(
     let mut payload = BTreeMap::from([
         (
             "manifest.json".into(),
-            include_bytes!(
-                "../../../../packages/plugin-sdk/examples/reference-transport/manifest.json"
-            )
-            .to_vec(),
+            if scenario == TransportScenario::Rfc2217 {
+                include_bytes!(
+                    "../../../../packages/plugin-sdk/examples/reference-rfc2217/manifest.json"
+                )
+                .to_vec()
+            } else {
+                include_bytes!(
+                    "../../../../packages/plugin-sdk/examples/reference-transport/manifest.json"
+                )
+                .to_vec()
+            },
         ),
         ("dist/main.mjs".into(), entry),
         (
@@ -792,12 +1215,12 @@ async fn install_signed_provider(
         0.into(),
     ).await;
     assert!(installed.package.source_verified);
-    assert_eq!(installed.package.id.as_str(), PACKAGE);
+    assert_eq!(installed.package.id.as_str(), package_id);
     let trust = package_change(
         admin,
         host,
         "node.packages.confirmExecutionTrust",
-        json!({"id":PACKAGE,"archiveSha256":installed.package.archive_sha256}),
+        json!({"id":package_id,"archiveSha256":installed.package.archive_sha256}),
         installed.revision,
     )
     .await;
@@ -806,7 +1229,7 @@ async fn install_signed_provider(
         manager,
         host,
         "node.packages.setEnabled",
-        json!({"id":PACKAGE,"archiveSha256":trust.package.archive_sha256,"enabled":true}),
+        json!({"id":package_id,"archiveSha256":trust.package.archive_sha256,"enabled":true}),
         trust.revision,
     )
     .await;

@@ -39,9 +39,13 @@ import { nativeErrorText } from "@/lib/native-error";
 import { isMacOS } from "@/lib/platform";
 import { ENCODING_NAMES, TEXT_ENCODINGS } from "@/lib/text-encoding";
 import { useI18n } from "@/providers/i18n";
-import type { CommandLibraryAccess } from "@/providers/host-context";
+import type {
+  CommandBodyFileAccess,
+  CommandLibraryAccess,
+} from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { WorkbenchDialog } from "./workbench-dialog";
+import { CommandBodyFile, COMMAND_BODY_MAX_BYTES } from "./command-body-file";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { CLIENT_DRAFT_MAX_BYTES } from "@/lib/client-settings";
 import {
@@ -909,7 +913,11 @@ function CommandLibraryPanel({
             </label>
             {editor.kind === "command" && (
               <CommandFields
+                key={editor.value.summary.id}
                 command={editor.value}
+                bodyFiles={writable ? access.bodyFiles : undefined}
+                owner={owner}
+                disabled={busy}
                 endingChoice={endingChoice}
                 customEndingField={customEndingField}
                 endingInput={endingInput}
@@ -1116,6 +1124,9 @@ function customEndingBytes(input: string) {
 
 function CommandFields({
   command,
+  bodyFiles,
+  owner,
+  disabled,
   endingChoice,
   customEndingField,
   endingInput,
@@ -1123,6 +1134,9 @@ function CommandFields({
   onChange,
 }: {
   command: CommandDraft;
+  bodyFiles?: CommandBodyFileAccess;
+  owner: AbortSignal;
+  disabled: boolean;
   endingChoice: RefObject<HTMLButtonElement | null>;
   customEndingField: Ref<HTMLInputElement>;
   endingInput?: string;
@@ -1135,6 +1149,8 @@ function CommandFields({
 }) {
   const { t } = useI18n();
   const id = useId();
+  const bodyZone = useRef<HTMLDivElement>(null);
+  const bodyField = useRef<HTMLTextAreaElement>(null);
   const custom =
     command.lineEnding?.kind === "custom" ? command.lineEnding : undefined;
   const endingKinds = [
@@ -1164,11 +1180,29 @@ function CommandFields({
           }
         />
       </label>
-      <label className="grid gap-1 text-sm">
-        {t("commandLibrary.body")}
+      <div ref={bodyZone} className="grid gap-1 text-sm">
+        {bodyFiles ? (
+          <CommandBodyFile
+            access={bodyFiles}
+            owner={owner}
+            zone={bodyZone}
+            fieldId={id + "-body"}
+            hasBody={!!command.body}
+            disabled={disabled}
+            onApply={(body) => {
+              onChange({ ...command, mode: "hex", body }, endingInput);
+              bodyField.current?.focus();
+            }}
+          />
+        ) : (
+          <label htmlFor={id + "-body"}>{t("commandLibrary.body")}</label>
+        )}
         <Textarea
+          id={id + "-body"}
+          ref={bodyField}
+          aria-describedby={id + "-template"}
           rows={5}
-          maxLength={65536}
+          maxLength={COMMAND_BODY_MAX_BYTES}
           value={command.body}
           spellCheck={false}
           className="font-mono"
@@ -1180,10 +1214,10 @@ function CommandFields({
             )
           }
         />
-        <span className="text-xs text-muted-foreground">
+        <span id={id + "-template"} className="text-xs text-muted-foreground">
           {t("commandLibrary.templateSyntax")}
         </span>
-      </label>
+      </div>
       <div className="workbench-form-grid workbench-command-format-fields">
         <div className="grid content-start gap-1 text-sm">
           <label htmlFor={id + "-mode"}>{t("commandLibrary.mode")}</label>

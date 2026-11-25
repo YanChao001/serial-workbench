@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "0.1",
+  "id": "reference.rfc2217",
+  "version": "0.1.1",
+  "displayName": "RFC 2217 Serial Client",
+  "description": "Connect to a remote serial server and verify requested line settings.",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["device.modify"],
+        "targetKinds": ["device"]
+      }
+    ],
+    "executionPurposes": ["rfc2217-transport"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [],
+    "queries": [],
+    "transports": [
+      {
+        "actionId": "reference.rfc2217.transport",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[a-zA-Z0-9_.:%-]{1,253}$"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "baudRate": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4294967295
+            },
+            "dataBits": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 8
+            },
+            "parity": {
+              "type": "string",
+              "enum": ["none", "odd", "even", "mark", "space"]
+            },
+            "stopBits": {
+              "type": "string",
+              "enum": ["1", "1.5", "2"]
+            },
+            "flowControl": {
+              "type": "string",
+              "enum": ["none", "software", "hardware"]
+            },
+            "dtr": {
+              "type": "boolean"
+            },
+            "rts": {
+              "type": "boolean"
+            }
+          },
+          "required": ["port", "baudRate"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string"
+            },
+            "sessionEpoch": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "reused": {
+              "type": "boolean"
+            },
+            "recentError": {
+              "type": "object"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision", "reused"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["device"],
+        "executionLocation": "resource_host",
+        "permissions": ["device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      }
+    ],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

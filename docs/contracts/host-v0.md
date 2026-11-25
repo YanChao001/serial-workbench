@@ -136,6 +136,7 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 共享设置与工作区保存的最终验权、实例代次检查及同步CAS，与同一Host的auth.authorize/auth.revoke按共享提交锁排序。撤权先完成则保存拒绝且revision不变；保存先进入同步提交则完成后撤权才返回，已提交的成功回执保留。候选准备和投影发布不持该授权提交锁。
 
 `workspace.list` 是以执行 Host 为目标的只读目录查询。`params={after?: Id}`，结果为 `WorkspaceListResult={workspaces: WorkspaceSummary[],nextCursor?: Id}`，摘要包含 `scope/name/revision`；`action.query` 的判别包装为 `kind: workspaces`。每页最多扫描 64 个已保存工作区，只返回调用者具有 `metadata.read` 权限的条目，空页仍可能带继续游标。游标是不透明的存储顺序标记，不携带被过滤工作区的标识；客户端不得据其构造资源 Target。目录跨 Host 实例保留，不依赖文档投影是否已注册，列举不隐式打开文档或连接设备。
+`workspace.experiment.export` 和 `workspace.experiment.inspect` 用 `action.query` 通过 Control 调用，目标均为已获元数据读权的工作区。导出参数包含 `workspaceRevision`、解析器包 ID `parsers`、录制引用 `recordings`、绑定序号和显式版本 `firmware`、以及已结算操作 ID `operations`。导出将 `experiment_package` 的 value 保存为版本化 JSON。检查接收 `{json:string}`，返回 `experiment_inspection`。其中的解析器、录制状态数组与包中条目依序对应。录制检查对照 Host 登记的固定引用和摘要，实际记录读取与容器完整性沿用各自授权和验证入口。导出和检查均无需接纳操作，工作区保存继续沿用修订合同。 [实验包类型](../../crates/core/src/experiment.rs) · [专项验收](../acceptance.md#复现实验包sess-09)
 
 命令库以 `workspace` 为目标。`workspace.commands.read` 要求 `content.read`，返回命令库 `revision` 和 `groups`、`commands` 或 `entry` 三种视图。分组和命令目录每页最多 32 条，续页携带上一页的 revision 和游标。命令目录包含标识、名称和备注，正文、编码及单命令行尾覆盖通过条目详情读取。列表的命令顺序由 Host 保存。
 
@@ -185,7 +186,7 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 本机传输使用四字节大端长度和 UTF-8 JSON，帧体为 `WireFrame {requestId,channel,body}`。`channel` 为 `control/raw/state`，`body.type` 选择生成的消息类型；先检查 1 MiB 长度上限再读取正文。只有完整帧边界的 EOF 表示正常关闭，半帧、非法 UTF-8/JSON 或未知字段均拒绝。公共类型由 core 导出，平台连接、受保护秘密与有界帧 IO 由共享 IPC crate 实现。
 
-Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID。Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。OS 实例锁覆盖整个 Host 生命周期。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录。记录包含身份、epoch、endpoint、PID 和格式版本。历史字段 `protocolVersion` 按发现格式 `0.1` 发布，原有客户端可读取 endpoint，再通过握手得到受支持的 RPC 版本和升级目标。启动时复核原 profile 的身份，保留发现记录并正常换代。
+Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID。Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。OS 实例锁覆盖整个 Host 生命周期。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录。记录包含身份、epoch、endpoint、PID 和格式版本。历史字段 `protocolVersion` 按发现格式 `0.1` 发布，原有客户端可读取 endpoint，再通过握手得到受支持的 RPC 版本和升级目标。启动时复核原 profile 的身份。新进程在请求处理器及所选入口准备完成后才发布本次发现记录，再交付启动 capability 或启用入口的回执。上个代次的发现记录保留到正常换代。
 
 客户端先发送 nonce，验证绑定协议版本、hostId、epoch 和双方 nonce 的 Host proof，再提交自己的凭据。身份 pin 从受保护本地存储取得，不能从发现记录自建信任。新外部客户端只注册元数据身份；已有 clientId 的错误或缺失凭据不能覆盖原授权。控制连接与原始流连接分开，raw attach token 绑定活控制连接、actor 和 epoch；控制连接结束后 token 失效。Host 分配的 connectionId 只用于连接资源和投递归属，不进入 Call 或去重身份。同 actor 的另一连接退出不能清除本连接订阅，也不能停止 Host 业务任务。
 
@@ -228,6 +229,20 @@ HTTP 支持目录、状态快照、查询、调用、操作结果与取消。通
 LAN 入口显式启用，配对绑定 Host 密钥身份并使用认证加密链路，发现广播不建立信任。B 唯一持口；A 转发 actorId/requestId 与执行 B 的 target/epoch，B 依据受验证的委托链和自身共享权限取交集。时序敏感工作固定 B，通用派生可在 A；Operation 的 executionHostId 与依赖版本创建后不迁移。文件先经受控传输在 B 建立 ObjectRef，禁止把 A 路径当 B 路径。A GUI 关闭不等于 A Host 失联；交互租约与独立任务分别按 [租约合同](./stream-and-operations-v0.md#会话与租约) 结算。
 
 本机 IPC 的 `authenticateLan` 在收到 A 的已验证 Host 问候后提交客户端凭据、客户端类型与 `route:{hostId,address}`。A 先返回普通的 `authenticated`，客户端保存新签发的本机凭据。A 核对本机 `lan.connect` 授权及已配对的 B，在同一请求编号下返回 `lanRouted` 中的 B Host ID、实例代次和 B 分配的客户端 ID。之后该控制连接中继 B 的正常附着及请求帧。Raw 仍向 A 提交原本机附着令牌，A 从对应控制连接建立同一 B 实例上的 Raw，确认后回复 `rawAttached`。撤销 A 的路由权限或在一端解除配对会关闭对应通道。原操作由 B 按其已有接纳规则结算。
+
+### 配对浏览器文件交接
+
+`browser.fileHandoff` 仅接受通过配对认证的 Control 通道。开始时绑定当前连接、目标串口会话及代次，并校验 `device.modify` 权限。请求携带字节数与分块数据，Host 保存文件句柄并返回短期交接编号。同一浏览器身份另开连接需要重新交接。
+
+| 请求 `kind` | 参数                                | 结果                               |
+| ----------- | ----------------------------------- | ---------------------------------- |
+| `begin`     | `target`、`length`                  | 新上传编号、零已接收量和总长       |
+| `append`    | `uploadId`、`offset`、`bytesBase64` | 当前已接收量和总长                 |
+| `seal`      | `uploadId`                          | 完整量和 `sealedFingerprint`       |
+| `submit`    | `uploadId`、`call`                  | 已接纳的 `transfer.file` Operation |
+| `discard`   | `uploadId`                          | `{ closed: true }`                 |
+
+分块最多 64 KiB，首块从 0 开始，下一块从上次回执的 `receivedBytes` 开始。封存核对实际长度并返回 SHA-256。错序、超长、写入失败、主动丢弃、撤权和断开回收文件与配额，连续 60 秒无操作也回收。部分交接在新连接上需要重新开始。封存回执确认 Host 已接收文件。提交时，调用的目标与代次必须和开始交接时一致，`sourceRef` 必须指向当前上传的临时文件（`kind: file`、`revision: 1`）。外层消息与 `call` 使用同一请求 ID。持久接纳后，交接槽将文件所有权交给 `transfer.file` Operation；同一请求上下文中的原请求可恢复该回执。连接关闭或停止配对先于持久接纳时，回收上传和配额。实际发送结果从 Operation 终态读取。
 
 ## Host 验收向量
 

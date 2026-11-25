@@ -183,6 +183,18 @@ for (const { width, height, language, theme, t } of [
     await page.keyboard.press("Escape");
     await expect(opener).toBeFocused();
 
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.addStyleTag({
+      content: `@keyframes test-workspace-menu-exit {
+        from { opacity: 0.9; } to { opacity: 0; }
+      }
+      .workbench-workspace-menu[data-state="closed"] {
+        animation: test-workspace-menu-exit 700ms paused !important;
+      }`,
+    });
+    const closingMenu = page.locator(
+      '.workbench-workspace-menu[data-state="closed"]',
+    );
     await menu.press("ArrowDown");
     const taskTitle = t["workbench.tasks"];
     await page.getByRole("menuitem", { name: taskTitle, exact: true }).click();
@@ -216,12 +228,29 @@ for (const { width, height, language, theme, t } of [
       name: t["common.details"],
       exact: true,
     });
+    await expect(closingMenu).toHaveCount(1);
     await expect(receipt).toHaveValue(/fixture-capture-start/);
+    await expect(receipt).toBeFocused();
+    await closingMenu.evaluate((node) => {
+      const animation = node
+        .getAnimations()
+        .find(
+          (item) =>
+            item instanceof CSSAnimation &&
+            item.animationName === "test-workspace-menu-exit",
+        );
+      if (!animation) throw new Error("Expected a paused menu exit animation");
+      animation.finish();
+    });
+    await expect(closingMenu).toHaveCount(0);
     await expect(receipt).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(receipt).toBeHidden();
     await expect(details).toBeFocused();
     await tasks.screenshot({ path: info.outputPath("capture-task.png") });
+    await page.keyboard.press("Escape");
+    await expect(tasks).toBeHidden();
+    await expect(menu).toBeFocused();
     expect(
       await page.evaluate(() => window.workbenchFixture.unexpectedCommands),
     ).toEqual([]);

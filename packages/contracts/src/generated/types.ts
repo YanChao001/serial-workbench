@@ -320,6 +320,92 @@ export type BrowserEntry = {
   clientId: Id;
 };
 
+export type BrowserFileHandoffParams =
+  BrowserFileHandoffParams_Serialize | BrowserFileHandoffParams_Deserialize;
+
+export type BrowserFileHandoffParams_Deserialize =
+  | ({ kind: "begin"; target: Target_Deserialize; length: U64 } & {
+      bytesBase64?: never;
+      call?: never;
+      offset?: never;
+      uploadId?: never;
+    })
+  | ({ kind: "append"; uploadId: Id; offset: U64; bytesBase64: Bytes } & {
+      call?: never;
+      length?: never;
+      target?: never;
+    })
+  | ({ kind: "seal"; uploadId: Id } & {
+      bytesBase64?: never;
+      call?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "submit"; uploadId: Id; call: Call_Deserialize } & {
+      bytesBase64?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "discard"; uploadId: Id } & {
+      bytesBase64?: never;
+      call?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    });
+
+export type BrowserFileHandoffParams_Serialize =
+  | ({ kind: "begin"; target: Target_Serialize; length: U64 } & {
+      bytesBase64?: never;
+      call?: never;
+      offset?: never;
+      uploadId?: never;
+    })
+  | ({ kind: "append"; uploadId: Id; offset: U64; bytesBase64: Bytes } & {
+      call?: never;
+      length?: never;
+      target?: never;
+    })
+  | ({ kind: "seal"; uploadId: Id } & {
+      bytesBase64?: never;
+      call?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "submit"; uploadId: Id; call: Call_Serialize } & {
+      bytesBase64?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "discard"; uploadId: Id } & {
+      bytesBase64?: never;
+      call?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    });
+
+export type BrowserFileHandoffProgress =
+  BrowserFileHandoffProgress_Serialize | BrowserFileHandoffProgress_Deserialize;
+
+export type BrowserFileHandoffProgress_Deserialize = {
+  uploadId: Id;
+  receivedBytes: U64;
+  totalBytes: U64;
+  sealedFingerprint?: Digest;
+};
+
+export type BrowserFileHandoffProgress_Serialize = {
+  uploadId: Id;
+  receivedBytes: U64;
+  totalBytes: U64;
+  sealedFingerprint?: Digest;
+};
+
 export type BrowserTakeoverParams =
   BrowserTakeoverParams_Serialize | BrowserTakeoverParams_Deserialize;
 
@@ -1725,6 +1811,95 @@ export type EventTime_Serialize = {
 export type ExecutionLocation = "resource_host" | "client";
 
 export type ExecutionMode = "interactive" | "independent";
+
+export type ExperimentDependency =
+  "matched" | "missing" | "changed" | "unavailable" | "other_host";
+
+export type ExperimentExportParams =
+  ExperimentExportParams_Serialize | ExperimentExportParams_Deserialize;
+
+export type ExperimentExportParams_Deserialize = {
+  workspaceRevision: U64;
+  parsers: NodePackageId[];
+  recordings: ObjectRef_Deserialize[];
+  firmware: ExperimentFirmware[];
+  operations: Id[];
+};
+
+export type ExperimentExportParams_Serialize = {
+  workspaceRevision: U64;
+  parsers: NodePackageId[];
+  recordings: ObjectRef_Serialize[];
+  firmware: ExperimentFirmware[];
+  operations: Id[];
+};
+
+export type ExperimentFirmware = {
+  /**  工作区绑定数组的一基序号。 */
+  binding: number;
+  version: string;
+};
+
+export type ExperimentInspection =
+  ExperimentInspection_Serialize | ExperimentInspection_Deserialize;
+
+export type ExperimentInspection_Deserialize = {
+  experiment: ExperimentPackage_Deserialize;
+  parserStatus: ExperimentDependency[];
+  recordingStatus: ExperimentDependency[];
+};
+
+export type ExperimentInspection_Serialize = {
+  experiment: ExperimentPackage_Serialize;
+  parserStatus: ExperimentDependency[];
+  recordingStatus: ExperimentDependency[];
+};
+
+export type ExperimentPackage =
+  ExperimentPackage_Serialize | ExperimentPackage_Deserialize;
+
+export type ExperimentPackage_Deserialize = {
+  formatVersion: string;
+  workspace: WorkspaceDocument_Deserialize;
+  parsers: ExperimentParser[];
+  recordings: ExperimentRecording_Deserialize[];
+  firmware: ExperimentFirmware[];
+  runs: ExperimentRun[];
+};
+
+export type ExperimentPackage_Serialize = {
+  formatVersion: string;
+  workspace: WorkspaceDocument_Serialize;
+  parsers: ExperimentParser[];
+  recordings: ExperimentRecording_Serialize[];
+  firmware: ExperimentFirmware[];
+  runs: ExperimentRun[];
+};
+
+export type ExperimentParser = {
+  id: NodePackageId;
+  version: string;
+  archiveSha256: Digest;
+};
+
+export type ExperimentRecording =
+  ExperimentRecording_Serialize | ExperimentRecording_Deserialize;
+
+export type ExperimentRecording_Deserialize = {
+  reference: ObjectRef_Deserialize;
+  fingerprint: Digest;
+};
+
+export type ExperimentRecording_Serialize = {
+  reference: ObjectRef_Serialize;
+  fingerprint: Digest;
+};
+
+export type ExperimentRun = {
+  actionId: Id;
+  state: OperationState;
+  settledAt: Timestamp;
+};
 
 export type ExplicitLeaseKind = "transaction" | "exclusive";
 
@@ -3282,12 +3457,14 @@ export type NodePackageListParams =
 
 export type NodePackageListParams_Deserialize = {
   pageSize?: U64;
+  parserOnly?: boolean;
   after?: NodePackageId;
   expectedRevision?: U64;
 };
 
 export type NodePackageListParams_Serialize = {
   pageSize: U64;
+  parserOnly?: boolean;
   after?: NodePackageId;
   expectedRevision?: U64;
 };
@@ -4201,6 +4378,8 @@ export type QueryResult_Deserialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Deserialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Deserialize }
+  | { kind: "experiment_package"; value: ExperimentPackage_Deserialize }
+  | { kind: "experiment_inspection"; value: ExperimentInspection_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
   | { kind: "clients"; value: ClientListResult_Deserialize }
   | { kind: "host_metrics"; value: HostMetrics_Deserialize }
@@ -4255,6 +4434,8 @@ export type QueryResult_Serialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Serialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Serialize }
+  | { kind: "experiment_package"; value: ExperimentPackage_Serialize }
+  | { kind: "experiment_inspection"; value: ExperimentInspection_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
   | { kind: "clients"; value: ClientListResult_Serialize }
   | { kind: "host_metrics"; value: HostMetrics_Serialize }
@@ -4708,6 +4889,10 @@ export type RpcRequest = RpcRequest_Serialize | RpcRequest_Deserialize;
 
 export type RpcRequest_Deserialize =
   | { method: "browser.access"; params: BrowserAccessParams }
+  | {
+      method: "browser.fileHandoff";
+      params: BrowserFileHandoffParams_Deserialize;
+    }
   | { method: "browser.takeover"; params: BrowserTakeoverParams_Deserialize }
   | { method: "lan.access"; params: LanAccessParams_Deserialize }
   | { method: "client.register"; params: ClientRegisterParams }
@@ -4730,6 +4915,10 @@ export type RpcRequest_Deserialize =
 
 export type RpcRequest_Serialize =
   | { method: "browser.access"; params: BrowserAccessParams }
+  | {
+      method: "browser.fileHandoff";
+      params: BrowserFileHandoffParams_Serialize;
+    }
   | { method: "browser.takeover"; params: BrowserTakeoverParams_Serialize }
   | { method: "lan.access"; params: LanAccessParams_Serialize }
   | { method: "client.register"; params: ClientRegisterParams }
@@ -4754,6 +4943,7 @@ export type RpcResult = RpcResult_Serialize | RpcResult_Deserialize;
 
 export type RpcResult_Deserialize =
   | BrowserAccessResult
+  | BrowserFileHandoffProgress_Deserialize
   | LanAccessResult_Deserialize
   | ClientRegistration_Deserialize
   | ClientEffectAcknowledged
@@ -4770,6 +4960,7 @@ export type RpcResult_Deserialize =
 
 export type RpcResult_Serialize =
   | BrowserAccessResult
+  | BrowserFileHandoffProgress_Serialize
   | LanAccessResult_Serialize
   | ClientRegistration_Serialize
   | ClientEffectAcknowledged

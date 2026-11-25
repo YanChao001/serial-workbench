@@ -74,6 +74,84 @@ test("arms the exact session only on explicit action and shows a verified match 
   });
 });
 
+test("explains unavailable or incompatible actions and checks current effect permission before arming", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { automation: { action, state: "ready" } });
+  const dialog = await openRule(page);
+  await page.setViewportSize({ width: 420, height: 540 });
+  const editor = dialog.getByRole("textbox", {
+    name: en["ruleTrigger.definition"],
+  });
+  const arm = dialog.getByRole("button", { name: "Arm rule", exact: true });
+  const base = { version: 1, condition: { kind: "regex", pattern: "^ALARM$" } };
+  const fillAction = (actionId: string, params: object = {}) =>
+    editor.fill(
+      JSON.stringify({
+        ...base,
+        effect: { kind: "action", actionId, params },
+      }),
+    );
+  await fillAction("workspace.save");
+  await expect(editor).toHaveAccessibleDescription(
+    "Action workspace.save cannot run in a serial session. Choose a session action.",
+  );
+  await expect(arm).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: /^(Save|Download) JSON$/ }),
+  ).toBeEnabled();
+  const unavailable = "example.missing." + "very-long-action-".repeat(5) + "id";
+  await fillAction(unavailable);
+  await expect(editor).toHaveAccessibleDescription(
+    new RegExp(
+      "Action " + unavailable.replaceAll(".", "\\.") + " is unavailable",
+    ),
+  );
+  await expect(arm).toBeDisabled();
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await fillAction("session.tx");
+  await expect(editor).toHaveAccessibleDescription(
+    /use the serial write effect/,
+  );
+  await expect(arm).toBeDisabled();
+  await page.evaluate(() => {
+    window.workbenchFixture.configureAllowed = false;
+  });
+  const params = { requested: { baudRate: "19200" } };
+  await fillAction("session.configure", params);
+  await expect(arm).toBeEnabled();
+  await arm.click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Permission to run session.configure in this session was denied.",
+  );
+  await expect(editor).toBeEnabled();
+  await expect(editor).toHaveValue(
+    JSON.stringify({
+      ...base,
+      effect: { kind: "action", actionId: "session.configure", params },
+    }),
+  );
+  expect(await invocations(page)).toHaveLength(0);
+  const preflight = await page.evaluate(() =>
+    window.workbenchFixture.queryInputs.filter(
+      ({ actionId, params }) =>
+        actionId === "action.check" && params.actionId === "session.configure",
+    ),
+  );
+  expect(preflight.at(-1)).toMatchObject({
+    target: { kind: "session", sessionEpoch: "1" },
+    params: { actionId: "session.configure", params },
+  });
+  await fillAction("workspace.save");
+  await expect(
+    dialog.getByText(/Permission to run session.configure/),
+  ).toHaveCount(0);
+});
+
 test("keeps an accepted cancellation pending until the Host supplies a terminal receipt", async ({
   page,
 }) => {

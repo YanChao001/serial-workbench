@@ -38,7 +38,20 @@ export function inspectRuleDefinition(definition: string) {
       observationMs > 120_000
     )
       return;
-    return { kind, effect, observationMs };
+    if (effect !== "action") return { kind, effect, observationMs } as const;
+    const { actionId, params } = value.effect;
+    if (
+      typeof actionId !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(actionId) ||
+      !isRecord(params)
+    )
+      return;
+    return {
+      kind,
+      effect,
+      observationMs,
+      action: { actionId, params },
+    } as const;
   } catch {
     return;
   }

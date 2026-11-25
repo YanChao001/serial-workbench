@@ -99,6 +99,13 @@ Linux 签名后台作业在完成固定运行时校验后保存完整归档，Ub
 
 期限内的事件可能在下一次轮询才被读到。边界用例固定事件源时间，单独控制观察进度，核对最后一次读取和完整来源。真实运行再验证跨进程接线及结果一致性。
 
+Windows x64 的 Rust 作业使用同一候选的 `dist-web` 和无头 Chromium 连接隔离 Host。文件交接覆盖浏览器选取、拖放、写入终态、独立 Raw 核对和命令槽回读。实验包从一个 Host 导出，在另一个 Host 检查、导入并明确重绑。Windows Git Bash 用 `cygpath` 规范化运行器临时目录，供 Cargo 和 Node 共用。两项的日志、截图和回执都保留在该目录，CI 区分测试进程失败与收据缺失。
+
+专项复验先执行 `pnpm build:web` 和 `pnpm exec playwright install --only-shell chromium`，并在隔离环境按以下入口运行。两个环境变量分别指定本地证据目录。
+
+- `SWB_TEST_BROWSER_TRANSFER_OUTPUT` 对应 `cargo test --locked -p serial-workbench-host --test browser_pairing browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation -- --test-threads=1`。
+- `SWB_TEST_EXPERIMENT_BROWSER_OUTPUT` 对应 `cargo test --locked -p serial-workbench-host --test capture_api_host paired_browsers_exchange_experiment_between_two_hosts -- --ignored --test-threads=1`。
+
 ## 依赖审计
 
 `pnpm audit` 与 `cargo audit --file Cargo.lock` 使用当前锁文件；手动 audit workflow 保留。请求失败记为未完成，实际风险、升级和暂缓原因写入 PR，不将工具不可用记作通过。

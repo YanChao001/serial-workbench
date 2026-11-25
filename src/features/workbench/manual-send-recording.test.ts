@@ -1,6 +1,7 @@
 import type { Operation, Target } from "@serial-workbench/contracts";
 import { expect, it } from "vitest";
 import { bytesToBase64 } from "@/lib/base64";
+import { inspectSequenceDraft } from "./command-sequence-inputs";
 import { ManualSendRecording } from "./manual-send-recording";
 import { operation } from "./test-fixtures";
 
@@ -123,4 +124,52 @@ it("retains earlier writes when the next manual write has a deadline outside the
     version: 1,
     steps: [{ kind: "send", hex: "00 FF", writeWaitMs: 3200 }],
   });
+});
+
+it("exports references without recorded bytes and resolves only the supplied HEX", () => {
+  const recording = new ManualSendRecording("scope", target, true);
+  const one = recording.add(first, 10, 3200)!;
+  const two = recording.add(second, 51, 1010)!;
+  recording.settle(one, tx("one"), receipt("one", first, 50), 25);
+  recording.stop("user");
+  recording.settle(two, tx("two"), receipt("two", second, 52), 60);
+  const def = recording.snapshot().definition!;
+  expect(def).not.toContain("00 FF");
+  expect(JSON.parse(def)).toEqual({
+    version: 1,
+    variables: { recorded_send_1: null, recorded_send_2: null },
+    steps: [
+      { kind: "send", hex: "$" + "{recorded_send_1}", writeWaitMs: 3200 },
+      { kind: "delay", milliseconds: 26 },
+      { kind: "send", hex: "$" + "{recorded_send_2}", writeWaitMs: 1010 },
+    ],
+  });
+  const review = inspectSequenceDraft(def);
+  expect(review.inputs?.names).toEqual(["recorded_send_1", "recorded_send_2"]);
+  expect(
+    review.inputs?.bind(new Map([["recorded_send_1", "AB"]])),
+  ).toBeUndefined();
+  expect(() =>
+    review.inputs?.bind(
+      new Map([
+        ["recorded_send_1", "AB"],
+        ["recorded_send_2", "GG"],
+      ]),
+    ),
+  ).toThrow("complete HEX");
+  const bound = review.inputs?.bind(
+    new Map([
+      ["recorded_send_1", "AB"],
+      ["recorded_send_2", "CD DE"],
+    ]),
+  );
+  expect(bound).toBeDefined();
+  const runtime = inspectSequenceDraft(bound!);
+  expect(runtime.inputs).toBeUndefined();
+  expect(
+    runtime.plan
+      .filter((step) => step.kind === "send")
+      .map(({ bytes }) => [...bytes]),
+  ).toEqual([[0xab], [0xcd, 0xde]]);
+  expect(recording.snapshot().definition).toBe(def);
 });

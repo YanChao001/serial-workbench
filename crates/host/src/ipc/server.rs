@@ -49,6 +49,7 @@ pub struct ConnectionContext {
     pub actor: AuthenticatedActor,
     pub channel: IpcChannel,
     pub(crate) browser_stopped: Option<tokio::sync::watch::Receiver<bool>>,
+    pub(crate) browser_upload: Option<Arc<crate::dispatch::browser_file::BrowserUploadSlot>>,
     pub(crate) supports_events: bool,
     pub(super) events: mpsc::Sender<AuthorizedEvent>,
     pub(super) event_budget: Arc<Semaphore>,
@@ -68,6 +69,7 @@ pub(crate) fn test_context(
             actor,
             channel: IpcChannel::Control,
             browser_stopped: None,
+            browser_upload: None,
             supports_events: true,
             events,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
@@ -356,6 +358,13 @@ pub struct HostServer {
 }
 impl HostServer {
     pub async fn bind(profile: &Path) -> HostResult<Self> {
+        let server = Self::prepare(profile).await?;
+        server.publish_discovery().await?;
+        Ok(server)
+    }
+
+    /// Acquire the instance and bind its private endpoint before initializing the Host handler.
+    pub async fn prepare(profile: &Path) -> HostResult<Self> {
         let profile = profile.to_path_buf();
         let (guard, store, identity, pin, control) = blocking(move || {
             let guard = InstanceGuard::acquire(&profile)?;
@@ -405,21 +414,6 @@ impl HostServer {
         blocking(move || local::prepare_private_directory(&runtime_for_prepare)).await?;
         repair_old_endpoint(guard.namespace(), &runtime, &identity.host_id)?;
         let listener = LocalListener::bind(&runtime, &uuid::Uuid::new_v4().to_string())?;
-        let discovery = DiscoveryRecord {
-            host_id: identity.host_id.clone(),
-            instance_epoch: identity.instance_epoch,
-            endpoint: listener.endpoint().into(),
-            pid: std::process::id(),
-            format: DiscoveryFormat::V0_1,
-            executable: Some(std::env::current_exe().map_err(|_| {
-                HostError::new(
-                    "STORAGE_UNAVAILABLE",
-                    "Cannot identify the running Host executable",
-                )
-            })?),
-        };
-        let path = guard.namespace().join("discovery.json");
-        blocking(move || discovery.write(&path)).await?;
         let auth = AuthService::new(store.clone(), control.clone());
         Ok(Self {
             #[cfg(test)]
@@ -438,6 +432,25 @@ impl HostServer {
             http_control: None,
         })
     }
+    /// Publish this instance once its handler and requested local entry points are ready.
+    pub async fn publish_discovery(&self) -> HostResult<()> {
+        let discovery = DiscoveryRecord {
+            host_id: self.identity.host_id.clone(),
+            instance_epoch: self.identity.instance_epoch,
+            endpoint: self.listener.endpoint().into(),
+            pid: std::process::id(),
+            format: DiscoveryFormat::V0_1,
+            executable: Some(std::env::current_exe().map_err(|_| {
+                HostError::new(
+                    "STORAGE_UNAVAILABLE",
+                    "Cannot identify the running Host executable",
+                )
+            })?),
+        };
+        let path = self._guard.namespace().join("discovery.json");
+        blocking(move || discovery.write(&path)).await
+    }
+
     pub fn auth(&self) -> AuthService {
         self.auth.clone()
     }
@@ -729,7 +742,81 @@ fn repair_old_endpoint(namespace: &Path, runtime: &Path, host: &Id) -> HostResul
 #[cfg(test)]
 mod shutdown_tests {
     use super::*;
+    use serial_workbench_client::{ConnectOptions, HostClient};
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn catalog_query(client: &HostClient) -> Query {
+        let attachment = client.attachment();
+        Query {
+            protocol_version: attachment.protocol_version,
+            host_id: attachment.host_id.clone(),
+            instance_epoch: attachment.instance_epoch,
+            actor_id: attachment.actor_id.clone(),
+            request_id: new_request_id(),
+            action_id: Id::try_from("catalog.list").unwrap(),
+            target: Target {
+                host_id: attachment.host_id.clone(),
+                kind: ResourceKind::try_from("host").unwrap(),
+                id: attachment.host_id.clone(),
+                session_id: None,
+                session_epoch: None,
+            },
+            params: serde_json::from_value(serde_json::json!({"pageSize":"100"})).unwrap(),
+            reveal_target: RevealTarget {
+                page_id: Id::try_from("workbench").unwrap(),
+                workspace_id: None,
+                session_id: None,
+                panel_id: None,
+                result_ref: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn prepared_host_publishes_discovery_after_handler_is_ready() {
+        let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let mut server = HostServer::prepare(profile.path()).await.unwrap();
+        let identity = server.identity().clone();
+        let options = ConnectOptions::new(
+            profile.path().into(),
+            Id::try_from("startup-observer").unwrap(),
+            ClientKind::Cli,
+        );
+        assert!(local::profile_has_running_host(profile.path()).unwrap());
+        assert_eq!(
+            HostClient::connect(options.clone())
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "STORAGE_UNAVAILABLE",
+        );
+        let handler = crate::Host::new(server.store(), server.auth())
+            .await
+            .unwrap();
+        server.publish_discovery().await.unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let running = tokio::spawn(async move {
+            server
+                .serve_until(Arc::new(handler), async {
+                    let _ = stopped.await;
+                })
+                .await
+        });
+        let client = HostClient::connect_or_start(options).await.unwrap();
+        assert_eq!(client.attachment().host_id, identity.host_id);
+        assert_eq!(client.attachment().instance_epoch, identity.instance_epoch);
+        assert!(matches!(
+            client
+                .request(RpcRequest::CatalogList(catalog_query(&client)))
+                .await,
+            Ok(RpcReply::Success { .. }),
+        ));
+        client.close().await.unwrap();
+        stop.send(()).unwrap();
+        running.await.unwrap().unwrap();
+        assert!(!local::profile_has_running_host(profile.path()).unwrap());
+    }
 
     struct FailingShutdown {
         count: Arc<AtomicUsize>,
@@ -835,7 +922,6 @@ mod shutdown_tests {
     // binary lifetime; a library report alone does not establish that result.
     #[tokio::test]
     async fn incomplete_shutdown_keeps_serving_and_holds_instance_until_retry_finishes() {
-        use serial_workbench_client::{ConnectOptions, HostClient};
         let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(profile.path()).await.unwrap();
         let host = crate::Host::new(server.store(), server.auth())
@@ -867,30 +953,7 @@ mod shutdown_tests {
         entered.notified().await;
         let held = local::profile_has_running_host(profile.path()).unwrap();
         let still_running = !running.is_finished();
-        let a = client.attachment();
-        let query = Query {
-            protocol_version: a.protocol_version,
-            host_id: a.host_id.clone(),
-            instance_epoch: a.instance_epoch,
-            actor_id: a.actor_id.clone(),
-            request_id: new_request_id(),
-            action_id: Id::try_from("catalog.list").unwrap(),
-            target: Target {
-                host_id: a.host_id.clone(),
-                kind: ResourceKind::try_from("host").unwrap(),
-                id: a.host_id.clone(),
-                session_id: None,
-                session_epoch: None,
-            },
-            params: serde_json::from_value(serde_json::json!({"pageSize":"100"})).unwrap(),
-            reveal_target: RevealTarget {
-                page_id: Id::try_from("workbench").unwrap(),
-                workspace_id: None,
-                session_id: None,
-                panel_id: None,
-                result_ref: None,
-            },
-        };
+        let query = catalog_query(&client);
         let observed = tokio::time::timeout(
             Duration::from_secs(1),
             client.request(RpcRequest::Query(query)),

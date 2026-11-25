@@ -1006,6 +1006,7 @@ export const en = {
   "workbench.tools.dtrOff": "DTR off",
   "workbench.tools.rtsOn": "RTS on",
   "workbench.tools.rtsOff": "RTS off",
+  "workbench.tools.waitingLine": "Waiting for the device to confirm {action}.",
   "workbench.tools.flowOwnsLine": "Flow control owns this line",
   "workbench.tools.breakDuration": "BREAK duration (ms)",
   "workbench.tools.finiteBreak": "Send finite BREAK",
@@ -1084,6 +1085,56 @@ export const en = {
   "workbench.tools.chooseWorkspace": "Choose workspace",
   "workbench.tools.defaultWorkspace": "Default workspace",
   "workbench.tools.configurationFileName": "workspace-configuration.json",
+  "workbench.experiment.title": "Experiment package",
+  "workbench.experiment.export": "Export package",
+  "workbench.experiment.import": "Import package",
+  "workbench.experiment.unnamed": "Untitled workspace",
+  "workbench.experiment.revision": "Revision",
+  "workbench.experiment.configuration": "Lines and views",
+  "workbench.experiment.binding": "Line",
+  "workbench.experiment.views": "Views",
+  "workbench.experiment.firmware": "Firmware versions",
+  "workbench.experiment.invalidFirmware":
+    "Use 1 to 64 letters, numbers, or . - + _ for a version.",
+  "workbench.experiment.evidence": "Evidence",
+  "workbench.experiment.parsers": "Parser plug-ins",
+  "workbench.experiment.recordings": "Recording references",
+  "workbench.experiment.chooseRecording": "Choose recording file",
+  "workbench.experiment.loadingParsers": "Loading the parser catalog",
+  "workbench.experiment.runs": "Settled workspace runs",
+  "workbench.experiment.none": "No entries",
+  "workbench.experiment.chooseFile": "Choose package file",
+  "workbench.experiment.packageFile": "Package file",
+  "workbench.experiment.noFile": "No file selected",
+  "workbench.experiment.replaceNotice":
+    "Confirm to replace the current workspace configuration.",
+  "workbench.experiment.readOnly":
+    "This connection can inspect the package. Import requires workspace write access.",
+  "workbench.experiment.revisionChanged":
+    "The workspace revision changed. Generate a new preview.",
+  "workbench.experiment.back": "Back to workspace setup",
+  "workbench.experiment.editSelection": "Edit selection",
+  "workbench.experiment.save": "Save package",
+  "workbench.experiment.preview": "Preview export",
+  "workbench.experiment.confirmImport": "Confirm import",
+  "workbench.experiment.inspect": "Inspect package",
+  "workbench.experiment.rebind": "Needs rebinding",
+  "workbench.experiment.verifyFirmware": "Verify manually",
+  "workbench.experiment.dependencies": "Dependency check",
+  "workbench.experiment.digest": "Show digest",
+  "workbench.experiment.redactions":
+    "Device ports, USB serial numbers, paths, custom names, and operation contents have been removed.",
+  "workbench.experiment.matched": "Matched",
+  "workbench.experiment.missing": "Missing",
+  "workbench.experiment.changed": "Version or digest changed",
+  "workbench.experiment.unavailable": "Unavailable",
+  "workbench.experiment.otherHost": "Other Host",
+  "workbench.experiment.imported":
+    "Imported the configuration. Rebind devices in the device library.",
+  "workbench.experiment.previewChanged":
+    "The package changed. Review the new preview before saving.",
+  "workbench.experiment.saved": "Experiment package saved.",
+  "workbench.experiment.fileName": "experiment-package.json",
   "workbench.tools.chooseConfigurationFile": "Choose file",
   "workbench.tools.noConfigurationFile": "No file selected",
   "workbench.tools.enteredConfiguration": "Entered configuration",
@@ -1184,6 +1235,24 @@ export const en = {
   "workbench.tools.sendFile": "Send file",
   "workbench.tools.invalidRange":
     "Enter a valid range within the selected file",
+  "workbench.tools.browserFile.unavailable":
+    "Browser file sending requires permission to write to this session.",
+  "workbench.tools.browserFile.invalidFile":
+    "Select one non-empty file up to 1 GiB.",
+  "workbench.tools.browserFile.sample": "Beginning of selected bytes",
+  "workbench.tools.browserFile.sampleUnavailable":
+    "The selected bytes could not be previewed.",
+  "workbench.tools.browserFile.upload": "Uploading to Host",
+  "workbench.tools.browserFile.submitting":
+    "Waiting for Host to accept the transfer…",
+  "workbench.tools.browserFile.cancelUpload": "Cancel upload",
+  "workbench.tools.browserFile.uploadCancelled": "File handoff cancelled.",
+  "workbench.tools.browserFile.stopSending": "Stop sending",
+  "workbench.tools.browserFile.receiptPending":
+    "The previous send has an unconfirmed receipt. Check it before sending again.",
+  "workbench.tools.browserFile.checkReceipt": "Check send receipt",
+  "workbench.tools.browserFile.noReceipt":
+    "Host has no accepted operation for that request.",
   "workbench.tools.transferEvidence": "Transfer receipt",
   "workbench.tools.draft": "Send draft",
   "workbench.tools.saveUnavailable":
@@ -1240,6 +1309,14 @@ export const en = {
     "Enable a signed automation package that provides rule triggers.",
   "ruleTrigger.invalid":
     "Check the JSON version, observation window, condition, and effect.",
+  "ruleTrigger.actionReserved":
+    "Choose another action for {action}, or use the serial write effect to send bytes.",
+  "ruleTrigger.actionUnavailable":
+    "Action {action} is unavailable. Enable its plugin or choose another action.",
+  "ruleTrigger.actionTarget":
+    "Action {action} cannot run in a serial session. Choose a session action.",
+  "ruleTrigger.actionDenied":
+    "Permission to run {action} in this session was denied. Check access and try again.",
   "ruleTrigger.arm": "Arm rule",
   "ruleTrigger.stop": "Stop rule",
   "ruleTrigger.plan":
@@ -1306,7 +1383,8 @@ export const en = {
   "testSuite.status.unverified": "Unverified",
   "manualRecording.title": "Record manual sends",
   "manualRecording.description":
-    "The recording contains sent bytes and confirmed wait times. Avoid sending secrets while recording.",
+    "Records bytes and wait times from the send panel and confirmed receive selections. Avoid sending secrets while recording.",
+  "manualRecording.referenceBytes": "Store sent bytes as input references",
   "manualRecording.start": "Start recording",
   "manualRecording.stop": "Stop recording",
   "manualRecording.review": "Review in command sequence",
@@ -1326,6 +1404,16 @@ export const en = {
   "commandSequence.preview": "Execution preview",
   "commandSequence.previewEmpty":
     "Enter a sequence definition to preview its steps.",
+  "commandSequence.inputs": "Inputs for this run",
+  "commandSequence.inputsHelp":
+    "Enter HEX for each reference. The sequence file keeps only the references.",
+  "commandSequence.inputsInvalid": "Check HEX and sequence limits at {path}.",
+  "commandSequence.chooseInputFileFor": "Choose file for {name}",
+  "commandSequence.inputFileBound": "Bound {bytes} bytes from a file.",
+  "commandSequence.inputFileSize": "Choose a file between 1 and {max} bytes.",
+  "commandSequence.inputFileRead":
+    "Could not read the selected file. Choose it again.",
+  "commandSequence.previewInput": "Send input {name}",
   "commandSequence.previewSend": "Send",
   "commandSequence.previewWriteWait": "Write deadline {ms} ms",
   "commandSequence.previewDelay": "Wait {ms} ms",
@@ -2082,6 +2170,52 @@ export const en = {
   "workbench.closeAllViews": "Close all views",
   "workbench.closeSession": "Close session",
   "workbench.disconnect": "Disconnect",
+  "tcpConnection.title": "TCP connection",
+  "tcpConnection.role": "Role",
+  "tcpConnection.client": "TCP client",
+  "tcpConnection.server": "TCP server",
+  "tcpConnection.bindAddress": "Local address",
+  "tcpConnection.remoteAddress": "Remote address",
+  "tcpConnection.port": "Port",
+  "tcpConnection.invalidBindAddress": "Enter a local IPv4 or IPv6 address.",
+  "tcpConnection.invalidRemoteAddress": "Enter a host name or IP address.",
+  "tcpConnection.invalidPort": "Enter a port from 1 to 65535.",
+  "tcpConnection.listenerHelp": "Each listening session accepts one peer.",
+  "tcpConnection.connect": "Connect",
+  "tcpConnection.connecting": "Connecting…",
+  "tcpConnection.listen": "Start listening",
+  "tcpConnection.starting": "Starting listener…",
+  "nativeError.pluginTransportOpenFailed":
+    "Could not open the plugin connection. Check the endpoint and parameters, then try again.",
+  "rfc2217Connection.title": "RFC 2217 remote serial",
+  "rfc2217Connection.baudRate": "Baud rate (bit/s)",
+  "rfc2217Connection.invalidBaudRate":
+    "Enter a baud rate from 1 to 4294967295 bit/s.",
+  "rfc2217Connection.lineSettings": "Line settings",
+  "rfc2217Connection.noFlowControl": "No flow control",
+  "rfc2217Connection.keep": "Keep",
+  "rfc2217Connection.set": "Set",
+  "rfc2217Connection.clear": "Clear",
+  "rfc2217Connection.managedRts": "RTS is managed by hardware flow control.",
+  "rfc2217Connection.invalidStopBits":
+    "Choose 5 data bits to use 1.5 stop bits.",
+  "rfc2217Connection.options": "connection options",
+  "rfc2217Connection.binary": "two-way binary transfer",
+  "rfc2217Connection.comPort": "serial control",
+  "rfc2217Connection.dtr": "DTR",
+  "rfc2217Connection.rts": "RTS",
+  "rfc2217Connection.baudReading": "{value}\u00a0bit/s",
+  "rfc2217Connection.refused":
+    "The remote endpoint refused {field}. Check that the server supports RFC 2217.",
+  "rfc2217Connection.timeout":
+    "Timed out waiting for the remote endpoint to confirm {field}.",
+  "rfc2217Connection.disconnected":
+    "The remote endpoint disconnected while confirming {field}.",
+  "rfc2217Connection.invalidReply":
+    "The remote endpoint returned an invalid response for {field} while confirming {requested}.",
+  "rfc2217Connection.differentValue":
+    "{field} mismatch. Requested {requested}, but the remote endpoint reported {reported}.",
+  "rfc2217Connection.negotiating": "Negotiating…",
   "workbench.pluginTransportParameters": "Plugin connection parameters",
   "workbench.pluginTransportHint":
     "Enter a JSON object using the plugin’s documented parameters.",
@@ -2094,6 +2228,8 @@ export const en = {
     "Resource capacity is full. Check runtime status and release unused resources, then retry.",
   "nativeError.writeTimeout":
     "The send wait timed out. Check the send details before retrying.",
+  "nativeError.controlNotApplied":
+    "The line command was not sent. Try again when the connection is ready.",
   "nativeError.controlUnknown":
     "The serial operation outcome is unconfirmed. Reconnect before trying again.",
   "nativeError.devRuntimeMismatch":
@@ -2215,6 +2351,22 @@ export const en = {
   "commandLibrary.redone": "Edit redone.",
   "commandLibrary.note": "Note",
   "commandLibrary.body": "Command body",
+  "commandLibrary.chooseBodyFile": "Load file…",
+  "commandLibrary.filePrefix": "Leading file bytes",
+  "commandLibrary.cancelBodyFile": "Cancel import",
+  "commandLibrary.oneBodyFile":
+    "Choose or drop one command body file at a time.",
+  "commandLibrary.emptyBodyFile": "Choose a file containing at least one byte.",
+  "commandLibrary.largeBodyFile":
+    "The command body can load files up to {limit} bytes.",
+  "commandLibrary.changedBodyFile":
+    "The selected file changed. Choose it again.",
+  "commandLibrary.loadBodyFileHint":
+    "Load {bytes} bytes into the draft as HEX.",
+  "commandLibrary.replaceBodyFileHint":
+    "Replace the draft body with {bytes} bytes as HEX.",
+  "commandLibrary.loadBodyFromFile": "Use file bytes",
+  "commandLibrary.replaceBodyFromFile": "Replace command body",
   "commandLibrary.mode": "Send format",
   "commandLibrary.text": "Text",
   "commandLibrary.encoding": "Send encoding",

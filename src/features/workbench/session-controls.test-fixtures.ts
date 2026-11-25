@@ -84,6 +84,8 @@ export const controlLabels = {
   invalidConfiguration:
     "Enter positive integer values within the supported range",
   controlLines: "Control lines",
+  waitingLine: (action: string) =>
+    "Waiting for the device to confirm " + action + ".",
   dtrOn: "DTR on",
   dtrOff: "DTR off",
   rtsOn: "RTS on",

@@ -90,7 +90,9 @@ Windows 的证明对象持有拒绝写入/删除共享的文件句柄及目录�
 
 ### 管理查询
 
-`node.packages.list` 是 Host 目标的只读分页查询，要求当前 `metadata.read`，回复为 `QueryResult` 的 `node_packages` 分支。[Rust 管理 DTO](../../crates/core/src/node_management.rs) 的输入为 `{pageSize?,after?,expectedRevision?}`；pageSize 默认 20、范围 1—100，after 必须同时携带首张快照的 expectedRevision。返回同一次安装文档读取的 revision、packages 与可选 nextAfter；续页期间安装记录改变返回 `REVISION_CONFLICT`，客户端重新取首张快照。
+`node.packages.list` 是 Host 目标的只读分页查询，要求当前 `metadata.read`，回复为 `QueryResult` 的 `node_packages` 分支。[Rust 管理 DTO](../../crates/core/src/node_management.rs) 的输入为 `{pageSize?,after?,expectedRevision?,parserOnly?}`。pageSize 默认 20、范围 1—100。after 必须同时携带首张快照的 expectedRevision。返回同一次安装文档读取的 revision、packages 与可选 nextAfter。续页期间安装记录改变返回 `REVISION_CONFLICT`，客户端重新取首张快照。
+
+省略 `parserOnly` 即读取完整安装目录。传入 `true` 时只返回签名清单声明 `contributes.parsers` 的包，包含已禁用的版本。筛选在分页前执行，续页沿用同一筛选。游标指向筛选范围以外的包时返回 `INVALID_ARGUMENT`。实验包的解析器选择、导出与依赖检查使用这个目录。
 
 每项为有界的 `NodePackageSummary`，包含 `{id,displayName?,version?,archiveSha256,enabled,sourceVerified,executionApproved}`。Host 从已校验的安装清单生成显示名称与版本。名称超过 96 个 Unicode 标量时提供带省略号的预览，版本超过 128 字节时省略该字段。完整清单可通过详读接口读取，历史操作回执也可省略这两项。sourceVerified 表示安装记录带有来源验证收据；executionApproved 表示持久确认仍精确绑定该记录的归档、权限声明和来源。它们是历史记录投影，enabled 也仅为启用意图，均不表示后台已激活、当前来源仍可信或调用者仍有执行权限。实际接纳与效果边界仍按下述生命周期复核。
 
@@ -160,6 +162,8 @@ Windows 的证明对象持有拒绝写入/删除共享的文件句柄及目录�
 **传输提供器。** 公开 SDK 在 `register(context)` 内用 `context.transports.register(id, open)` 选择已签名清单的传输条目。Host 在设备目录发布实际登记的传输，普通动作目录继续发布查询和动作。Host 的 `device.open` 以 `transportParams` 传入参数，沿用正常会话回执。Host 用条目的输入 schema 验证参数并补齐默认值，核对目标设备和授权后才调用提供器。插件参数由显式打开给定，串口绑定和自动重连沿用原有串口路径。
 
 `open({params, signal})` 建立当前连接。句柄提供 `read({maxBytes, waitMs, signal})`、`write({bytes, waitMs, signal})` 和 `close()`。空读表示本次等待未取得数据，`null` 表示 EOF。写入回执的整数表示已知接纳的连续字节前缀。派发后取消、掉线或退出而缺少可靠回执时，Host 保留未知区间，重试沿用现有请求去重。关闭处理器须等待实际资源关闭，Host 在真实关闭得到证明时记录清理成功。[参考包](../../packages/plugin-sdk/examples/reference-transport/)
+
+已打开的连接可声明可选的 `lineControls`。Host 只发布连接实际声明的 DTR、RTS 能力，通过现有 `session.control` 验权并调度。控制和 Raw 读取可并行等待，Host 继续用同一会话 owner 发布字节。控制回执可确认实际值、明确未提交或记录结果未知。未证实的线路值不能更新下一代连接的回执。未提供这项能力的已签名连接继续使用原读写合同。
 
 自动登记使用原激活主体及 epoch，重核当前授权、来源、执行信任与内容证明；首次人工激活失败不当作 owner 崩溃自动重试。同包显式启用可合并等待，但仍各自验权且不延长总预算，真实失败状态发布后才归还名额。相容升级只在安装 CAS 成功后以原主体登记精确新归档；撤权或扩大权限不导入新版。按需触发分别核验原主体登记资格和此次调用者权限，不重新派发旧业务。
 

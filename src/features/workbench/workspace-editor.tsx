@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type {
   SerialConfiguration,
   WorkspaceDocument,
@@ -166,6 +173,11 @@ export type WorkspaceEditorProps = {
     base: WorkspaceDocumentResult,
     signal?: AbortSignal,
   ) => Promise<void>;
+  experimentEntry?: {
+    label: string;
+    ref: RefObject<HTMLButtonElement | null>;
+    open: () => void;
+  };
 };
 
 export function cloneWorkspaceView(
@@ -224,6 +236,7 @@ function WorkspaceEditorDraft({
   onReload,
   onExport,
   onPreviewImport,
+  experimentEntry,
 }: WorkspaceEditorProps) {
   const [original, setOriginal] = useState(base);
   const [addingDevice, setAddingDevice] = useState("");
@@ -1110,6 +1123,19 @@ function WorkspaceEditorDraft({
             >
               <FileUp aria-hidden="true" />
             </WorkbenchIconButton>
+            {experimentEntry && (
+              <Button
+                ref={experimentEntry.ref}
+                className="workbench-experiment-entry"
+                size="sm"
+                variant="outline"
+                type="button"
+                disabled={locked}
+                onClick={experimentEntry.open}
+              >
+                {experimentEntry.label}
+              </Button>
+            )}
           </>
         )}
       </div>

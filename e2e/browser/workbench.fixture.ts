@@ -31,6 +31,7 @@ import type {
   WorkspaceDocumentResult,
   SessionSnapshot,
   ReplayReadResult,
+  ExperimentInspection,
 } from "@serial-workbench/contracts";
 import type {
   ClientStateSnapshot,
@@ -77,6 +78,7 @@ export type ReplayLayoutFixture = {
   >;
 };
 export type WorkbenchFixture = {
+  setExperimentRecordingReadable: (readable: boolean, notify: boolean) => void;
   setNodeThemes: (themes: FixtureNodeThemes) => void;
   registerFramingAction: () => void;
   dropTransferFile: (x: number, y: number, generation?: string) => number;
@@ -244,6 +246,7 @@ export async function seedWorkbenchFixture(
     replayPeer,
     connectFailure,
     openedConfiguration,
+    openedCapabilities,
     connectionDefaults,
     device,
     secondDevice,
@@ -257,10 +260,12 @@ export async function seedWorkbenchFixture(
     manualSendReceipts = false,
     automation,
     diagnosticLogs,
+    experiment,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
     diagnosticLogs?: string;
+    experiment?: ExperimentInspection;
     motion?: "full" | "reduced";
     currentPage?: "workbench" | "settings";
     language?: "en" | "zh";
@@ -283,6 +288,7 @@ export async function seedWorkbenchFixture(
     replayPeer?: ReplayLayoutFixture;
     connectFailure?: HostError;
     openedConfiguration?: SessionSnapshot["configuration"];
+    openedCapabilities?: SessionSnapshot["capabilities"];
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     device?: DeviceDescriptor;
     secondDevice?: DeviceDescriptor;
@@ -568,6 +574,32 @@ export async function seedWorkbenchFixture(
     },
     "settings.read": { kind: "settings", value: settingsDocument },
     "workspace.read": { kind: "workspace", value: workspaceDocument },
+    ...(experiment
+      ? {
+          "workspace.experiment.export": {
+            kind: "experiment_package",
+            value: experiment.experiment,
+          },
+          "workspace.experiment.inspect": {
+            kind: "experiment_inspection",
+            value: experiment,
+          },
+          "node.packages.list": {
+            kind: "node_packages",
+            value: {
+              revision: "1",
+              packages: experiment.experiment.parsers.map((item) => ({
+                id: item.id,
+                version: item.version,
+                archiveSha256: item.archiveSha256,
+                enabled: true,
+                sourceVerified: true,
+                executionApproved: true,
+              })),
+            },
+          },
+        }
+      : {}),
   } satisfies Record<string, QueryResult>;
   const clientState = {
     formatVersion: "0.1",
@@ -604,6 +636,7 @@ export async function seedWorkbenchFixture(
       ...fixtureSession,
       readOnly,
       configuration: openedConfiguration ?? fixtureSession.configuration,
+      capabilities: openedCapabilities ?? fixtureSession.capabilities,
     },
     secondSession: secondDevice
       ? {
@@ -962,7 +995,12 @@ export async function seedWorkbenchFixture(
         });
     }
     const dropListeners = new Set<number>();
+    let experimentRecordingReadable = true;
     const fixture: WorkbenchFixture = {
+      setExperimentRecordingReadable(readable, notify) {
+        experimentRecordingReadable = readable;
+        if (notify) catalogChanged();
+      },
       transferDropClaims: [],
       dropTransferFile(x, y, generation = hostAttachment.generation) {
         for (const id of dropListeners)
@@ -2499,6 +2537,20 @@ export async function seedWorkbenchFixture(
               const query = request.params;
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
+              if (
+                query.actionId === "workspace.experiment.export" &&
+                Array.isArray(query.params.recordings) &&
+                query.params.recordings.length > 0 &&
+                !experimentRecordingReadable
+              )
+                return {
+                  ok: false,
+                  error: {
+                    code: "PERMISSION_DENIED",
+                    message: "Recording grant was revoked",
+                    retryable: false,
+                  },
+                };
               if (
                 sendHistory &&
                 query.params.operationId === sentOperation.operationId

@@ -103,6 +103,24 @@ pub(super) fn validate_request(
             }
             return Ok(());
         }
+        RpcRequest::BrowserFileHandoff(params) => {
+            if context.browser_upload.is_none() {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "File handoff requires a paired browser Control connection",
+                ));
+            }
+            let BrowserFileHandoffParams::Submit { call, .. } = params else {
+                return Ok(());
+            };
+            (
+                &call.actor_id,
+                &call.host_id,
+                call.instance_epoch,
+                &call.target,
+                Some(&call.request_id),
+            )
+        }
         RpcRequest::BrowserTakeover(params) => {
             let allowed = match params {
                 BrowserTakeoverParams::Request { .. } => context.browser_stopped.is_some(),

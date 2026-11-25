@@ -40,10 +40,10 @@ export function useManualSendRecording(
     [],
   );
 
-  function start() {
+  function start(referenceBytes = false) {
     if (active.current || !scope || !target) return;
     const capture = {
-      recording: new ManualSendRecording(scope, target),
+      recording: new ManualSendRecording(scope, target, referenceBytes),
       observer: new AbortController(),
     };
     active.current = capture;

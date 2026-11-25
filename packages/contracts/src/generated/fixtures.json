@@ -673,6 +673,13 @@
       }
     },
     {
+      "name": "node-packages-null-parser-filter",
+      "schema": "NodePackageListParams",
+      "value": {
+        "parserOnly": null
+      }
+    },
+    {
       "name": "node-packages-null-after",
       "schema": "NodePackageListParams",
       "value": {
@@ -4280,6 +4287,320 @@
       "name": "document-json-missing-json",
       "schema": "DocumentJsonResult",
       "value": {}
+    },
+    {
+      "name": "experiment-export-unknown-field",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "firmware": [],
+        "operations": [],
+        "parsers": [],
+        "recordings": [],
+        "unknown": true,
+        "workspaceRevision": "1"
+      }
+    },
+    {
+      "name": "experiment-export-missing-firmware",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "operations": [],
+        "parsers": [],
+        "recordings": [],
+        "workspaceRevision": "1"
+      }
+    },
+    {
+      "name": "experiment-export-missing-operations",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "firmware": [],
+        "parsers": [],
+        "recordings": [],
+        "workspaceRevision": "1"
+      }
+    },
+    {
+      "name": "experiment-export-missing-parsers",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "firmware": [],
+        "operations": [],
+        "recordings": [],
+        "workspaceRevision": "1"
+      }
+    },
+    {
+      "name": "experiment-export-missing-recordings",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "firmware": [],
+        "operations": [],
+        "parsers": [],
+        "workspaceRevision": "1"
+      }
+    },
+    {
+      "name": "experiment-export-missing-workspaceRevision",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "firmware": [],
+        "operations": [],
+        "parsers": [],
+        "recordings": []
+      }
+    },
+    {
+      "name": "experiment-package-unknown-field",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "formatVersion": "1",
+        "parsers": [],
+        "recordings": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ],
+        "unknown": true,
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "experiment-package-missing-firmware",
+      "schema": "ExperimentPackage",
+      "value": {
+        "formatVersion": "1",
+        "parsers": [],
+        "recordings": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ],
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "experiment-package-missing-formatVersion",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "parsers": [],
+        "recordings": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ],
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "experiment-package-missing-parsers",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "formatVersion": "1",
+        "recordings": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ],
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "experiment-package-missing-recordings",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "formatVersion": "1",
+        "parsers": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ],
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "experiment-package-missing-runs",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "formatVersion": "1",
+        "parsers": [],
+        "recordings": [],
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "experiment-package-missing-workspace",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "formatVersion": "1",
+        "parsers": [],
+        "recordings": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "query-experiment-inspection-unknown-field",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "experiment_inspection",
+        "unknown": true,
+        "value": {
+          "experiment": {
+            "firmware": [],
+            "formatVersion": "1",
+            "parsers": [],
+            "recordings": [],
+            "runs": [
+              {
+                "actionId": "workspace.save",
+                "settledAt": "2026-11-08T00:00:00Z",
+                "state": "succeeded"
+              }
+            ],
+            "workspace": {
+              "bindings": [],
+              "captures": [],
+              "favoriteBindingIds": [],
+              "layout": {
+                "panelHeight": 240,
+                "sidebarWidth": 224
+              },
+              "name": "",
+              "views": []
+            }
+          },
+          "parserStatus": [],
+          "recordingStatus": []
+        }
+      }
+    },
+    {
+      "name": "query-experiment-inspection-missing-kind",
+      "schema": "QueryResult",
+      "value": {
+        "value": {
+          "experiment": {
+            "firmware": [],
+            "formatVersion": "1",
+            "parsers": [],
+            "recordings": [],
+            "runs": [
+              {
+                "actionId": "workspace.save",
+                "settledAt": "2026-11-08T00:00:00Z",
+                "state": "succeeded"
+              }
+            ],
+            "workspace": {
+              "bindings": [],
+              "captures": [],
+              "favoriteBindingIds": [],
+              "layout": {
+                "panelHeight": 240,
+                "sidebarWidth": 224
+              },
+              "name": "",
+              "views": []
+            }
+          },
+          "parserStatus": [],
+          "recordingStatus": []
+        }
+      }
+    },
+    {
+      "name": "query-experiment-inspection-missing-value",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "experiment_inspection"
+      }
     },
     {
       "name": "query-settings-document-unknown-field",
@@ -11354,6 +11675,13 @@
       "value": {}
     },
     {
+      "name": "node-packages-parser-page",
+      "schema": "NodePackageListParams",
+      "value": {
+        "parserOnly": true
+      }
+    },
+    {
       "name": "node-packages-next-page",
       "schema": "NodePackageListParams",
       "value": {
@@ -13292,6 +13620,80 @@
       "schema": "DocumentJsonResult",
       "value": {
         "json": "{}"
+      }
+    },
+    {
+      "name": "experiment-export",
+      "schema": "ExperimentExportParams",
+      "value": {
+        "firmware": [],
+        "operations": [],
+        "parsers": [],
+        "recordings": [],
+        "workspaceRevision": "1"
+      }
+    },
+    {
+      "name": "experiment-package",
+      "schema": "ExperimentPackage",
+      "value": {
+        "firmware": [],
+        "formatVersion": "1",
+        "parsers": [],
+        "recordings": [],
+        "runs": [
+          {
+            "actionId": "workspace.save",
+            "settledAt": "2026-11-08T00:00:00Z",
+            "state": "succeeded"
+          }
+        ],
+        "workspace": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "query-experiment-inspection",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "experiment_inspection",
+        "value": {
+          "experiment": {
+            "firmware": [],
+            "formatVersion": "1",
+            "parsers": [],
+            "recordings": [],
+            "runs": [
+              {
+                "actionId": "workspace.save",
+                "settledAt": "2026-11-08T00:00:00Z",
+                "state": "succeeded"
+              }
+            ],
+            "workspace": {
+              "bindings": [],
+              "captures": [],
+              "favoriteBindingIds": [],
+              "layout": {
+                "panelHeight": 240,
+                "sidebarWidth": 224
+              },
+              "name": "",
+              "views": []
+            }
+          },
+          "parserStatus": [],
+          "recordingStatus": []
+        }
       }
     },
     {

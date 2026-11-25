@@ -43,6 +43,22 @@ export const toolLabels = {
   preview: "Range preview",
   sendFile: "Send file",
   invalidRange: "Enter a valid byte range and positive chunk/rate",
+  browserFile: {
+    unavailable:
+      "Browser file sending requires permission to write to this session.",
+    invalidFile: "Select one non-empty file up to 1 GiB.",
+    sample: "Beginning of selected bytes",
+    sampleUnavailable: "The selected bytes could not be previewed.",
+    upload: "Uploading to Host",
+    submitting: "Waiting for Host to accept the transfer…",
+    cancelUpload: "Cancel upload",
+    uploadCancelled: "File handoff cancelled.",
+    stopSending: "Stop sending",
+    receiptPending:
+      "The previous send has an unconfirmed receipt. Check it before sending again.",
+    checkReceipt: "Check send receipt",
+    noReceipt: "Host has no accepted operation for that request.",
+  },
   transferEvidence:
     "Accepted bytes are backend evidence; unknown bytes and peer acknowledgement are separate.",
   unavailable: "Unavailable",

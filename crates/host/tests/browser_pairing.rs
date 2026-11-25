@@ -1,3 +1,5 @@
+#[path = "browser_pairing/file_handoff.rs"]
+mod file_handoff;
 #[path = "browser_pairing/signed_terminal.rs"]
 mod signed_terminal;
 
@@ -165,13 +167,19 @@ async fn exchange(socket: &mut Socket, channel: IpcChannel, body: IpcMessage) ->
 }
 
 async fn send_message(socket: &mut Socket, channel: IpcChannel, body: IpcMessage) -> RequestId {
-    let request_id = if let IpcMessage::Request { request } = &body
-        && let RpcRequest::Query(query) = request.as_ref()
-    {
-        query.request_id.clone()
-    } else {
-        RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap()
+    let inner_id = match &body {
+        IpcMessage::Request { request } => match request.as_ref() {
+            RpcRequest::Query(query) | RpcRequest::StreamRead(query) => Some(&query.request_id),
+            RpcRequest::BrowserFileHandoff(BrowserFileHandoffParams::Submit { call, .. }) => {
+                Some(&call.request_id)
+            }
+            _ => None,
+        },
+        _ => None,
     };
+    let request_id = inner_id
+        .cloned()
+        .unwrap_or_else(|| RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap());
     let frame = WireFrame {
         request_id: request_id.clone(),
         channel,
@@ -900,6 +908,16 @@ async fn local_user_control_revokes_browser_access_without_closing_the_serial_se
         )
         .await,
         IpcMessage::RawAttached {}
+    ));
+    let handoff = request(RpcRequest::BrowserFileHandoff(
+        BrowserFileHandoffParams::Begin {
+            target: session_target.clone(),
+            length: 1.into(),
+        },
+    ));
+    assert!(matches!(
+        self::reply(exchange(&mut control, IpcChannel::Control, handoff).await),
+        RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"
     ));
     let cursor = query(
         &attachment,

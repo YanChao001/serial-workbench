@@ -848,6 +848,28 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
     f.object::<WorkspaceListResult>("workspace-list", json!({"workspaces":[]}), &[])?;
     f.object::<DocumentImportParams>("document-import", json!({"json":"{}"}), &[])?;
     f.object::<DocumentJsonResult>("document-json", json!({"json":"{}"}), &[])?;
+    f.object::<ExperimentExportParams>(
+        "experiment-export",
+        json!({"workspaceRevision":"1","parsers":[],"recordings":[],"firmware":[],"operations":[]}),
+        &[],
+    )?;
+    let experiment = json!({
+        "formatVersion":"1",
+        "workspace":workspace,
+        "parsers":[],
+        "recordings":[],
+        "firmware":[],
+        "runs":[{"actionId":"workspace.save","state":"succeeded","settledAt":"2026-11-08T00:00:00Z"}],
+    });
+    f.object::<ExperimentPackage>("experiment-package", experiment.clone(), &[])?;
+    f.object::<QueryResult>(
+        "query-experiment-inspection",
+        json!({"kind":"experiment_inspection","value":{
+            "experiment":experiment,"parserStatus":[],"recordingStatus":[]
+        }}),
+        &[],
+    )?;
+
     f.object::<QueryResult>(
         "query-settings-document",
         json!({"kind":"settings","value":settings_document}),
@@ -1369,6 +1391,16 @@ fn node_package_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
     )?;
     f.add::<NodePackageListParams>("node-packages-default-page", json!({}), true)?;
     f.add::<NodePackageListParams>(
+        "node-packages-parser-page",
+        json!({"parserOnly":true}),
+        true,
+    )?;
+    f.add::<NodePackageListParams>(
+        "node-packages-null-parser-filter",
+        json!({"parserOnly":null}),
+        false,
+    )?;
+    f.add::<NodePackageListParams>(
         "node-packages-next-page",
         json!({"pageSize":"1","after":"example.terminal","expectedRevision":"1"}),
         true,
@@ -1690,6 +1722,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         CommandLibraryRevision,
         DocumentImportParams,
         DocumentJsonResult,
+        ExperimentExportParams,
+        ExperimentPackage,
+        ExperimentInspection,
         StreamCursorResult,
         FileTransferParams,
         PasteTransferParams,

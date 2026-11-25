@@ -82,6 +82,10 @@ pub enum ControlResult {
         line: ControlLine,
         value: bool,
     },
+    LineUnknown {
+        line: ControlLine,
+        error: HostError,
+    },
     Break {
         asserted: bool,
     },
@@ -120,6 +124,11 @@ pub trait PendingWrite: Send {
     fn poll(&mut self) -> Option<BackendResult<BackendWrite>>;
 }
 
+/// 非阻塞等待远程输出线的实际应答，继续让会话 owner 处理接收与关闭。
+pub trait PendingLineControl: Send {
+    fn poll(&mut self) -> Option<BackendResult<ControlResult>>;
+}
+
 pub trait Transport: Send {
     fn capabilities(&self) -> TransportCapabilities;
     fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock>;
@@ -132,6 +141,15 @@ pub trait Transport: Send {
     ) -> BackendResult<Box<dyn PendingWrite>>;
     fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication>;
     fn control(&mut self, command: ControlCommand) -> BackendResult<ControlResult>;
+    fn begin_line_control(
+        &mut self,
+        _line: ControlLine,
+        _value: bool,
+        _cancelled: Arc<AtomicBool>,
+        _closing: Arc<AtomicBool>,
+    ) -> Option<BackendResult<Box<dyn PendingLineControl>>> {
+        None
+    }
     fn begin_drain(&mut self, request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>>;
     fn close(&mut self) -> BackendResult<()>;
 }

@@ -32,6 +32,11 @@ import {
   Cable,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
+import { useI18n } from "@/providers/i18n";
+import {
+  builtinRfc2217PackageId,
+  builtinRfc2217ProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint";
 import {
   Select,
   SelectContent,
@@ -119,6 +124,13 @@ export function WorkbenchConnection({
   onCloseAllViews?: () => void;
 }) {
   const lan = useContext(LanWorkbenchContext);
+  const { t } = useI18n();
+  function deviceName(device: DeviceDescriptor | undefined) {
+    return device?.systemName === builtinRfc2217ProviderId &&
+      device.driver === builtinRfc2217PackageId
+      ? t("rfc2217Connection.title")
+      : device?.systemName;
+  }
   const [deviceListOpen, setDeviceListOpen] = useState(false);
   const header = useRef<HTMLElement | null>(null);
   const primaryTools = useRef<HTMLDivElement | null>(null);
@@ -141,6 +153,11 @@ export function WorkbenchConnection({
     if (disabled) setDeviceListOpen(false);
   }, [disabled]);
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
+  const menuOpensDialog = useRef(false);
+  function selectToolFromMenu(tool: Parameters<typeof onTool>[0]) {
+    menuOpensDialog.current = true;
+    onTool(tool, menuTrigger.current);
+  }
   const parameterSummary = formatSerialLine(configuration);
   const parameterPurpose = toolLabels?.parameters ?? labels.status;
   const unmatchedSelection = "unmatched/device";
@@ -189,8 +206,9 @@ export function WorkbenchConnection({
           >
             {unmatchedDeviceName
               ? `${unmatchedDeviceName} · ${labels.bindingUnmatched}`
-              : devices.find((value) => value.deviceId === deviceId)
-                  ?.systemName}
+              : deviceName(
+                  devices.find((value) => value.deviceId === deviceId),
+                )}
           </SelectValue>
           {lan?.route && (
             <span className="text-xs text-muted-foreground">{lan.source}</span>
@@ -222,7 +240,7 @@ export function WorkbenchConnection({
               value={value.deviceId}
             >
               <span className="workbench-port-label" title={value.systemName}>
-                <span>{value.systemName}</span>
+                <span>{deviceName(value)}</span>
               </span>
             </SelectItem>
           ))}
@@ -265,7 +283,7 @@ export function WorkbenchConnection({
           variant="outline"
           aria-busy={opening === deviceId || undefined}
           disabled={opening !== null || disabled || !device || devicesStale}
-          label={labels.open + " " + (device?.systemName ?? "")}
+          label={labels.open + " " + (deviceName(device) ?? "")}
           tooltip={
             opening
               ? labels.opening
@@ -333,9 +351,22 @@ export function WorkbenchConnection({
             <MoreHorizontal aria-hidden="true" />
           </WorkbenchIconButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="workbench-workspace-menu">
+        <DropdownMenuContent
+          align="end"
+          className="workbench-workspace-menu"
+          onCloseAutoFocus={(event) => {
+            // 工具窗负责进入与退出焦点，菜单的退出动画可能更晚结束。
+            if (menuOpensDialog.current) event.preventDefault();
+            menuOpensDialog.current = false;
+          }}
+        >
           {lan && (
-            <DropdownMenuItem onSelect={() => lan.open(menuTrigger.current)}>
+            <DropdownMenuItem
+              onSelect={() => {
+                menuOpensDialog.current = true;
+                lan.open(menuTrigger.current);
+              }}
+            >
               <Network aria-hidden="true" />
               {lan.title}
             </DropdownMenuItem>
@@ -361,7 +392,7 @@ export function WorkbenchConnection({
             ).map(([tool, Icon]) => (
               <DropdownMenuItem
                 key={tool}
-                onSelect={() => onTool(tool, menuTrigger.current)}
+                onSelect={() => selectToolFromMenu(tool)}
               >
                 <Icon aria-hidden="true" />
                 {toolLabels?.[tool] ?? tool}
@@ -371,29 +402,25 @@ export function WorkbenchConnection({
             <>
               {toolLabels?.sessionTemplates && (
                 <DropdownMenuItem
-                  onSelect={() =>
-                    onTool("sessionTemplates", menuTrigger.current)
-                  }
+                  onSelect={() => selectToolFromMenu("sessionTemplates")}
                 >
                   <ListOrdered aria-hidden="true" />
                   {toolLabels.sessionTemplates}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem
-                onSelect={() => onTool("diagnostics", menuTrigger.current)}
+                onSelect={() => selectToolFromMenu("diagnostics")}
               >
                 <Stethoscope aria-hidden="true" />
                 {toolLabels?.diagnostics ?? labels.title}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onTool("transfer", menuTrigger.current)}
-              >
+              <DropdownMenuItem onSelect={() => selectToolFromMenu("transfer")}>
                 <FileUp aria-hidden="true" />
                 {toolLabels?.transfer ?? labels.sendFile}
               </DropdownMenuItem>
               {toolLabels?.framing ? (
                 <DropdownMenuItem
-                  onSelect={() => onTool("framing", menuTrigger.current)}
+                  onSelect={() => selectToolFromMenu("framing")}
                 >
                   <Brackets aria-hidden="true" />
                   {toolLabels.framing}
@@ -401,7 +428,7 @@ export function WorkbenchConnection({
               ) : null}
               {toolLabels?.repeatSend && (
                 <DropdownMenuItem
-                  onSelect={() => onTool("repeatSend", menuTrigger.current)}
+                  onSelect={() => selectToolFromMenu("repeatSend")}
                 >
                   <Timer aria-hidden="true" />
                   {toolLabels.repeatSend}
@@ -409,7 +436,7 @@ export function WorkbenchConnection({
               )}
               {toolLabels?.broadcastSend && (
                 <DropdownMenuItem
-                  onSelect={() => onTool("broadcastSend", menuTrigger.current)}
+                  onSelect={() => selectToolFromMenu("broadcastSend")}
                 >
                   <Network aria-hidden="true" />
                   {toolLabels.broadcastSend}
@@ -417,9 +444,7 @@ export function WorkbenchConnection({
               )}
               {toolLabels?.calendarSchedule && (
                 <DropdownMenuItem
-                  onSelect={() =>
-                    onTool("calendarSchedule", menuTrigger.current)
-                  }
+                  onSelect={() => selectToolFromMenu("calendarSchedule")}
                 >
                   <Timer aria-hidden="true" />
                   {toolLabels.calendarSchedule}
@@ -427,9 +452,7 @@ export function WorkbenchConnection({
               )}
               {toolLabels?.commandSequence && (
                 <DropdownMenuItem
-                  onSelect={() =>
-                    onTool("commandSequence", menuTrigger.current)
-                  }
+                  onSelect={() => selectToolFromMenu("commandSequence")}
                 >
                   <ListOrdered aria-hidden="true" />
                   {toolLabels.commandSequence}
@@ -437,40 +460,34 @@ export function WorkbenchConnection({
               )}
               {toolLabels?.testSuite && (
                 <DropdownMenuItem
-                  onSelect={() => onTool("testSuite", menuTrigger.current)}
+                  onSelect={() => selectToolFromMenu("testSuite")}
                 >
                   {toolLabels.testSuite}
                 </DropdownMenuItem>
               )}
               {toolLabels?.ruleTrigger ? (
                 <DropdownMenuItem
-                  onSelect={() => onTool("ruleTrigger", menuTrigger.current)}
+                  onSelect={() => selectToolFromMenu("ruleTrigger")}
                 >
                   <Zap aria-hidden="true" />
                   {toolLabels.ruleTrigger}
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
-                onSelect={() => onTool("sendHistory", menuTrigger.current)}
+                onSelect={() => selectToolFromMenu("sendHistory")}
               >
                 <History aria-hidden="true" />
                 {labels.sendHistory}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onTool("tasks", menuTrigger.current)}
-              >
+              <DropdownMenuItem onSelect={() => selectToolFromMenu("tasks")}>
                 <ListTodo aria-hidden="true" />
                 {labels.tasks}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onTool("metrics", menuTrigger.current)}
-              >
+              <DropdownMenuItem onSelect={() => selectToolFromMenu("metrics")}>
                 <Gauge aria-hidden="true" />
                 {labels.metrics}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onTool("logs", menuTrigger.current)}
-              >
+              <DropdownMenuItem onSelect={() => selectToolFromMenu("logs")}>
                 <ScrollText aria-hidden="true" />
                 {labels.logs}
               </DropdownMenuItem>

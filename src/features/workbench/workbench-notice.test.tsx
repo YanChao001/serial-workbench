@@ -197,3 +197,27 @@ it("keeps a long retry visible and restores the error lifetime without changing 
   });
   expect(vi.mocked(toast.custom).mock.calls[2]?.[1]?.id).not.toBe(retryId);
 });
+
+it.each([undefined, "inline-connection-operation"])(
+  "logs an inline error once without a toast after the form closes (event: %s)",
+  (eventKey) => {
+    const content = (inline: boolean) => (
+      <WorkbenchNotice
+        noticeKey="open:busy"
+        eventKey={eventKey}
+        inline={inline}
+        log={{ module: "connection", level: "error", message: "Port busy" }}
+      >
+        <p>Port busy</p>
+      </WorkbenchNotice>
+    );
+    const view = render(content(true));
+    view.rerender(content(true));
+    view.rerender(content(false));
+    expect(toast.custom).not.toHaveBeenCalled();
+    expect(toast.dismiss).not.toHaveBeenCalled();
+    expect(getUserLog()).toEqual([
+      expect.objectContaining({ message: "Port busy", count: 1 }),
+    ]);
+  },
+);

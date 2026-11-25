@@ -81,6 +81,8 @@ const page = await task.streams.read({
 
 连接扩展在 manifest 的 `contributes.transports` 声明设备目标及权限。后台使用 `context.transports.register(actionId, open)` 登记，`open({ params, signal })` 返回实际连接。Host 为连接管理会话代次、收发及 Raw 游标。处理器按 `maxBytes` 与 `waitMs` 拉取输入，空数组表示本次等待没有数据，`null` 表示输入结束。写入返回已确认接纳的连续前缀字节数。关闭函数应可重复调用，并等待底层资源实际关闭。[TCP 参考包](./examples/reference-transport/)通过调用方提供的端口连接本机 IPv4 回环对端。
 
+连接可通过可选的 `lineControls` 声明确实支持的 DTR 和 RTS。 `lineControls.set({ line, value, waitMs, signal })` 在对端应答后返回确认的实际布尔值。能证明命令尚未提交时返回 `not_applied`。提交后失去应答时抛出错误，由插件确保旧连接的控制应答无法归给下一条命令。Host 继续管理控制权限、会话代次、读写与关闭。 [RFC 2217 参考包](./examples/reference-rfc2217/)
+
 [串口监听参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图，显示已连接串口的收发数据。编译、签名与原生管理验证见[终端参考包验收](../../docs/acceptance.md#终端参考包验收)。
 
 [图表参考包](./examples/reference-chart/) 的签名解析器从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/acceptance.md#图表参考包后台采样)。

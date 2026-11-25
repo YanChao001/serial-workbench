@@ -7,6 +7,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "support/calendar_process_recovery.rs"]
+mod calendar_process_recovery;
+
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
 }

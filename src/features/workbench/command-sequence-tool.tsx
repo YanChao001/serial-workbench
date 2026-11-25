@@ -14,6 +14,7 @@ import {
 } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { isTauri, saveTextExport } from "@/lib/tauri";
@@ -21,11 +22,12 @@ import type { HostContextValue } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
+  commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
-  compileCommandSequence,
   type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
+import { inspectSequenceDraft } from "./command-sequence-inputs";
 import {
   readSequenceResult,
   sameSequence,
@@ -68,6 +70,12 @@ type Access = Pick<
   cancel?: (operation: Operation, signal: AbortSignal) => Promise<void>;
 };
 
+type SequenceInputValue = { hex: string; fileBytes?: number };
+type SequenceInputSelection = { name: string; definition: string };
+type SequenceInputFileError = SequenceInputSelection & {
+  reason: "size" | "read";
+};
+
 type Run =
   | { phase: "idle" }
   | { phase: "starting" }
@@ -89,17 +97,27 @@ function pending(operation: Operation) {
   );
 }
 
-function preview(definition: string) {
+function preview(definition: string): Partial<
+  ReturnType<typeof inspectSequenceDraft>
+> & {
+  error?: CommandSequenceError;
+} {
   if (!definition.trim()) return {};
   try {
-    return { plan: compileCommandSequence(definition) };
+    return inspectSequenceDraft(definition);
   } catch (error) {
     if (error instanceof CommandSequenceError) return { error };
     throw error;
   }
 }
 
-function Plan({ steps }: { steps: readonly CommandSequenceStep[] }) {
+function Plan({
+  steps,
+  inputPaths,
+}: {
+  steps: readonly CommandSequenceStep[];
+  inputPaths?: ReadonlyMap<string, string>;
+}) {
   const { t } = useI18n();
   return (
     <ol className="grid list-decimal gap-2 ps-6 text-sm marker:text-muted-foreground">
@@ -112,8 +130,18 @@ function Plan({ steps }: { steps: readonly CommandSequenceStep[] }) {
           ) : (
             <>
               <div>
-                {t("commandSequence.previewSend")}{" "}
-                <code className="break-all">{formatHex(step.bytes)}</code>
+                {inputPaths?.has(step.path) ? (
+                  <span className="wrap-anywhere">
+                    {t("commandSequence.previewInput", {
+                      name: inputPaths.get(step.path) ?? "",
+                    })}
+                  </span>
+                ) : (
+                  <>
+                    {t("commandSequence.previewSend")}{" "}
+                    <code className="break-all">{formatHex(step.bytes)}</code>
+                  </>
+                )}
               </div>
               {step.writeWaitMs !== undefined && (
                 <p className="text-muted-foreground">
@@ -197,8 +225,26 @@ export function CommandSequenceTool({
   const id = useId();
   const { definition, saved } = draft;
   const native = isTauri();
-  const setDefinition = (value: string) =>
+  const [provided, setProvided] = useState<{
+    definition: string;
+    values: ReadonlyMap<string, SequenceInputValue>;
+  }>();
+  const inputFile = useRef<HTMLInputElement>(null);
+  const inputSelection = useRef<SequenceInputSelection | undefined>(undefined);
+  const [inputFileError, setInputFileError] =
+    useState<SequenceInputFileError>();
+  const activeDefinition = useRef(definition);
+  activeDefinition.current = definition;
+
+  function resetInputBindings() {
+    inputSelection.current = undefined;
+    setInputFileError(undefined);
+    setProvided(undefined);
+  }
+  const setDefinition = (value: string) => {
+    resetInputBindings();
     onDraftChange((previous) => ({ ...previous, definition: value }));
+  };
   const [run, setRun] = useState<Run>({ phase: "idle" });
   const [cancelling, setCancelling] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -218,7 +264,27 @@ export function CommandSequenceTool({
     };
   }, []);
 
-  const { plan, error } = useMemo(() => preview(definition), [definition]);
+  const { plan, error, inputs } = useMemo(
+    () => preview(definition),
+    [definition],
+  );
+  const values =
+    provided?.definition === definition ? provided.values : undefined;
+  const { runtimeDefinition, bindingError } = useMemo(() => {
+    if (!plan) return {};
+    if (!inputs) return { runtimeDefinition: definition };
+    if (!values) return {};
+    try {
+      return {
+        runtimeDefinition: inputs.bind(
+          new Map(Array.from(values, ([name, value]) => [name, value.hex])),
+        ),
+      };
+    } catch (error) {
+      if (error instanceof CommandSequenceError) return { bindingError: error };
+      throw error;
+    }
+  }, [plan, inputs, values, definition]);
   const active = access
     ? operations.reduce<Operation | undefined>(
         (last, operation) =>
@@ -318,7 +384,7 @@ export function CommandSequenceTool({
     if (
       !access ||
       !actionId ||
-      !plan ||
+      !runtimeDefinition ||
       busy ||
       command.current ||
       fileRequest.current
@@ -337,7 +403,7 @@ export function CommandSequenceTool({
         {
           actionId,
           target: access.target,
-          params: { definition, startEventSeq },
+          params: { definition: runtimeDefinition, startEventSeq },
           executionMode: "independent",
         },
         signal,
@@ -351,6 +417,7 @@ export function CommandSequenceTool({
         throw new ContractValidationError(
           "Command sequence belongs to another session",
         );
+      resetInputBindings();
       setRun({ phase: "accepted", operation: accepted });
     } catch (error) {
       if (!signal.aborted)
@@ -391,6 +458,68 @@ export function CommandSequenceTool({
     }
   }
 
+  function setInputValue(name: string, value: SequenceInputValue) {
+    setInputFileError(undefined);
+    setProvided((previous) => ({
+      definition,
+      values: new Map(
+        previous?.definition === definition ? previous.values : undefined,
+      ).set(name, value),
+    }));
+  }
+
+  function chooseInputFile(name: string) {
+    if (busy || fileRequest.current || command.current) return;
+    inputSelection.current = { name, definition };
+    inputFile.current?.click();
+  }
+
+  async function bindInputFile(file: File) {
+    const selection = inputSelection.current;
+    const signal = lifetime.current?.signal;
+    if (
+      !selection ||
+      selection.definition !== definition ||
+      !signal ||
+      signal.aborted ||
+      busy ||
+      fileRequest.current ||
+      command.current
+    )
+      return;
+    if (file.size === 0 || file.size > commandSequenceFrameBytes) {
+      inputSelection.current = undefined;
+      setInputFileError({ ...selection, reason: "size" });
+      return;
+    }
+    const isCurrent = () =>
+      !signal.aborted &&
+      inputSelection.current === selection &&
+      activeDefinition.current === selection.definition;
+    fileRequest.current = true;
+    setFileBusy(true);
+    setInputFileError(undefined);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (!isCurrent()) return;
+      if (bytes.byteLength !== file.size) {
+        setInputFileError({ ...selection, reason: "read" });
+        return;
+      }
+      setInputValue(selection.name, {
+        hex: formatHex(bytes),
+        fileBytes: bytes.byteLength,
+      });
+    } catch {
+      if (isCurrent()) setInputFileError({ ...selection, reason: "read" });
+    } finally {
+      if (inputSelection.current === selection)
+        inputSelection.current = undefined;
+      fileRequest.current = false;
+      if (!signal.aborted) setFileBusy(false);
+    }
+  }
+
   async function open(file: File) {
     const signal = lifetime.current?.signal;
     if (!signal || busy || fileRequest.current || command.current) return;
@@ -405,8 +534,9 @@ export function CommandSequenceTool({
         await file.arrayBuffer(),
       );
       if (signal.aborted) return;
-      compileCommandSequence(text);
+      inspectSequenceDraft(text);
       if (!(await beforeReplace()) || signal.aborted) return;
+      resetInputBindings();
       onDraftChange({ definition: text, saved: text });
       setNotice(undefined);
     } catch (error) {
@@ -548,13 +678,111 @@ export function CommandSequenceTool({
           <h3 id={id + "-preview"} className="mb-3 text-sm font-medium">
             {t("commandSequence.preview")}
           </h3>
+          {inputs && (
+            <fieldset className="mb-3 grid min-w-0 gap-2 text-sm">
+              <legend className="mb-1 font-medium">
+                {t("commandSequence.inputs")}
+              </legend>
+              <p className="text-muted-foreground">
+                {t("commandSequence.inputsHelp")}
+              </p>
+              <input
+                type="file"
+                hidden
+                ref={inputFile}
+                disabled={busy}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file) void bindInputFile(file);
+                  else inputSelection.current = undefined;
+                }}
+              />
+              <div className="grid max-h-60 gap-2 overflow-auto p-0.5">
+                {inputs.names.map((name, index) => {
+                  const inputId = id + "-binding-" + index;
+                  const value = values?.get(name);
+                  const fileError =
+                    inputFileError?.name === name &&
+                    inputFileError.definition === definition
+                      ? inputFileError.reason
+                      : undefined;
+                  return (
+                    <div key={name} className="grid min-w-0 gap-1">
+                      <label
+                        htmlFor={inputId}
+                        className="font-mono wrap-anywhere"
+                      >
+                        {name}
+                      </label>
+                      <div className="flex min-w-0 flex-wrap items-start gap-2">
+                        <Input
+                          type="password"
+                          autoComplete="off"
+                          spellCheck={false}
+                          id={inputId}
+                          disabled={busy}
+                          className="min-w-24 flex-1 font-mono"
+                          maxLength={commandSequenceFrameBytes * 4}
+                          value={value?.hex ?? ""}
+                          onChange={(event) =>
+                            setInputValue(name, {
+                              hex: event.currentTarget.value,
+                            })
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          aria-disabled={busy || undefined}
+                          aria-label={t("commandSequence.chooseInputFileFor", {
+                            name,
+                          })}
+                          onClick={() => chooseInputFile(name)}
+                        >
+                          {t("workbench.tools.chooseConfigurationFile")}
+                        </Button>
+                      </div>
+                      {value?.fileBytes !== undefined && (
+                        <p role="status" className="text-muted-foreground">
+                          {t("commandSequence.inputFileBound", {
+                            bytes: value.fileBytes,
+                          })}
+                        </p>
+                      )}
+                      {fileError && (
+                        <p
+                          role="status"
+                          className="text-destructive wrap-anywhere"
+                        >
+                          {fileError === "size"
+                            ? t("commandSequence.inputFileSize", {
+                                max: commandSequenceFrameBytes,
+                              })
+                            : t("commandSequence.inputFileRead")}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {bindingError && (
+                <p role="status" className="text-destructive wrap-anywhere">
+                  {t("commandSequence.inputsInvalid", {
+                    path: bindingError.path,
+                  })}
+                </p>
+              )}
+            </fieldset>
+          )}
           {plan ? (
             <div
               className="max-h-72 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               tabIndex={0}
               aria-labelledby={id + "-preview"}
             >
-              <Plan steps={plan} />
+              <Plan steps={plan} inputPaths={inputs?.paths} />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -567,7 +795,7 @@ export function CommandSequenceTool({
         <Button
           type="button"
           size="sm"
-          disabled={!access || !actionId || !plan || busy}
+          disabled={!access || !actionId || !runtimeDefinition || busy}
           onClick={() => void start()}
         >
           {t("commandSequence.start")}
