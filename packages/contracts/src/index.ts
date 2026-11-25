@@ -31,6 +31,7 @@ export { ContractValidationError } from "./contract-validation-error.ts";
 export type * from "./generated/types.ts";
 export {
   validateCursor,
+  validateJsonValue,
   validateNodePackageId,
   validateNodePackageIntegrity,
   validateNodePackageInstallation,

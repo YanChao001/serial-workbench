@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from "react";
+import type { SessionSnapshot } from "@serial-workbench/contracts";
 import { OptionsSelect } from "@/components/options-select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +27,7 @@ import {
 } from "./field-chart-model";
 import type { ChartSourceSelection } from "./stream-chart-selection";
 import { fieldChartCsv, type FieldChartMode } from "./field-chart-csv";
+import { FieldChartMdf4 } from "./field-chart-mdf4-button";
 import { FieldXyPlot } from "./field-xy-plot";
 
 type Point = { index: number; value: number };
@@ -77,6 +79,7 @@ export function FieldChart({
   frame,
   field,
   selectionLocked = false,
+  replaySession,
   sourceSelection,
   onRevealSource,
   onSelect,
@@ -87,6 +90,7 @@ export function FieldChart({
   frame?: FramingFrame;
   field?: string;
   selectionLocked?: boolean;
+  replaySession?: Pick<SessionSnapshot, "sessionId" | "sessionEpoch">;
   sourceSelection?: ChartSourceSelection;
   onRevealSource?: (source: ChartSourceSelection) => void;
   onSelect: (entry: FieldChartFrame, field: string) => void;
@@ -441,6 +445,14 @@ export function FieldChart({
               >
                 {t("workbench.fieldChart.exportCsv")}
               </Button>
+              <FieldChartMdf4
+                inspection={inspection}
+                entries={entries}
+                start={start}
+                primary={channel}
+                paired={paired}
+                replaySession={replaySession}
+              />
             </div>
             <div aria-live="polite">
               {visibleCsvResult === "saved" ? (

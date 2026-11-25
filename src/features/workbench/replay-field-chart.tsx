@@ -1,5 +1,8 @@
 import { useId, useMemo, useState, type FormEvent } from "react";
-import type { CaptureRecord } from "@serial-workbench/contracts";
+import type {
+  CaptureRecord,
+  SessionSnapshot,
+} from "@serial-workbench/contracts";
 import { OptionsSelect } from "@/components/options-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +23,13 @@ import {
 
 export default function ReplayFieldChart({
   records,
+  replaySession,
   sourceSelection,
   onRevealSource,
   onStageComparison,
 }: {
   records: readonly CaptureRecord[];
+  replaySession: Pick<SessionSnapshot, "sessionId" | "sessionEpoch">;
   sourceSelection?: ChartSourceSelection;
   onRevealSource?: (source: ChartSourceSelection) => void;
   onStageComparison?: (
@@ -175,6 +180,7 @@ export default function ReplayFieldChart({
         <ProtocolFieldPreview
           frames={outcome?.inspection.frames ?? []}
           inspection={outcome?.inspection}
+          replaySession={replaySession}
           sourceSelection={sourceSelection}
           onRevealSource={onRevealSource}
           readOnly

@@ -620,6 +620,7 @@ export function ReplayPanel({
           <Suspense>
             <ReplayFieldChart
               records={records}
+              replaySession={session}
               sourceSelection={linked?.selection}
               onStageComparison={
                 page && comparison && !disabled

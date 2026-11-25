@@ -3,8 +3,8 @@ use super::node_queries::QueryAuthority;
 use super::*;
 use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
 use serial_workbench_core::{
-    NODE_CSV_RESULT_MAX_BYTES, NODE_FILE_RESULT_KEY, NODE_PNG_RESULT_MAX_BYTES, PNG_SIGNATURE,
-    SchemaValue,
+    MDF4_SIGNATURE, NODE_CSV_RESULT_MAX_BYTES, NODE_FILE_RESULT_KEY, NODE_MDF4_RESULT_MAX_BYTES,
+    NODE_PNG_RESULT_MAX_BYTES, PNG_SIGNATURE, SchemaValue,
 };
 
 pub(super) struct ActionAuthority {
@@ -435,6 +435,12 @@ impl Host {
                         SchemaValue::String(mime) if mime == "image/png" => {
                             bytes.len() <= NODE_PNG_RESULT_MAX_BYTES
                                 && bytes.starts_with(PNG_SIGNATURE)
+                        }
+                        SchemaValue::String(mime) if mime == "application/x-asam-mdf" => {
+                            bytes.len() >= 64
+                                && bytes.len() <= NODE_MDF4_RESULT_MAX_BYTES
+                                && bytes.starts_with(MDF4_SIGNATURE)
+                                && bytes[8..10] == *b"4."
                         }
                         _ => true,
                     })

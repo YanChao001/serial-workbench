@@ -2,6 +2,7 @@ import type { RawEvent, StreamItem, Target } from "@serial-workbench/contracts";
 import { expect, test } from "vitest";
 import { compileProtocolFields } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
 import { fieldChartCsv } from "./field-chart-csv";
+import { fieldChartMdf4 } from "./field-chart-mdf4";
 import {
   chartValue,
   fieldChartFrames,
@@ -168,6 +169,66 @@ test("field cursor keeps exact Raw byte pieces for a reading split across RX eve
     startEventSeq: "11",
     endEventSeq: "14",
   });
+});
+
+test("chart MDF4 keeps proved invalid readings and rejects a mixed capture configuration", () => {
+  const inspection = {
+    target,
+    frames,
+    items: [
+      source(11, 0, [255, 1]),
+      source(12, 2, [2, 3, 0]),
+      source(13, 5, [8, 8]),
+      source(14, 7, [0, 2, 0]),
+      source(15, 10, [0, 3, 3], "2"),
+    ],
+  };
+  const entries = fieldChartFrames(inspection, codec);
+  const selected = [entries[0]!.readings![0]!];
+  expect(fieldChartMdf4(inspection, entries, 0, selected)).toEqual({
+    status: "time",
+  });
+  const result = fieldChartMdf4(inspection, entries.slice(0, 3), 0, selected);
+  if (result.status !== "ready")
+    throw new Error("Expected one capture configuration");
+  expect(result.snapshot.samples).toEqual([
+    {
+      elapsedNs: "0",
+      values: [
+        "64.5",
+        "1",
+        "11",
+        "13",
+        "9007199254740994",
+        "9007199254740997",
+        "0",
+      ],
+    },
+    {
+      elapsedNs: "1000",
+      values: [
+        "2",
+        "2",
+        "12",
+        "14",
+        "9007199254740997",
+        "9007199254741000",
+        "0",
+      ],
+    },
+    {
+      elapsedNs: "2000",
+      values: [
+        null,
+        "3",
+        "14",
+        "15",
+        "9007199254741000",
+        "9007199254741003",
+        "0",
+      ],
+    },
+  ]);
 });
 
 test("chart CSV preserves exact byte offsets and separates invalid values from evidence", () => {

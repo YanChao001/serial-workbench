@@ -1,0 +1,992 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.reference.statistics",
+  "version": "0.1.0",
+  "displayName": "Sample Window Statistics and XY Alignment",
+  "description": "Analyze sampled windows, calibrated XY channels, and spectra with histograms",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["metadata.read"],
+        "targetKinds": ["host"]
+      }
+    ],
+    "executionPurposes": ["chart"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [
+      {
+        "actionId": "swb.reference.statistics.windows",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "firstPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "expectedSlots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "samples": {
+              "type": "array",
+              "maxItems": 512,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "value": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "string",
+                        "maxLength": 64,
+                        "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+                      }
+                    ]
+                  }
+                },
+                "required": ["position", "value"],
+                "additionalProperties": false
+              }
+            },
+            "window": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": ["count"]
+                    },
+                    "length": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,19}$"
+                    },
+                    "step": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,19}$"
+                    }
+                  },
+                  "required": ["kind", "length", "step"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": ["time"]
+                    },
+                    "length": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,19}$"
+                    },
+                    "step": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,19}$"
+                    },
+                    "clockId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                    },
+                    "originMonoNs": {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]{0,19})$"
+                    },
+                    "periodNs": {
+                      "type": "string",
+                      "pattern": "^[1-9][0-9]{0,19}$"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "length",
+                    "step",
+                    "clockId",
+                    "originMonoNs",
+                    "periodNs"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": ["firstPosition", "expectedSlots", "samples", "window"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["count", "time"]
+            },
+            "length": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "step": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "firstPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "expectedSlots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "clockId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            },
+            "originMonoNs": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,19})$"
+            },
+            "periodNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "windows": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fromPosition": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "toPosition": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "fromMonoNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "toMonoNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "partial": {
+                    "type": "boolean"
+                  },
+                  "expectedCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8192
+                  },
+                  "validCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8192
+                  },
+                  "missingCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 8192
+                  },
+                  "missingRate": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "metrics": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "minimum": {
+                            "type": "number"
+                          },
+                          "maximum": {
+                            "type": "number"
+                          },
+                          "average": {
+                            "type": "number"
+                          },
+                          "deviation": {
+                            "type": "number"
+                          },
+                          "p50": {
+                            "type": "number"
+                          },
+                          "p95": {
+                            "type": "number"
+                          },
+                          "p99": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "minimum",
+                          "maximum",
+                          "average",
+                          "deviation",
+                          "p50",
+                          "p95",
+                          "p99"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "fromPosition",
+                  "toPosition",
+                  "partial",
+                  "expectedCount",
+                  "validCount",
+                  "missingCount",
+                  "missingRate",
+                  "metrics"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "length",
+            "step",
+            "firstPosition",
+            "expectedSlots",
+            "windows"
+          ],
+          "additionalProperties": false
+        },
+        "targetKinds": ["host"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins"
+        }
+      },
+      {
+        "actionId": "swb.reference.statistics.alignXY",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "$ref": "#/definitions/series"
+            },
+            "y": {
+              "$ref": "#/definitions/series"
+            },
+            "method": {
+              "type": "string",
+              "enum": ["exact", "linear"]
+            },
+            "maxGapNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "anchors": {
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "xMonoNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "yMonoNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  }
+                },
+                "required": ["xMonoNs", "yMonoNs"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["x", "y", "method", "maxGapNs"],
+          "additionalProperties": false,
+          "definitions": {
+            "series": {
+              "type": "object",
+              "properties": {
+                "sourceId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                },
+                "clockId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                },
+                "samples": {
+                  "type": "array",
+                  "maxItems": 128,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "monoNs": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]{0,19})$"
+                      },
+                      "value": {
+                        "oneOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 32,
+                            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "gapBefore": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["monoNs", "value"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["sourceId", "clockId", "samples"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "object",
+              "properties": {
+                "sourceId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                },
+                "clockId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                }
+              },
+              "required": ["sourceId", "clockId"],
+              "additionalProperties": false
+            },
+            "y": {
+              "type": "object",
+              "properties": {
+                "sourceId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                },
+                "clockId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+                }
+              },
+              "required": ["sourceId", "clockId"],
+              "additionalProperties": false
+            },
+            "method": {
+              "type": "string",
+              "enum": ["exact", "linear"]
+            },
+            "maxGapNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "clockRate": {
+              "type": "object",
+              "properties": {
+                "numerator": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]{0,38}$"
+                },
+                "denominator": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]{0,38}$"
+                }
+              },
+              "required": ["numerator", "denominator"],
+              "additionalProperties": false
+            },
+            "anchors": {
+              "type": "array",
+              "maxItems": 2,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "xMonoNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "yMonoNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  }
+                },
+                "required": ["xMonoNs", "yMonoNs"],
+                "additionalProperties": false
+              }
+            },
+            "pairs": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "$ref": "#/definitions/sample"
+                  },
+                  "y": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "exact"
+                          },
+                          "sample": {
+                            "$ref": "#/definitions/sample"
+                          }
+                        },
+                        "required": ["status", "sample"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "interpolated"
+                          },
+                          "before": {
+                            "$ref": "#/definitions/sample"
+                          },
+                          "after": {
+                            "$ref": "#/definitions/sample"
+                          },
+                          "value": {
+                            "type": "string",
+                            "maxLength": 32,
+                            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+                          },
+                          "fraction": {
+                            "type": "object",
+                            "properties": {
+                              "numerator": {
+                                "type": "string",
+                                "pattern": "^[1-9][0-9]{0,38}$"
+                              },
+                              "denominator": {
+                                "type": "string",
+                                "pattern": "^[1-9][0-9]{0,38}$"
+                              }
+                            },
+                            "required": ["numerator", "denominator"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "status",
+                          "before",
+                          "after",
+                          "value",
+                          "fraction"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "missing"
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "x_missing",
+                              "y_missing",
+                              "outside",
+                              "gap",
+                              "no_exact_match"
+                            ]
+                          },
+                          "before": {
+                            "$ref": "#/definitions/sample"
+                          },
+                          "after": {
+                            "$ref": "#/definitions/sample"
+                          }
+                        },
+                        "required": ["status", "reason"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "breakBefore": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["x", "y", "breakBefore"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "method",
+            "maxGapNs",
+            "clockRate",
+            "anchors",
+            "pairs"
+          ],
+          "additionalProperties": false,
+          "definitions": {
+            "sample": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 127
+                },
+                "monoNs": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 32,
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["index", "monoNs", "value"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "targetKinds": ["host"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins"
+        }
+      },
+      {
+        "actionId": "swb.reference.statistics.spectrum",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "clockId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "firstPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "expectedSlots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "periodNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "samples": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "position": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+                    "maxLength": 64
+                  }
+                },
+                "required": ["position", "value"],
+                "additionalProperties": false
+              }
+            },
+            "window": {
+              "type": "object",
+              "properties": {
+                "size": {
+                  "type": "integer",
+                  "enum": [8, 16, 32, 64, 128, 256, 512]
+                },
+                "hop": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 512
+                },
+                "shape": {
+                  "type": "string",
+                  "enum": ["rectangular", "hann"]
+                },
+                "detrend": {
+                  "type": "string",
+                  "enum": ["none", "mean"]
+                },
+                "missing": {
+                  "type": "string",
+                  "enum": ["skip", "zero"]
+                }
+              },
+              "required": ["size", "hop", "shape", "detrend", "missing"],
+              "additionalProperties": false
+            },
+            "histogram": {
+              "type": "object",
+              "properties": {
+                "bins": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "domain": {
+                  "type": "object",
+                  "properties": {
+                    "min": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+                      "maxLength": 64
+                    },
+                    "max": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+                      "maxLength": 64
+                    }
+                  },
+                  "required": ["min", "max"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["bins"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "clockId",
+            "firstPosition",
+            "expectedSlots",
+            "periodNs",
+            "samples",
+            "window",
+            "histogram"
+          ],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "clockId": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "firstPosition": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "expectedSlots": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4096
+            },
+            "validCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "missingCount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "uncoveredTailSlots": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "periodNs": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "sampleRateHz": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "binWidthHz": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "frequenciesHz": {
+              "type": "array",
+              "maxItems": 257,
+              "items": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "window": {
+              "type": "object",
+              "properties": {
+                "size": {
+                  "type": "integer",
+                  "enum": [8, 16, 32, 64, 128, 256, 512]
+                },
+                "hop": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 512
+                },
+                "shape": {
+                  "type": "string",
+                  "enum": ["rectangular", "hann"]
+                },
+                "detrend": {
+                  "type": "string",
+                  "enum": ["none", "mean"]
+                },
+                "missing": {
+                  "type": "string",
+                  "enum": ["skip", "zero"]
+                }
+              },
+              "required": ["size", "hop", "shape", "detrend", "missing"],
+              "additionalProperties": false
+            },
+            "windows": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fromPosition": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "toPosition": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,19}$"
+                  },
+                  "fromOffsetNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "toOffsetNs": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,19})$"
+                  },
+                  "missingCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 512
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["empty", "skipped", "zero_filled", "complete"]
+                  },
+                  "amplitudeDb": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "maxItems": 257,
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "peakBin": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 256
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "fromPosition",
+                  "toPosition",
+                  "fromOffsetNs",
+                  "toOffsetNs",
+                  "missingCount",
+                  "status",
+                  "amplitudeDb",
+                  "peakBin"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "histogram": {
+              "type": "object",
+              "properties": {
+                "requestedBins": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                },
+                "bins": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "number"
+                      },
+                      "to": {
+                        "type": "number"
+                      },
+                      "count": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4096
+                      }
+                    },
+                    "required": ["from", "to", "count"],
+                    "additionalProperties": false
+                  }
+                },
+                "below": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "above": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              },
+              "required": ["requestedBins", "bins", "below", "above"],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "clockId",
+            "firstPosition",
+            "expectedSlots",
+            "validCount",
+            "missingCount",
+            "uncoveredTailSlots",
+            "periodNs",
+            "sampleRateHz",
+            "binWidthHz",
+            "frequenciesHz",
+            "window",
+            "windows",
+            "histogram"
+          ],
+          "additionalProperties": false
+        },
+        "targetKinds": ["host"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins"
+        }
+      }
+    ],
+    "queries": [],
+    "transports": [],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

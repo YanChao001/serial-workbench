@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.pro.mdf4",
+  "version": "0.1.0",
+  "displayName": "MDF4 Export",
+  "description": "Export a bounded chart snapshot as sorted ASAM MDF 4.10 measurement data",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["content.read"],
+        "targetKinds": ["session"]
+      }
+    ],
+    "executionPurposes": ["chart"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [
+      {
+        "actionId": "swb.pro.mdf4.exportMdf4",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "startTimeNs": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "channels": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["float64", "uint64", "int64"]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "maxLength": 32
+                  }
+                },
+                "required": ["name", "type"],
+                "additionalProperties": false
+              }
+            },
+            "samples": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "elapsedNs": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                  },
+                  "values": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "items": {
+                      "type": ["string", "null"],
+                      "maxLength": 32
+                    }
+                  }
+                },
+                "required": ["elapsedNs", "values"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["startTimeNs", "channels", "samples"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "x-swb-file-result": "application/x-asam-mdf",
+          "maxLength": 87384
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins"
+        }
+      }
+    ],
+    "queries": [],
+    "transports": [],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

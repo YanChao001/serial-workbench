@@ -112,6 +112,8 @@ export type WorkbenchFixture = {
   clientStateReads: number;
   sentBytes: string[];
   savedTextExports: { name: string; content: string }[];
+  chartArtifactSaves: { generation: string; operationId: string }[];
+  chartArtifactSaveResult: boolean;
   openedExternalLinks: string[];
   connectCalls: string[];
   connectRequests: { deviceId: string; params: unknown }[];
@@ -299,6 +301,7 @@ export async function seedWorkbenchFixture(
       action: ActionSpec;
       page: FileReadResult;
       initiallyUnavailable?: boolean;
+      dependencies?: Operation["dependencies"];
     };
     definitionFiles?: DefinitionFileFixture[];
     automation?: {
@@ -1162,6 +1165,8 @@ export async function seedWorkbenchFixture(
       clientStateReads: 0,
       sentBytes: [],
       savedTextExports: [],
+      chartArtifactSaves: [],
+      chartArtifactSaveResult: true,
       openedExternalLinks: [],
       connectCalls: [],
       connectRequests: [],
@@ -1396,6 +1401,19 @@ export async function seedWorkbenchFixture(
             case "complete_frontend_startup":
             case "save_workspace_route":
               return null;
+            case "host_save_chart_svg":
+              if (
+                typeof args.generation !== "string" ||
+                typeof args.operationId !== "string" ||
+                args.operationId !== framingOperation?.operationId ||
+                framingOperation.state !== "succeeded"
+              )
+                throw new Error("Invalid settled chart artifact");
+              fixture.chartArtifactSaves.push({
+                generation: args.generation,
+                operationId: args.operationId,
+              });
+              return fixture.chartArtifactSaveResult;
             case "save_text_export":
               if (
                 typeof args.name !== "string" ||
@@ -1960,6 +1978,7 @@ export async function seedWorkbenchFixture(
                   operationId,
                   rootOperationId: operationId,
                   actionId: framing.action.actionId,
+                  dependencies: framing.dependencies,
                   target: request.params.target,
                   executionMode: request.params.executionMode ?? "independent",
                   requestId: request.params.requestId,

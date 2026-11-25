@@ -1,8 +1,10 @@
 /// <reference lib="dom" />
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import type { CaptureRecord, ReplayRecord } from "@serial-workbench/contracts";
+import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { session } from "../../src/features/workbench/test-fixtures";
 import { en } from "../../src/i18n/en";
 import {
@@ -103,6 +105,20 @@ test("replay chart traces a compacted and filtered field to both original captur
   page,
 }) => {
   const replaySession = { ...session("chart-replay"), readOnly: true };
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-mdf4/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid MDF4 manifest");
+  const [action] = manifest.contributes.actions;
+  if (!action) throw new Error("MDF4 export action is missing");
+  const output = Buffer.from("MDF     4.10    ", "ascii");
   const bytes = Buffer.alloc(90);
   for (let frame = 1; frame <= 45; frame++)
     bytes.writeUInt16BE(frame, (frame - 1) * 2);
@@ -128,7 +144,7 @@ test("replay chart traces a compacted and filtered field to both original captur
             time: {
               sourceMonoNs: eventSeq,
               clockId: "capture-clock",
-              receivedWallTime: "2026-11-24T00:00:00Z",
+              receivedWallTime: "2026-11-24T00:00:00.123456789Z",
               precision: {
                 source: "host_read",
                 resolutionNs: "1",
@@ -149,6 +165,26 @@ test("replay chart traces a compacted and filtered field to both original captur
   await seedWorkbenchFixture(page, {
     language: "en",
     hostStart: "pending",
+    framing: {
+      action,
+      dependencies: [
+        { id: manifest.id, version: manifest.version, digest: "c".repeat(64) },
+      ],
+      page: {
+        fileRef: {
+          hostId: "workbench-gui-host",
+          kind: "plugin_result",
+          id: "mdf4-operation",
+          revision: "1",
+        },
+        offset: "0",
+        nextOffset: String(output.length),
+        totalBytes: String(output.length),
+        atEnd: true,
+        bytesBase64: output.toString("base64"),
+        fingerprint: createHash("sha256").update(output).digest("hex"),
+      },
+    },
     replay: {
       session: replaySession,
       files: {},
@@ -380,6 +416,74 @@ test("replay chart traces a compacted and filtered field to both original captur
   expect(filteredRows?.at(-1)).toContain(
     '""event"":""54"",""start"":""193"",""end"":""194"",""hex"":""5A"",""record"":""42""',
   );
+  const mdf4 = chart.getByRole("button", { name: "Export MDF4", exact: true });
+  await page.evaluate(() => {
+    window.workbenchFixture.chartArtifactSaveResult = false;
+  });
+  await mdf4.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.chartArtifactSaves.length),
+    )
+    .toBe(1);
+  await expect(mdf4).toBeEnabled();
+  await expect(chart.getByText("Field chart MDF4 saved.")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.workbenchFixture.chartArtifactSaveResult = true;
+  });
+  await mdf4.click();
+  await expect(chart.getByText("Field chart MDF4 saved.")).toBeVisible();
+  const actionId = action.actionId;
+  const invocation = await page.evaluate(
+    (id) =>
+      window.workbenchFixture.invocations.find((item) => item.actionId === id),
+    actionId,
+  );
+  expect(invocation).toMatchObject({
+    target: {
+      hostId: "workbench-gui-host",
+      kind: "session",
+      sessionId: "chart-replay",
+      sessionEpoch: replaySession.sessionEpoch,
+    },
+    executionMode: "independent",
+  });
+  const snapshot = invocation?.params;
+  expect(snapshot?.startTimeNs).toBe(
+    String(
+      BigInt(Date.parse("2026-11-24T00:00:00Z")) * 1_000_000n + 123_456_789n,
+    ),
+  );
+  const channels = snapshot?.channels;
+  expect(channels).toMatchObject([
+    { name: "primary_voltage", unit: "V" },
+    { name: "paired_channel" },
+    { name: "frame_index" },
+    { name: "event_start" },
+    { name: "event_end" },
+    { name: "byte_start" },
+    { name: "byte_end" },
+    { name: "break_before" },
+    { name: "first_record" },
+    { name: "last_record" },
+  ]);
+  const samples = snapshot?.samples;
+  expect(Array.isArray(samples)).toBe(true);
+  if (!Array.isArray(samples)) throw new Error("Missing MDF4 samples");
+  expect(samples).toHaveLength(32);
+  expect(samples[0]).toEqual({
+    elapsedNs: "0",
+    values: ["7.5", "0", "15", "51", "52", "128", "130", "0", "39", "39"],
+  });
+  expect(samples.at(-1)).toEqual({
+    elapsedNs: "3",
+    values: ["45", "0", "46", "54", "55", "192", "194", "1", "42", "42"],
+  });
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.chartArtifactSaves.at(-1),
+    ),
+  ).toMatchObject({ operationId: "mdf4-operation" });
   await xy.locator("circle").last().click();
   await expect(chart.getByRole("status")).toHaveText("Frame 46 · X 45 V · Y 0");
   await expect(

@@ -378,6 +378,65 @@ recorded_send_2                   recorded_send_2
 
 用签名终端与签名图表的配对浏览器场景，在同一个已打开视图中中英文往返。核对 `lang`、图表标题或终端的无障碍名称、原输入仍在、iframe 地址保持，以及同一读端口确认切换后写入的新数据。收据的 `localeChanges` 记录视图实际使用的语言。使用已签发的 0.1.2 包复跑时设置 `SWB_TEST_BROWSER_LEGACY_VIEW=1`，同时核对应用已切换、旧视图继续使用打开时的语言与原读流。隔离桌面终端场景检查主窗口保存语言后，已打开的 Wry 壳应用新语言，并在同一视图确认后续字节。子窗口加载期间的语言切换仍需另外覆盖。
 
+### 高级统计窗口（VIZ-05）
+
+高级统计扩展的动作是 `swb.reference.statistics.windows`，作用目标为 Host。输入包含 `firstPosition`、`expectedSlots`、`samples` 和 `window`，可附 `unit`。样本值可用安全整数或十进制字符串传输，小数用字符串。以下输入声明 5、6、7 三个计划槽位，提交其中两个值。
+
+```json
+{
+  "firstPosition": "5",
+  "expectedSlots": 3,
+  "unit": "V",
+  "samples": [
+    { "position": "5", "value": "1.25" },
+    { "position": "7", "value": 2 }
+  ],
+  "window": { "kind": "count", "length": "2", "step": "1" }
+}
+```
+
+前两窗分别覆盖 `[5, 7)`、`[6, 8)`，两窗的缺值率均为 1/2。最后一窗裁剪为 `[7, 8)`，缺值率为 0。时间窗使用 `kind: "time"`，并声明 `clockId`、`originMonoNs` 和 `periodNs`，窗口长度和步长用纳秒。单次上限为 8192 个计划槽、512 个样本及 128 个窗口。
+
+运行 `node --test scripts/reference-statistics.test.mjs`，验证输入和报告 schema、半开边界、高位整数、尾窗、全缺样、无计划采样点及取消。准备验收包时，使用 `pnpm exec esbuild packages/plugin-sdk/examples/reference-statistics/main.ts --bundle --platform=node --format=esm --target=node26 --outfile=.cache/reference-statistics/main.js`，再调用 `sign_reference_statistics` 示例签名。安装后按来源信任流程登记，并通过 Host 动作读回报告文件。
+
+四目标原生检查复用实际 Host 的 `native_node_dynamic_statistics_reads_windows_from_signed_package`。用 `pnpm plugin-sdk:fixture` 编译时纳入同源窗口扩展，测试按真实包清单和临时密钥签名。核对来源验证、显式执行信任、启用、Host 调用和有界结果读取，同时检查高位时间边界及两类空窗。
+
+插件详情在统计包已启用并获得执行信任后显示「高级统计窗口」。样本区接收计划槽位和已有样本的 JSON。载入示例与样本标签同区，窄窗在输入前换行。时间窗才显示时钟标识、原点和采样周期。宽窗左侧放样本区，右侧放窗口条件。窄窗按样本、条件、计算、报告纵排。
+
+```text
+宽窗                                         窄窗
+样本 JSON   [载入示例] │ 窗口条件            样本 JSON   [载入示例]
+计划槽位与数据说明     │ 类型 [按样本 ▾]      计划槽位与数据说明
+[可编辑的样本 JSON]    │ 长度输入   步长输入   [可编辑的样本 JSON]
+                      │ 单位、可选时钟参数    窗口条件
+[计算] 运行状态或失败                        类型、长度、步长、可选时钟参数
+报告摘要                                    [计算] 运行状态或失败
+选择窗口 ▾                                  报告摘要
+序号与时间边界、有效及缺值 │ 统计值          选择窗口 ▾
+展开对比表（表内滚动）                       序号与时间边界、有效及缺值
+                                            统计值、展开对比表（表内滚动）
+```
+
+长度和步长同组，标签允许换行，输入沿底边对齐。类型下拉铺满窗口条件区，与输入用相同的共享控件高度。长度、步长和所有纳秒输入以十进制文本保留完整精度。计算区紧接表单，等待期间在操作旁显示状态，输入不合法时把焦点移到出错字段。失败后保留输入。
+
+报告摘要显示声明的采样范围、窗口参数及时钟。先用下拉按序号查看明细，有跨窗比较需求时再展开下方的表。明细宽窗按范围与覆盖、统计值两组并排，窄窗按同一顺序换行。技术值和数字沿用等宽字和等宽数字。对比表只在自身区域滚动。用键盘核对窗口选择、对比表和半开边界。全缺样显示缺值率 100%，没有计划采样点时显示缺值率不可用。尾窗保留实际结束边界和裁剪说明。修改条件后清理旧报告。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional window statistics" --workers=1`，核对中英、明暗、宽窄表单与结果、长时钟、64 位纳秒、不同分母、尾窗、两种空窗和报告一致性拒绝。签名 Host 用例用十进制字符串输入 4.25 并从实际结果文件读回。
+
+### 专业频谱、瀑布图与直方图（VIZ-04）
+
+通过签名统计扩展调用 Host 动作 `swb.reference.statistics.spectrum`。声明 `clockId`、`firstPosition`、`expectedSlots` 和 `periodNs`，提交带十进制字符串位置及数值的 `samples`。遗漏槽位即缺样。在 `window` 选 8 至 512 点的二次幂长度，设定不大于长度的 `hop`，选择矩形或周期 Hann 窗、保留均值或去均值，以及缺样跳过（`skip`）或补零（`zero`）。跨越末尾的不足窗保留尾部数量。每次最多 4096 个计划槽及 32 个完整窗。
+
+已知金样用 1 ms 间隔输入 `0, 2, 0, -2, 0, 2, 0, -2`，选 8 点矩形窗。核对 1000 Hz 采样率、250 Hz 主峰和约 6.021 dB 幅度。直方图范围选 0 至 2、分两箱，低于范围的计数为 2，范围内依次为 4 和 2。另接八个缺样槽时，瀑布图第二行仍保留起止位置、相对时间与空窗标记。用混合正弦和周期 Hann 窗对照逐频点直接 DFT。相关命令为 `node --test scripts/reference-statistics.test.mjs`。签名 Host 用例在同一包中实际调用频谱动作并读回报告。
+
+启用受信统计扩展，在插件详情展开「频谱与分布」，载入频率示例并计算。核对首窗 250 Hz、第二窗 500 Hz、第三窗全缺样，以及两端在内的分箱计数和上下溢出。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional spectrum" --workers=1`，以模拟 Host 的有界结果读取验证界面和选窗。设备实录和市场发行分别保留独立证据。
+
+### 专业跨源 XY 与李萨如（VIZ-06）
+
+通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间严格递增的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。
+
+共享时钟使用同一 `clockId` 并省略 `anchors`。两个时钟分别读到同一同步事件时，传入 `{ "xMonoNs": "18000000000000000000", "yMonoNs": "100" }` 作为一对锚点。第二次同步事件定义漂移斜率。以上述锚点及 `{ "xMonoNs": "18000000000000000003", "yMonoNs": "102" }` 为例，Y 的一个纳秒对应 X 的 1.5 纳秒。Y 的 `100`、`101` 分别取值 `0`、`6` 时，X 时间 `18000000000000000001` 的插值为 `4`，权重为 `2/3`。报告保留两端时间和数组索引。连续图形按 `breakBefore` 断线。缺值、无精确匹配、区段断开或超过 Y 两端时核对报告原因。
+
+运行 `node --test scripts/reference-statistics.test.mjs`，核对高位时间、比例、间隙、范围外和取消。使用相位差四分之一周期的正弦、余弦样本，比对两路时钟校准后的李萨如单位圆。四目标 CI 的 `native_node_dynamic_statistics_reads_windows_from_signed_package` 在相同签名安装上用真实 Host 验证插值报告。在工作台「插件」页展开已经启用且获得执行信任的统计窗口与 XY 包，打开「跨源 XY」。载入李萨如示例并对齐通道，核对 33 个配对点、两个时钟、同步锚点、比率和散点切换。用样本序号选择第二点，核对两条原始 Y 记录和权重。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional XY" --workers=1`，覆盖完整插件入口、结果摘要、键盘定位和非法 JSON 的焦点。独立设备和发行继续专项验收。
+
 ## 签名主题
 
 按[签名运行时](#签名运行时与-sdk)准备固定 Node，并在独立环境运行 Host 和无头界面检查。
@@ -627,6 +686,12 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 在实时分帧或回放字段图表绘制数值字段，点击「导出 CSV」。打开压缩曲线后核对 CSV 行数仍与当前范围的帧数一致。再选择「最近 32 帧」及 XY，核对 CSV 从原图表帧序号开始，包含同一帧的 X 和 Y、原始码值以及各自来源。已确认的采集缺口保留缺失帧数，校验失败和无法确认来源的帧标为无效。对跨收块样本检查事件和字节半开区间、录制序号及原始 HEX。取消系统保存对话框时界面不显示保存成功。
 
 运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。原生对话框、离屏 PNG 的独立 CI 和 MDF4 继续专项验收。
+
+### MDF4 专业导出（VIZ-13）
+
+专业动作 `swb.pro.mdf4.exportMdf4` 接收 `startTimeNs`（UTC 起点）、1 至 16 个 `channels` 和至多 256 个 `samples`。每个样本含 `elapsedNs` 及与通道顺序对应的 `values`。时间、浮点和整数均以十进制字符串提交，`null` 标记该通道缺值。输出为有序 MDF 4.10，保留秒主通道、精确纳秒列、单位和无效位。
+
+运行 `node --test scripts/mdf4-export.test.mjs` 核对格式标识、上下界、倒退时间和取消。可将 `asammdf==8.8.33` 安装到独立目录，将 `SWB_MDF4_READER_ROOT` 设为其绝对路径后复验。读取器检查三个不等间隔样本、UTF-8 单位、缺值过滤、超安全整数的定位及有符号 64 位边界。用 `pnpm plugin-sdk:fixture` 准备专业包入口，再用 `sign_reference_mdf4` 对编译后的 `.cache/plugin-sdk/examples/reference-mdf4/main.js` 签名。工作台在已启用专业包时显示「导出 MDF4」。运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 核对最近 32 帧的双轴、原始时间、录制序号、缺口、回放代次与保存取消。四目标 CI 和离线安装场景运行 `native_mdf4_saved_bytes_match_the_signed_mcp_export`。它用独立 profile 安装并启用签名包，拒绝无会话授权的调用，再从桌面和实际 stdio MCP 用同一快照发起两次操作。核对取消保存、已签名归档摘要和文件逐字节相等。运行后保留验收文件及 SHA-256 日志。真实系统保存对话框、MATLAB 读回与市场发行继续单独验收。 [ASAM MDF](https://www.asam.net/standards/detail/mdf/) · [asammdf](https://pypi.org/project/asammdf/8.8.33/)
 
 ### Modbus 报文模板（PROTO-04、PROTO-20）
 

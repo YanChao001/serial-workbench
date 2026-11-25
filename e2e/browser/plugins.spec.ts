@@ -1,8 +1,23 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
-import type { NodePackageSourceKey } from "@serial-workbench/contracts";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
+import type {
+  NodePackageInstallation,
+  NodePackageSourceKey,
+} from "@serial-workbench/contracts";
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
+import { alignXY } from "../../packages/plugin-sdk/examples/reference-statistics/align-xy";
+import { summarize } from "../../packages/plugin-sdk/examples/reference-statistics/main";
+import { spectrum } from "../../packages/plugin-sdk/examples/reference-statistics/spectrum";
+import { getLocale } from "../../src/i18n/registry";
+import { createTranslator } from "../../src/i18n/translate";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const manifestDocument: unknown = JSON.parse(
@@ -30,6 +45,48 @@ const source = {
   publicKeySha256,
   approved: true,
 } satisfies NodePackageSourceKey;
+
+function statisticsPlugin() {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-statistics/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid statistics manifest");
+  const archiveSha256 = "e".repeat(64);
+  const verifiedSource = {
+    source: "Workbench",
+    keyId: "statistics-signing",
+    publicKeySha256: "f".repeat(64),
+  };
+  const installation = {
+    manifest,
+    archiveSha256,
+    verifiedSource,
+    enabled: true,
+    executionTrust: {
+      archiveSha256,
+      permissions: manifest.permissions,
+      verifiedSource,
+    },
+  } satisfies NodePackageInstallation;
+  const archive = {
+    reference: {
+      kind: "file",
+      id: "reference-statistics",
+      hostId: "workbench-gui-host",
+    },
+    name: "statistics.zip",
+    length: "4096",
+    mime: "application/zip",
+  };
+  return { archive, installation, initiallyInstalled: true };
+}
 
 function terminalPlugin() {
   return {
@@ -247,3 +304,653 @@ test("a narrow Chinese installation shows an actionable error without native dia
     page.getByRole("button", { name: "安装插件", exact: true }),
   ).toBeEnabled();
 });
+
+async function expectAnalysisLayout(
+  result: Locator,
+  chart: Locator,
+  evidence: Locator,
+  wide: boolean,
+) {
+  await expect
+    .poll(async () => {
+      const [plot, panel] = await Promise.all([
+        chart.boundingBox(),
+        evidence.boundingBox(),
+      ]);
+      return Boolean(
+        plot &&
+        panel &&
+        (wide
+          ? panel.x >= plot.x + plot.width
+          : panel.y >= plot.y + plot.height),
+      );
+    })
+    .toBe(true);
+  expect(
+    await result.evaluate((element) => {
+      const { left, right } = element.getBoundingClientRect();
+      return (
+        left >= 0 &&
+        right <= window.innerWidth &&
+        element.scrollWidth <= element.clientWidth + 1
+      );
+    }),
+  ).toBe(true);
+}
+
+test("professional XY displays the verified result and inspects calibrated sample origins", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1240, height: 840 });
+  const stats: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-statistics/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(stats))
+    throw new Error("Invalid statistics manifest");
+  const action = stats.contributes.actions.find(
+    ({ actionId }) => actionId === "swb.reference.statistics.alignXY",
+  );
+  if (!action) throw new Error("Missing professional XY action");
+  const verifiedSource = {
+    source: source.source,
+    keyId: source.keyId,
+    publicKeySha256,
+  };
+  const fileRef = {
+    kind: "plugin_result",
+    id: "aligned-xy-report",
+    hostId: "workbench-gui-host",
+  };
+  const reportFile = (value: unknown) => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return {
+      fileRef,
+      offset: "0",
+      nextOffset: String(bytes.length),
+      totalBytes: String(bytes.length),
+      bytesBase64: bytes.toString("base64"),
+      atEnd: true,
+      fingerprint: createHash("sha256").update(bytes).digest("hex"),
+    };
+  };
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    theme: "light",
+    sidebarCollapsed: true,
+    plugin: {
+      ...terminalPlugin(),
+      initiallyInstalled: true,
+      installation: {
+        manifest: stats,
+        archiveSha256,
+        enabled: true,
+        verifiedSource,
+        executionTrust: {
+          archiveSha256,
+          permissions: stats.permissions,
+          verifiedSource,
+        },
+      },
+    },
+    framing: {
+      action,
+      page: reportFile(null),
+      dependencies: [
+        { id: stats.id, version: stats.version, digest: archiveSha256 },
+      ],
+    },
+  });
+  await page.goto("./#/plugins");
+  await page
+    .getByRole("button", {
+      name: /Sample Window Statistics and XY Alignment.*Enabled/,
+    })
+    .click();
+  const panel = page.getByRole("region", { name: "Cross-source XY" });
+  const input = panel.getByRole("textbox", { name: "Analysis input (JSON)" });
+  await panel.getByRole("button", { name: "Load Lissajous example" }).click();
+  const example: unknown = JSON.parse(await input.inputValue());
+  const report = alignXY(example, new AbortController().signal);
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    reportFile(report),
+  );
+  await panel.getByRole("button", { name: "Align channels" }).click();
+  const result = panel.getByRole("region", { name: "Alignment result" });
+  await expect(
+    result.getByText("33 paired points out of 33 X samples"),
+  ).toBeVisible();
+  await expect(result.getByText("32000 / 32032")).toBeVisible();
+  const sample = result.getByRole("spinbutton", { name: "X sample number" });
+  await sample.focus();
+  await sample.press("ArrowUp");
+  await expect(result.getByText("Interpolated", { exact: true })).toBeVisible();
+  await expect(result.getByText(/X #2.*51000 ns/)).toBeVisible();
+  await expect(result.getByText(/Y #1.*20000 ns/)).toBeVisible();
+  await expect(result.getByText(/Y #2.*22002 ns/)).toBeVisible();
+  await expect(result.getByText(/32032000\/64064000/)).toBeVisible();
+  const trace = result.locator("[data-xy-trace]");
+  await expect(trace).toHaveCount(1);
+  await result.getByRole("button", { name: "Scatter", exact: true }).click();
+  await expect(trace).toHaveCount(0);
+  await result.getByRole("button", { name: "Connected", exact: true }).click();
+  await expect(trace).toHaveCount(1);
+  const plot = result.getByRole("figure");
+  await expectAnalysisLayout(result, plot, sample, true);
+  await result.screenshot({ path: testInfo.outputPath("professional-xy.png") });
+  await page.setViewportSize({ width: 400, height: 690 });
+  await expectAnalysisLayout(result, plot, sample, false);
+  await result.evaluate((element) =>
+    element.scrollIntoView({ block: "start" }),
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("professional-xy-narrow.png"),
+    animations: "disabled",
+  });
+
+  const corrupt = { ...reportFile(report), fingerprint: "0".repeat(64) };
+  await page.evaluate(
+    (value) => window.workbenchFixture.setFramingResult(value),
+    corrupt,
+  );
+  await panel.getByRole("button", { name: "Align channels" }).click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "Couldn’t read a verified report",
+  );
+  await expect(result).toHaveCount(0);
+  await input.fill("[]");
+  await panel.getByRole("button", { name: "Align channels" }).click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "Enter a valid JSON object",
+  );
+  await expect(input).toBeFocused();
+  const calls = await page.evaluate(() =>
+    window.workbenchFixture.invocations.filter(
+      ({ actionId }) => actionId === "swb.reference.statistics.alignXY",
+    ),
+  );
+  expect(calls).toHaveLength(2);
+  expect(calls[0]).toMatchObject({
+    target: { kind: "host", id: fileRef.hostId },
+    params: example,
+  });
+});
+
+for (const { language, theme } of [
+  { language: "en", theme: "light" },
+  { language: "zh", theme: "dark" },
+] as const) {
+  test(`professional spectrum shows window peaks, missing waterfall rows and histogram counts (${language})`, async ({
+    page,
+  }, testInfo) => {
+    const t = createTranslator(getLocale(language).messages);
+    await page.setViewportSize({ width: 1240, height: 840 });
+    const plugin = statisticsPlugin();
+    const { manifest, archiveSha256 } = plugin.installation;
+    const action = manifest.contributes.actions.find(
+      ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
+    );
+    if (!action) throw new Error("Missing spectrum action");
+    const reference = {
+      kind: "plugin_result",
+      id: "spectrum-result",
+      hostId: "workbench-gui-host",
+    };
+    function reportFile(value: unknown) {
+      const bytes = Buffer.from(JSON.stringify(value));
+      return {
+        fileRef: reference,
+        offset: "0",
+        nextOffset: String(bytes.length),
+        totalBytes: String(bytes.length),
+        bytesBase64: bytes.toString("base64"),
+        atEnd: true,
+        fingerprint: createHash("sha256").update(bytes).digest("hex"),
+      };
+    }
+    await seedWorkbenchFixture(page, {
+      language,
+      theme,
+      sidebarCollapsed: true,
+      plugin,
+      framing: {
+        action,
+        page: reportFile(null),
+        dependencies: [
+          { id: manifest.id, version: manifest.version, digest: archiveSha256 },
+        ],
+      },
+    });
+    await page.goto("./#/plugins");
+    await page
+      .getByRole("button", {
+        name: /Sample Window Statistics and XY Alignment/,
+      })
+      .click();
+    await page.getByText(t("plugins.spectrum.title"), { exact: true }).click();
+    const panel = page.getByRole("region", {
+      name: t("plugins.spectrum.title"),
+    });
+    await panel
+      .getByRole("button", { name: t("plugins.spectrum.example") })
+      .click();
+    const draft = panel.getByRole("textbox", {
+      name: t("plugins.spectrum.input"),
+    });
+    const clock = "recorder-" + "0123456789".repeat(5);
+    await draft.fill(
+      (await draft.inputValue()).replace("example-clock", clock),
+    );
+    const input: unknown = JSON.parse(await draft.inputValue());
+    const output = spectrum(input, new AbortController().signal);
+    await page.evaluate(
+      (file) => window.workbenchFixture.setFramingResult(file),
+      reportFile(output),
+    );
+    await panel
+      .getByRole("button", { name: t("plugins.spectrum.run") })
+      .click();
+    const result = panel.getByRole("region", {
+      name: t("plugins.spectrum.result"),
+    });
+    await expect(result.getByRole("status")).toContainText("1,000 Hz");
+    await expect(result.getByRole("status")).toContainText("16/24");
+    await expect(
+      result.getByRole("img", { name: t("plugins.spectrum.waterfallImage") }),
+    ).toBeVisible();
+    await expect(
+      result.getByRole("img", { name: t("plugins.spectrum.spectrumImage") }),
+    ).toBeVisible();
+    await expect(
+      result.getByText("250 Hz · 6.021 dB", { exact: true }),
+    ).toBeVisible();
+    const waterfall = result.getByRole("region", {
+      name: t("plugins.spectrum.waterfall"),
+    });
+    const histogram = result.getByRole("region", {
+      name: t("plugins.spectrum.histogram"),
+    });
+    await expectAnalysisLayout(result, waterfall, histogram, true);
+    await expect(result.getByRole("status")).toContainText(clock);
+    await expect(
+      histogram.getByRole("row", { name: /0–1/ }).getByRole("cell"),
+    ).toHaveText("4");
+    const frequency = result.getByRole("combobox", {
+      name: t("plugins.spectrum.selectBin"),
+    });
+    await expect(frequency).toHaveText(t("plugins.spectrum.noBin"));
+    await frequency.click();
+    await page.getByRole("option", { name: "125 Hz", exact: true }).click();
+    await expect(frequency).toHaveText("125 Hz");
+    await frequency.press("Enter");
+    await page
+      .getByRole("option", { name: t("plugins.spectrum.noBin"), exact: true })
+      .click();
+    await expect(frequency).toHaveText(t("plugins.spectrum.noBin"));
+    await expect(
+      result.getByText("250 Hz · 6.021 dB", { exact: true }),
+    ).toBeVisible();
+
+    const windowChoice = result.getByRole("combobox", {
+      name: t("plugins.spectrum.selectWindow"),
+    });
+    await windowChoice.click();
+    await page
+      .getByRole("option", { name: "8000000–16000000 ns", exact: true })
+      .click();
+    await expect(
+      result.getByText("500 Hz · 12.041 dB", { exact: true }),
+    ).toBeVisible();
+    await result.screenshot({
+      path: testInfo.outputPath("professional-spectrum.png"),
+    });
+    await page.setViewportSize({ width: 400, height: 690 });
+    await expectAnalysisLayout(result, waterfall, histogram, false);
+    await result.evaluate((element) =>
+      element.scrollIntoView({ block: "start" }),
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("professional-spectrum-narrow.png"),
+      animations: "disabled",
+    });
+    await histogram.evaluate((element) =>
+      element.scrollIntoView({ block: "start" }),
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("professional-histogram-narrow.png"),
+      animations: "disabled",
+    });
+    await windowChoice.click();
+    await page
+      .getByRole("option", { name: "16000000–24000000 ns", exact: true })
+      .click();
+    await expect(
+      result.getByText(
+        t("plugins.spectrum.windowStatus", {
+          state: t("plugins.spectrum.status.empty"),
+          from: "17",
+          to: "25",
+          missing: 8,
+        }),
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      result.getByRole("img", { name: t("plugins.spectrum.spectrumImage") }),
+    ).toHaveCount(0);
+
+    const calls = await page.evaluate(() =>
+      window.workbenchFixture.invocations.filter(
+        ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
+      ),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      target: { kind: "host", id: reference.hostId },
+      params: input,
+    });
+  });
+}
+
+for (const presentation of [
+  { language: "zh", theme: "dark" },
+  { language: "en", theme: "light" },
+] as const) {
+  test(`professional window statistics preserves form and report order (${presentation.language})`, async ({
+    page,
+  }, testInfo) => {
+    await verifyWindowStatistics(page, testInfo, presentation);
+  });
+}
+
+async function verifyWindowStatistics(
+  page: Page,
+  testInfo: TestInfo,
+  { language, theme }: { language: "zh" | "en"; theme: "dark" | "light" },
+) {
+  const t = createTranslator(getLocale(language).messages);
+  await page.setViewportSize({ width: 400, height: 640 });
+  const plugin = statisticsPlugin();
+  const { manifest, archiveSha256 } = plugin.installation;
+  const action = manifest.contributes.actions.find(
+    ({ actionId }) => actionId === "swb.reference.statistics.windows",
+  );
+  if (!action) throw new Error("Missing statistical windows action");
+  const fileRef = {
+    kind: "plugin_result",
+    id: "windows-result",
+    hostId: "workbench-gui-host",
+  };
+  const file = (value: unknown) => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return {
+      fileRef,
+      offset: "0",
+      nextOffset: String(bytes.length),
+      totalBytes: String(bytes.length),
+      bytesBase64: bytes.toString("base64"),
+      atEnd: true,
+      fingerprint: createHash("sha256").update(bytes).digest("hex"),
+    };
+  };
+  await seedWorkbenchFixture(page, {
+    language,
+    theme,
+    sidebarCollapsed: true,
+    plugin,
+    framing: {
+      action,
+      page: file(null),
+      dependencies: [
+        { id: manifest.id, version: manifest.version, digest: archiveSha256 },
+      ],
+    },
+  });
+  await page.goto("./#/plugins");
+  await page
+    .getByRole("button", { name: /Sample Window Statistics and XY Alignment/ })
+    .click();
+  await page.getByText(t("plugins.windows.title"), { exact: true }).click();
+  const panel = page.getByRole("region", { name: t("plugins.windows.title") });
+  const settings = panel.getByRole("group", {
+    name: t("plugins.windows.settings"),
+  });
+  const sampleGrid = panel.getByRole("textbox", {
+    name: t("plugins.windows.input"),
+  });
+  const run = panel.getByRole("button", { name: t("plugins.windows.run") });
+  const result = panel.getByRole("region", {
+    name: t("plugins.windows.result"),
+  });
+  const example = panel.getByRole("button", {
+    name: t("plugins.windows.example"),
+  });
+  const mode = settings.getByRole("combobox", {
+    name: t("plugins.windows.kind"),
+  });
+  const length = settings.getByRole("textbox", {
+    name: t("plugins.windows.length"),
+  });
+  const step = settings.getByRole("textbox", {
+    name: t("plugins.windows.step"),
+  });
+  await example.click();
+  const source = await sampleGrid.inputValue();
+  await expectAnalysisLayout(panel, sampleGrid, settings, false);
+  await expectAnalysisLayout(panel, example, sampleGrid, false);
+  await panel.locator("form").screenshot({
+    path: testInfo.outputPath("statistics-form-narrow.png"),
+  });
+  for (const viewport of [
+    { width: 400, height: 640 },
+    { width: 1240, height: 840 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const [modeBox, lengthBox, stepBox] = await Promise.all([
+      mode.boundingBox(),
+      length.boundingBox(),
+      step.boundingBox(),
+    ]);
+    if (!modeBox || !lengthBox || !stepBox)
+      throw new Error("Missing window settings geometry");
+    expect(lengthBox.height).toBe(modeBox.height);
+    expect(stepBox.height).toBe(modeBox.height);
+    if (viewport.width === 400) {
+      expect(stepBox.y).toBeGreaterThan(lengthBox.y + lengthBox.height);
+      expect(stepBox.x).toBeCloseTo(lengthBox.x);
+    } else {
+      expect(lengthBox.y + lengthBox.height).toBeCloseTo(
+        stepBox.y + stepBox.height,
+      );
+    }
+  }
+  await expectAnalysisLayout(panel, sampleGrid, settings, true);
+  await panel.locator("form").screenshot({
+    path: testInfo.outputPath("statistics-form-wide.png"),
+  });
+  await page.setViewportSize({ width: 400, height: 640 });
+
+  const parsed: unknown = JSON.parse(source);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new Error("Expected a sample grid object");
+  const input = {
+    ...parsed,
+    window: { kind: "count", length: "2", step: "1" },
+  };
+  const countReport = summarize(input, new AbortController().signal);
+  await page.evaluate(
+    (report) => window.workbenchFixture.setFramingResult(report),
+    file(countReport),
+  );
+  await run.click();
+  await expect(result.getByRole("status")).toContainText("[5, 9)");
+  await expect(result.getByText("1 / 2 · 50%", { exact: true })).toBeVisible();
+  const selected = result.getByRole("region", {
+    name: t("plugins.windows.selected"),
+  });
+  const compareToggle = result.getByText(t("plugins.windows.compare"), {
+    exact: true,
+  });
+  await expectAnalysisLayout(result, selected, compareToggle, false);
+  await compareToggle.press("Enter");
+  const comparison = result.getByRole("table", {
+    name: t("plugins.windows.compare"),
+  });
+  await expect(comparison.getByRole("row")).toHaveCount(5);
+  await expect(
+    comparison
+      .getByRole("row")
+      .nth(1)
+      .getByRole("cell", { name: "1.25", exact: true })
+      .first(),
+  ).toBeVisible();
+  const compareScroll = result.getByRole("region", {
+    name: t("plugins.windows.compare"),
+  });
+  await compareScroll.focus();
+  await compareScroll.press("ArrowRight");
+  await expect
+    .poll(() => compareScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await expect(comparison.getByRole("row").last()).toContainText(
+    t("plugins.windows.tail"),
+  );
+
+  await mode.click();
+  await page
+    .getByRole("option", { name: t("plugins.windows.time"), exact: true })
+    .click();
+  await expect(result).toHaveCount(0);
+  const origin = 18000000000000000000n;
+  const time = {
+    kind: "time",
+    length: "4",
+    step: "3",
+    clockId: "recorder-" + "0123456789".repeat(5),
+    originMonoNs: String(origin),
+    periodNs: "10",
+  };
+  for (const field of [
+    "length",
+    "step",
+    "clockId",
+    "originMonoNs",
+    "periodNs",
+  ] as const) {
+    await settings
+      .getByRole("textbox", { name: t(`plugins.windows.${field}`) })
+      .fill(time[field]);
+  }
+  const timedInput = { ...input, window: time };
+  const timeReport = summarize(timedInput, new AbortController().signal);
+  await page.evaluate(
+    (report) => window.workbenchFixture.setFramingResult(report),
+    file(timeReport),
+  );
+  await run.click();
+  await expect(result.getByRole("status")).toContainText(time.clockId);
+  await expect(
+    selected.getByText("1.25", { exact: true }).first(),
+  ).toBeVisible();
+  const lists = selected.locator("dl");
+  await expect(lists).toHaveCount(2);
+  await expectAnalysisLayout(selected, lists.first(), lists.last(), false);
+  await page.setViewportSize({ width: 1240, height: 840 });
+  await expectAnalysisLayout(selected, lists.first(), lists.last(), true);
+  expect(
+    await lists
+      .last()
+      .locator("dt")
+      .evaluateAll((labels) => {
+        const cells = labels.map((label) => ({
+          row: label.getBoundingClientRect().top,
+          baseline: label.nextElementSibling?.getBoundingClientRect().bottom,
+        }));
+        return cells.every((cell, index) => {
+          const previous = cells[index - 1];
+          return (
+            !previous ||
+            cell.row !== previous.row ||
+            cell.baseline === previous.baseline
+          );
+        });
+      }),
+  ).toBe(true);
+  await result.screenshot({
+    path: testInfo.outputPath("statistics-window-wide.png"),
+  });
+  await page.setViewportSize({ width: 400, height: 640 });
+  const chooser = result.getByRole("combobox", {
+    name: t("plugins.windows.selected"),
+  });
+
+  async function selectWindow(number: number, from: bigint, to: bigint) {
+    await chooser.press("Enter");
+    await page
+      .getByRole("option", {
+        name: t("plugins.windows.windowNumber", { number }),
+        exact: true,
+      })
+      .click();
+    await expect(
+      selected.getByText(`[${origin + from}, ${origin + to}) ns`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
+
+  await selectWindow(2, 3n, 7n);
+  await expect(result.getByText(t("plugins.windows.noSlots"))).toBeVisible();
+  await expect(result.getByText("0 / 0 · —", { exact: true })).toBeVisible();
+  await selectWindow(4, 9n, 13n);
+  await expect(result.getByText(t("plugins.windows.noSamples"))).toBeVisible();
+  await expect(result.getByText("1 / 1 · 100%", { exact: true })).toBeVisible();
+  await selectWindow(14, 39n, 40n);
+  await expect(
+    result
+      .getByRole("region", { name: t("plugins.windows.selected") })
+      .getByText(t("plugins.windows.tail"), { exact: true }),
+  ).toBeVisible();
+  await selected.screenshot({
+    path: testInfo.outputPath("statistics-window-narrow.png"),
+  });
+
+  const corrupt = {
+    ...timeReport,
+    windows: timeReport.windows.map((entry, index) =>
+      index === 1 ? { ...entry, missingRate: 1 } : entry,
+    ),
+  };
+  await page.evaluate(
+    (report) => window.workbenchFixture.setFramingResult(report),
+    file(corrupt),
+  );
+  await run.click();
+  await expect(panel.getByRole("alert")).toHaveText(
+    t("plugins.windows.failed"),
+  );
+  await expect(result).toHaveCount(0);
+  await step.fill("0");
+  await run.click();
+  await expect(step).toBeFocused();
+  await expect(step).toHaveAttribute("aria-invalid", "true");
+  await expect(panel.getByRole("alert")).toHaveText(
+    t("plugins.windows.invalidSettings"),
+  );
+  const calls = await page.evaluate(() =>
+    window.workbenchFixture.invocations.filter(
+      ({ actionId }) => actionId === "swb.reference.statistics.windows",
+    ),
+  );
+  expect(calls).toHaveLength(3);
+  expect(calls[1]).toMatchObject({
+    target: { kind: "host", id: fileRef.hostId },
+    params: timedInput,
+  });
+}

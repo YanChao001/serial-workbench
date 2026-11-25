@@ -5,6 +5,8 @@ mod parity_clients;
 mod reference_automation_tests;
 #[path = "reference_chart_tests.rs"]
 mod reference_chart_tests;
+#[path = "reference_mdf4_tests.rs"]
+mod reference_mdf4_tests;
 #[path = "../../../../crates/host/examples/support/terminal_capture.rs"]
 mod terminal_capture;
 #[path = "terminal_parity.rs"]
