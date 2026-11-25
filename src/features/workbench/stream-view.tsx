@@ -177,6 +177,7 @@ export type StreamViewProps = {
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
   replay?: boolean;
+  allowTerminalLinks?: boolean;
   initialMode?: "text" | "hex";
   items: readonly HistoryStreamItem[];
   labels: WorkbenchLabels;
@@ -221,6 +222,7 @@ export function StreamView({
   terminalSettings,
   presentationLabels,
   replay = false,
+  allowTerminalLinks = false,
   onOpenCapture,
   onOpenActivity,
   onClearView,
@@ -2050,6 +2052,7 @@ export function StreamView({
               items={displayed}
               encoding={receiveCodec}
               sendEncoding={sendCodec}
+              allowTerminalLinks={allowTerminalLinks}
               keyboard={frozen ? undefined : keyboard}
               convertEol={ansiConvertEol}
               typography={terminalSettings?.typography}

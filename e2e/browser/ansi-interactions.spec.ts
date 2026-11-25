@@ -383,6 +383,69 @@ test("OSC 8 uses the host opener for explicit mouse and keyboard activation", as
   ).toHaveCount(0);
 });
 
+test("incoming ANSI control requests leave the clipboard, files and serial writes under user control", async ({
+  page,
+}) => {
+  const ansi = await openAnsi(page);
+  await ansi.viewer
+    .getByRole("switch", { name: "Send keyboard input" })
+    .click();
+  await page.evaluate(() => {
+    const note = () =>
+      window.workbenchFixture.copiedLanInfo.push("browser clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        read: async () => {
+          note();
+          return [];
+        },
+        readText: async () => {
+          note();
+          return "";
+        },
+        write: async () => {
+          note();
+        },
+        writeText: async () => {
+          note();
+        },
+      },
+    });
+  });
+  const clipboardSample = Buffer.from("fixture clipboard").toString("base64");
+  const label = "Visible terminal text";
+  await ansi.feed("\x1b]52;c;");
+  await ansi.feed(clipboardSample + "\x07");
+  await ansi.feed("\x1b]52;c;?\x1b\\");
+  await ansi.feed("\x1b]1337;File=inline=0:Zml4dHVyZQ==\x07");
+  await ansi.feed("\x1b[32m" + label + "\x1b[0m");
+  await expect(ansi.rows.locator(".xterm-fg-2")).toHaveText(label);
+  const effects = await page.evaluate(() => ({
+    clipboard: window.workbenchFixture.copiedLanInfo,
+    exports: window.workbenchFixture.savedTextExports,
+    links: window.workbenchFixture.openedExternalLinks,
+    writes: window.workbenchFixture.sentBytes,
+  }));
+  expect(effects).toEqual({
+    clipboard: [],
+    exports: [],
+    links: [],
+    writes: [],
+  });
+
+  await ansi.viewer
+    .getByRole("button", { name: "Export ANSI screen with colors" })
+    .click();
+  const content = await page.evaluate(
+    () => window.workbenchFixture.savedTextExports.at(-1)?.content,
+  );
+  expect(content).toContain(label);
+  expect(content).toContain("\x1b[0;38;2;");
+  expect(content).not.toContain("\x1b]");
+  expect(content).not.toContain(clipboardSample);
+});
+
 test("ANSI history jumps across retained lines and keeps receiving while frozen", async ({
   page,
 }) => {
