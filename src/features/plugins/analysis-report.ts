@@ -4,8 +4,9 @@ import {
   type Target,
 } from "@serial-workbench/contracts";
 import { readVerifiedFile } from "@/lib/host-reader";
-export const statisticsPackage = "swb.reference.statistics";
 import type { HostContextValue } from "@/providers/host-context";
+
+export const statisticsPackage = "swb.reference.statistics";
 
 export function parseAnalysisInput(text: string, limit: number) {
   if (text.length > limit) return undefined;
