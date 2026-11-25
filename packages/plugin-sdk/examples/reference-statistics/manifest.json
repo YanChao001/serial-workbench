@@ -13,7 +13,12 @@
   "platformResources": [],
   "activation": ["startup"],
   "permissions": {
-    "hostApi": [],
+    "hostApi": [
+      {
+        "permissions": ["metadata.read"],
+        "targetKinds": ["host"]
+      }
+    ],
     "executionPurposes": ["chart"],
     "externalTools": []
   },
