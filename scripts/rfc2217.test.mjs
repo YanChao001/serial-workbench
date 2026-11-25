@@ -387,7 +387,13 @@ test("hardware flow owns RTS and a suspended control can end before submission",
     }),
     { kind: "not_applied" },
   );
-  await writeWire(peer, sub([108]));
+  // Consume the marker after SUSPEND to prove the connection processed the pause.
+  const marker = Buffer.of(0xa5);
+  await writeWire(peer, Buffer.concat([sub([108]), marker]));
+  assert.deepEqual(
+    Buffer.from(await connection.read({ maxBytes: 1, waitMs: 500, signal })),
+    marker,
+  );
   const waiting = connection.lineControls.set({
     line: "dtr",
     value: true,
@@ -396,7 +402,11 @@ test("hardware flow owns RTS and a suspended control can end before submission",
   });
   await assert.rejects(readWire(peer, 7, 40), { name: "AbortError" });
   assert.deepEqual(await waiting, { kind: "not_applied" });
-  await writeWire(peer, sub([109]));
+  await writeWire(peer, Buffer.concat([sub([109]), marker]));
+  assert.deepEqual(
+    Buffer.from(await connection.read({ maxBytes: 1, waitMs: 500, signal })),
+    marker,
+  );
   const resumed = connection.lineControls.set({
     line: "dtr",
     value: false,
