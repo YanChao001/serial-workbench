@@ -66,6 +66,16 @@ async function writeWire(socket, chunk) {
   );
 }
 
+async function receiveFlowNotification(peer, connection, command) {
+  // The raw marker follows the notification on the same TCP stream.
+  const marker = Buffer.of(0xa5);
+  await writeWire(peer, Buffer.concat([sub([command]), marker]));
+  assert.deepEqual(
+    Buffer.from(await connection.read({ maxBytes: 1, waitMs: 500, signal })),
+    marker,
+  );
+}
+
 async function assertPeerClosed(peer, trigger) {
   const close = once(peer, "end", { signal: AbortSignal.timeout(1500) });
   peer.resume();
@@ -212,15 +222,13 @@ test(
       await readWire(peer, 6),
       Buffer.from([0, 255, 255, 13, 10, 128]),
     );
-    await writeWire(peer, sub([108]));
-    assert.equal((await read(1, 25)).length, 0);
+    await receiveFlowNotification(peer, connection, 108);
     assert.equal(
       await connection.write({ bytes: sample, waitMs: 500, signal }),
       0,
     );
     assert.equal(peer.read(), null);
-    await writeWire(peer, Buffer.concat([sub([109]), Buffer.from([65])]));
-    assert.deepEqual(Buffer.from(await read(1)), Buffer.of(65));
+    await receiveFlowNotification(peer, connection, 109);
     assert.equal(
       await connection.write({ bytes: sample, waitMs: 500, signal }),
       sample.length,
@@ -387,13 +395,7 @@ test("hardware flow owns RTS and a suspended control can end before submission",
     }),
     { kind: "not_applied" },
   );
-  // Consume the marker after SUSPEND to prove the connection processed the pause.
-  const marker = Buffer.of(0xa5);
-  await writeWire(peer, Buffer.concat([sub([108]), marker]));
-  assert.deepEqual(
-    Buffer.from(await connection.read({ maxBytes: 1, waitMs: 500, signal })),
-    marker,
-  );
+  await receiveFlowNotification(peer, connection, 108);
   const waiting = connection.lineControls.set({
     line: "dtr",
     value: true,
@@ -402,11 +404,7 @@ test("hardware flow owns RTS and a suspended control can end before submission",
   });
   await assert.rejects(readWire(peer, 7, 40), { name: "AbortError" });
   assert.deepEqual(await waiting, { kind: "not_applied" });
-  await writeWire(peer, Buffer.concat([sub([109]), marker]));
-  assert.deepEqual(
-    Buffer.from(await connection.read({ maxBytes: 1, waitMs: 500, signal })),
-    marker,
-  );
+  await receiveFlowNotification(peer, connection, 109);
   const resumed = connection.lineControls.set({
     line: "dtr",
     value: false,

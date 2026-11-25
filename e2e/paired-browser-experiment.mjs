@@ -107,6 +107,7 @@ try {
   await expect(
     source.tool.getByText("swb.reference.framing 0.1.0", { exact: true }),
   ).toBeVisible();
+  assert.deepEqual(source.requests, ["workspace.experiment.export"]);
   await source.dialog.screenshot({ path: join(output, "source-export.png") });
 
   const [downloaded] = await Promise.all([
@@ -138,7 +139,10 @@ try {
   ]) {
     assert.ok(!raw.includes(privateValue), `Export leaked ${privateValue}`);
   }
-  assert.deepEqual(source.requests, ["workspace.experiment.export"]);
+  assert.deepEqual(source.requests, [
+    "workspace.experiment.export",
+    "workspace.experiment.export",
+  ]);
   await source.page.close();
 
   stage = "inspect on receiving Host";
