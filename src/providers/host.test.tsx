@@ -26,7 +26,10 @@ import { createHostConnection } from "@/lib/host-client";
 import { createHostWorkspace } from "./host-controller";
 import type { HostConnection, HostNativePort } from "@/lib/host-client";
 import fixtures from "../../packages/contracts/src/generated/fixtures.json";
-import { parseReply } from "@serial-workbench/contracts";
+import {
+  ContractValidationError,
+  parseReply,
+} from "@serial-workbench/contracts";
 import type {
   Call,
   CaptureStatusResult,
@@ -2186,6 +2189,77 @@ it("reads typed operation input through the raw channel without constructing it 
     expect.any(AbortSignal),
   );
   expect(workspace.getSnapshot().state.operations).toEqual([]);
+  workspace.dispose();
+});
+
+it("routes replay search through Raw and matches both the cursor and page before delivery", async () => {
+  const connection = await createHostConnection(port());
+  const workspace = createHostWorkspace(connection);
+  const searchId = "a6b21411-cf47-472c-98d4-79482bd9d433";
+  const params = {
+    sessionId: "recorded-session",
+    sessionEpoch: "8",
+    command: { kind: "next" as const, searchId, page: "2" },
+  };
+  const value = {
+    kind: "page",
+    searchId,
+    page: "2",
+    result: {
+      hits: [],
+      scannedRecords: "32",
+      totalRecords: "50",
+      complete: false,
+    },
+  };
+  const reply = (body: typeof value) =>
+    parseReply({
+      ok: true,
+      result: { kind: "replay_search", value: body },
+    });
+  const raw = vi.spyOn(connection.transport, "rawRequest");
+  raw.mockResolvedValueOnce(reply(value));
+  await expect(workspace.searchReplay(params)).resolves.toEqual(value);
+  expect(raw).toHaveBeenCalledWith(
+    {
+      method: "action.query",
+      params: expect.objectContaining({
+        actionId: "replay.search",
+        params,
+        target: {
+          hostId: connection.attachment.hostId,
+          kind: "session",
+          id: params.sessionId,
+          sessionId: params.sessionId,
+          sessionEpoch: params.sessionEpoch,
+        },
+      }),
+    },
+    expect.any(AbortSignal),
+  );
+  raw.mockResolvedValueOnce(reply({ ...value, page: "3" }));
+  await expect(workspace.searchReplay(params)).rejects.toBeInstanceOf(
+    ContractValidationError,
+  );
+  raw.mockResolvedValueOnce(
+    reply({
+      ...value,
+      searchId: "a6b21411-cf47-472c-98d4-79482bd9d434",
+    }),
+  );
+  await expect(workspace.searchReplay(params)).rejects.toBeInstanceOf(
+    ContractValidationError,
+  );
+  const cancel = new AbortController();
+  raw.mockImplementationOnce(async () => {
+    cancel.abort();
+    return reply(value);
+  });
+  await expect(
+    workspace.searchReplay(params, cancel.signal),
+  ).rejects.toMatchObject({
+    name: "AbortError",
+  });
   workspace.dispose();
 });
 

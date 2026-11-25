@@ -4272,6 +4272,7 @@ export type QueryResult_Deserialize =
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
+  | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
   | { kind: "file_read"; value: FileReadResult_Deserialize }
@@ -4325,6 +4326,7 @@ export type QueryResult_Serialize =
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
+  | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
   | { kind: "file_read"; value: FileReadResult_Serialize }
@@ -4625,6 +4627,30 @@ export type ReplayRecord_Serialize =
       jsonBytes: U64;
       jsonSha256: Digest;
     } & { record?: never });
+
+export type ReplaySearchHit = {
+  direction: Direction;
+  firstRecord: U64;
+  lastRecord: U64;
+  byteStart: U64;
+  byteEnd: U64;
+};
+
+export type ReplaySearchPage = {
+  hits: ReplaySearchHit[];
+  scannedRecords: U64;
+  totalRecords: U64;
+  complete: boolean;
+};
+
+export type ReplaySearchResult =
+  | {
+      kind: "page";
+      searchId: RequestId;
+      page: PositiveU64;
+      result: ReplaySearchPage;
+    }
+  | { kind: "stopped"; searchId: RequestId; stopped: boolean };
 
 export type RequestId = string;
 

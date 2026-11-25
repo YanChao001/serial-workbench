@@ -362,7 +362,7 @@ export type WorkspaceLayoutProps = {
   readOperationInput?: OperationInputReader;
   replay?: Pick<
     ReplayPanelProps,
-    "read" | "readRecord" | "control" | "playbackSupported"
+    "read" | "readRecord" | "control" | "playbackSupported" | "search"
   >;
   initialWorkspace?: WorkspaceDocument;
   savedWorkspace?: WorkspaceDocument;
@@ -377,7 +377,9 @@ export type WorkspaceLayoutProps = {
     sessionId: string,
     signal?: AbortSignal,
   ) => Promise<Operation | undefined>;
-  onOpenReplay?: (signal?: AbortSignal) => Promise<Operation | undefined>;
+  onOpenReplay?: (
+    signal?: AbortSignal,
+  ) => Promise<(Operation & { recordingName?: string }) | undefined>;
   onCloseSession?: (
     sessionId: string,
     signal?: AbortSignal,
@@ -626,6 +628,7 @@ export function WorkspaceLayout({
   const [pendingReplay, setPendingReplay] = useState<{
     operationId: string;
     focus: number;
+    recordingName?: string;
   }>();
   const [connectionConfigurations, setConnectionConfigurations] = useState<
     Readonly<Record<string, SerialConfiguration>>
@@ -1274,7 +1277,7 @@ export function WorkspaceLayout({
     [state.operations, state.sessions],
   );
   const showObservedSession = useCallback(
-    (snapshot: SessionSnapshot) => {
+    (snapshot: SessionSnapshot, recordingName?: string) => {
       const device = state.devices.find(
         (item) => item.deviceId === snapshot.deviceId,
       );
@@ -1289,7 +1292,7 @@ export function WorkspaceLayout({
           (tab) =>
             tab.id === current.selected && tab.sessionId === snapshot.sessionId,
         );
-        return connectSessionTabs(
+        const connected = connectSessionTabs(
           nextTabs,
           initialWorkspace,
           snapshot.sessionId,
@@ -1298,6 +1301,13 @@ export function WorkspaceLayout({
           currentView?.id,
           snapshot,
         );
+        if (!recordingName) return connected;
+        return {
+          ...connected,
+          tabs: connected.tabs.map((tab) =>
+            tab.id === connected.selected ? { ...tab, recordingName } : tab,
+          ),
+        };
       });
     },
     [state.devices, state.sessions, draftStore, initialWorkspace],
@@ -1378,7 +1388,7 @@ export function WorkspaceLayout({
           item.sessionId === sessionId && item.sessionEpoch === sessionEpoch,
       );
       if (!replaySession) return;
-      showObservedSession(replaySession);
+      showObservedSession(replaySession, pendingReplay.recordingName);
       setDialog(null);
     } else if (
       operation.state === "queued" ||
@@ -1635,7 +1645,11 @@ export function WorkspaceLayout({
     void choose(async (signal) => {
       const operation = await onOpenReplay(signal);
       if (operation && !signal.aborted && focus === focusRevision.current)
-        setPendingReplay({ operationId: operation.operationId, focus });
+        setPendingReplay({
+          operationId: operation.operationId,
+          focus,
+          recordingName: operation.recordingName,
+        });
     });
   }
   function locate(activity: ActivityLocation) {
@@ -2359,6 +2373,12 @@ export function WorkspaceLayout({
           <ReplayPanel
             key={`${session.sessionId}:${session.sessionEpoch}`}
             {...replay}
+            recordingName={
+              selectedTab?.recordingName ||
+              selectedTab?.view?.name ||
+              labels.replay
+            }
+            searchEncoding={receiveEncoding ?? undefined}
             highlightRules={highlightRules}
             onHighlightRulesChange={setHighlightRules}
             terminalSettings={terminalSettings}

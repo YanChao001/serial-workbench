@@ -15,6 +15,8 @@ use tokio::sync::oneshot;
 mod experiment_browser;
 #[path = "support/operation_source_host.rs"]
 mod operation_source_host;
+#[path = "support/replay_search_host.rs"]
+mod replay_search_host;
 
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
@@ -190,7 +192,16 @@ impl Fixture {
         result.operation
     }
     async fn wait(&self, operation: &Operation, evidence_only: bool) -> Operation {
-        tokio::time::timeout(Duration::from_secs(15), async {
+        self.wait_with_timeout(operation, evidence_only, Duration::from_secs(15))
+            .await
+    }
+    async fn wait_with_timeout(
+        &self,
+        operation: &Operation,
+        evidence_only: bool,
+        timeout: Duration,
+    ) -> Operation {
+        tokio::time::timeout(timeout, async {
             loop {
                 let current = self
                     .store

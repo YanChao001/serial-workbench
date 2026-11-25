@@ -41,7 +41,7 @@ impl Default for CaptureLimits {
             volume_duration_ns: 60 * 60 * 1_000_000_000,
             capacity_bytes: storage.capacity_bytes.get(),
             reserve_bytes: storage.reserve_bytes.get(),
-            max_records: 100_000,
+            max_records: MAX_CAPTURE_RECORDS,
         }
     }
 }

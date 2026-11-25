@@ -31,6 +31,7 @@ import type {
   WorkspaceDocumentResult,
   SessionSnapshot,
   ReplayReadResult,
+  ReplaySearchPage,
   ExperimentInspection,
 } from "@serial-workbench/contracts";
 import type {
@@ -72,6 +73,7 @@ export type CaptureTailFixture = {
 export type ReplayLayoutFixture = {
   session: SessionSnapshot;
   page: ReplayReadResult;
+  searchPages?: ReplaySearchPage[];
   files: Record<
     string,
     { reference: ObjectRef; bytesBase64: string; fingerprint: string }
@@ -369,9 +371,12 @@ export async function seedWorkbenchFixture(
     scopeId: "workspace.default",
     target: { hostId, kind: "workspace", id: "default" },
   };
+  const replayCatalog = catalogItems.filter(
+    (item) => item.actionId !== "replay.search" || replay?.searchPages,
+  );
   const workbenchCatalog = replay?.page.playback
-    ? catalogItems
-    : catalogItems.map((item) => {
+    ? replayCatalog
+    : replayCatalog.map((item) => {
         const properties = item.inputSchema.properties;
         if (
           (item.actionId !== "replay.read" &&
@@ -755,6 +760,8 @@ export async function seedWorkbenchFixture(
     let releaseDefinitionRead: (() => void) | undefined;
     let replayPlayback = replayProfile?.page.playback;
     let replayReadIndex = 0;
+    let replayReaderGeneration = replayProfile?.page.readerGeneration ?? "1";
+    let replaySearchId: string | undefined;
     const replayControls = new Map<string, Operation>();
     const replayOrdinal = (record: ReplayReadResult["records"][number]) =>
       record.kind === "inline"
@@ -765,7 +772,7 @@ export async function seedWorkbenchFixture(
       const next = replayProfile.page.records[replayReadIndex];
       return {
         records,
-        readerGeneration: replayProfile.page.readerGeneration,
+        readerGeneration: replayReaderGeneration,
         nextRecord: next ? replayOrdinal(next) : replayProfile.page.nextRecord,
         atEnd: next === undefined,
       };
@@ -2320,13 +2327,25 @@ export async function seedWorkbenchFixture(
                   params.sessionEpoch !== replayScope?.target.sessionEpoch ||
                   typeof params.paused !== "boolean" ||
                   params.reportPlayback !== undefined ||
-                  params.seekRecord !== undefined
+                  (params.seekRecord !== undefined &&
+                    typeof params.seekRecord !== "string")
                 )
                   throw new Error(
                     "Invalid explicit replay.control transport or target",
                   );
                 const update = params.playback;
                 if (update === undefined) {
+                  if (params.seekRecord !== undefined) {
+                    const seek =
+                      replayProfile?.page.records.findIndex(
+                        (record) => replayOrdinal(record) === params.seekRecord,
+                      ) ?? -1;
+                    if (seek < 0) throw new Error("Unknown replay seek");
+                    replayReadIndex = seek;
+                    replayReaderGeneration = (
+                      BigInt(replayReaderGeneration) + 1n
+                    ).toString();
+                  }
                   replayPlayback = { ...replayPlayback, paused: params.paused };
                 } else if (
                   update &&
@@ -2912,6 +2931,64 @@ export async function seedWorkbenchFixture(
                     value: { operation: peerOperation },
                   },
                 };
+              if (
+                replayProfile?.searchPages &&
+                query.actionId === "replay.search"
+              ) {
+                const params = query.params.command;
+                if (
+                  command !== "host_raw_request" ||
+                  args.generation !== hostAttachment.generation ||
+                  !validReplayTarget(query.target) ||
+                  query.params.sessionId !== replayProfile.session.sessionId ||
+                  query.params.sessionEpoch !==
+                    replayProfile.session.sessionEpoch ||
+                  !params ||
+                  typeof params !== "object" ||
+                  Array.isArray(params) ||
+                  typeof params.searchId !== "string"
+                )
+                  throw new Error("Invalid replay search route or scope");
+                if (params.kind === "stop") {
+                  const stopped = replaySearchId === params.searchId;
+                  if (stopped) replaySearchId = undefined;
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "replay_search",
+                      value: {
+                        kind: "stopped",
+                        searchId: params.searchId,
+                        stopped,
+                      },
+                    },
+                  };
+                }
+                let number = 1;
+                if (params.kind === "start") replaySearchId = params.searchId;
+                else if (
+                  params.kind === "next" &&
+                  replaySearchId === params.searchId &&
+                  typeof params.page === "string"
+                )
+                  number = Number(params.page);
+                else throw new Error("Invalid replay search cursor");
+                const result = replayProfile.searchPages[number - 1];
+                if (!result)
+                  throw new Error("Replay search fixture page exhausted");
+                return {
+                  ok: true,
+                  result: {
+                    kind: "replay_search",
+                    value: {
+                      kind: "page",
+                      searchId: params.searchId,
+                      page: String(number),
+                      result,
+                    },
+                  },
+                };
+              }
               if (replayProfile && query.actionId === "replay.read") {
                 const singleStep = query.params.singleStep === true;
                 const inspect = query.params.inspectPlayback === true;

@@ -13,7 +13,13 @@ import type {
   ReplayControlParams,
   ReplayReadParams,
   ReplayReadResult,
+  ReplaySearchHit,
+  ReplaySearchParams,
+  ReplaySearchResult,
 } from "@serial-workbench/contracts";
+import { en } from "@/i18n/en";
+import { createTranslator } from "@/i18n/translate";
+import type { HostContextValue } from "@/providers/host-context";
 import { ReplayPanel } from "./replay-panel";
 import { compactStreamTime } from "./stream-presentation";
 import { labels, session } from "./test-fixtures";
@@ -545,4 +551,315 @@ it("preserves the confirmed control position when inspecting playback fails", as
   await screen.findByText("Next record 5");
   expect(control).toHaveBeenCalledOnce();
   expect(read).toHaveBeenCalledOnce();
+});
+
+const recordingName = "south-line-replay-with-long-recording-filename.swbc";
+const match: ReplaySearchHit = {
+  firstRecord: "43",
+  lastRecord: "44",
+  byteStart: "9007199254740993",
+  byteEnd: "9007199254740997",
+  direction: "rx",
+};
+const searchLabels = createTranslator(en);
+const allowSearch: HostContextValue["watchActions"] = (inputs, publish) => {
+  publish(
+    inputs.map((input) => ({
+      input,
+      result: { actionId: input.actionId, target: input.target, allowed: true },
+      error: null,
+    })),
+  );
+  return () => {};
+};
+
+it("removes a visible search page on source revocation and starts clean after regrant", async () => {
+  let publishAccess = (_allowed: boolean) => {};
+  const watchActions: HostContextValue["watchActions"] = (inputs, publish) => {
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.actionId).toBe("replay.read");
+    publishAccess = (allowed) =>
+      publish(
+        inputs.map((input) => ({
+          input,
+          result: { actionId: input.actionId, target: input.target, allowed },
+          error: null,
+        })),
+      );
+    publishAccess(true);
+    return () => {};
+  };
+  const run = vi.fn(
+    async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> =>
+      command.kind === "stop"
+        ? { kind: "stopped", searchId: command.searchId, stopped: true }
+        : searchPage(command.searchId, "1", [match]),
+  );
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      read={vi.fn()}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+      search={{ run, t: searchLabels, hostId: "host", watchActions }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Search recording" }));
+  const dialog = screen.getByRole("dialog", { name: "Search recording" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search content" }),
+    {
+      target: { value: "PING" },
+    },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start search" }));
+  expect(
+    await within(dialog).findByRole("button", { name: "Continue search" }),
+  ).toBeVisible();
+  await act(async () => publishAccess(false));
+  expect(
+    screen.queryByRole("dialog", { name: "Search recording" }),
+  ).not.toBeInTheDocument();
+  expect(run.mock.calls.map(([request]) => request.command.kind)).toEqual([
+    "start",
+    "stop",
+  ]);
+  await act(async () => publishAccess(true));
+  fireEvent.click(screen.getByRole("button", { name: "Search recording" }));
+  const nextDialog = screen.getByRole("dialog", { name: "Search recording" });
+  expect(
+    within(nextDialog).getByRole("textbox", { name: "Search content" }),
+  ).toHaveValue("");
+  expect(
+    within(nextDialog).queryByRole("button", { name: "Continue search" }),
+  ).not.toBeInTheDocument();
+});
+
+function searchPage(
+  searchId: string,
+  page: string,
+  hits: ReplaySearchHit[],
+  complete = false,
+): ReplaySearchResult {
+  return {
+    kind: "page",
+    searchId,
+    page,
+    result: { hits, scannedRecords: page, totalRecords: "100", complete },
+  };
+}
+
+it("scans to a hit, reads its first record without resuming playback and restores focus", async () => {
+  const run = vi.fn(
+    async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> => {
+      if (command.kind === "stop")
+        return { kind: "stopped", searchId: command.searchId, stopped: true };
+      return command.kind === "start"
+        ? searchPage(command.searchId, "1", [])
+        : searchPage(command.searchId, command.page, [match]);
+    },
+  );
+  const control = vi.fn().mockResolvedValue({
+    records: [],
+    readerGeneration: "3",
+    nextRecord: "43",
+    atEnd: false,
+  });
+  const read = vi.fn().mockResolvedValue({
+    records: [
+      {
+        kind: "reference",
+        recordOrdinal: "43",
+        jsonBytes: "200",
+        jsonSha256: "a".repeat(64),
+        recordRef: {
+          hostId: "host",
+          kind: "capture_record",
+          id: "large-record",
+          revision: "1",
+        },
+      },
+    ],
+    readerGeneration: "3",
+    nextRecord: "44",
+    atEnd: false,
+    playback: { rate: { kind: "fastest" }, paused: true },
+  });
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      read={read}
+      readRecord={vi.fn()}
+      control={control}
+      search={{
+        run,
+        t: searchLabels,
+        hostId: "host",
+        watchActions: allowSearch,
+      }}
+      recordingName={recordingName}
+    />,
+  );
+  const trigger = screen.getByRole("button", { name: "Search recording" });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "Search recording" });
+  const input = within(dialog).getByRole("textbox", { name: "Search content" });
+  expect(input).toHaveFocus();
+  expect(within(dialog).getByText(recordingName)).toBeVisible();
+  fireEvent.change(input, { target: { value: "PING" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start search" }));
+  expect(
+    await within(dialog).findByText(
+      "Record 43–44 · bytes [9007199254740993, 9007199254740997)",
+    ),
+  ).toBeVisible();
+  expect(run.mock.calls.map(([request]) => request.command.kind)).toEqual([
+    "start",
+    "next",
+  ]);
+  expect(run.mock.calls[0]?.[0].command).toMatchObject({
+    kind: "start",
+    bytesBase64: "UElORw==",
+  });
+  expect(read).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Go to record" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(trigger).toHaveFocus();
+  expect(control).toHaveBeenCalledWith(
+    expect.objectContaining({ paused: true, seekRecord: "43" }),
+    expect.any(AbortSignal),
+  );
+  expect(read).toHaveBeenCalledWith(
+    expect.objectContaining({ singleStep: true, maxRecords: "1" }),
+    expect.any(AbortSignal),
+  );
+  expect(screen.getByText(/Located record 43.*9007199254740993/)).toBeVisible();
+  await waitFor(() =>
+    expect(run.mock.calls.at(-1)?.[0].command.kind).toBe("stop"),
+  );
+});
+
+it("reconciles a stop acknowledged before the first search page arrives", async () => {
+  let complete!: (page: ReplaySearchResult) => void;
+  const pending = new Promise<ReplaySearchResult>((resolve) => {
+    complete = resolve;
+  });
+  const run = vi.fn(
+    ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> => {
+      if (command.kind === "stop")
+        return Promise.resolve({
+          kind: "stopped",
+          searchId: command.searchId,
+          stopped: false,
+        });
+      return pending;
+    },
+  );
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      read={vi.fn()}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+      search={{
+        run,
+        t: searchLabels,
+        hostId: "host",
+        watchActions: allowSearch,
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Search recording" }));
+  const dialog = screen.getByRole("dialog", { name: "Search recording" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search content" }),
+    { target: { value: "PING" } },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start search" }));
+  fireEvent.click(
+    await within(dialog).findByRole("button", { name: "Stop search" }),
+  );
+  expect(
+    await within(dialog).findByText("Waiting for search to stop…"),
+  ).toBeVisible();
+  expect(run.mock.calls.map(([request]) => request.command.kind)).toEqual([
+    "start",
+    "stop",
+  ]);
+  const id = run.mock.calls[0]![0].command.searchId;
+  await act(async () => complete(searchPage(id, "1", [match])));
+  expect(await within(dialog).findByText("Search stopped.")).toBeVisible();
+  expect(run.mock.calls.map(([request]) => request.command)).toEqual([
+    expect.objectContaining({ kind: "start", searchId: id }),
+    { kind: "stop", searchId: id },
+    { kind: "stop", searchId: id },
+  ]);
+  expect(
+    within(dialog).queryByRole("list", { name: "Search matches" }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps results scoped to the submitted input and clears them when the recording changes", async () => {
+  const run = vi.fn(
+    async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> => {
+      if (command.kind === "start")
+        return searchPage(command.searchId, "1", [match]);
+      if (command.kind === "next") throw { code: "SOURCE_CHANGED" };
+      return { kind: "stopped", searchId: command.searchId, stopped: true };
+    },
+  );
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      read={vi.fn()}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+      search={{
+        run,
+        t: searchLabels,
+        hostId: "host",
+        watchActions: allowSearch,
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Search recording" }));
+  const dialog = screen.getByRole("dialog", { name: "Search recording" });
+  const input = within(dialog).getByRole("textbox", { name: "Search content" });
+  fireEvent.change(input, { target: { value: "PING" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start search" }));
+  expect(
+    await within(dialog).findByRole("list", { name: "Search matches" }),
+  ).toBeVisible();
+  fireEvent.change(input, { target: { value: "OTHER" } });
+  expect(
+    within(dialog).queryByRole("list", { name: "Search matches" }),
+  ).not.toBeInTheDocument();
+  expect(
+    within(dialog).queryByRole("button", { name: "Continue search" }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.change(input, { target: { value: "PING" } });
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Continue search" }),
+  );
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "Recording access changed.",
+  );
+  expect(
+    within(dialog).queryByRole("list", { name: "Search matches" }),
+  ).not.toBeInTheDocument();
 });

@@ -1133,7 +1133,9 @@ impl Host {
             action if action.is_capture_api() => {
                 if matches!(
                     action,
-                    BuiltinAction::ReplayRead | BuiltinAction::CaptureTail
+                    BuiltinAction::ReplayRead
+                        | BuiltinAction::ReplaySearch
+                        | BuiltinAction::CaptureTail
                 ) && connection.is_none()
                 {
                     return Err(HostError::new(
@@ -1141,7 +1143,10 @@ impl Host {
                         "Capture content requires a raw connection",
                     ));
                 }
-                self.inner.capture_api.query(action, &query, actor).await
+                self.inner
+                    .capture_api
+                    .query(action, &query, actor, connection.as_ref())
+                    .await
             }
             BuiltinAction::DeviceRefresh => {
                 let _: EmptyParams = decode(&query.params)?;
@@ -2608,6 +2613,9 @@ impl RequestHandler for Host {
         })
     }
     fn disconnected(&self, context: &ConnectionContext) {
+        self.inner
+            .capture_api
+            .release_search_connection(&context.connection_id);
         let _ = self
             .inner
             .client_effects

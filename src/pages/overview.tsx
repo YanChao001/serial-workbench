@@ -882,6 +882,18 @@ export default function Overview({
           readRecord: host.readReplayRecord,
           control: replayControl,
           playbackSupported: replayPlaybackSupported,
+          search:
+            host.connection &&
+            host.state.catalog.some(
+              (entry) => entry.actionId === "replay.search",
+            )
+              ? {
+                  run: host.searchReplay,
+                  t,
+                  hostId: host.connection.attachment.hostId,
+                  watchActions: host.watchActions,
+                }
+              : undefined,
         }}
         onStopCapture={async (captureRef, signal) => {
           signal?.throwIfAborted();

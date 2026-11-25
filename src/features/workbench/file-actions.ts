@@ -72,7 +72,7 @@ export function createWorkbenchFileActions(
         captureRef: selected.reference,
         mode: "original_timing",
       };
-      return current().invoke(
+      const accepted = await current().invoke(
         {
           actionId: "replay.open",
           target: {
@@ -85,6 +85,7 @@ export function createWorkbenchFileActions(
         },
         signal,
       );
+      return { ...accepted, recordingName: selected.name };
     },
     async send(sessionId: string, signal?: AbortSignal) {
       const selection = await select(sessionId, "source", signal);

@@ -5,6 +5,8 @@ import type {
   ReplayReadParams,
   ReplayReadResult,
   ReplayRecord,
+  ReplaySearchHit,
+  TextEncoding,
   SessionSnapshot,
   TerminalSettings,
 } from "@serial-workbench/contracts";
@@ -47,6 +49,7 @@ import {
 } from "@/components/ui/popover";
 import { nativeErrorCode } from "@/lib/native-error";
 import { parseU64 } from "@/lib/u64";
+import type { HostActionCheckInput } from "@/providers/host-context";
 import type {
   ComparisonSide,
   ReplayComparisonSample,
@@ -55,6 +58,11 @@ import { captureRecordItems } from "./capture-record-items";
 import { StreamView } from "./stream-view";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { WorkbenchDialog } from "./workbench-dialog";
+import {
+  ReplaySearchTool,
+  type ReplaySearchOptions,
+} from "./replay-search-tool";
+import { useToolActionAvailability } from "./use-tool-action-availability";
 import type { ChartSourceSelection } from "./stream-chart-selection";
 import { WorkbenchNotice, operationFailureEventKey } from "./workbench-notice";
 import { workbenchStatus } from "./stream-presentation";
@@ -81,6 +89,9 @@ export type ReplayPanelProps = {
   readRecord: ReplayRecordReader;
   control: ReplayController;
   playbackSupported?: boolean;
+  search?: ReplaySearchOptions;
+  recordingName?: string;
+  searchEncoding?: TextEncoding;
   disabled: boolean;
   labels: WorkbenchLabels;
   terminalSettings?: TerminalSettings;
@@ -118,6 +129,9 @@ export function ReplayPanel({
   readRecord,
   control,
   playbackSupported = false,
+  search,
+  recordingName,
+  searchEncoding = "utf-8",
   disabled,
   labels,
   terminalSettings,
@@ -127,6 +141,10 @@ export function ReplayPanel({
   comparison,
 }: ReplayPanelProps) {
   const [page, setPage] = useState<ReplayReadResult>();
+  const [searchLocation, setSearchLocation] = useState<{
+    page: ReplayReadResult;
+    hit: ReplaySearchHit;
+  }>();
   const latestPage = useRef(page);
   latestPage.current = page;
   const [expanded, setExpanded] = useState<Record<string, CaptureRecord>>({});
@@ -148,6 +166,7 @@ export function ReplayPanel({
   useEffect(() => {
     setBusy(false);
     setPage(undefined);
+    setSearchLocation(undefined);
     setExpanded({});
     setSeek("");
     setBreakpointDraft(undefined);
@@ -161,7 +180,7 @@ export function ReplayPanel({
     };
   }, [read, readRecord, control, session.sessionId, session.sessionEpoch]);
   async function act(action: (signal: AbortSignal) => Promise<void>) {
-    if (pending.current) return;
+    if (pending.current) return false;
     const controller = new AbortController();
     pending.current = controller;
     const attempt = ++attempts.current;
@@ -169,6 +188,7 @@ export function ReplayPanel({
     setError(undefined);
     try {
       await action(controller.signal);
+      return !controller.signal.aborted;
     } catch (reason) {
       if (
         !controller.signal.aborted &&
@@ -179,6 +199,7 @@ export function ReplayPanel({
           eventKey:
             operationFailureEventKey(reason) ?? `${noticeId}:replay:${attempt}`,
         });
+      return false;
     } finally {
       if (pending.current === controller) pending.current = null;
       if (!controller.signal.aborted) setBusy(false);
@@ -201,6 +222,43 @@ export function ReplayPanel({
     sessionId: session.sessionId,
     sessionEpoch: session.sessionEpoch,
   };
+  const searchHostId = search?.hostId;
+  const searchChecks = useMemo<HostActionCheckInput[]>(
+    () =>
+      searchHostId && playbackSupported && !disabled
+        ? [
+            {
+              actionId: "replay.read",
+              target: {
+                hostId: searchHostId,
+                kind: "session",
+                id: session.sessionId,
+                sessionId: session.sessionId,
+                sessionEpoch: session.sessionEpoch,
+              },
+              params: {
+                sessionId: session.sessionId,
+                sessionEpoch: session.sessionEpoch,
+                maxRecords: "1",
+                maxBytes: "65536",
+              },
+            },
+          ]
+        : [],
+    [
+      searchHostId,
+      playbackSupported,
+      disabled,
+      session.sessionId,
+      session.sessionEpoch,
+    ],
+  );
+  const canReadSearchSource = useToolActionAvailability(
+    searchChecks,
+    search?.watchActions,
+  );
+  const searchAllowed = canReadSearchSource(searchChecks[0]);
+  if (!searchAllowed && searchLocation) setSearchLocation(undefined);
   const playback = page?.playback;
   const availableControls = !disabled && !busy;
   const breakpoint = breakpointDraft ?? playback?.breakpointRecord ?? "";
@@ -301,6 +359,56 @@ export function ReplayPanel({
         }
       }
     });
+  const locateSearchHit = (hit: ReplaySearchHit, waiting: AbortSignal) =>
+    act(async (owned) => {
+      const signal = AbortSignal.any([owned, waiting]);
+      signal.throwIfAborted();
+      const position = await control(
+        { ...target, paused: true, seekRecord: hit.firstRecord },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (position.nextRecord !== hit.firstRecord || position.records.length)
+        throw new ContractValidationError("Replay search position changed");
+      const result = await read(
+        {
+          ...target,
+          singleStep: true,
+          reportPlayback: true,
+          maxRecords: "1",
+          maxBytes: "65536",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      const record = result.records[0];
+      const ordinal =
+        record?.kind === "inline"
+          ? record.record.recordOrdinal
+          : record?.recordOrdinal;
+      if (
+        result.records.length !== 1 ||
+        ordinal !== hit.firstRecord ||
+        !result.playback?.paused ||
+        result.readerGeneration !== position.readerGeneration
+      )
+        throw new ContractValidationError("Replay search record changed");
+      setPage(result);
+      setExpanded({});
+      setChartLink(undefined);
+      setSearchLocation({ page: result, hit });
+    });
+  const located =
+    searchAllowed && searchLocation?.page === page
+      ? searchLocation?.hit
+      : undefined;
+  const locatedLabel =
+    located &&
+    search?.t("workbench.replaySearchLocated", {
+      record: located.firstRecord,
+      start: located.byteStart,
+      end: located.byteEnd,
+    });
   return (
     <section aria-label={labels.replay} className="workbench-replay">
       <div className="workbench-toolbar workbench-replay-toolbar">
@@ -352,8 +460,25 @@ export function ReplayPanel({
         >
           <CornerDownRight aria-hidden="true" />
         </WorkbenchIconButton>
-        <span role="status" className="workbench-replay-status" title={status}>
-          {status}
+        {search && searchAllowed && (
+          <ReplaySearchTool
+            search={search}
+            target={target}
+            recording={recordingName ?? labels.replay}
+            initialEncoding={searchEncoding}
+            closeLabel={labels.closeView}
+            jumpDisabled={!availableControls}
+            onJump={locateSearchHit}
+          />
+        )}
+        <span
+          role="status"
+          className="workbench-replay-status"
+          title={locatedLabel || status}
+        >
+          {locatedLabel
+            ? [status, locatedLabel].filter(Boolean).join(" · ")
+            : status}
         </span>
         {playbackSupported ? (
           <Popover>

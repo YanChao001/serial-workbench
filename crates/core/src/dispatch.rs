@@ -126,6 +126,7 @@ pub enum QueryResult {
     CaptureStatus(CaptureStatusResult),
     CaptureTail(CaptureTailResult),
     ReplayRead(ReplayReadResult),
+    ReplaySearch(ReplaySearchResult),
     Recent(RecentList),
     FileMetadata(FileMetadata),
     FileRead(FileReadResult),
@@ -205,7 +206,8 @@ impl RpcRequest {
             | "transfer.readProgress"
             | "operation.input"
             | "capture.tail"
-            | "replay.read" => RequestChannel::Raw,
+            | "replay.read"
+            | "replay.search" => RequestChannel::Raw,
             "subscription.close" => RequestChannel::Either,
             _ => RequestChannel::Control,
         })
@@ -251,6 +253,7 @@ impl BuiltinAction {
             Self::CaptureExport => typed!(TextExportParams),
             Self::ReplayOpen => typed!(ReplayOpenParams),
             Self::ReplayRead => typed!(ReplayReadParams),
+            Self::ReplaySearch => typed!(ReplaySearchParams),
             Self::ReplayControl => typed!(ReplayControlParams),
             Self::DeviceRebind => typed!(RebindParams),
             Self::FavoritesSave => typed!(FavoritesSaveParams),

@@ -2017,3 +2017,72 @@
 .protocol-byte-map [data-field-role][aria-pressed="true"] {
   box-shadow: inset 0 -2px var(--foreground);
 }
+
+.workbench-replay-search-name {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+.workbench-replay-search-fields {
+  --workbench-search-select-count: 2;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 2fr) repeat(var(--workbench-search-select-count), minmax(0, 1fr))
+    minmax(8.5rem, 1fr);
+  align-items: end;
+  gap: var(--workbench-field-gap);
+}
+.workbench-replay-search-fields[data-search-format="hex"] {
+  --workbench-search-select-count: 1;
+}
+.workbench-replay-search-input {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.workbench-replay-search-fields :is([data-slot="select-trigger"], input) {
+  width: 100%;
+  min-width: 0;
+  height: var(--workbench-control-size);
+}
+.workbench-replay-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.workbench-replay-search-actions > button {
+  height: var(--workbench-control-size);
+}
+.workbench-replay-search-results {
+  max-height: min(18rem, 42dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.workbench-replay-search-results > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-block-start: 1px solid var(--border);
+  padding: 0.5rem 0.25rem;
+}
+.workbench-replay-search-results > li > div {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workbench-replay-search-results > li span + span {
+  font-family: var(--font-mono);
+}
+@container workbench-tool (max-width: 32rem) {
+  .workbench-replay-search-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workbench-replay-search-input {
+    grid-column: 1 / -1;
+  }
+}

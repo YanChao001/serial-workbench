@@ -1,21 +1,31 @@
 use super::{
     format::*,
-    verify::{read_record_bytes, verify_directory},
+    verify::{index_replay_directory, read_record_bytes},
 };
 use serial_workbench_core::*;
 use std::path::{Path, PathBuf};
+
+#[path = "search.rs"]
+mod search;
+#[path = "replay_search_service.rs"]
+mod search_service;
+
 /// 纯文件读者；类型不持有设备、TX 仲裁器或 Transport。
 pub struct ReplayReader {
-    path: PathBuf,
-    format: CaptureFormat,
-    index: CaptureIndex,
-    record_digests: Vec<[u8; 32]>,
-    directory_identity: String,
+    archive: Arc<ReplayArchive>,
     capture_id: Id,
     configuration: SerialConfiguration,
     generation: U64,
     mixed_source_clocks: bool,
     playback: Playback,
+}
+
+struct ReplayArchive {
+    path: PathBuf,
+    format: CaptureFormat,
+    index: CaptureIndex,
+    record_digests: Vec<[u8; 32]>,
+    directory_identity: String,
     _guard: crate::files::references::PathGuard,
 }
 
@@ -93,7 +103,7 @@ impl Playback {
 impl ReplayReader {
     pub fn open(path: &Path, mode: ReplayMode) -> HostResult<Self> {
         let guard = crate::files::references::PathGuard::new(path)?;
-        let scan = verify_directory(path)?;
+        let scan = index_replay_directory(path)?;
         if !scan.report.container_complete
             || !(scan.manifest.state == CaptureState::Complete
                 || scan.manifest.state == CaptureState::Incomplete
@@ -111,11 +121,14 @@ impl ReplayReader {
             return Err(replay_clock_unavailable());
         }
         Ok(Self {
-            path: path.to_path_buf(),
-            format: scan.format,
-            index: scan.index,
-            record_digests: scan.record_digests,
-            directory_identity: crate::files::references::directory_identity(path)?,
+            archive: Arc::new(ReplayArchive {
+                path: path.to_path_buf(),
+                format: scan.format,
+                index: scan.index,
+                record_digests: scan.record_digests,
+                directory_identity: crate::files::references::directory_identity(path)?,
+                _guard: guard,
+            }),
             capture_id: scan.manifest.capture_id,
             configuration: scan
                 .manifest
@@ -134,7 +147,6 @@ impl ReplayReader {
                 breakpoint_record: None,
                 breakpoint_hit: false,
             },
-            _guard: guard,
         })
     }
     pub fn read(&mut self, max: usize, now: u64) -> HostResult<ReplayReadResult> {
@@ -177,7 +189,7 @@ impl ReplayReader {
             records,
             reader_generation: self.generation,
             next_record: (playback.position as u64 + 1).into(),
-            at_end: playback.position == self.index.records.len(),
+            at_end: playback.position == self.archive.index.records.len(),
             playback: report_playback.then(|| playback.state()),
         }
     }
@@ -196,9 +208,7 @@ impl ReplayReader {
                 "Invalid replay read budget",
             ));
         }
-        if crate::files::references::directory_identity(&self.path)? != self.directory_identity {
-            return Err(changed());
-        }
+        self.archive.ensure_directory()?;
         let mut playback = self.playback;
         if mode != ReplayReadMode::Inspect {
             playback.last_now = now;
@@ -213,16 +223,9 @@ impl ReplayReader {
         let mut used = 0usize;
         while (single_step || !playback.paused)
             && records.len() < limit
-            && playback.position < self.index.records.len()
+            && playback.position < self.archive.index.records.len()
         {
-            let (record, observed, json) = read_record_bytes(
-                &self.path,
-                &self.index.records[playback.position],
-                self.format,
-            )?;
-            if self.record_digests.get(playback.position) != Some(&record_digest(observed, &json)) {
-                return Err(changed());
-            }
+            let (record, observed, json) = self.archive.read_verified_record(playback.position)?;
             let source_time = if self.mixed_source_clocks {
                 observed
             } else {
@@ -279,9 +282,7 @@ impl ReplayReader {
             records.push(record);
             playback = advanced;
         }
-        if crate::files::references::directory_identity(&self.path)? != self.directory_identity {
-            return Err(changed());
-        }
+        self.archive.ensure_directory()?;
         if single_step && records.is_empty() {
             playback.pause_at(true, now);
         }
@@ -299,9 +300,32 @@ impl ReplayReader {
         self.playback = playback;
         Ok(result)
     }
+}
 
+impl ReplayArchive {
+    fn ensure_directory(&self) -> HostResult<()> {
+        if crate::files::references::directory_identity(&self.path)? != self.directory_identity {
+            return Err(changed());
+        }
+        Ok(())
+    }
+
+    fn read_verified_record(
+        &self,
+        position: usize,
+    ) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
+        let location = self.index.records.get(position).ok_or_else(changed)?;
+        let (record, observed, json) = read_record_bytes(&self.path, location, self.format)?;
+        if self.record_digests.get(position) != Some(&record_digest(observed, &json)) {
+            return Err(changed());
+        }
+        Ok((record, observed, json))
+    }
+}
+
+impl ReplayReader {
     pub fn seek(&mut self, ordinal: U64, now: u64) -> HostResult<()> {
-        if ordinal.get() == 0 || ordinal.get() > self.index.records.len() as u64 + 1 {
+        if ordinal.get() == 0 || ordinal.get() > self.archive.index.records.len() as u64 + 1 {
             return Err(HostError::new(
                 "INVALID_ARGUMENT",
                 "Replay seek is outside the capture",
@@ -325,7 +349,7 @@ impl ReplayReader {
 
     pub fn set_rate(&mut self, rate: ReplayRate, now: u64) -> HostResult<()> {
         if matches!(rate, ReplayRate::Timed { .. })
-            && self.format == CaptureFormat::Legacy
+            && self.archive.format == CaptureFormat::Legacy
             && self.mixed_source_clocks
         {
             return Err(replay_clock_unavailable());
@@ -348,7 +372,7 @@ impl ReplayReader {
 
     pub fn set_breakpoint(&mut self, record: Option<U64>) -> HostResult<()> {
         if let Some(ordinal) = record
-            && (ordinal.get() == 0 || ordinal.get() > self.index.records.len() as u64)
+            && (ordinal.get() == 0 || ordinal.get() > self.archive.index.records.len() as u64)
         {
             return Err(HostError::new(
                 "INVALID_ARGUMENT",
@@ -465,6 +489,7 @@ pub struct ReplayService {
     clock: Arc<dyn Clock>,
     sessions: Arc<Mutex<HashMap<Id, Arc<Mutex<ReplaySession>>>>>,
     slots: Arc<tokio::sync::Semaphore>,
+    searches: search_service::ReplaySearches,
 }
 struct ReplaySession {
     source: ObjectRef,
@@ -482,6 +507,7 @@ impl ReplayService {
             clock,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             slots: Arc::new(tokio::sync::Semaphore::new(16)),
+            searches: search_service::ReplaySearches::default(),
         }
     }
     pub fn owns(&self, id: &Id) -> bool {
@@ -724,10 +750,13 @@ impl ReplayService {
             let session = service.find(&target)?;
             let mut session = session.lock().map_err(|_| replay_busy())?;
             service.authorize(&session, &target, &actor, "content.read")?;
-            if session.reader.take().is_some() {
+            if session.reader.is_some() {
+                let revision = session.snapshot.revision.checked_next()?;
+                service.searches.release_session(&target.id)?;
+                session.reader.take();
                 session.snapshot.state = SessionState::Closed;
                 session.snapshot.tx_gate = TxGate::Closing;
-                session.snapshot.revision = session.snapshot.revision.checked_next()?;
+                session.snapshot.revision = revision;
                 session.slot.take();
             }
             Ok(session.snapshot.clone())
@@ -735,9 +764,10 @@ impl ReplayService {
         .await
     }
     pub fn shutdown(&self) -> HostResult<()> {
-        for session in self.sessions.lock().map_err(|_| replay_busy())?.values() {
+        for (id, session) in self.sessions.lock().map_err(|_| replay_busy())?.iter() {
             let mut session = session.lock().map_err(|_| replay_busy())?;
             session.reader.take();
+            self.searches.release_session(id)?;
             session.slot.take();
             session.snapshot.state = SessionState::Closed;
             session.snapshot.tx_gate = TxGate::Closing;

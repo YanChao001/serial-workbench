@@ -889,6 +889,72 @@ mod shutdown_tests {
         }
     }
 
+    struct ObserveRawDisconnect {
+        observed: Mutex<Option<tokio::sync::oneshot::Sender<bool>>>,
+    }
+
+    impl RequestHandler for ObserveRawDisconnect {
+        fn handle(&self, _: ConnectionContext, _: RpcRequest) -> HandlerFuture {
+            Box::pin(async {
+                Err(HostError::new(
+                    "UNSUPPORTED_CAPABILITY",
+                    "Test requires attach only",
+                ))
+            })
+        }
+
+        fn disconnected(&self, context: &ConnectionContext) {
+            if context.channel == IpcChannel::Raw
+                && let Some(observer) = self.observed.lock().unwrap().take()
+            {
+                let _ = observer.send(context.is_closed());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn raw_disconnect_closes_output_before_releasing_connection_resources() {
+        use serial_workbench_client::{ConnectOptions, HostClient};
+
+        let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let mut server = HostServer::bind(profile.path()).await.unwrap();
+        let (observed, disconnected) = tokio::sync::oneshot::channel();
+        let handler = Arc::new(ObserveRawDisconnect {
+            observed: Mutex::new(Some(observed)),
+        });
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let running = tokio::spawn(async move {
+            server
+                .serve_until(handler, async {
+                    let _ = stopped.await;
+                })
+                .await
+        });
+        let client = HostClient::connect(ConnectOptions::new(
+            profile.path().into(),
+            Id::try_from("raw-disconnect-observer").unwrap(),
+            ClientKind::Cli,
+        ))
+        .await
+        .unwrap();
+        let raw = client.connect_raw().await.unwrap();
+        raw.close().await.unwrap();
+        let closed_at_callback = tokio::time::timeout(Duration::from_secs(5), disconnected)
+            .await
+            .unwrap()
+            .unwrap();
+        stop.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(8), running)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(
+            closed_at_callback,
+            "connection-owned state was cleared before output closed"
+        );
+    }
+
     struct RetryableShutdown {
         host: crate::Host,
         entered: Arc<tokio::sync::Notify>,
