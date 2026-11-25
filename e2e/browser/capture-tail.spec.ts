@@ -232,6 +232,53 @@ async function waitAnotherPermissionObservation(page: Page) {
     .toBeGreaterThan(before);
 }
 
+test("recording tail renders OSC 8 labels and colors as inert data in a narrow window", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 640 });
+  const label = "Recorded device manual";
+  const text =
+    "\x1b]8;;https://example.invalid/tail\x07\x1b[32m" +
+    label +
+    "\x1b[0m\x1b]8;;\x07";
+  const saved = tail(refA, text);
+  saved.records = saved.records.slice(0, 1);
+  await seedWorkbenchFixture(page, {
+    workspace,
+    language: "en",
+    sidebarCollapsed: true,
+    captureTails: { results: { [refA.id]: saved } },
+  });
+  await page.goto("./#/");
+  await recording(page, 1).click();
+  const view = panel(page);
+  await expect(view.getByRole("log")).toContainText(label);
+  await view.getByRole("radio", { name: "HEX", exact: true }).click();
+  await expect(view.getByRole("log")).toContainText(/1B 5D 38/i);
+  await view
+    .getByRole("button", {
+      name: "Switch to HEX to inspect original bytes",
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "ANSI terminal", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  const ansi = view.getByRole("region", { name: "ANSI terminal" });
+  const cell = ansi.locator(".xterm-rows .xterm-fg-2");
+  await expect(cell).toHaveText(label);
+  await expect(ansi.getByText("Terminal links", { exact: true })).toHaveCount(
+    0,
+  );
+  const bounds = await cell.boundingBox();
+  if (!bounds) throw new Error("Missing recorded terminal cell");
+  await page.mouse.click(bounds.x + 3, bounds.y + 4);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.openedExternalLinks),
+  ).toEqual([]);
+  await ansi.screenshot({ path: info.outputPath("recorded-ansi.png") });
+});
+
 test("saved recording refs restore readonly Raw tails, retain drafts, and persist only explicit layout changes", async ({
   page,
 }, info) => {

@@ -124,6 +124,18 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 桌面 Rust 用例先运行 `pnpm build` 准备 dist。真实窗口使用[同源原生构建](#原生桌面)。
 
+### 不可信终端序列（SEC-08）
+
+实时与历史记录都沿用工作台的 ANSI 和 HEX 入口。夹具使用合成字节，在正常窗口和窄窗口核对显示、滚动范围、可见焦点与原始内容。实时 OSC 8 只在用户主动激活后通过宿主 HTTP(S) 策略。相同记录出现在录制标签和回放时保留文字与颜色，终端链接列表和链接激活动作都关闭。查看录制的 HEX 或原始字节时，控制指令仍可按数据读取。
+
+检查终端收包期间原生或浏览器剪贴板、外链、文件保存和发送都没有新增调用。显式保存彩色快照时只写渲染文字与 SGR 颜色，显式复制继续复用已有剪贴板授权。窗口宽窄验证沿用现有工作台布局与控件，历史标签保持原展示位置。
+
+```sh
+pnpm test:ui e2e/browser/ansi-interactions.spec.ts e2e/browser/ansi-screen.spec.ts e2e/browser/capture-tail.spec.ts e2e/browser/replay-layout.spec.ts --workers=1
+```
+
+本机无头 Chromium 的 24 项用例通过，包含 420×640 的录制尾部和 1240×760 的录制回放。覆盖生产界面和宿主动作的测试接线。四目标候选、实际 WebView 外链和剪贴板及正式安装另按适用环境复验。 [桌面边界](./testing.md#桌面边界)
+
 ### 终端参考包验收
 
 「串口监听」通过公开 SDK 提供所选串口的只读收发视图。以同一候选的桌面、Host、CLI 和 MCP 在独立 profile 验收，真实窗口遵守[桌面边界](./testing.md#桌面边界)。收据记录包摘要、Host、会话代次和 Virtual 输入的字节范围及摘要。

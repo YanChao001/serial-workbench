@@ -2380,6 +2380,7 @@ export function WorkspaceLayout({
           />
         ) : (
           <StreamView
+            allowTerminalLinks={!isReplay && !isCapture}
             key={`${selected ?? "unconnected"}:${session?.sessionEpoch ?? ""}`}
             items={items}
             chartSourceItems={sourceItems}

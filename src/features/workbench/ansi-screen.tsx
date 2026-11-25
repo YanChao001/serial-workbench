@@ -68,6 +68,7 @@ type Projection = {
   disposed: boolean;
   encoding: TextEncoding;
   convertEol: boolean;
+  allowTerminalLinks: boolean;
   scrollback: number;
   typography?: TerminalTypography;
   ligatureJoiner?: number;
@@ -81,6 +82,7 @@ function project(
   convertEol: boolean,
   palette: ITheme,
   scrollback: number,
+  allowTerminalLinks: boolean,
 ): Projection {
   const terminal = new Terminal({
     allowProposedApi: true,
@@ -112,6 +114,7 @@ function project(
     disposed: false,
     encoding,
     convertEol,
+    allowTerminalLinks,
     scrollback,
   };
 }
@@ -158,6 +161,7 @@ export default function AnsiScreen({
   encoding,
   convertEol,
   sendEncoding,
+  allowTerminalLinks,
   keyboard,
   typography = defaults.terminalTypography,
   scrollback,
@@ -169,6 +173,7 @@ export default function AnsiScreen({
   encoding: TextEncoding;
   convertEol: boolean;
   sendEncoding: TextEncoding;
+  allowTerminalLinks: boolean;
   keyboard?: AnsiKeyboardTarget;
   typography?: TerminalTypography;
   scrollback: number;
@@ -340,6 +345,7 @@ export default function AnsiScreen({
   const activateLink = useEffectEvent(
     (terminal: Terminal, event: MouseEvent, uri: string) => {
       if (
+        !allowTerminalLinks ||
         active.current?.terminal !== terminal ||
         !event.isTrusted ||
         (event.button !== 0 && event.button !== 1) ||
@@ -356,6 +362,7 @@ export default function AnsiScreen({
   );
   function guardLinkActivation(event: ReactMouseEvent<HTMLAnchorElement>) {
     if (
+      !allowTerminalLinks ||
       !event.nativeEvent.isTrusted ||
       !linkIndex.snapshot().includes(event.currentTarget.href)
     )
@@ -407,6 +414,7 @@ export default function AnsiScreen({
       !screen ||
       screen.encoding !== encoding ||
       screen.convertEol !== convertEol ||
+      screen.allowTerminalLinks !== allowTerminalLinks ||
       screen.scrollback !== scrollback ||
       !screen.wanted.every((packet, index) => packet === packets[index])
     ) {
@@ -423,6 +431,7 @@ export default function AnsiScreen({
         convertEol,
         palette,
         scrollback,
+        allowTerminalLinks,
       );
       active.current = screen;
       const terminal = screen.terminal;
@@ -435,6 +444,7 @@ export default function AnsiScreen({
         allowNonHttpProtocols: false,
       };
       terminal.parser.registerOscHandler(8, (data) => {
+        if (!allowTerminalLinks) return true;
         if (active.current?.terminal === terminal) linkIndex.addOsc(data);
         return false;
       });
@@ -481,6 +491,7 @@ export default function AnsiScreen({
     drain(screen);
     reportWindowSize(screen.terminal, screen.terminal);
   }, [
+    allowTerminalLinks,
     encoding,
     convertEol,
     enabled,
@@ -631,7 +642,7 @@ export default function AnsiScreen({
             }}
           />
         )}
-        {links.length > 0 && (
+        {allowTerminalLinks && links.length > 0 && (
           <details className="workbench-ansi-links">
             <summary>{labels.ansiLinks}</summary>
             <ul>
