@@ -484,11 +484,11 @@ impl ConnectionState {
                     .await;
             });
         }
-        // token 与资源立即失效，handler 接纳过程可完成；执行队列不属于连接。
-        drop(guard);
+        // 收回连接资源前关闭输出，使晚到的请求无法重新登记资源。
+        // 已接纳的 Host 任务按自身生命周期结算。
         drop(replies_tx);
-        // 接纳结果没有接收者时释放发送等待，避免把断开的 reader 续活。
         drop(writer_future);
+        drop(guard);
         while requests.join_next().await.is_some() {}
         Ok(())
     }

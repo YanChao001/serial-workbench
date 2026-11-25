@@ -10,6 +10,7 @@ use std::{
 pub const MAGIC: &[u8; 7] = b"SWBR01\n";
 pub const TIMED_MAGIC: &[u8; 7] = b"SWBR02\n";
 pub const MAX_RECORD: usize = 1024 * 1024;
+pub(super) const MAX_CAPTURE_RECORDS: usize = 100_000;
 pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

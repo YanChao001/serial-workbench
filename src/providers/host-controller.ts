@@ -23,6 +23,7 @@ import type {
   OperationSummary,
   Query,
   ReplayReadParams,
+  ReplaySearchParams,
   ReplayRecord,
   SerialConfiguration,
   SessionSnapshot,
@@ -214,7 +215,9 @@ export function createHostWorkspace(
         error: error instanceof Error ? error : new Error(String(error)),
       });
   };
-  function sessionTarget(session: SessionSnapshot): Target {
+  function sessionTarget(
+    session: Pick<SessionSnapshot, "sessionId" | "sessionEpoch">,
+  ): Target {
     return {
       hostId: connection.attachment.hostId,
       kind: "session",
@@ -1612,21 +1615,41 @@ export function createHostWorkspace(
   }
   async function readReplay(params: ReplayReadParams, signal?: AbortSignal) {
     const result = await rawQuery(
-      connection.buildQuery(
-        "replay.read",
-        {
-          hostId: connection.attachment.hostId,
-          kind: "session",
-          id: params.sessionId,
-          sessionId: params.sessionId,
-          sessionEpoch: params.sessionEpoch,
-        },
-        params,
-      ),
+      connection.buildQuery("replay.read", sessionTarget(params), params),
       signal,
     );
     if (result.kind !== "replay_read") throw new ContractValidationError();
     return result.value;
+  }
+  async function searchReplay(
+    params: ReplaySearchParams,
+    signal?: AbortSignal,
+  ) {
+    const waiting = signal
+      ? AbortSignal.any([signal, lifetime.signal])
+      : lifetime.signal;
+    waiting.throwIfAborted();
+    const result = await rawQuery(
+      connection.buildQuery(
+        "replay.search",
+        sessionTarget(params),
+        rpcJsonObject(params),
+      ),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (result.kind !== "replay_search") throw new ContractValidationError();
+    const { command } = params;
+    const page = command.kind === "next" ? command.page : "1";
+    const value = result.value;
+    if (
+      value.searchId !== command.searchId ||
+      (command.kind === "stop"
+        ? value.kind !== "stopped"
+        : value.kind !== "page" || value.page !== page)
+    )
+      throw new ContractValidationError();
+    return value;
   }
   async function waitForOperation(
     operation: Operation,
@@ -1950,6 +1973,7 @@ export function createHostWorkspace(
     readFileReceipts,
     readTransferProgress,
     readReplay,
+    searchReplay,
     loadWorkspace,
     listWorkspaces,
     saveWorkspace,

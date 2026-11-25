@@ -234,6 +234,11 @@ import type {
   ReplayReadParams,
   ReplayReadResult,
   ReplayRecord,
+  ReplaySearchCommand,
+  ReplaySearchHit,
+  ReplaySearchPage,
+  ReplaySearchParams,
+  ReplaySearchResult,
   RequestId,
   ResourceKind,
   ResultReference,
@@ -924,6 +929,21 @@ export declare function validateReplayReadResult(
 export declare function validateReplayRecord(
   value: unknown,
 ): value is ReplayRecord;
+export declare function validateReplaySearchCommand(
+  value: unknown,
+): value is ReplaySearchCommand;
+export declare function validateReplaySearchHit(
+  value: unknown,
+): value is ReplaySearchHit;
+export declare function validateReplaySearchPage(
+  value: unknown,
+): value is ReplaySearchPage;
+export declare function validateReplaySearchParams(
+  value: unknown,
+): value is ReplaySearchParams;
+export declare function validateReplaySearchResult(
+  value: unknown,
+): value is ReplaySearchResult;
 export declare function validateRequestId(value: unknown): value is RequestId;
 export declare function validateResourceKind(
   value: unknown,

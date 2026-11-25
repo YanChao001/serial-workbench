@@ -192,9 +192,11 @@ Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe
 
 `authenticate` 使用普通客户端凭据，`authenticateUserControl` 使用独立的本地用户控制 capability；选择消息类型或声明 desktop/CLI kind 都不授予权限。Host pin、普通凭据和用户控制 capability 相互独立。用户控制 capability 只从明确的本地用户入口取得，不由普通 IPC 领取；内部启动通过专用继承 stdout pipe 传递四字节大端长度和 1—2048 字节 capability，常规启动不输出 capability。秘密不进入 argv、URL 或日志；Windows 用 current-user DPAPI，Unix 用当前用户私有文件保存。
 
-通用 `action.query` 与专用 RPC 按同一[通道路由](../../crates/core/src/dispatch.rs)分流：例如 `stream.read`、`file.read`、`capture.tail` 和 `replay.read` 走 raw；`subscription.close` 可走任一通道，但必须匹配订阅归属。其余按映射走 control，专用 method 必须匹配信封的 actionId。连接关闭时释放所属订阅，包括晚到的建立结果；已持久接纳的任务仍由 Host 负责。
+通用 `action.query` 与专用 RPC 按同一[通道路由](../../crates/core/src/dispatch.rs)分流：例如 `stream.read`、`file.read`、`capture.tail` 、`replay.read` 与 `replay.search` 走 raw；`subscription.close` 可走任一通道，但必须匹配订阅归属。其余按映射走 control，专用 method 必须匹配信封的 actionId。连接关闭时释放所属订阅，包括晚到的建立结果；已持久接纳的任务仍由 Host 负责。
 
 `lan.access` 仅接受本地用户控制的 Control 连接。状态返回监听、对端和共享目标。启用监听收到具体 IPv4 或 IPv6 地址和端口，绑定失败时保留原监听。配对和共享以同一次授权事务记录，解除配对按 Host ID 与已确认公钥校验。停用监听后，原配对保留，已接纳操作沿用 Host 的结算规则。[LAN DTO](../../crates/core/src/lan.rs)
+
+`replay.search` 使用回放目标、`sessionId` 和 `sessionEpoch`。每次新搜索使用新的 `searchId`。Raw 开始请求返回第 1 页，之后按顺序请求下一页。开始请求含 1–256 个字节的 Base64 编码和可选的 RX/TX 方向。同一连接在同一回放只能保留一个搜索。上次成功的页可用相同参数重试，响应包含命中的原始录制序号和半开字节区间，以及已扫描记录数量。TX 命中代表保存的发送意图。客户端可停止已接纳的搜索，并凭请求标识忽略切换条件或关闭后的迟到响应。关闭回放或 Raw 连接时释放游标。每页受记录数、磁盘字节及命中数限制，回放位置保持独立。
 
 ## 本机 HTTP 控制
 

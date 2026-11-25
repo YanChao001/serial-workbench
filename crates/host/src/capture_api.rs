@@ -4,6 +4,7 @@ use crate::{
     capture::{CaptureRuntime, CaptureService, replay::ReplayService},
     dispatch::AcceptedCall,
     files::FileService,
+    ipc::ConnectionContext,
     storage::{Settlement, Store},
 };
 use serde::{Serialize, de::DeserializeOwned};
@@ -150,6 +151,11 @@ impl CaptureApi {
                 session_target(target, &params.session_id, params.session_epoch)?;
                 self.require_replay(target, actor, "content.read").await
             }
+            BuiltinAction::ReplaySearch => {
+                let params: ReplaySearchParams = decode(params)?;
+                session_target(target, &params.session_id, params.session_epoch)?;
+                self.require_replay(target, actor, "content.read").await
+            }
             BuiltinAction::ReplayControl => {
                 let params: ReplayControlParams = decode(params)?;
                 session_target(target, &params.session_id, params.session_epoch)?;
@@ -209,6 +215,7 @@ impl CaptureApi {
         action: BuiltinAction,
         query: &Query,
         actor: &AuthenticatedActor,
+        connection: Option<&ConnectionContext>,
     ) -> HostResult<QueryResult> {
         self.authorize(action, &query.target, &query.params, actor)
             .await?;
@@ -226,6 +233,20 @@ impl CaptureApi {
             BuiltinAction::ReplayRead => {
                 QueryResult::ReplayRead(self.replays.read(decode(&query.params)?, actor).await?)
             }
+            BuiltinAction::ReplaySearch => {
+                let connection = connection.ok_or_else(invalid)?;
+                QueryResult::ReplaySearch(
+                    self.replays
+                        .search(
+                            decode(&query.params)?,
+                            actor,
+                            connection,
+                            &self.auth,
+                            stamp.clone(),
+                        )
+                        .await?,
+                )
+            }
             _ => return Err(invalid()),
         };
         self.authorize(action, &query.target, &query.params, actor)
@@ -235,6 +256,9 @@ impl CaptureApi {
             blocking(move || auth.validate_grants(&stamp)).await?;
         }
         Ok(result)
+    }
+    pub(crate) fn release_search_connection(&self, id: &Id) {
+        self.replays.release_search_connection(id);
     }
     pub(crate) async fn operation_source(
         &self,

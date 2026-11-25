@@ -77,20 +77,35 @@ pub(crate) enum CopyPhase {
     AfterRecord,
 }
 pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
+    scan_directory(path, false)
+}
+
+pub(super) fn index_replay_directory(path: &Path) -> HostResult<VerifiedCapture> {
+    scan_directory(path, true)
+}
+
+fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCapture> {
     let before = fingerprint(path)?;
     let value: serde_json::Value = read_json(&path.join("manifest.json"))?;
     let format = CaptureFormat::from_version(value.get("formatVersion").and_then(|v| v.as_str()))?;
     let manifest: Manifest = serde_json::from_value(value).map_err(|_| corrupt())?;
-    let index = read_json::<CaptureIndex>(&path.join("index.json"))
-        .ok()
-        .filter(|i| i.format_version == format.version() && i.records.len() <= 100_000);
-    let has_index = index.is_some();
-    let index = index.unwrap_or(CaptureIndex {
+    let stored_index = if rebuild_index {
+        None
+    } else {
+        read_json::<CaptureIndex>(&path.join("index.json"))
+            .ok()
+            .filter(|index| {
+                index.format_version == format.version()
+                    && index.records.len() <= MAX_CAPTURE_RECORDS
+            })
+    };
+    let index_available = rebuild_index || stored_index.is_some();
+    let mut index = stored_index.unwrap_or(CaptureIndex {
         format_version: format.version().into(),
         records: vec![],
     });
     let mut prefix = 0u64;
-    let mut all = has_index;
+    let mut all = index_available;
     let mut continuous = true;
     let mut volumes = Vec::new();
     let mut previous = zero_digest();
@@ -145,6 +160,10 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
         }
         let mut offset = 7u64;
         while all && prefix + 1 < volume.record_end.get() {
+            if prefix >= MAX_CAPTURE_RECORDS as u64 {
+                all = false;
+                break;
+            }
             let record_start = offset;
             let (record, observed, length, json) = match decode_record(&mut file, format) {
                 Ok(r) => r,
@@ -166,7 +185,7 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
                 offset: record_start.into(),
                 length: length.into(),
             };
-            if index.records.get(prefix as usize) != Some(&expected) {
+            if !rebuild_index && index.records.get(prefix as usize) != Some(&expected) {
                 all = false;
                 break;
             }
@@ -226,6 +245,9 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
                     sequences.insert(source, gap.missing_event_range.end.get().saturating_sub(1));
                 }
             }
+            if rebuild_index {
+                index.records.push(expected);
+            }
             last_recorded_ns = observed;
             record_digests.push(record_digest(observed, &json));
             prefix += 1;
@@ -276,7 +298,7 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
         source_fingerprint: after,
         verified_prefix: prefix.into(),
         volume_results: volumes,
-        recoverable: has_index && (prefix > 0 || all),
+        recoverable: index_available && (prefix > 0 || all),
         container_complete: all,
         source_continuous: continuous,
         unsettled_operations: pending,

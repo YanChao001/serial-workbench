@@ -8,7 +8,7 @@ import type {
 /** 仅观察当前输入；提交时仍由 Host 重新授权。 */
 export function useToolActionAvailability(
   inputs: readonly HostActionCheckInput[],
-  watchActions: HostContextValue["watchActions"],
+  watchActions: HostContextValue["watchActions"] | undefined,
 ) {
   const [observation, setObservation] = useState<{
     inputs: readonly HostActionCheckInput[];
@@ -16,7 +16,7 @@ export function useToolActionAvailability(
     values: readonly HostActionAvailability[];
   }>();
   useEffect(() => {
-    if (!inputs.length) return;
+    if (!inputs.length || !watchActions) return;
     let active = true;
     const stop = watchActions(inputs, (values) => {
       if (active) setObservation({ inputs, watchActions, values });

@@ -1263,3 +1263,198 @@ test("two recordings compare frame bytes, field values and elapsed time and hono
     dialog.getByText("recorded-candidate @ 2", { exact: true }),
   ).toBeVisible();
 });
+
+for (const options of [
+  {
+    width: 410,
+    height: 460,
+    language: "zh",
+    theme: "dark",
+    activity: "活动",
+    title: "搜索录制",
+    content: "搜索内容",
+    direction: "方向",
+    start: "开始搜索",
+    jump: "跳转到记录",
+    located: "已定位录制序号 2",
+  },
+  {
+    width: 1240,
+    height: 760,
+    language: "en",
+    theme: "light",
+    activity: "Activity",
+    title: "Search recording",
+    content: "Search content",
+    direction: "Direction",
+    start: "Start search",
+    jump: "Go to record",
+    located: "Located record 2",
+  },
+] as const) {
+  test(
+    "recording search shares narrow and wide controls at " + options.width,
+    async ({ page }, info) => {
+      await page.setViewportSize({
+        width: options.width,
+        height: options.height,
+      });
+      await page.emulateMedia({ colorScheme: options.theme });
+      const capture = {
+        ...session("search-replay"),
+        sessionEpoch: "7",
+        readOnly: true,
+      };
+      const records: ReplayRecord[] = ["before", "PING-match", "after"].map(
+        (text, index) => ({
+          kind: "inline",
+          record: {
+            recordOrdinal: String(index + 1),
+            entry: {
+              kind: "event",
+              value: {
+                hostId: "workbench-gui-host",
+                instanceEpoch: "1",
+                sessionId: capture.sessionId,
+                sessionEpoch: capture.sessionEpoch,
+                eventSeq: String(index + 1),
+                configurationRevision: "1",
+                time: {
+                  clockId: "search-clock",
+                  sourceMonoNs: String(index * 1000),
+                  receivedWallTime: "2026-11-10T10:00:00Z",
+                  precision: {
+                    source: "host_read",
+                    resolutionNs: "1",
+                    syncMethod: "none",
+                  },
+                },
+                kind: "rx",
+                payload: {
+                  bytesBase64: Buffer.from(text).toString("base64"),
+                  byteStart: String(index * 20),
+                  byteEnd: String(index * 20 + text.length),
+                },
+              },
+            },
+          },
+        }),
+      );
+      await seedWorkbenchFixture(page, {
+        language: options.language,
+        theme: options.theme,
+        hostStart: "pending",
+        replay: {
+          session: capture,
+          files: {},
+          page: {
+            records,
+            readerGeneration: "1",
+            nextRecord: "4",
+            atEnd: true,
+            playback: {
+              rate: { kind: "fastest" },
+              paused: false,
+              breakpointHit: false,
+            },
+          },
+          searchPages: [
+            {
+              hits: [],
+              scannedRecords: "1",
+              totalRecords: "3",
+              complete: false,
+            },
+            {
+              hits: [
+                {
+                  direction: "rx",
+                  firstRecord: "2",
+                  lastRecord: "3",
+                  byteStart: "20",
+                  byteEnd: "25",
+                },
+              ],
+              scannedRecords: "3",
+              totalRecords: "3",
+              complete: true,
+            },
+          ],
+        },
+      });
+      await page.goto("./#/");
+      await expect(page.locator(".workbench")).toBeVisible();
+      await page.evaluate(() => window.workbenchFixture.releaseHost());
+      await page
+        .getByRole("button", { name: options.activity, exact: true })
+        .click();
+      await page
+        .getByRole("dialog", { name: options.activity })
+        .getByRole("button", { name: /fixture-attached-replay/ })
+        .click();
+      const trigger = page.getByRole("button", { name: options.title });
+      await trigger.click();
+      const dialog = page.getByRole("dialog", { name: options.title });
+      const input = dialog.getByRole("textbox", { name: options.content });
+      await expect(input).toBeFocused();
+      await input.fill("PING");
+      await dialog.getByRole("button", { name: options.start }).click();
+      const go = dialog.getByRole("button", { name: options.jump });
+      await expect(go).toBeVisible();
+      const geometry = await dialog.evaluate((element) => {
+        const children = [
+          ...element.querySelectorAll(
+            ".workbench-replay-search-fields input, .workbench-replay-search-fields button",
+          ),
+        ];
+        const rect = element.getBoundingClientRect();
+        return {
+          contained: children.every((child) => {
+            const part = child.getBoundingClientRect();
+            return part.left >= rect.left && part.right <= rect.right;
+          }),
+          controlHeightSpread:
+            Math.max(
+              ...children.map((child) => child.getBoundingClientRect().height),
+            ) -
+            Math.min(
+              ...children.map((child) => child.getBoundingClientRect().height),
+            ),
+        };
+      });
+      expect(geometry.contained).toBe(true);
+      expect(geometry.controlHeightSpread).toBeLessThan(1);
+      const directionText = dialog
+        .getByRole("combobox", { name: options.direction, exact: true })
+        .locator('[data-slot="select-value"]');
+      expect(
+        await directionText.evaluate(
+          (label) => label.scrollWidth - label.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(1);
+      await dialog.screenshot({
+        path: info.outputPath(`replay-search-${options.width}.png`),
+      });
+      await go.click();
+      await expect(dialog).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      await expect(page.getByText(new RegExp(options.located))).toBeVisible();
+      await expect(
+        page.getByRole("log").filter({ hasText: "PING-match" }),
+      ).toBeVisible();
+      const calls = await page.evaluate(() =>
+        window.workbenchFixture.queryInputs.filter(
+          (item) => item.actionId === "replay.search",
+        ),
+      );
+      expect(calls[0]?.params.command).toMatchObject({
+        kind: "start",
+        bytesBase64: "UElORw==",
+      });
+      expect(calls[1]?.params.command).toMatchObject({
+        kind: "next",
+        page: "2",
+      });
+    },
+  );
+}

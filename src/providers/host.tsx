@@ -46,6 +46,7 @@ const empty = (status: HostState["status"]): HostContextValue => ({
   captureStatus: async () => unavailable(),
   readFileReceipts: async () => unavailable(),
   readReplay: async () => unavailable(),
+  searchReplay: async () => unavailable(),
   loadWorkspace: async () => unavailable(),
   listWorkspaces: async () => unavailable(),
   saveWorkspace: async () => unavailable(),

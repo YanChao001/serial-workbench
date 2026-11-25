@@ -41,6 +41,8 @@ import type {
   RecentList,
   ReplayReadParams,
   ReplayReadResult,
+  ReplaySearchParams,
+  ReplaySearchResult,
   ReplayRecord,
   SessionSnapshot,
   SessionMetrics,
@@ -201,6 +203,10 @@ export type HostContextValue = {
     params: ReplayReadParams,
     signal?: AbortSignal,
   ): Promise<ReplayReadResult>;
+  searchReplay(
+    params: ReplaySearchParams,
+    signal?: AbortSignal,
+  ): Promise<ReplaySearchResult>;
   loadWorkspace(
     workspaceId: string,
     signal?: AbortSignal,

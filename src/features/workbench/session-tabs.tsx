@@ -19,6 +19,7 @@ export type SessionTab = {
   source?: { device: DeviceDescriptor; session: SessionSnapshot };
   view?: WorkspaceView;
   captureRef?: ObjectRef;
+  recordingName?: string;
 };
 export function SessionTabs({
   tabs,

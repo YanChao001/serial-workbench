@@ -333,6 +333,109 @@ pub struct ReplayReadResult {
     #[specta(type=ReplayPlaybackState,optional)]
     pub playback: Option<ReplayPlaybackState>,
 }
+pub const REPLAY_SEARCH_MAX_BYTES: usize = 256;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplaySearchParams {
+    pub session_id: Id,
+    pub session_epoch: U64,
+    pub command: ReplaySearchCommand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ReplaySearchCommand {
+    Start {
+        search_id: RequestId,
+        #[serde(deserialize_with = "replay_search_bytes")]
+        #[schemars(schema_with = "replay_search_bytes_schema")]
+        #[specta(type = Bytes)]
+        bytes_base64: Bytes,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "crate::identity::non_null_option"
+        )]
+        #[schemars(with = "Direction")]
+        #[specta(type = Direction, optional)]
+        direction: Option<Direction>,
+    },
+    Next {
+        search_id: RequestId,
+        page: PositiveU64,
+    },
+    Stop {
+        search_id: RequestId,
+    },
+}
+
+fn replay_search_bytes<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Bytes, D::Error> {
+    let value = Bytes::deserialize(deserializer)?;
+    let text = value.as_str();
+    let decoded = text.len() / 4 * 3 - text.bytes().rev().take_while(|byte| *byte == b'=').count();
+    if !(1..=REPLAY_SEARCH_MAX_BYTES).contains(&decoded) {
+        return Err(serde::de::Error::custom(format!(
+            "Replay search needs 1 to {REPLAY_SEARCH_MAX_BYTES} decoded bytes",
+        )));
+    }
+    Ok(value)
+}
+
+fn replay_search_bytes_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    let complete = REPLAY_SEARCH_MAX_BYTES / 3 * 4;
+    let maximum = REPLAY_SEARCH_MAX_BYTES.div_ceil(3) * 4;
+    schemars::json_schema!({"allOf":[generator.subschema_for::<Bytes>(),{
+        "type":"string","minLength":4,"maxLength":maximum,
+        "anyOf":[{"maxLength":complete},{"pattern":"==$"}]
+    }]})
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplaySearchHit {
+    pub direction: Direction,
+    pub first_record: U64,
+    pub last_record: U64,
+    pub byte_start: U64,
+    pub byte_end: U64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplaySearchPage {
+    pub hits: Vec<ReplaySearchHit>,
+    pub scanned_records: U64,
+    pub total_records: U64,
+    pub complete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ReplaySearchResult {
+    Page {
+        search_id: RequestId,
+        page: PositiveU64,
+        result: ReplaySearchPage,
+    },
+    Stopped {
+        search_id: RequestId,
+        stopped: bool,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ReplayRecord {

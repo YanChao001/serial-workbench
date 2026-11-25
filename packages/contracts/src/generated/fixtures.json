@@ -959,6 +959,60 @@
       }
     },
     {
+      "name": "replay-search-257-bytes",
+      "schema": "ReplaySearchParams",
+      "value": {
+        "command": {
+          "bytesBase64": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUI=",
+          "direction": "rx",
+          "kind": "start",
+          "searchId": "a6b21411-cf47-472c-98d4-79482bd9d433"
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-search-258-bytes",
+      "schema": "ReplaySearchParams",
+      "value": {
+        "command": {
+          "bytesBase64": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUJD",
+          "direction": "rx",
+          "kind": "start",
+          "searchId": "a6b21411-cf47-472c-98d4-79482bd9d433"
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-search-empty",
+      "schema": "ReplaySearchParams",
+      "value": {
+        "command": {
+          "bytesBase64": "",
+          "kind": "start",
+          "searchId": "a6b21411-cf47-472c-98d4-79482bd9d433"
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-search-zero-page",
+      "schema": "ReplaySearchParams",
+      "value": {
+        "command": {
+          "kind": "next",
+          "page": "0",
+          "searchId": "a6b21411-cf47-472c-98d4-79482bd9d433"
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
       "name": "local-lan-unknown-control-field",
       "schema": "RpcRequest",
       "value": {
@@ -12087,6 +12141,43 @@
         },
         "readerGeneration": "3",
         "records": []
+      }
+    },
+    {
+      "name": "replay-search-256-bytes",
+      "schema": "ReplaySearchParams",
+      "value": {
+        "command": {
+          "bytesBase64": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQ==",
+          "direction": "rx",
+          "kind": "start",
+          "searchId": "a6b21411-cf47-472c-98d4-79482bd9d433"
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-search-result-original-byte-offset",
+      "schema": "ReplaySearchResult",
+      "value": {
+        "kind": "page",
+        "page": "1",
+        "result": {
+          "complete": true,
+          "hits": [
+            {
+              "byteEnd": "9007199254740993",
+              "byteStart": "9007199254740992",
+              "direction": "rx",
+              "firstRecord": "4",
+              "lastRecord": "5"
+            }
+          ],
+          "scannedRecords": "5",
+          "totalRecords": "5"
+        },
+        "searchId": "a6b21411-cf47-472c-98d4-79482bd9d433"
       }
     },
     {

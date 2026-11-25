@@ -4396,6 +4396,7 @@ export type QueryResult_Deserialize =
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
+  | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
   | { kind: "file_read"; value: FileReadResult_Deserialize }
@@ -4449,6 +4450,7 @@ export type QueryResult_Serialize =
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
+  | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
   | { kind: "file_read"; value: FileReadResult_Serialize }
@@ -4825,6 +4827,82 @@ export type ReplayRecord_Serialize =
       jsonBytes: U64;
       jsonSha256: Digest;
     } & { record?: never });
+
+export type ReplaySearchCommand =
+  ReplaySearchCommand_Serialize | ReplaySearchCommand_Deserialize;
+
+export type ReplaySearchCommand_Deserialize =
+  | ({
+      kind: "start";
+      searchId: RequestId;
+      bytesBase64: Bytes;
+      direction?: Direction;
+    } & { page?: never })
+  | ({ kind: "next"; searchId: RequestId; page: PositiveU64 } & {
+      bytesBase64?: never;
+      direction?: never;
+    })
+  | ({ kind: "stop"; searchId: RequestId } & {
+      bytesBase64?: never;
+      direction?: never;
+      page?: never;
+    });
+
+export type ReplaySearchCommand_Serialize =
+  | ({
+      kind: "start";
+      searchId: RequestId;
+      bytesBase64: Bytes;
+      direction?: Direction;
+    } & { page?: never })
+  | ({ kind: "next"; searchId: RequestId; page: PositiveU64 } & {
+      bytesBase64?: never;
+      direction?: never;
+    })
+  | ({ kind: "stop"; searchId: RequestId } & {
+      bytesBase64?: never;
+      direction?: never;
+      page?: never;
+    });
+
+export type ReplaySearchHit = {
+  direction: Direction;
+  firstRecord: U64;
+  lastRecord: U64;
+  byteStart: U64;
+  byteEnd: U64;
+};
+
+export type ReplaySearchPage = {
+  hits: ReplaySearchHit[];
+  scannedRecords: U64;
+  totalRecords: U64;
+  complete: boolean;
+};
+
+export type ReplaySearchParams =
+  ReplaySearchParams_Serialize | ReplaySearchParams_Deserialize;
+
+export type ReplaySearchParams_Deserialize = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  command: ReplaySearchCommand_Deserialize;
+};
+
+export type ReplaySearchParams_Serialize = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  command: ReplaySearchCommand_Serialize;
+};
+
+export type ReplaySearchResult =
+  | {
+      kind: "page";
+      searchId: RequestId;
+      page: PositiveU64;
+      result: ReplaySearchPage;
+    }
+  | { kind: "stopped"; searchId: RequestId; stopped: boolean };
 
 export type RequestId = string;
 

@@ -496,6 +496,24 @@ Ubuntu 手动 CI 在联网安装/构建后运行 `scripts/test-host-offline.mjs`
 
 用 `pnpm exec vitest run src/features/workbench/replay-panel.test.tsx` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts --workers=1` 复验界面。通过工作台的录制入口打开只读回放，检查原时序、最快、暂停和跳转。调整倍率，设置记录断点，读取至断点，再单步读取保留原始来源的下一条记录。恢复、清除断点和读取失败均检查当前 reader 的展示和精确会话代次。
 
+### 录制内搜索（LOG-10）
+
+回放搜索读层运行 `cargo test --locked -p serial-workbench-host --lib capture::replay::search::tests -- --test-threads=1`。由真实录制写入器生成可校验的卷及索引，核对跨页、重叠命中、跨源隔离、方向、缺口、配置修订和报文分片。密集命中跨页时，同一记录按字节偏移续查。通过阻断页末权限检查确认本页结果未提交，复查时从原偏移继续。已打开的回放游标保持在原位置，重开后用新搜索游标验证同样的命中。
+
+用 `cargo test --locked -p serial-workbench-host --test capture_api_host raw_replay_search_pages_keep_connection_and_source_authority -- --test-threads=1` 核对真实 Raw 查询。固定录制中单条记录跨两页返回原字节区间。用例覆盖相同页重试、并列连接隔离、撤权后重新授权的旧游标、停止、原 Raw 通道重新附着、关闭回放以及原回放位置。
+
+Raw 断开时的收尾顺序用 `cargo test --locked -p serial-workbench-host --lib raw_disconnect_closes_output_before_releasing_connection_resources` 验证。使用本机 IPC，确认连接资源释放回调已观察到输出关闭，再允许旧连接资源回收。
+
+工作台入口用 `pnpm test:ui e2e/browser/replay-layout.spec.ts --workers=1` 验证。窄短窗中文深色与宽窗英文浅色核对 Raw 搜索请求、跨记录字节范围、控件高度、精确定位、暂停状态、输入与返回焦点。组件回归覆盖首批结果前停止、已编辑条件与原结果隔离、录制源变化后清除结果。运行 `cargo test --locked -p serial-workbench-host --lib capture:: -- --test-threads=1` 验证 1,024 条、原始负载 4 MiB 的多卷录制。修改侧车索引的末记录偏移后，常规验证报告不完整，回放仍从已验证的卷重建索引。搜索分 16 页命中，跳到最后一条原始记录。重建保留原索引，修改最后一条记录的摘要字节后回放拒绝打开。真实客户端用例 `raw_replay_search_pages_keep_connection_and_source_authority` 在移走侧车后从正常文件登记入口打开回放并验证 Raw 分页。常规 `capture_api_host` 套件在 Windows 通过 15 项，需 Chromium 的独立实验包交换由专项门禁执行。正式候选四平台另按专项复验。 [录制内搜索草稿](./ui-design.md#录制内搜索草稿)
+
+接近默认 1 GiB 容量的专项使用 `SWB_TEST_LARGE_CAPTURE_DIR` 选择已有的临时父目录，保留至少 2 GiB 可用空间。用例在独立子目录生成和回收录制。
+
+```sh
+cargo test --locked -p serial-workbench-host --test capture_api_host raw_replay_search_near_default_capture_capacity -- --ignored --test-threads=1 --show-output
+```
+
+2026-11-25 Windows 调试构建的基线为 1,005,067,271 字节、11,428 条记录。缺少原索引时，真实 IPC 文件登记、回放打开和搜索分别耗时 1.3 秒、27.4 秒和 89.2 秒。取消首轮搜索后，旧页请求返回 `NOT_FOUND`。重搜逐页前进，在第 244 页命中末记录。按命中字节范围单步读出原文，核对 reader 代次、暂停状态与原始内容。耗时是单次本机观测。
+
 ### 独立录制格式
 
 ```sh

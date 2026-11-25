@@ -176,6 +176,7 @@ pub enum BuiltinAction {
     CaptureExport,
     ReplayOpen,
     ReplayRead,
+    ReplaySearch,
     ReplayControl,
     ReplayClose,
     DeviceRefresh,
@@ -240,7 +241,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 113] = [
+    pub const ALL: [Self; 114] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::ExperimentExport,
@@ -292,6 +293,7 @@ impl BuiltinAction {
         Self::CaptureExport,
         Self::ReplayOpen,
         Self::ReplayRead,
+        Self::ReplaySearch,
         Self::ReplayControl,
         Self::ReplayClose,
         Self::DeviceRefresh,
@@ -383,6 +385,7 @@ impl BuiltinAction {
             Self::CaptureExport => "capture.export",
             Self::ReplayOpen => "replay.open",
             Self::ReplayRead => "replay.read",
+            Self::ReplaySearch => "replay.search",
             Self::ReplayControl => "replay.control",
             Self::ReplayClose => "replay.close",
             Self::DeviceRefresh => "device.refresh",
@@ -505,6 +508,7 @@ impl BuiltinAction {
                 | Self::CaptureExport
                 | Self::ReplayOpen
                 | Self::ReplayRead
+                | Self::ReplaySearch
                 | Self::ReplayControl
                 | Self::ReplayClose
         )
@@ -539,7 +543,7 @@ impl BuiltinAction {
             || (self.is_capture_api()
                 && !matches!(
                     self,
-                    Self::CaptureStatus | Self::CaptureTail | Self::ReplayRead
+                    Self::CaptureStatus | Self::CaptureTail | Self::ReplayRead | Self::ReplaySearch
                 ))
             || matches!(
                 self,
@@ -594,7 +598,9 @@ impl BuiltinAction {
             | Self::CaptureVerify
             | Self::CaptureExport
             | Self::ReplayOpen => &["file", "capture"],
-            Self::ReplayRead | Self::ReplayControl | Self::ReplayClose => &["session"],
+            Self::ReplayRead | Self::ReplaySearch | Self::ReplayControl | Self::ReplayClose => {
+                &["session"]
+            }
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
             Self::FileMetadata => &["file", "capture", "plugin_result"],
             Self::FileRead => &["file", "capture_record", "plugin_result"],
@@ -951,6 +957,9 @@ impl BuiltinAction {
             }
             Self::ReplayRead => {
                 ActionSpec::of_with_dialect::<ReplayReadParams, ReplayReadResult>(meta, dialect)
+            }
+            Self::ReplaySearch => {
+                ActionSpec::of_with_dialect::<ReplaySearchParams, ReplaySearchResult>(meta, dialect)
             }
             Self::ReplayControl => {
                 ActionSpec::of_with_dialect::<ReplayControlParams, ReplayReadResult>(meta, dialect)

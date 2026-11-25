@@ -94,6 +94,45 @@ fn replay_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
         json!({"records":[],"readerGeneration":"3","nextRecord":"42","atEnd":false,"playback":{"rate":{"kind":"fastest"},"paused":true,"breakpointRecord":"42","breakpointHit":true}}),
         true,
     )?;
+    let search_id = "a6b21411-cf47-472c-98d4-79482bd9d433";
+    for (name, tail, valid) in [
+        ("replay-search-256-bytes", "QQ==", true),
+        ("replay-search-257-bytes", "QUI=", false),
+        ("replay-search-258-bytes", "QUJD", false),
+    ] {
+        f.add::<ReplaySearchParams>(
+            name,
+            json!({"sessionId":"replay","sessionEpoch":"1","command":{
+                "kind":"start","searchId":search_id,"direction":"rx",
+                "bytesBase64":"QUFB".repeat(85) + tail
+            }}),
+            valid,
+        )?;
+    }
+    f.add::<ReplaySearchParams>(
+        "replay-search-empty",
+        json!({"sessionId":"replay","sessionEpoch":"1","command":{
+            "kind":"start","searchId":search_id,"bytesBase64":""
+        }}),
+        false,
+    )?;
+    f.add::<ReplaySearchParams>(
+        "replay-search-zero-page",
+        json!({"sessionId":"replay","sessionEpoch":"1","command":{
+            "kind":"next","searchId":search_id,"page":"0"
+        }}),
+        false,
+    )?;
+    f.add::<ReplaySearchResult>(
+        "replay-search-result-original-byte-offset",
+        json!({"kind":"page","searchId":search_id,"page":"1","result":{
+            "complete":true,"scannedRecords":"5","totalRecords":"5","hits":[{
+                "direction":"rx","firstRecord":"4","lastRecord":"5",
+                "byteStart":"9007199254740992","byteEnd":"9007199254740993"
+            }]
+        }}),
+        true,
+    )?;
     Ok(())
 }
 
@@ -1754,6 +1793,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         ReplayOpenParams,
         ReplayReadParams,
         ReplayReadResult,
+        ReplaySearchParams,
+        ReplaySearchCommand,
+        ReplaySearchHit,
+        ReplaySearchPage,
+        ReplaySearchResult,
         ReplayControlParams,
         TextExportParams,
         RecentList,
