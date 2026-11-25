@@ -208,7 +208,12 @@ test("Windows gates real Chromium file transfer and experiment exchange with run
   assert.ok(step);
   assert.match(step, /if: runner\.os == 'Windows'/);
   assert.match(step, /pnpm build:web/);
-  assert.match(step, /process\.env\.RUNNER_TEMP/);
+  assert.match(step, /cygpath -am "\$RUNNER_TEMP"/);
+  assert.match(step, /文件交接测试进程失败/);
+  assert.match(step, /文件交接收据缺失/);
+  assert.match(step, /实验包交换测试进程失败/);
+  assert.match(step, /实验包交换收据缺失/);
+  assert.doesNotMatch(step, /\b(?:cat|tee)\b.*(?:transfer|experiment)\.log/);
   assert.match(
     step,
     /SWB_TEST_BROWSER_TRANSFER_OUTPUT=.*\n\s+if ! cargo test .*--test browser_pairing \\\n\s+browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation/,

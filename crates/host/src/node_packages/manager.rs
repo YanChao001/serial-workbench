@@ -265,8 +265,9 @@ impl NodePackageManager {
     }
 
     pub(crate) fn request_quiesce(&self, cancel: bool) {
-        self.runtime.request_quiesce();
+        // 先关闭激活准入，再通知恢复监督器退出，保留最早确定的终止原因。
         self.close_activation_requests(failure("HOST_CLOSING", "activationStopping"));
+        self.runtime.request_quiesce();
         if cancel {
             self.stop.send_replace(true);
         }
