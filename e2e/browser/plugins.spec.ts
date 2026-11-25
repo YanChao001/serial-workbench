@@ -7,7 +7,10 @@ import {
   type Page,
   type TestInfo,
 } from "@playwright/test";
-import type { NodePackageInstallation, NodePackageSourceKey } from "@serial-workbench/contracts";
+import type {
+  NodePackageInstallation,
+  NodePackageSourceKey,
+} from "@serial-workbench/contracts";
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { alignXY } from "../../packages/plugin-sdk/examples/reference-statistics/align-xy";
