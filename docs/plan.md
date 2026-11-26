@@ -16,6 +16,8 @@
 
 ### 本轮交付与验收
 
+- 候选 `57b1d4a` 的 Windows 固定 Node 门禁已通过前九个运行时用例。目录链接拒绝用例在准备阶段重命名已加载过的 `runtime` 目录时收到 `EPERM`。本机用占用文件句柄的临时目录复现相同错误，并确认从另一个安装目录建立和移除链接时原文件保留。夹具用独立安装目录，由原生探针按实际安装路径验证 `NODE_RUNTIME_INTEGRITY_FAILED`。这项 M3 固定运行时回归随 IO-08 的综合门禁复验。 [Windows 故障收据](https://github.com/YanChao001/serial-workbench/actions/runs/45898242216/artifacts/15155527820)
+
 - IO-08 候选 `57b1d4a` 的四个原生桌面作业和 Wayland v1/v2 定向预检通过。完整门禁中的 Linux Rust 作业在 LAN-01 双栈恢复夹具获取普通 CLI 请求上下文时收到 `PERMISSION_DENIED`。同源本机探针确认授权先返回 `queued`，随后才出现 `authorization_changed`。夹具改为按操作 ID 等终态，并将失败收据归档。LAN-01 属于 M2 软件回归，复验纳入 IO-08 合入的综合门禁。 [桌面与 Wayland 收据](https://github.com/YanChao001/serial-workbench/pull/89) · [Linux 门禁失败步骤](https://github.com/YanChao001/serial-workbench/actions/runs/45898242216/job/140179694726)
 
 - IO-08 候选 `9f21c6e` 通过 X11 独立进程占键冲突、停用后零写入和原键接管。Wayland v1、v2 均确认主窗单次写入，速查、应用设置页和次窗零写入，返回工作台后另一应用前台可再次发送。两版的门户交接在测试启动之前被场景白名单拦截，待修复启动器后在真实门户复验。 [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45895543201/artifacts/15154545154) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45895543201/artifacts/15153019670)

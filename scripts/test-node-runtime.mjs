@@ -79,21 +79,33 @@ export function runNodeRuntimeSuite({
       product === ".."
     )
       throw new Error("Invalid product directory");
-    const installation = join(suite, "installed 中文 with spaces");
-    const resourceRoot =
-      spec.platform === "darwin"
-        ? join(installation, "Workbench.app/Contents/Resources")
-        : spec.platform === "linux"
-          ? join(installation, "usr/lib", product)
-          : installation;
-    const executable =
-      spec.platform === "darwin"
-        ? join(installation, "Workbench.app/Contents/MacOS/runtime-probe")
-        : spec.platform === "linux"
-          ? join(installation, "usr/bin/runtime-probe")
-          : join(installation, "runtime-probe.exe");
+    const installationPaths = (name) => {
+      const installation = join(suite, name);
+      return {
+        resourceRoot:
+          spec.platform === "darwin"
+            ? join(installation, "Workbench.app/Contents/Resources")
+            : spec.platform === "linux"
+              ? join(installation, "usr/lib", product)
+              : installation,
+        executable:
+          spec.platform === "darwin"
+            ? join(installation, "Workbench.app/Contents/MacOS/runtime-probe")
+            : spec.platform === "linux"
+              ? join(installation, "usr/bin/runtime-probe")
+              : join(installation, "runtime-probe.exe"),
+      };
+    };
+    const installProbe = (path) => {
+      mkdirSync(dirname(path), { recursive: true });
+      copyFileSync(probe, path);
+      assert.equal(fileSha256(path), probeSha256);
+      if (spec.platform !== "win32") chmodSync(path, 0o755);
+    };
+    const { resourceRoot, executable } = installationPaths(
+      "installed 中文 with spaces",
+    );
     mkdirSync(resourceRoot, { recursive: true });
-    mkdirSync(dirname(executable), { recursive: true });
     cpSync(join(resources, "runtime"), join(resourceRoot, "runtime"), {
       recursive: true,
       dereference: false,
@@ -101,15 +113,17 @@ export function runNodeRuntimeSuite({
       errorOnExist: true,
       force: false,
     });
-    copyFileSync(probe, executable);
-    assert.equal(fileSha256(executable), probeSha256);
-    if (spec.platform !== "win32") chmodSync(executable, 0o755);
+    installProbe(executable);
     assert.deepEqual(inspectNodeRuntimeLayout(plan, resourceRoot), sourceFiles);
-    const run = (name, expected, args = [], environment = {}) => {
+    const run = (
+      name,
+      expected,
+      { args = [], environment = {}, installedProbe = executable } = {},
+    ) => {
       const caseDirectory = join(suite, name);
       mkdirSync(caseDirectory);
       const result = spawnSync(
-        executable,
+        installedProbe,
         ["--evidence", caseDirectory, ...args],
         {
           cwd: suite,
@@ -277,29 +291,29 @@ export function runNodeRuntimeSuite({
       join(fakePath, spec.platform === "win32" ? "node.exe" : "node"),
       "not executable system Node",
     );
-    run("native-installed-layout", "success", [], {
-      PATH:
-        fakePath +
-        (process.platform === "win32" ? ";" : ":") +
-        process.env.PATH,
-      NODE_OPTIONS: "--require " + join(suite, "injected-missing-module.cjs"),
-      NODE_PATH: join(suite, "injected-node-path"),
-      LD_LIBRARY_PATH: join(suite, "injected-library-path"),
-      APPDIR: join(suite, "unrelated-appdir"),
+    run("native-installed-layout", "success", {
+      environment: {
+        PATH:
+          fakePath +
+          (process.platform === "win32" ? ";" : ":") +
+          process.env.PATH,
+        NODE_OPTIONS: "--require " + join(suite, "injected-missing-module.cjs"),
+        NODE_PATH: join(suite, "injected-node-path"),
+        LD_LIBRARY_PATH: join(suite, "injected-library-path"),
+        APPDIR: join(suite, "unrelated-appdir"),
+      },
     });
-    const limited = run("output-budget", "LIMIT_EXCEEDED", [
-      "--max-output-bytes",
-      "8",
-    ]);
+    const limited = run("output-budget", "LIMIT_EXCEEDED", {
+      args: ["--max-output-bytes", "8"],
+    });
     assert.ok(
       limited.diagnostics.stdoutBytes + limited.diagnostics.stderrBytes <= 8,
     );
-    run("cancel-before-admission", "CANCELLED", ["--cancel"]);
+    run("cancel-before-admission", "CANCELLED", { args: ["--cancel"] });
     assert.equal(
-      run("expired-before-spawn", "NODE_RUNTIME_START_TIMEOUT", [
-        "--probe-timeout-ms",
-        "0",
-      ]).diagnostics.processId,
+      run("expired-before-spawn", "NODE_RUNTIME_START_TIMEOUT", {
+        args: ["--probe-timeout-ms", "0"],
+      }).diagnostics.processId,
       null,
     );
     const descriptor = join(resourceRoot, "runtime/node-release.json");
@@ -356,21 +370,27 @@ export function runNodeRuntimeSuite({
         null,
       );
     });
-    const runtime = join(resourceRoot, "runtime");
-    moved(runtime, "runtime", (backup) => {
-      symlinkSync(
-        backup,
-        runtime,
-        process.platform === "win32" ? "junction" : "dir",
-      );
-      try {
-        run("runtime-directory-link", "NODE_RUNTIME_INTEGRITY_FAILED");
-      } finally {
-        assert.ok(lstatSync(runtime).isSymbolicLink());
-        publicationPath(root, dirname(runtime));
-        rmSync(runtime, { recursive: true });
-      }
-    });
+    // 独立安装目录只创建链接，避免改名 Windows 上已加载过的 Node 目录。
+    const linkedInstallation = installationPaths(
+      "installed 中文 linked runtime",
+    );
+    mkdirSync(linkedInstallation.resourceRoot, { recursive: true });
+    installProbe(linkedInstallation.executable);
+    const linkedRuntime = join(linkedInstallation.resourceRoot, "runtime");
+    symlinkSync(
+      join(resourceRoot, "runtime"),
+      linkedRuntime,
+      spec.platform === "win32" ? "junction" : "dir",
+    );
+    try {
+      run("runtime-directory-link", "NODE_RUNTIME_INTEGRITY_FAILED", {
+        installedProbe: linkedInstallation.executable,
+      });
+    } finally {
+      assert.ok(lstatSync(linkedRuntime).isSymbolicLink());
+      publicationPath(root, dirname(linkedRuntime));
+      rmSync(linkedRuntime, { recursive: true });
+    }
     if (spec.platform === "linux") {
       const library = loadNodeRuntimeLibrary(root),
         base = dirname(dirname(node));
