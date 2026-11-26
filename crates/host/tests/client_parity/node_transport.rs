@@ -28,6 +28,7 @@ enum TransportScenario {
     Rfc2217,
     OwnerExit,
     Messages,
+    BundledUdp,
 }
 
 const EXIT_DURING_WRITE: &str = r#"
@@ -89,9 +90,18 @@ async fn native_node_dynamic_transport_keeps_message_boundaries_in_raw_and_recor
     signed_transport(TransportScenario::Messages).await;
 }
 
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_opens_bundled_udp_and_preserves_datagrams() {
+    signed_transport(TransportScenario::BundledUdp).await;
+}
+
 async fn signed_transport(scenario: TransportScenario) {
     let rfc2217 = scenario == TransportScenario::Rfc2217;
-    let (package_id, provider_id, example) = if rfc2217 {
+    let bundled_udp = scenario == TransportScenario::BundledUdp;
+    let (package_id, provider_id, example) = if bundled_udp {
+        ("swb.builtin.udp", "swb.builtin.udp.transport", "")
+    } else if rfc2217 {
         (
             "reference.rfc2217",
             "reference.rfc2217.transport",
@@ -101,16 +111,20 @@ async fn signed_transport(scenario: TransportScenario) {
         (PACKAGE, PROVIDER, "reference-transport")
     };
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let program = if scenario == TransportScenario::Messages {
-        include_bytes!("message_provider.mjs").to_vec()
+    let program = if bundled_udp {
+        None
+    } else if scenario == TransportScenario::Messages {
+        Some(include_bytes!("message_provider.mjs").to_vec())
     } else {
-        std::fs::read(
-            package_root
-                .join(".cache/plugin-sdk/examples")
-                .join(example)
-                .join("main.js"),
+        Some(
+            std::fs::read(
+                package_root
+                    .join(".cache/plugin-sdk/examples")
+                    .join(example)
+                    .join("main.js"),
+            )
+            .expect("Compile the public SDK transport fixture"),
         )
-        .expect("Compile the public SDK transport fixture")
     };
     let profile = support::Profile::isolated("host-node-transport-public-");
     let runtime = tokio::task::spawn_blocking(|| {
@@ -126,6 +140,16 @@ async fn signed_transport(scenario: TransportScenario) {
     .await
     .unwrap();
     let path = profile.path().to_path_buf();
+    if bundled_udp {
+        let provision = HostServer::bind(&path).await.unwrap();
+        let config = serial_workbench_ipc::startup_config::resolve(Some(path.clone())).unwrap();
+        Host::with_startup_config(provision.store(), provision.auth(), config.snapshot())
+            .await
+            .unwrap()
+            .shutdown()
+            .await
+            .unwrap();
+    }
     let mut server = HostServer::bind(&path).await.unwrap();
     let auth = server.auth();
     let credential = read_user_control_credential(&path).unwrap();
@@ -188,34 +212,46 @@ async fn signed_transport(scenario: TransportScenario) {
             &host_target,
             &["plugins.manage", "content.read", "metadata.read"],
         );
-        let enabled = install_signed_provider(
-            &admin,
-            &manager,
-            &host_target,
-            &path,
-            program,
-            scenario,
-            package_id,
-        )
-        .await;
-        let RpcResult::Query(QueryResult::NodePackageRuntime(runtime_status)) = success(
-            manager
-                .request(RpcRequest::Query(query(
+        let enabled = if let Some(program) = program {
+            Some(
+                install_signed_provider(
+                    &admin,
                     &manager,
-                    "node.packages.runtime",
                     &host_target,
-                    json!({"id": package_id}),
-                )))
-                .await
-                .unwrap(),
-        ) else {
-            panic!("Expected the signed provider runtime status");
+                    &path,
+                    program,
+                    scenario,
+                    package_id,
+                )
+                .await,
+            )
+        } else {
+            None
         };
-        assert_eq!(
-            runtime_status.phase,
-            NodePackageRuntimePhase::Active,
-            "{runtime_status:?}"
-        );
+        let runtime_status = timeout(Duration::from_secs(25), async {
+            loop {
+                let QueryResult::NodePackageRuntime(status) = query_result(success(
+                    manager
+                        .request(RpcRequest::Query(query(
+                            &manager,
+                            "node.packages.runtime",
+                            &host_target,
+                            json!({"id": package_id}),
+                        )))
+                        .await
+                        .unwrap(),
+                )) else {
+                    panic!("Expected the signed provider runtime status");
+                };
+                assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                if status.phase == NodePackageRuntimePhase::Active {
+                    break status;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("Signed transport registration");
         grant(&auth, &operator, &client, &host_target, &["metadata.read"]);
         // Wait for a new directory scan after the package has actually activated.
         success(
@@ -261,6 +297,18 @@ async fn signed_transport(scenario: TransportScenario) {
             id: provider.device_id.clone(),
             ..host_target.clone()
         };
+        if bundled_udp {
+            let descriptor: Value =
+                serde_json::from_str(include_str!("../../resources/node-packages/udp.json"))
+                    .unwrap();
+            assert_eq!(
+                runtime_status.archive_sha256.as_ref().unwrap().as_str(),
+                descriptor["archiveSha256"].as_str().unwrap()
+            );
+            check_bundled_udp(&client, &auth, &operator, &host_target, &device).await;
+            return;
+        }
+        let enabled = enabled.expect("The reference transport was installed");
         if scenario == TransportScenario::Messages {
             check_messages(
                 &admin,
@@ -857,6 +905,146 @@ fn denied(reply: RpcReply) {
         matches!(&reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"),
         "{reply:?}",
     );
+}
+
+async fn check_bundled_udp(
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    device: &Target,
+) {
+    use tokio::net::UdpSocket;
+
+    let mut prior_epoch = None;
+    for (family, address) in [("ipv4", "127.0.0.1"), ("ipv6", "::1")] {
+        let peer = UdpSocket::bind((address, 0)).await.unwrap();
+        let port = peer.local_addr().unwrap().port();
+        let params = json!({
+            "configuration": SerialConfiguration::default(),
+            "transportParams": {
+                "family": family, "mode": "unicast", "host": address,
+                "port": port, "localAddress": address,
+            },
+        });
+        if prior_epoch.is_none() {
+            denied(
+                client
+                    .request(RpcRequest::Invoke(call(
+                        client,
+                        "device.open",
+                        device,
+                        params.clone(),
+                    )))
+                    .await
+                    .unwrap(),
+            );
+            grant(auth, operator, client, device, &["device.modify"]);
+        }
+        let session = open_session(client, host, device, params).await;
+        assert!(session.session_epoch > prior_epoch);
+        prior_epoch = session.session_epoch;
+        grant(
+            auth,
+            operator,
+            client,
+            &session,
+            &["metadata.read", "content.read", "device.modify"],
+        );
+        let raw = client.connect_raw().await.unwrap();
+        let QueryResult::Session(snapshot) = query_result(success(
+            client
+                .request(RpcRequest::Query(query(
+                    client,
+                    "session.get",
+                    &session,
+                    json!({}),
+                )))
+                .await
+                .unwrap(),
+        )) else {
+            panic!("Expected the UDP session");
+        };
+        assert_eq!(snapshot.capabilities.semantics, TransportSemantics::Message);
+        let sample = [0, 255, 13, 10];
+        let sent = completed(client, host, tx_call(client, &session, &sample)).await;
+        assert!(matches!(
+            sent.result,
+            Some(ActionResult::Tx(TxReceipt {
+                outcome: TxOutcome::Accepted,
+                ..
+            }))
+        ));
+        let mut packet = [0; 16];
+        let (length, sender) = timeout(WAIT, peer.recv_from(&mut packet))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&packet[..length], &sample);
+        assert_eq!(sender.ip().to_string(), address);
+
+        let payload = vec![0x81; 20_001];
+        assert_eq!(peer.send_to(&[], sender).await.unwrap(), 0);
+        assert_eq!(peer.send_to(&payload, sender).await.unwrap(), payload.len());
+        let fragments =
+            timeout(WAIT, async {
+                loop {
+                    let QueryResult::StreamRead(page) = query_result(success(
+                    raw.request(RpcRequest::Query(query(client, "stream.read", &session, json!({
+                        "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                        "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+                    }))))
+                    .await
+                    .unwrap(),
+                )) else {
+                    panic!("Expected UDP Raw events");
+                };
+                    let fragments: Vec<_> = page
+                        .events
+                        .into_iter()
+                        .filter_map(|event| match event.payload {
+                            RawPayload::Rx(rx) => Some(rx),
+                            _ => None,
+                        })
+                        .collect();
+                    if fragments.len() >= 3 {
+                        break fragments;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+        let [empty, first, last] = fragments.as_slice() else {
+            panic!("Expected the empty datagram and two fragments");
+        };
+        let message = |rx: &RxPayload| rx.message.clone().expect("Datagram metadata");
+        assert_eq!(message(empty).message_length.get(), 0);
+        assert_eq!(empty.byte_start, empty.byte_end);
+        assert_eq!(message(empty).message_type, "datagram");
+        assert_ne!(message(empty).message_id, message(first).message_id);
+        assert_eq!(message(first).message_id, message(last).message_id);
+        assert_eq!(message(last).fragment_offset.get(), 16384);
+        assert_eq!(message(last).message_length.get(), payload.len() as u64);
+        let received = [first, last]
+            .into_iter()
+            .flat_map(|rx| STANDARD.decode(rx.bytes_base64.as_str()).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(received, payload);
+        raw.close().await.unwrap();
+        completed(
+            client,
+            host,
+            call(client, "session.close", &session, json!({})),
+        )
+        .await;
+        let reclaimed = UdpSocket::bind(sender).await.unwrap();
+        drop(reclaimed);
+        eprintln!(
+            "bundled_udp family={family} sent_bytes={length} datagram_bytes={} empty_events=1 raw_fragments=2 port_rebound=true",
+            payload.len()
+        );
+    }
 }
 
 async fn check_messages(
@@ -1491,12 +1679,8 @@ async fn install_signed_provider(
     );
     approve.expected_revision = Some(0.into());
     completed(admin, host, approve).await;
-    let (entry, wrapped) = match scenario {
-        TransportScenario::Normal
-        | TransportScenario::Server
-        | TransportScenario::Rfc2217
-        | TransportScenario::Messages => (program, None),
-        TransportScenario::OwnerExit => (
+    let (entry, wrapped) = if scenario == TransportScenario::OwnerExit {
+        (
             EXIT_DURING_WRITE
                 .replace(
                     "__SWB_TEST_OWNER_EXIT_MARKER__",
@@ -1504,7 +1688,9 @@ async fn install_signed_provider(
                 )
                 .into_bytes(),
             Some(program),
-        ),
+        )
+    } else {
+        (program, None)
     };
     let mut payload = BTreeMap::from([
         (

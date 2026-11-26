@@ -255,6 +255,169 @@ test("the narrow Chinese TCP client keeps an editable draft after a Host failure
   await expect(open).toBeFocused();
 });
 
+const builtinUdp = {
+  ...device,
+  systemName: "swb.builtin.udp.transport",
+  driver: "swb.builtin.udp",
+} satisfies DeviceDescriptor;
+
+test("the wide UDP form submits the IPv6 multicast interface and preserves mode drafts", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { device: builtinUdp });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open UDP datagrams", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "UDP datagrams",
+    exact: true,
+  });
+  const family = dialog.getByRole("combobox", { name: "Address family" });
+  const mode = dialog.getByRole("combobox", { name: "Mode", exact: true });
+  const open = dialog.getByRole("button", {
+    name: "Open session",
+    exact: true,
+  });
+  await expect(family).toBeFocused();
+  await mode.click();
+  await expect(
+    page.getByRole("option", { name: "Broadcast", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("option", { name: "Multicast", exact: true }).click();
+  await dialog
+    .getByRole("textbox", { name: "Multicast group address" })
+    .fill("239.255.15.42");
+  await family.click();
+  await page.getByRole("option", { name: "IPv6", exact: true }).click();
+  await mode.click();
+  await expect(
+    page.getByRole("option", { name: "Broadcast", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("option", { name: "Unicast", exact: true }).click();
+  await mode.click();
+  await page.getByRole("option", { name: "Multicast", exact: true }).click();
+  const group = dialog.getByRole("textbox", {
+    name: "Multicast group address",
+  });
+  const port = dialog.getByRole("textbox", { name: "Destination port" });
+  const iface = dialog.getByRole("textbox", { name: "Multicast interface" });
+  await expect(
+    dialog.getByRole("textbox", { name: "Local address", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("textbox", { name: "Local port", exact: true }),
+  ).toHaveAccessibleDescription("Defaults to the destination port.");
+  await expect(group).toHaveValue("");
+  await group.fill("ff02::114");
+  await port.fill("42000");
+  await open.click();
+  await expect(iface).toBeFocused();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    en["udpConnection.interfaceIndex"],
+  );
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectRequests),
+  ).toEqual([]);
+  await iface.fill("1");
+  await family.click();
+  await page.getByRole("option", { name: "IPv4", exact: true }).click();
+  await expect(group).toHaveValue("239.255.15.42");
+  await family.click();
+  await page.getByRole("option", { name: "IPv6", exact: true }).click();
+  await expect(group).toHaveValue("ff02::114");
+  await expect(port).toHaveValue("42000");
+  await expect(iface).toHaveValue("1");
+  const [familyBox, groupBox, portBox, openBox] = await Promise.all(
+    [family, group, port, open].map((control) => control.boundingBox()),
+  );
+  expect(groupBox!.y).toBe(portBox!.y);
+  expect(groupBox!.x).toBe(familyBox!.x);
+  expect(
+    new Set([
+      familyBox!.height,
+      groupBox!.height,
+      portBox!.height,
+      openBox!.height,
+    ]).size,
+  ).toBe(1);
+  await dialog.screenshot({ path: info.outputPath("udp-multicast-wide.png") });
+  await open.click();
+  await expect(dialog).toBeHidden();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectRequests),
+  ).toEqual([
+    {
+      deviceId: builtinUdp.deviceId,
+      params: expect.objectContaining({
+        transportParams: {
+          family: "ipv6",
+          mode: "multicast",
+          host: "ff02::114",
+          port: 42000,
+          multicastInterface: "1",
+        },
+      }),
+    },
+  ]);
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.windowWorkNames))
+    .not.toContain(en["udpConnection.title"]);
+});
+
+test("the narrow Chinese UDP form retains a failed broadcast draft and returns focus", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 540 });
+  await seedWorkbenchFixture(page, {
+    device: builtinUdp,
+    language: "zh",
+    theme: "dark",
+    connectFailure: {
+      code: "DEVICE_BUSY",
+      message: "Fixture device is busy",
+      retryable: true,
+    },
+  });
+  await page.goto("./#/");
+  const connection = page.getByRole("button", {
+    name: "打开 UDP 数据报",
+    exact: true,
+  });
+  await connection.click();
+  const dialog = page.getByRole("dialog", { name: "UDP 数据报", exact: true });
+  await dialog.getByRole("combobox", { name: "模式", exact: true }).click();
+  await page.getByRole("option", { name: "广播", exact: true }).click();
+  const host = dialog.getByRole("textbox", { name: "广播地址", exact: true });
+  const port = dialog.getByRole("textbox", { name: "目标端口", exact: true });
+  await host.fill("255.255.255.255");
+  await port.fill("42000");
+  const [hostBox, portBox] = await Promise.all([
+    host.boundingBox(),
+    port.boundingBox(),
+  ]);
+  expect(portBox!.x).toBe(hostBox!.x);
+  expect(portBox!.y).toBeGreaterThanOrEqual(hostBox!.y + hostBox!.height);
+  await dialog.getByRole("button", { name: "打开会话", exact: true }).click();
+  const feedback = dialog.getByRole("alert");
+  await expect(feedback).toBeVisible();
+  await expect(
+    page.getByText(await feedback.innerText(), { exact: true }),
+  ).toHaveCount(1);
+  await expect(host).toHaveValue("255.255.255.255");
+  await expect(port).toHaveValue("42000");
+  await dialog.screenshot({
+    path: info.outputPath("udp-broadcast-narrow.png"),
+  });
+  await port.fill("42001");
+  await expect(feedback).toHaveCount(0);
+  await port.press("Escape");
+  await page.getByRole("button", { name: "放弃并继续", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(connection).toBeFocused();
+});
+
 const builtinRfc2217 = {
   ...device,
   systemName: "swb.builtin.rfc2217.transport",

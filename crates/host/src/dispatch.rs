@@ -2858,6 +2858,7 @@ mod tests {
         let automation = NodePackageId::try_from("swb.builtin.automation").unwrap();
         let tcp = NodePackageId::try_from("swb.builtin.tcp").unwrap();
         let rfc2217 = NodePackageId::try_from("swb.builtin.rfc2217").unwrap();
+        let udp = NodePackageId::try_from("swb.builtin.udp").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         let mut pending_calendar: Option<(Id, tokio::time::Instant, ContextToken)> = None;
@@ -2907,6 +2908,7 @@ mod tests {
                         catalog.status(&automation).unwrap(),
                         catalog.status(&tcp).unwrap(),
                         catalog.status(&rfc2217).unwrap(),
+                        catalog.status(&udp).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2963,6 +2965,7 @@ mod tests {
                         [
                             (&tcp, "swb.builtin.tcp.transport"),
                             (&rfc2217, "swb.builtin.rfc2217.transport"),
+                            (&udp, "swb.builtin.udp.transport"),
                         ]
                         .into_iter()
                         .all(|(package, contribution)| {
@@ -3021,7 +3024,7 @@ mod tests {
             assert!(registered.unwrap());
             assert!(
                 transports_registered.unwrap(),
-                "bundled TCP and RFC 2217 providers were not registered"
+                "bundled TCP, RFC 2217, and UDP providers were not registered"
             );
             if let Some(execution) = execution {
                 pending_calendar = Some(execution.expect("bundled field actions on the real Host"));
@@ -3030,6 +3033,28 @@ mod tests {
             let installed =
                 crate::node_packages::NodePackageInstaller::read_snapshot(&store).unwrap();
             assert_eq!(installed.packages.len(), statuses.len());
+            let expected_bundles = [
+                (
+                    &modbus,
+                    "modbus",
+                    include_str!("../resources/node-packages/modbus.json"),
+                ),
+                (
+                    &slave,
+                    "modbus_slave",
+                    include_str!("../resources/node-packages/modbus-slave.json"),
+                ),
+                (
+                    &rfc2217,
+                    "rfc2217",
+                    include_str!("../resources/node-packages/rfc2217.json"),
+                ),
+                (
+                    &udp,
+                    "udp",
+                    include_str!("../resources/node-packages/udp.json"),
+                ),
+            ];
             for status in statuses {
                 let package = installed
                     .packages
@@ -3040,22 +3065,26 @@ mod tests {
                     status.archive_sha256.as_ref(),
                     Some(&package.archive_sha256)
                 );
-                if status.id == rfc2217 {
-                    let descriptor: serde_json::Value = serde_json::from_str(include_str!(
-                        "../resources/node-packages/rfc2217.json"
-                    ))
-                    .unwrap();
+                if let Some((_, name, descriptor)) =
+                    expected_bundles.iter().find(|(id, _, _)| *id == &status.id)
+                {
+                    let descriptor: serde_json::Value = serde_json::from_str(descriptor).unwrap();
                     assert_eq!(
                         package.archive_sha256.as_str(),
                         descriptor["archiveSha256"].as_str().unwrap()
+                    );
+                    assert_eq!(
+                        package.manifest.version.as_str(),
+                        descriptor["version"].as_str().unwrap()
                     );
                     assert_eq!(
                         package.verified_source.as_ref().unwrap().source.as_str(),
                         "swb.product"
                     );
                     eprintln!(
-                        "bundled_rfc2217 epoch={epoch} archive={} source=swb.product active=true",
-                        package.archive_sha256
+                        "bundled_{name} epoch={epoch} archive={} source=swb.product active=true version={}",
+                        package.archive_sha256,
+                        package.manifest.version.as_str()
                     );
                 }
             }

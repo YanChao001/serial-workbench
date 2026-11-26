@@ -58,6 +58,7 @@ import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { TcpConnectionParameters } from "./tcp-connection-parameters";
+import { UdpConnectionParameters } from "./udp-connection-parameters";
 import {
   rfc2217OpenDiagnostic,
   rfc2217OpenDiagnosticText,
@@ -76,6 +77,10 @@ import {
   builtinTcpPackageId,
   builtinTcpProviderId,
 } from "../../../packages/plugin-sdk/examples/reference-transport/tcp-endpoint";
+import {
+  builtinUdpPackageId,
+  builtinUdpProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-udp/endpoint";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { CommandLibrarySource } from "./command-library";
@@ -714,6 +719,9 @@ export function WorkspaceLayout({
   const rfc2217Prompt =
     promptDevice?.systemName === builtinRfc2217ProviderId &&
     promptDevice.driver === builtinRfc2217PackageId;
+  const udpPrompt =
+    promptDevice?.systemName === builtinUdpProviderId &&
+    promptDevice.driver === builtinUdpPackageId;
   const promptFailure =
     openError && promptDevice && failure?.deviceId === promptDevice.deviceId
       ? failure
@@ -722,7 +730,9 @@ export function WorkspaceLayout({
     ? Rfc2217ConnectionParameters
     : tcpPrompt
       ? TcpConnectionParameters
-      : PluginTransportParameters;
+      : udpPrompt
+        ? UdpConnectionParameters
+        : PluginTransportParameters;
   useEffect(() => {
     if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
   }, [promptDevice, transportPrompt]);
@@ -2681,7 +2691,9 @@ export function WorkspaceLayout({
             ? t("rfc2217Connection.title")
             : tcpPrompt
               ? t("tcpConnection.title")
-              : labels.pluginTransportParameters
+              : udpPrompt
+                ? t("udpConnection.title")
+                : labels.pluginTransportParameters
         }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}

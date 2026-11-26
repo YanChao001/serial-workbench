@@ -1752,6 +1752,10 @@
   padding-inline: 0.4rem;
   font-weight: 600;
 }
+.workbench-dialog-body fieldset.workbench-connection-fields {
+  border: 0;
+  padding: 0;
+}
 .workbench-dialog-body fieldset fieldset:not(.workbench-choice) {
   border: 0;
   padding: 0.25rem 0;

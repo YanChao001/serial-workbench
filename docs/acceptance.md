@@ -634,6 +634,21 @@ pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 
 重建包时以 esbuild 针对 Node 26 打包 `reference-transport/builtin.ts`，使用 `sign_builtin_tcp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。收到验签结果后登记归档、入口、清单摘要与来源公钥。正式发行与跨设备收发继续按 T11 和 T14 验收。
 
+#### UDP（NET-02）
+
+首方 `swb.builtin.udp` 0.1.0 随 Host 登记。从工作台选择「UDP 数据报」，按[连接草稿](./ui-design.md#udp-连接草稿)选择地址族、模式、目标地址与端口。单播的本机地址和端口可留空，由系统绑定。IPv4 广播使用明确输入的限域广播地址，或选择本机接口 IP 后输入该网段的定向广播地址。组播用通配地址在目标端口入组，可填写独立本机端口。IPv4 组播接口填写本机 IPv4 地址，IPv6 填写数字接口索引。链路本地 IPv6 单播地址附 `%索引`。
+
+```sh
+node --test scripts/udp-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
+```
+
+独立 UDP 对端核对 IPv4、IPv6 单播收发和错误来源过滤、IPv4 定向回环广播及组播的显式接口。Windows 在回环接口 1 验证 IPv6 组播，其他平台在支持组播的隔离接口上设置 `SWB_UDP_IPV6_MULTICAST_INDEX` 后复验。通过实际签名 Host 分别打开 IPv4 和 IPv6 单播，核对拒绝未授权打开、对端实收、空数据报的事件水位、20,001 字节数据报的同 ID 分片、会话换代和关闭后端口回收。打开表示本机套接字就绪。写入成功表示本机套接字接纳单个数据报，对端收据单独核对。
+
+重建归档运行 `pnpm plugin-sdk:fixture`，将 `.cache/plugin-sdk/examples/reference-udp/builtin.js` 交给 `sign_builtin_udp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。核对公钥、归档、编译入口与清单摘要，验证首次登记及同一 profile 重启。双机上复验实际网卡的限域及定向广播、IPv4 和 IPv6 组播、独立端口和选错接口时的反馈，然后记录适用平台与发行套件证据。
+
 #### RFC 2217（NET-06）
 
 参考包 `reference.rfc2217` 使用独立设备贡献 `reference.rfc2217.transport`。通过已有插件参数入口指定 `host`、`port` 与整数 `baudRate`。默认 8N1、无流控，可显式提交 `dataBits`、`parity`、`stopBits`、`flowControl`、`dtr`、`rts`。停止位取字符串 `1`、`1.5`、`2`，1.5 适用于 5 数据位。选用硬件流控时由流控管理 RTS。 [RFC 2217](https://www.rfc-editor.org/rfc/rfc2217)

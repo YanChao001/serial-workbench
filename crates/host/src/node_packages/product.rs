@@ -93,6 +93,8 @@ const PREVIOUS_RFC2217_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/rfc2217-0.1.0.zip");
 const PREVIOUS_RFC2217_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/rfc2217-0.1.0.json");
+const UDP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/udp.zip");
+const UDP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/udp.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -185,7 +187,7 @@ impl ProductPackage {
 }
 
 pub(super) fn packages() -> &'static [ProductPackage] {
-    static PACKAGES: OnceLock<[ProductPackage; 8]> = OnceLock::new();
+    static PACKAGES: OnceLock<[ProductPackage; 9]> = OnceLock::new();
     PACKAGES.get_or_init(|| {
         [
             ProductPackage::new(
@@ -204,6 +206,7 @@ pub(super) fn packages() -> &'static [ProductPackage] {
             ProductPackage::new(AUTOMATION_DESCRIPTOR, AUTOMATION_ARCHIVE, AUTOMATION_MARKER),
             ProductPackage::new(TCP_DESCRIPTOR, TCP_ARCHIVE, "node-packages:bundled-tcp"),
             ProductPackage::new(RFC2217_DESCRIPTOR, RFC2217_ARCHIVE, RFC2217_MARKER),
+            ProductPackage::new(UDP_DESCRIPTOR, UDP_ARCHIVE, "node-packages:bundled-udp"),
         ]
     })
 }

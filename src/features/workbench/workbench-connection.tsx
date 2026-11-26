@@ -39,6 +39,10 @@ import {
   builtinRfc2217ProviderId,
 } from "../../../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint";
 import {
+  builtinUdpPackageId,
+  builtinUdpProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-udp/endpoint";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -127,6 +131,11 @@ export function WorkbenchConnection({
   const lan = useContext(LanWorkbenchContext);
   const { t } = useI18n();
   function deviceName(device: DeviceDescriptor | undefined) {
+    if (
+      device?.systemName === builtinUdpProviderId &&
+      device.driver === builtinUdpPackageId
+    )
+      return t("udpConnection.title");
     return device?.systemName === builtinRfc2217ProviderId &&
       device.driver === builtinRfc2217PackageId
       ? t("rfc2217Connection.title")
