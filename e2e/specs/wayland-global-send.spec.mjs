@@ -11,7 +11,13 @@ import {
   globalSendRawReader,
   rawRxBytes,
 } from "../global-send.mjs";
-import { language, openDeepLink, ready } from "../helpers.mjs";
+import {
+  invoke,
+  language,
+  navigate,
+  openDeepLink,
+  ready,
+} from "../helpers.mjs";
 import {
   captureGlobalSendKey,
   closeShortcutHelp,
@@ -253,15 +259,28 @@ async function observeRepeatBinding(receipt, readFocus, bytes) {
   }
 }
 
-async function assertNoTransmit(read, key = hotkey) {
-  await withHotkey(key);
-  await delay(650);
-  const page = await read();
+function checkNoTransmit(page) {
   assert.deepEqual(
     page.events.filter(({ kind }) => kind === "tx" || kind === "tx_intent"),
     [],
   );
+}
+
+async function assertNoTransmit(read, key = hotkey) {
+  await withHotkey(key);
+  await delay(650);
+  const page = await read();
+  checkNoTransmit(page);
   return page;
+}
+
+async function recordPress(receipt, name, read, bytes, key = hotkey) {
+  await withHotkey(key);
+  await browser.waitUntil(async () => {
+    receipt[name] = await read();
+    return rawRxBytes(receipt[name]).length >= bytes.length;
+  });
+  checkGlobalSendRaw(receipt[name], bytes);
 }
 
 async function exitEditor() {
@@ -269,6 +288,85 @@ async function exitEditor() {
   await closeEditor.waitForEnabled();
   await closeEditor.click();
   await closeShortcutHelp();
+}
+
+async function checkWorkbenchTarget(receipt, bytes) {
+  const focused = () => browser.execute(() => document.hasFocus());
+  await browser.waitUntil(focused, {
+    timeoutMsg: "The workbench did not regain focus after the portal dialog",
+  });
+  await recordPress(
+    receipt,
+    "workbenchFocusedRaw",
+    await globalSendRawReader(),
+    bytes,
+  );
+  receipt.workbenchKeptFocus = await focused();
+  assert.equal(receipt.workbenchKeptFocus, true);
+
+  await editGlobalSend();
+  try {
+    assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
+    receipt.shortcutHelpRaw = await assertNoTransmit(
+      await globalSendRawReader(),
+    );
+  } finally {
+    await exitEditor();
+  }
+
+  await navigate("/settings");
+  try {
+    await $("#settings-language").waitForDisplayed();
+    receipt.settingsPageRaw = await assertNoTransmit(
+      await globalSendRawReader(),
+    );
+  } finally {
+    await navigate("/");
+  }
+  const draft = await sendDraft();
+  await draft.waitForDisplayed();
+  assert.equal(await draft.getValue(), bytes.toString("ascii"));
+}
+
+async function checkSecondaryTarget(receipt) {
+  const main = await browser.getWindowHandle();
+  const read = await globalSendRawReader();
+  assert.deepEqual(await browser.getWindowHandles(), [main]);
+  const newWindow = await $("button[aria-label='New window']");
+  await newWindow.waitForEnabled();
+  await newWindow.click();
+  let secondary;
+  try {
+    await browser.waitUntil(async () => {
+      secondary = (await browser.getWindowHandles()).find(
+        (handle) => handle !== main,
+      );
+      return secondary !== undefined;
+    });
+    await browser.switchToWindow(secondary);
+    await ready("secondary");
+    const focused = () => browser.execute(() => document.hasFocus());
+    await browser.waitUntil(focused, {
+      timeoutMsg: "The secondary WebView did not take focus",
+    });
+    await withHotkey(hotkey);
+    await delay(650);
+    receipt.secondaryKeptFocus = await focused();
+    assert.equal(receipt.secondaryKeptFocus, true);
+  } finally {
+    await browser.switchToWindow(main);
+    if (secondary) {
+      const closed = await invoke("plugin:window|close", {
+        label: "secondary",
+      });
+      assert.equal(closed.ok, true, JSON.stringify(closed.failure));
+      await browser.waitUntil(
+        async () => !(await browser.getWindowHandles()).includes(secondary),
+      );
+    }
+  }
+  receipt.secondaryRaw = await read();
+  checkNoTransmit(receipt.secondaryRaw);
 }
 
 async function confirmPortalClose(receipt) {
@@ -448,12 +546,7 @@ async function checkSystemSettings(receipt, draft, bytes) {
   );
   assert.equal(receipt.settingsFocus.active, true);
   receipt.oldKeyRaw = await assertNoTransmit(readChanged);
-  await withHotkey(replacement);
-  await browser.waitUntil(async () => {
-    receipt.newKeyRaw = await readChanged();
-    return rawRxBytes(receipt.newKeyRaw).length >= bytes.length;
-  });
-  checkGlobalSendRaw(receipt.newKeyRaw, bytes);
+  await recordPress(receipt, "newKeyRaw", readChanged, bytes, replacement);
   receipt.settingsFocusAfter = await kdeControl(
     "settings",
     "Add custom shortcut",
@@ -540,6 +633,19 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       await closeShortcutHelp();
     }
 
+    const failures = [];
+    if (scenario === "approve") {
+      try {
+        await checkWorkbenchTarget(receipt, bytes);
+      } catch (error) {
+        failures.push(`Workbench target: ${error.message}`);
+      }
+      try {
+        await checkSecondaryTarget(receipt);
+      } catch (error) {
+        failures.push(`Secondary window: ${error.message}`);
+      }
+    }
     const read = await globalSendRawReader();
     peer = spawn("/usr/bin/python3", [helper, "focus", focusPath, keyPath], {
       stdio: ["ignore", "ignore", "inherit"],
@@ -582,7 +688,6 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       return;
     }
 
-    const failures = [];
     try {
       await withHotkey("F8");
       receipt.controlKeys = await peerInput("F8");
@@ -591,13 +696,12 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     }
     try {
       await sendFromPeer(receipt, read, bytes);
-      const readSecondPress = await globalSendRawReader();
-      await withHotkey(hotkey);
-      await browser.waitUntil(async () => {
-        receipt.secondPress = await readSecondPress();
-        return rawRxBytes(receipt.secondPress).length >= bytes.length;
-      });
-      checkGlobalSendRaw(receipt.secondPress, bytes);
+      await recordPress(
+        receipt,
+        "secondPress",
+        await globalSendRawReader(),
+        bytes,
+      );
       // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
       await draft.setValue("");
       await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
