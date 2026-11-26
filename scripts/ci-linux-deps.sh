@@ -42,6 +42,7 @@ install_linux_dependencies() {
     wayland)
       packages+=(xvfb xauth xdotool dbus at-spi2-core libglib2.0-bin wayland-utils
         kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde qt6-wayland
+        systemsettings plasma-desktop
         qml6-module-org-kde-kcmutils qml6-module-org-kde-kquickcontrols
         qml6-module-qt5compat-graphicaleffects
         gir1.2-gtk-3.0 python3-gi python3-pyatspi)

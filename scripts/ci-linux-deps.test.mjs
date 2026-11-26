@@ -227,6 +227,8 @@ for (const mode of ["rust", "native", "wayland"]) {
           assert.equal(command.includes(required), mode !== "rust", required);
         for (const required of [
           "kwin-wayland",
+          "plasma-desktop",
+          "systemsettings",
           "xdg-desktop-portal-kde",
           "python3-pyatspi",
         ])

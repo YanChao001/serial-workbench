@@ -24,6 +24,7 @@ evidence=${SWB_E2E_WAYLAND_ARTIFACTS:?Run through the isolated desktop entry poi
 export XDG_RUNTIME_DIR="$session/run" XDG_CONFIG_HOME="$session/config"
 export XDG_DATA_HOME="$session/data" XDG_CACHE_HOME="$session/cache"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland
+export KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
 export WAYLAND_DISPLAY=swb-wayland GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland
 export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 QT_QUICK_BACKEND=software LC_ALL=C.UTF-8
 export WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 LIBGL_ALWAYS_SOFTWARE=1
@@ -39,14 +40,15 @@ export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
 {
   printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\nconsent=%s\n' \
     "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY" "$SWB_E2E_WAYLAND_CONSENT"
-  dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde
+  dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde systemsettings plasma-desktop
   sha256sum "$binary"
 } > "$evidence/environment.txt"
 
 kwin_wayland --x11-display "$DISPLAY" --socket "$WAYLAND_DISPLAY" \
   --width 1440 --height 1000 --no-lockscreen > "$evidence/kwin.log" 2>&1 &
 kwin=$!
-trap 'kill "$kwin" 2>/dev/null || true; wait "$kwin" 2>/dev/null || true' EXIT
+children=("$kwin")
+trap 'kill "${children[@]}" 2>/dev/null || true; wait "${children[@]}" 2>/dev/null || true' EXIT
 
 SWB_E2E_KWIN_WINDOW=$(timeout 20 xdotool search --sync --onlyvisible --pid "$kwin")
 [[ $SWB_E2E_KWIN_WINDOW =~ ^[0-9]+$ ]]
@@ -54,10 +56,31 @@ export SWB_E2E_KWIN_WINDOW
 xdotool windowfocus --sync "$SWB_E2E_KWIN_WINDOW"
 [[ $(xdotool getwindowfocus) == "$SWB_E2E_KWIN_WINDOW" ]]
 timeout 15 wayland-info > "$evidence/wayland-info.txt"
+
 dbus-update-activation-environment DISPLAY XAUTHORITY WAYLAND_DISPLAY \
   XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_CURRENT_DESKTOP \
-  XDG_SESSION_DESKTOP XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QUICK_BACKEND \
-  QT_LINUX_ACCESSIBILITY_ALWAYS_ON LC_ALL
+  XDG_SESSION_DESKTOP XDG_SESSION_TYPE KDE_FULL_SESSION KDE_SESSION_VERSION \
+  QT_QPA_PLATFORM QT_QUICK_BACKEND QT_LINUX_ACCESSIBILITY_ALWAYS_ON LC_ALL
+
+bus_method() {
+  gdbus call --session --timeout 5 --dest org.freedesktop.DBus \
+    --object-path /org/freedesktop/DBus --method "org.freedesktop.DBus.$1" "${@:2}"
+}
+bus_method StartServiceByName org.freedesktop.impl.portal.desktop.kde 0
+# Qt can activate the frontend while KWin is starting, before D-Bus sees the KDE environment.
+# Replace that instance on this session bus only after the real Wayland backend is available.
+/usr/libexec/xdg-desktop-portal --replace --verbose > "$evidence/portal.log" 2>&1 &
+portal_pid=$!
+children+=("$portal_pid")
+owner=
+for attempt in {1..30}; do
+  kill -0 "$portal_pid"
+  owner=$(bus_method GetConnectionUnixProcessID org.freedesktop.portal.Desktop 2>/dev/null || true)
+  [[ $owner == "(uint32 $portal_pid,)" ]] && break
+  sleep 0.3
+done
+printf 'portal_owner=%s expected_pid=%s\n' "$owner" "$portal_pid" | tee -a "$evidence/environment.txt"
+[[ $owner == "(uint32 $portal_pid,)" ]]
 
 portal=$(gdbus call --session --timeout 15 --dest org.freedesktop.portal.Desktop \
   --object-path /org/freedesktop/portal/desktop \
@@ -65,8 +88,6 @@ portal=$(gdbus call --session --timeout 15 --dest org.freedesktop.portal.Desktop
 printf 'GlobalShortcuts=%s\n' "$portal" | tee -a "$evidence/environment.txt"
 [[ $portal =~ uint32[[:space:]]+([1-9][0-9]*) ]]
 export SWB_E2E_PORTAL_VERSION=${BASH_REMATCH[1]}
-gdbus call --session --timeout 5 --dest org.freedesktop.DBus \
-  --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.GetNameOwner \
-  org.freedesktop.impl.portal.desktop.kde | tee -a "$evidence/environment.txt"
+bus_method GetNameOwner org.freedesktop.impl.portal.desktop.kde | tee -a "$evidence/environment.txt"
 
 pnpm test:e2e --interactive --skip-build --wayland-global-send
