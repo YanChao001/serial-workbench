@@ -374,15 +374,28 @@ async function startRecordingNewKey() {
 }
 
 async function checkSystemSettings(receipt, draft, bytes) {
+  const portalVersion = Number(receipt.portalVersion);
   assert.ok(
-    Number(receipt.portalVersion) >= 2,
-    "The settings scenario requires GlobalShortcuts v2",
+    portalVersion >= 1,
+    "The settings scenario requires the GlobalShortcuts portal",
   );
   await draft.setValue(bytes.toString("ascii"));
   await editGlobalSend();
   const systemSettings = await $("button=Open system shortcut settings");
-  await systemSettings.waitForEnabled();
-  await systemSettings.click();
+  if (portalVersion === 1) {
+    const help = await $("#shortcut-system-help");
+    await help.waitForDisplayed();
+    receipt.manualSettingsHint = await help.getText();
+    assert.equal(
+      receipt.manualSettingsHint,
+      "Change this shortcut in your desktop’s shortcut settings.",
+    );
+    assert.equal(await systemSettings.isExisting(), false);
+    await execute("xdg-open", ["systemsettings://kcm_keys"], { timeout: 5000 });
+  } else {
+    await systemSettings.waitForEnabled();
+    await systemSettings.click();
+  }
 
   receipt.settingsComponent = await kdeControl(
     "settings",

@@ -2,12 +2,25 @@
 set -euo pipefail
 
 if [[ ${1:-} != --session ]]; then
+  export SWB_E2E_WAYLAND_PORTAL_BIN=/usr/libexec/xdg-desktop-portal
+  export SWB_E2E_WAYLAND_EXPECT_V1=0
+  suite=wayland
+  scenarios=(approve cancel deny reload unavailable key-control)
+  if [[ ${1:-} == --portal-v1 && $# -eq 2 && $2 == /* && -x $2 ]]; then
+    SWB_E2E_WAYLAND_PORTAL_BIN=$2
+    SWB_E2E_WAYLAND_EXPECT_V1=1
+    suite=wayland-v1
+    scenarios=(approve cancel deny reload)
+  elif (( $# != 0 )); then
+    echo "Usage: $0 [--portal-v1 /absolute/path/to/xdg-desktop-portal]" >&2
+    exit 2
+  fi
   session=$(mktemp -d)
   trap 'rm -rf -- "$session"' EXIT
   failed=0
-  for scenario in approve cancel deny reload unavailable key-control; do
+  for scenario in "${scenarios[@]}"; do
     export SWB_E2E_WAYLAND_SCENARIO=$scenario
-    export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/wayland/$scenario"
+    export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/$suite/$scenario"
     mkdir -p "$SWB_E2E_WAYLAND_ARTIFACTS"
     if ! env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u AT_SPI_BUS_ADDRESS \
       dbus-run-session -- xvfb-run -a -s '-screen 0 1440x1000x24' \
@@ -55,7 +68,8 @@ export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
   printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\nscenario=%s\n' \
     "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY" "$SWB_E2E_WAYLAND_SCENARIO"
   dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde systemsettings plasma-desktop plasma-workspace
-  sha256sum "$binary"
+  "$SWB_E2E_WAYLAND_PORTAL_BIN" --version
+  sha256sum "$binary" "$SWB_E2E_WAYLAND_PORTAL_BIN"
 } > "$evidence/environment.txt"
 
 QT_LOGGING_RULES='kf.globalaccel.kglobalacceld.debug=true;js.debug=true' \
@@ -105,7 +119,7 @@ timeout 15 kbuildsycoca6 --noincremental > "$evidence/desktop-service-cache.log"
 bus_method StartServiceByName org.freedesktop.impl.portal.desktop.kde 0
 # Qt can activate the frontend while KWin is starting, before D-Bus sees the KDE environment.
 # Replace that instance on this session bus only after the real Wayland backend is available.
-/usr/libexec/xdg-desktop-portal --replace --verbose > "$evidence/portal.log" 2>&1 &
+"$SWB_E2E_WAYLAND_PORTAL_BIN" --replace --verbose > "$evidence/portal.log" 2>&1 &
 portal_pid=$!
 children+=("$portal_pid")
 owner=
@@ -134,6 +148,11 @@ else
   printf 'GlobalShortcuts=%s\n' "$portal" | tee -a "$evidence/environment.txt"
   [[ $portal =~ uint32[[:space:]]+([1-9][0-9]*) ]]
   export SWB_E2E_PORTAL_VERSION=${BASH_REMATCH[1]}
+  if [[ $SWB_E2E_WAYLAND_EXPECT_V1 == 1 ]]; then
+    [[ $SWB_E2E_PORTAL_VERSION == 1 ]]
+  else
+    (( SWB_E2E_PORTAL_VERSION >= 2 ))
+  fi
 fi
 bus_method GetNameOwner org.freedesktop.impl.portal.desktop.kde | tee -a "$evidence/environment.txt"
 
