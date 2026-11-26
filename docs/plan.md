@@ -18,6 +18,8 @@
 
 - 候选 `c77c8c2` 的 Windows、两种 macOS 架构、X11 和 Wayland v1/v2 热键收据均确认关窗隐藏时零写入，X11 恢复后同键写入一次并完整回环。Apple Silicon 的后续重启用例把 `1000×680` 近满屏窗口保存为 `maximized=true`。存档的当前位置是 `(24,29)`，其正常位置是 `(0,25)`，重启实际使用了正常位置。夹具改用已验证的 macOS 正常窗尺寸，保存前后核对最大化状态。重启按保存的位置与尺寸核对，居中阶段复用该尺寸。窗口恢复属于 SESS-01 与 UX-04，继续随 IO-08 综合门禁验收。 [候选门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322) · [Apple Silicon 窗口收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159800471) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159930621)
 
+- 同一候选的 Ubuntu Rust 作业已通过等待授权终态后的 LAN-01 双栈恢复，并完成独立网络命名空间内的离线软件基线。收据确认 T01、T03、T04、T05、T06、T08 全部通过。T06 的末个样本在负载开始后 600.1 秒，慢读者隔离、控制响应和丢失记账均通过。物理串口和各平台 72 小时实跑仍按 M6 单独验收。 [Ubuntu Rust 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/job/140212428284) · [离线收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159857582)
+
 - 候选 `57b1d4a` 的 Windows 固定 Node 门禁已通过前九个运行时用例。目录链接拒绝用例在准备阶段重命名已加载过的 `runtime` 目录时收到 `EPERM`。本机用占用文件句柄的临时目录复现相同错误，并确认从另一个安装目录建立和移除链接时原文件保留。夹具用独立安装目录，由原生探针按实际安装路径验证 `NODE_RUNTIME_INTEGRITY_FAILED`。这项 M3 固定运行时回归随 IO-08 的综合门禁复验。 [Windows 故障收据](https://github.com/YanChao001/serial-workbench/actions/runs/45898242216/artifacts/15155527820)
 
 - IO-08 候选 `57b1d4a` 的四个原生桌面作业和 Wayland v1/v2 定向预检通过。完整门禁中的 Linux Rust 作业在 LAN-01 双栈恢复夹具获取普通 CLI 请求上下文时收到 `PERMISSION_DENIED`。同源本机探针确认授权先返回 `queued`，随后才出现 `authorization_changed`。夹具改为按操作 ID 等终态，并将失败收据归档。LAN-01 属于 M2 软件回归，复验纳入 IO-08 合入的综合门禁。 [桌面与 Wayland 收据](https://github.com/YanChao001/serial-workbench/pull/89) · [Linux 门禁失败步骤](https://github.com/YanChao001/serial-workbench/actions/runs/45898242216/job/140179694726)
