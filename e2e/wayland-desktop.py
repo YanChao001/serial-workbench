@@ -61,7 +61,17 @@ def control(target, name, action):
                     active = window.getState().contains(pyatspi.STATE_ACTIVE)
                     if action == "click" and not item.queryAction().doAction(0):
                         raise RuntimeError(f"KDE did not activate {name!r}")
-                    print(json.dumps({"dialog": title, "control": label, "action": action, "active": active}))
+                    focused = state.contains(pyatspi.STATE_FOCUSED)
+                    if action == "focus" and not focused:
+                        if not item.queryComponent().grabFocus():
+                            raise RuntimeError(f"KDE did not focus {name!r}")
+                        if not item.getState().contains(pyatspi.STATE_FOCUSED):
+                            continue
+                        focused = True
+                    print(json.dumps({
+                        "dialog": title, "control": label, "action": action,
+                        "active": active, "focused": focused,
+                    }))
                     return
         if action == "wait-closed" and not matching_windows:
             print(json.dumps({"dialog": titles[target], "action": action}))
@@ -126,9 +136,9 @@ def report_focus(output, keys_output):
 
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    if command == "control" and len(args) == 3 and args[2] in ("click", "observe", "wait-closed"):
+    if command == "control" and len(args) == 3 and args[2] in ("click", "focus", "observe", "wait-closed"):
         control(*args)
     elif command == "focus" and len(args) == 2:
         report_focus(*args)
     else:
-        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|observe|wait-closed, or focus FOCUS_PATH KEYS_PATH")
+        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|focus|observe|wait-closed, or focus FOCUS_PATH KEYS_PATH")

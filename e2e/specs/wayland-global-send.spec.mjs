@@ -330,10 +330,14 @@ async function checkSystemSettings(receipt, draft, bytes) {
 
   await startRecordingNewKey();
   await withHotkey(replacement);
-  await kdeControl(
+  receipt.defaultFocus = await kdeControl(
     "settings",
     `Default shortcut ${receipt.binding} is enabled.`,
+    "focus",
   );
+  assert.equal(receipt.defaultFocus.active, true);
+  assert.equal(receipt.defaultFocus.focused, true);
+  await withKeys(["space"]);
   receipt.defaultDisabled = await kdeControl(
     "settings",
     `Default shortcut ${receipt.binding} is disabled.`,
