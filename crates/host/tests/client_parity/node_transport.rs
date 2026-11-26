@@ -1179,7 +1179,7 @@ async fn check_bundled_udp(
 
     let mut prior_epoch = None;
     for (family, address) in [("ipv4", "127.0.0.1"), ("ipv6", "::1")] {
-        let peer = UdpSocket::bind((address, 0)).await.unwrap();
+        let peer = bind_udp_test_peer((address, 0)).await;
         let port = peer.local_addr().unwrap().port();
         let params = json!({
             "configuration": SerialConfiguration::default(),
@@ -1306,6 +1306,29 @@ async fn check_bundled_udp(
             payload.len()
         );
     }
+}
+
+async fn bind_udp_test_peer(address: impl tokio::net::ToSocketAddrs) -> tokio::net::UdpSocket {
+    let peer = tokio::net::UdpSocket::bind(address).await.unwrap();
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::fd::AsRawFd;
+
+        // Darwin's default send buffer is smaller than the 20,001-byte test datagram.
+        let capacity: libc::c_int = 32 * 1024;
+        // SAFETY: the live socket borrows a correctly sized integer for this synchronous call.
+        let result = unsafe {
+            libc::setsockopt(
+                peer.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_SNDBUF,
+                std::ptr::from_ref(&capacity).cast(),
+                std::mem::size_of_val(&capacity) as libc::socklen_t,
+            )
+        };
+        assert_eq!(result, 0, "{}", std::io::Error::last_os_error());
+    }
+    peer
 }
 
 fn capture_target(host: &Target, reference: &ObjectRef) -> Target {
@@ -1468,9 +1491,8 @@ async fn check_messages(
     device: &Target,
     path: &Path,
 ) {
-    use tokio::net::UdpSocket;
     assert_eq!(admin.attachment().client_id, client.attachment().client_id);
-    let peer = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+    let peer = bind_udp_test_peer((Ipv4Addr::LOCALHOST, 0)).await;
     grant(auth, operator, client, device, &["device.modify"]);
     let session = open_session(
         client,
