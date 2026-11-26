@@ -17,18 +17,28 @@ struct ProbeReply: Encodable {
     var foregroundPID: Int32? = nil
     var expectedForegroundPID: Int32? = nil
     var foregroundBundleIdentifier: String? = nil
+    var controlPresses: Int? = nil
+    var controlReleases: Int? = nil
     var error: String? = nil
+}
+
+private final class ControlEvents {
+    var presses = 0
+    var releases = 0
 }
 
 @MainActor
 final class GlobalSendPeer: NSObject, NSApplicationDelegate {
     private let foregroundBundle = "com.apple.calculator"
     private var foregroundTarget: NSRunningApplication?
+    private let controlEvents = ControlEvents()
+    private var controlHandler: EventHandlerRef?
     private var occupied: EventHotKeyRef?
     private var reclaimed: EventHotKeyRef?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
+            try observeControlShortcut()
             occupied = try reserve(key: UInt32(kVK_F10), id: 1)
             reply(ProbeReply(ready: true, pid: ProcessInfo.processInfo.processIdentifier,
                              canPost: CGPreflightPostEventAccess()))
@@ -48,6 +58,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         _ = foregroundTarget?.terminate()
         if let reclaimed { _ = UnregisterEventHotKey(reclaimed) }
         if let occupied { _ = UnregisterEventHotKey(occupied) }
+        if let controlHandler { _ = RemoveEventHandler(controlHandler) }
     }
 
     private var foreground: Bool {
@@ -74,6 +85,31 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         return handle
     }
 
+    private func observeControlShortcut() throws {
+        let types = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
+        ]
+        let context = Unmanaged.passUnretained(controlEvents).toOpaque()
+        let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
+            guard let event, let context else { return OSStatus(eventNotHandledErr) }
+            var hotKey = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                                           EventParamType(typeEventHotKeyID), nil,
+                                           ByteCount(MemoryLayout<EventHotKeyID>.size), nil, &hotKey)
+            guard status == noErr, hotKey.signature == 0x53574245, hotKey.id == 1 else {
+                return OSStatus(eventNotHandledErr)
+            }
+            let events = Unmanaged<ControlEvents>.fromOpaque(context).takeUnretainedValue()
+            if GetEventKind(event) == UInt32(kEventHotKeyPressed) { events.presses += 1 }
+            else { events.releases += 1 }
+            return noErr
+        }, ItemCount(types.count), types, context, &controlHandler)
+        guard status == noErr else {
+            throw ProbeError("Cannot observe the native control shortcut (OSStatus \(status)).")
+        }
+    }
+
     private func execute(_ command: String) {
         do {
             switch command {
@@ -82,8 +118,10 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 return
             case "foreground":
                 break
+            case "press-control":
+                try press(CGKeyCode(kVK_F10), repeating: false)
             case "press":
-                try press()
+                try press(CGKeyCode(kVK_F9), repeating: true)
             case "retained":
                 var handle: EventHotKeyRef?
                 let status = register(key: UInt32(kVK_F9), id: 2, handle: &handle)
@@ -135,14 +173,14 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let expected = foregroundTarget?.processIdentifier
         return ProbeReply(ok: true, foreground: expected != nil && front?.processIdentifier == expected,
                           foregroundPID: front?.processIdentifier, expectedForegroundPID: expected,
-                          foregroundBundleIdentifier: front?.bundleIdentifier)
+                          foregroundBundleIdentifier: front?.bundleIdentifier,
+                          controlPresses: controlEvents.presses, controlReleases: controlEvents.releases)
     }
 
-    private func press() throws {
+    private func press(_ key: CGKeyCode, repeating: Bool) throws {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
-        let key = CGKeyCode(kVK_F9)
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false) else {
             throw ProbeError("Cannot create the native keyboard event.")
@@ -152,6 +190,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         up.flags = down.flags
         down.post(tap: .cghidEventTap)
         defer { up.post(tap: .cghidEventTap) }
+        guard repeating else { return }
         for _ in 0..<4 {
             Thread.sleep(forTimeInterval: 0.2)
             guard foreground else { throw ProbeError("The independent test application lost foreground.") }

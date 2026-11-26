@@ -576,8 +576,14 @@ export function workbenchChecks() {
                     "The independent test application did not get foreground",
                 },
               );
+              if (process.platform === "darwin") {
+                receipt.controlPosted = await command("press-control");
+              }
               assert.equal((await command("press")).foreground, true);
               receipt.inputPostedWithPeerForeground = true;
+              if (process.platform === "darwin") {
+                receipt.controlObserved = await command("foreground");
+              }
               await browser.waitUntil(
                 async () => {
                   const page = await read();
