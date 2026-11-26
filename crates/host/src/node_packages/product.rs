@@ -21,6 +21,10 @@ const RECENT_FIELD_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/protocol-fields-0.2.0.zip");
 const RECENT_FIELD_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/protocol-fields-0.2.0.json");
+const FIELD_0_3_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/protocol-fields-0.3.0.zip");
+const FIELD_0_3_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/protocol-fields-0.3.0.json");
 const FIELD_MARKER: &str = "node-packages:bundled-protocol-fields";
 const MODBUS_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/modbus.zip");
 const MODBUS_DESCRIPTOR: &str = include_str!("../../resources/node-packages/modbus.json");
@@ -190,8 +194,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 10] {
-    static PREVIOUS: OnceLock<[ProductPackage; 10]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 11] {
+    static PREVIOUS: OnceLock<[ProductPackage; 11]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -200,6 +204,7 @@ fn previous_packages() -> &'static [ProductPackage; 10] {
                 FIELD_MARKER,
             ),
             ProductPackage::new(RECENT_FIELD_DESCRIPTOR, RECENT_FIELD_ARCHIVE, FIELD_MARKER),
+            ProductPackage::new(FIELD_0_3_DESCRIPTOR, FIELD_0_3_ARCHIVE, FIELD_MARKER),
             ProductPackage::new(
                 PREVIOUS_CHART_DESCRIPTOR,
                 PREVIOUS_CHART_ARCHIVE,
@@ -290,6 +295,7 @@ mod tests {
         let [
             old_fields,
             recent_fields,
+            comparison_fields,
             old_chart,
             recent_chart,
             old_automation,
@@ -299,8 +305,9 @@ mod tests {
             rule_automation,
             old_rfc2217,
         ] = previous_packages();
-        check_predecessor_upgrade(old_fields, "0.1.0", "0.3.0");
-        check_predecessor_upgrade(recent_fields, "0.2.0", "0.3.0");
+        check_predecessor_upgrade(old_fields, "0.1.0", "0.4.0");
+        check_predecessor_upgrade(recent_fields, "0.2.0", "0.4.0");
+        check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
         check_predecessor_upgrade(old_automation, "0.1.0", "0.1.5");

@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import Ajv from "ajv";
 import { register } from "../packages/plugin-sdk/examples/reference-protocol-fields/main.ts";
+import { defaultFrameTemplate } from "../packages/plugin-sdk/examples/reference-protocol-fields/frame-template.ts";
 
 const handlers = new Map();
 register({ parsers: { register: (id, handler) => handlers.set(id, handler) } });
@@ -36,6 +37,50 @@ async function call(name, params, signal = new AbortController().signal) {
   assert.equal(typeof handler, "function");
   return handler({ params }, { signal });
 }
+
+test("the field package uses one versioned template for assembly and verification", async () => {
+  const manifest = JSON.parse(
+    readFileSync(
+      new URL(
+        "../packages/plugin-sdk/examples/reference-protocol-fields/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const action = manifest.contributes.parsers.find(
+    ({ actionId }) => actionId === "swb.reference.fields.frameTemplate",
+  );
+  assert.deepEqual(action.permissions, ["content.read"]);
+  const ajv = new Ajv({ strict: false, validateFormats: false });
+  const validInput = ajv.compile(action.inputSchema);
+  const validOutput = ajv.compile(action.outputSchema);
+  const template = JSON.stringify(defaultFrameTemplate);
+  const assemble = {
+    mode: "assemble",
+    template,
+    values: { serial: "258", data: "10 20 30" },
+  };
+  assert.equal(validInput(assemble), true);
+  const built = await call("frameTemplate", assemble);
+  assert.equal(validOutput(built), true);
+  assert.equal(
+    Buffer.from(built.bytesBase64, "base64").toString("hex"),
+    "aa55030201102030030d",
+  );
+  const decode = { mode: "decode", template, bytesBase64: built.bytesBase64 };
+  assert.equal(validInput(decode), true);
+  assert.equal(validInput({ ...decode, values: assemble.values }), false);
+  assert.deepEqual(await call("frameTemplate", decode), built);
+  const damaged = Buffer.from(built.bytesBase64, "base64");
+  damaged[8] ^= 1;
+  const failed = await call("frameTemplate", {
+    ...decode,
+    bytesBase64: damaged.toString("base64"),
+  });
+  assert.equal(validOutput(failed), true);
+  assert.deepEqual(failed, { status: "invalid", path: "checksum" });
+});
 
 test("the signed Modbus action constructs ASCII and decodes RTU with precise faults", async () => {
   const packet = {

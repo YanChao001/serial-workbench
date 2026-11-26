@@ -7,6 +7,7 @@ import {
   encodeModbusFrame,
 } from "../../packages/plugin-sdk/examples/reference-protocol-fields/modbus-frame";
 import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
@@ -772,6 +773,173 @@ test("the packet editor constructs and reads back numeric fields without a sessi
   await expect(calibrated).toContainText("2.5 V");
   await expect(calibrated).toContainText("Raw 6 · calibration sensor-2");
 });
+
+for (const { width, height, language, theme, t } of [
+  { width: 420, height: 460, language: "zh", theme: "dark", t: zhCN },
+  { width: 1240, height: 760, language: "en", theme: "light", t: en },
+] as const) {
+  test(`frame templates trace named variables and checksum at ${width}px`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({ width, height });
+    await seedWorkbenchFixture(page, { language, theme });
+    await page.goto("./#/");
+    const direct = page.getByRole("button", {
+      name: t["workbench.tools.framing"],
+      exact: true,
+    });
+    if (await direct.isVisible()) await direct.click();
+    else {
+      await page
+        .getByRole("button", { name: t["workbench.tools.more"], exact: true })
+        .click();
+      await page
+        .getByRole("menuitem", {
+          name: t["workbench.tools.framing"],
+          exact: true,
+        })
+        .click();
+    }
+    const dialog = page.getByRole("dialog", {
+      name: t["workbench.tools.framing"],
+      exact: true,
+    });
+    await dialog
+      .getByText(t["workbench.frameTemplate.title"], { exact: true })
+      .click();
+    const form = dialog.locator("form.workbench-frame-template");
+    const header = form.getByRole("textbox", {
+      name: t["workbench.frameTemplate.header"],
+      exact: true,
+    });
+    await header.scrollIntoViewIfNeeded();
+    await expect(header).toHaveValue("AA 55");
+    const geometry = await form.evaluate((element) => {
+      const controls = [
+        ...element.querySelectorAll("input, [data-slot='select-trigger']"),
+      ];
+      const heights = controls.map(
+        (node) => node.getBoundingClientRect().height,
+      );
+      const firstControls = element.querySelectorAll(
+        ".workbench-frame-template-controls > label:first-child :is(input, [data-slot='select-trigger']), fieldset > legend",
+      );
+      const leftEdges = Array.from(
+        firstControls,
+        (node) => node.getBoundingClientRect().left,
+      );
+      const labels = [
+        ...element.querySelectorAll<HTMLElement>("[data-slot='select-value']"),
+      ];
+      return {
+        contained: element.scrollWidth <= element.clientWidth + 1,
+        consistent: Math.max(...heights) - Math.min(...heights) <= 1,
+        aligned: Math.max(...leftEdges) - Math.min(...leftEdges) <= 1,
+        labelsFit: labels.every(
+          (node) => node.scrollWidth <= node.clientWidth + 1,
+        ),
+      };
+    });
+    expect(geometry).toEqual({
+      contained: true,
+      consistent: true,
+      aligned: true,
+      labelsFit: true,
+    });
+    await dialog.screenshot({
+      path: info.outputPath("frame-template-controls.png"),
+    });
+    const preview = form.getByRole("button", {
+      name: t["workbench.frameTemplate.preview"],
+    });
+    const result = form.getByRole("textbox", {
+      name: t["workbench.frameTemplate.result"],
+    });
+    const payload = form.getByRole("textbox", {
+      name: t["workbench.frameTemplate.variableValue"].replace(
+        "{name}",
+        "data",
+      ),
+    });
+    await preview.click();
+    await expect(result).toHaveValue("AA 55 03 02 01 10 20 30 03 0D");
+    await expect(
+      form.getByRole("table").getByText("[5, 8)", { exact: true }),
+    ).toBeVisible();
+    const trace = form.getByRole("region", {
+      name: t["workbench.frameTemplate.trace"],
+    });
+    expect(
+      await trace.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    ).toBe(width === 420);
+    await payload.fill("F");
+    await expect(result).toHaveCount(0);
+    await preview.click();
+    await expect(payload).toHaveAttribute("aria-invalid", "true");
+    await expect(form.getByRole("alert")).toContainText("values.payload");
+    await payload.fill("10 20 30");
+    await preview.click();
+    await result.scrollIntoViewIfNeeded();
+    await dialog.screenshot({
+      path: info.outputPath("frame-template-result.png"),
+    });
+
+    await form
+      .getByRole("combobox", { name: t["workbench.frameTemplate.mode"] })
+      .press("ArrowDown");
+    await page
+      .getByRole("option", {
+        name: t["workbench.frameTemplate.decode"],
+        exact: true,
+      })
+      .click();
+    const source = form.getByRole("textbox", {
+      name: t["workbench.frameTemplate.source"],
+    });
+    const verify = form.getByRole("button", {
+      name: t["workbench.frameTemplate.decode"],
+    });
+    await source.fill("AA 55 03 02 01 10 20 30 04 0D");
+    await verify.click();
+    await expect(form.getByRole("alert")).toHaveText(
+      t["workbench.frameTemplate.invalidChecksum"],
+    );
+    await source.fill("AA 55 03 02 01 10 20 30 03 0D");
+    await verify.click();
+    await expect(result).toHaveValue("AA 55 03 02 01 10 20 30 03 0D");
+    await expect(
+      form.getByRole("table").getByText("serial = 258", { exact: true }),
+    ).toBeVisible();
+    const jsonLabel = t["workbench.frameTemplate.templateJson"];
+    await form.getByText(jsonLabel, { exact: true }).click();
+    const json = form.getByRole("textbox", { name: jsonLabel });
+    const definition = await json.inputValue();
+    const future = definition.replace('"version": "1"', '"version": "2"');
+    const apply = form.getByRole("button", {
+      name: t["workbench.frameTemplate.apply"],
+    });
+    await json.fill(future);
+    await apply.click();
+    await expect(json).toHaveValue(future);
+    await expect(json).toHaveAttribute("aria-invalid", "true");
+    await expect(form.getByRole("alert")).toContainText("json.version");
+    await expect(header).toHaveValue("AA 55");
+    await json.fill(definition.replace('"AA 55"', '"AA 56"'));
+    await apply.click();
+    await expect(json).not.toHaveAttribute("aria-invalid", "true");
+    await expect(header).toHaveValue("AA 56");
+    expect(
+      await page.evaluate(
+        () =>
+          window.workbenchFixture.invocations.filter(
+            ({ actionId }) => actionId === "session.tx",
+          ).length,
+      ),
+    ).toBe(0);
+  });
+}
 
 test("CRC recognition asks for independent samples and validates the wire byte order", async ({
   page,

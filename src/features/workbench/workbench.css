@@ -854,6 +854,53 @@
   padding: 0;
   border: 0;
 }
+.workbench-frame-template {
+  display: grid;
+  gap: var(--workbench-dialog-spacing);
+  min-width: 0;
+  padding: 0 var(--workbench-dialog-spacing) var(--workbench-dialog-spacing);
+  font-size: 0.875rem;
+}
+.workbench-dialog-body
+  .workbench-frame-template
+  fieldset:not(.workbench-choice) {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.workbench-dialog-body
+  .workbench-frame-template
+  fieldset:not(.workbench-choice)
+  > legend:not(.sr-only) {
+  margin-bottom: 0.375rem;
+  padding: 0;
+  font-weight: 500;
+}
+.workbench-frame-template-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--workbench-field-gap, 0.75rem);
+  align-items: start;
+}
+.workbench-frame-template-controls > label {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workbench-frame-template-controls [data-slot="select-trigger"] {
+  width: 100%;
+}
+.workbench-frame-template table {
+  min-inline-size: 23rem;
+}
+.workbench-frame-template th {
+  white-space: nowrap;
+}
+.workbench-frame-template :is(th, td) {
+  padding: 0.375rem 0.5rem;
+}
 .workbench-dialog
   :is(
     input:not(

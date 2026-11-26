@@ -2926,6 +2926,7 @@ mod tests {
                     (&framing, "swb.reference.framing.scan"),
                     (&fields, "swb.reference.fields.decode"),
                     (&fields, "swb.reference.fields.encode"),
+                    (&fields, "swb.reference.fields.frameTemplate"),
                     (&fields, "swb.reference.fields.identifyCrc"),
                     (&fields, "swb.reference.fields.modbus"),
                     (&fields, "swb.reference.fields.modbusServer"),
@@ -3374,8 +3375,31 @@ mod tests {
             "alignment": {"kind":"ordinal"},
             "detail": {"rowIndex":0}
         });
+        let frame_template_action = "swb.reference.fields.frameTemplate";
+        let frame_template = serde_json::json!({
+            "version":"1",
+            "headerHex":"AA 55",
+            "length":{"width":1,"order":"big","coverage":"payload"},
+            "sequence":{"width":2,"order":"little","variable":"serial"},
+            "payload":{"variable":"data","format":"hex"},
+            "checksum":{"algorithm":"xor","order":"big","coverage":"sequence-payload"},
+            "tailHex":"0D",
+        })
+        .to_string();
+        let frame_assemble = serde_json::json!({
+            "mode":"assemble","template":&frame_template,"values":{"serial":"258","data":"10 20 30"},
+        });
+        let frame_decode = |bytes: &[u8]| {
+            serde_json::json!({
+                "mode":"decode","template":&frame_template,"bytesBase64":STANDARD.encode(bytes),
+            })
+        };
+        let frame = [0xaa, 0x55, 3, 2, 1, 0x10, 0x20, 0x30, 3, 0x0d];
+        let mut corrupt_frame = frame;
+        corrupt_frame[8] ^= 1;
         for (action, params) in [
             ("swb.reference.fields.decode", decode_params.clone()),
+            (frame_template_action, frame_assemble.clone()),
             ("swb.reference.fields.identifyCrc", crc_params.clone()),
             ("swb.reference.fields.modbus", modbus_params.clone()),
             ("swb.reference.fields.modbus", modbus_compare.clone()),
@@ -3508,6 +3532,13 @@ mod tests {
                 "encoded",
             ),
             ("swb.reference.fields.decode", decode_params, "decoded"),
+            (frame_template_action, frame_assemble, "verified"),
+            (frame_template_action, frame_decode(&frame), "verified"),
+            (
+                frame_template_action,
+                frame_decode(&corrupt_frame),
+                "invalid",
+            ),
             (
                 "swb.reference.fields.encode",
                 serde_json::json!({"definition":yaml,"definitionFormat":"yaml","values":{"reading":"33.5"}}),
@@ -3568,7 +3599,28 @@ mod tests {
                 serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap())
                     .unwrap();
             assert_eq!(report["status"], expected_status);
-            if action == "swb.reference.fields.compareSessions" {
+            if action == frame_template_action {
+                if expected_status == "verified" {
+                    assert_eq!(report["bytesBase64"], STANDARD.encode(frame));
+                    assert_eq!(
+                        report["values"],
+                        serde_json::json!({"serial":"258","data":"10 20 30"})
+                    );
+                    assert_eq!(
+                        report["parts"][3]["range"],
+                        serde_json::json!({"start":5,"end":8})
+                    );
+                    assert_eq!(
+                        report["parts"][4]["coverage"],
+                        serde_json::json!({"start":3,"end":8})
+                    );
+                } else {
+                    assert_eq!(
+                        report,
+                        serde_json::json!({"status":"invalid","path":"checksum"})
+                    );
+                }
+            } else if action == "swb.reference.fields.compareSessions" {
                 assert_eq!(report["rows"][0]["changedBytes"], 1);
                 assert_eq!(report["rows"][1]["elapsedDeltaNs"], "-6");
                 assert_eq!(

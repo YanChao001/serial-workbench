@@ -673,6 +673,16 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 运行 `node --test scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对位宽、浮点、严格 UTF-8、独立物理位、64 位精确往返、校验依赖、定义错误、取消及归档来源。使用 `pnpm test:ui e2e/browser/framing-tool.spec.ts` 核对分帧结果上的字段值、原始字节绝对偏移、数值构造及 YAML 行列。用同一原生启动用例对照两个独立包的重启登记、会话授权、真实操作终态和文件结果。
 
+### 帧模板（IO-14）
+
+从工作台「协议分帧」展开「帧模板」，以线上顺序查看帧头、长度、序号、负载、校验和帧尾。模板可调整无符号字段宽度和端序，给序号和负载命名，选择 HEX 或 UTF-8 负载，以及指定长度和校验覆盖范围。整帧上限为 4,096 字节。可从「模板 JSON」读取或应用版本为字符串 `"1"` 的定义。无效或未来版本应保留当前定义和待修正文本。
+
+默认模板输入序号 `258` 和负载 `10 20 30`，预览 `AA 55 03 02 01 10 20 30 03 0D`。长度 `03` 来自 `[5, 8)`，序号为小端的 `02 01`，XOR 校验 `03` 来自 `[3, 8)`。用同一定义反解，核对命名变量与 6 段原字节范围。替换校验为 `04`，应定位校验错误。改用多字节 UTF-8 时按编码后字节计算长度。整个工具可离线使用，预览、反解和应用定义都保持零发送请求。
+
+随包字段包 0.4.0 的 `swb.reference.fields.frameTemplate` 接收 `template` JSON 字符串。`mode` 为 `assemble` 时传 `values` 字符串映射，为 `decode` 时传 `bytesBase64`。用有读取权限的会话核对 `verified` 报告、精确帧字节及每段覆盖范围，损坏数据返回 `invalid` 及路径。没有相应权限时应拒绝执行。使用隔离原生 Host 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启和重启。迁移可用 `known_predecessor_upgrades_and_preserves_the_profile_decision` 核对原启用、停用或卸载选择。
+
+定向脚本测试使用 `node --test scripts/frame-template.test.mjs scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs`。界面用 `pnpm test:ui e2e/browser/framing-tool.spec.ts`，在窄短窗和宽窗核对共享尺寸、对齐、结果表独立滚动、修改后清除过期预览，以及错误字段与原字节定位。 [宽窄草稿](./ui-design.md#帧模板草稿io-14)
+
 ### CRC 识别与验证（PROTO-03）
 
 在工作台的「协议分帧」内展开「CRC 识别」。分别填写参与计算的 HEX 字节和从实物或样本读取的校验字节。可限定目录中的位宽或校验字节序，也可自动寻找同字节长度的候选。非整字节位宽右对齐填写。输入 `31 32 33 34 35 36 37 38 39` 与 `37 4B`，选择 16 位，核对列出低位字节在前的 CRC-16/MODBUS，并仍提示补充样本。重复该输入时不同样本计数保持为 1，给相同报文输入不同校验值时显示冲突。
