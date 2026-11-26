@@ -242,7 +242,8 @@ jobs:
           suffix=""
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           binaries="$PWD/src-tauri/target/debug"
-          evidence="$(node -p 'require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(),"swb-lan-ci-"))')"
+          mkdir -p artifacts/rust-failures
+          evidence="$(node -p 'require("node:fs").mkdtempSync("artifacts/rust-failures/lan-route-")')"
           node e2e/lan-route.mjs "$binaries/serial-workbench-host$suffix" \
             "$binaries/serial-workbench-cli$suffix" "$binaries/serial-workbench-mcp$suffix" \
             "$evidence/run" --loopback-roles

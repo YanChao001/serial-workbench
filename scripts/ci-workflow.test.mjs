@@ -366,7 +366,7 @@ test("all native Rust targets run LAN recovery with fresh isolated profiles", ()
     ?.split("\n      - name:")[0];
   assert.ok(step);
   assert.doesNotMatch(step, /\bif:/);
-  assert.match(step, /mkdtempSync/);
+  assert.match(step, /mkdtempSync\("artifacts\/rust-failures\/lan-route-"\)/);
   assert.match(
     step,
     /node e2e\/lan-route\.mjs "\$binaries\/serial-workbench-host\$suffix"/,

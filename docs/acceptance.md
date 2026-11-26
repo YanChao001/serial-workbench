@@ -99,7 +99,9 @@ cargo test --locked -p serial-workbench-host --test capture_api_host hold_send_b
 
 LAN 进程验收使用同源且相邻的 Host、CLI 和 MCP 程序，运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录>`。脚本启动两份独立 Host，在 B 打开 Virtual Echo 并共享。A 的实际 CLI 验证授权前拒绝、跨进程读写 B 的会话与原操作回执，实际 MCP 验证 B 对命名客户端的独立归属。撤销 A 的 CLI 路由权后 MCP 仍可读取，A 解除配对后确认原 MCP 路由失效，B 本地会话仍可读。收据和命令日志用于软件验收。跨机网卡、USB 设备和控制租约恢复各按相应场景验收。
 
-同机双栈角色模拟运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录> --loopback-roles`。runner 直接启动并持有同一对 Host，给两份独立 profile 各开一个 Virtual Echo。双方在 IPv4 和 IPv6 回环地址轮流作发起端与会话所属端，逐次核对配对身份、Host 和会话代次、CLI 写入终态以及本地与远端读回的 Raw 来源、游标和字节。每轮停用监听并确认端口释放、客户端收到连接不可用，再从原监听地址重新连接。核对同一配对 actor、Host 实例、会话代次、旧 TX 回执及原 Raw 游标，恢复后仅比较显式发起的新写入，并确认两个自有进程正常退出。四目标原生 Rust 作业复用该脚本。原始事件、程序摘要及进程日志保留在本机证据目录或运行器临时目录。
+同机双栈角色模拟运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录> --loopback-roles`。runner 直接启动并持有同一对 Host，给两份独立 profile 各开一个 Virtual Echo。双方在 IPv4 和 IPv6 回环地址轮流作发起端与会话所属端，逐次核对配对身份、Host 和会话代次、CLI 写入终态以及本地与远端读回的 Raw 来源、游标和字节。每轮停用监听并确认端口释放、客户端收到连接不可用，再从原监听地址重新连接。核对同一配对 actor、Host 实例、会话代次、旧 TX 回执及原 Raw 游标，恢复后仅比较显式发起的新写入，并确认两个自有进程正常退出。四目标原生 Rust 作业复用该脚本。原始事件、程序摘要及进程日志保留在场景证据目录。
+
+CLI 授权或撤权后按操作 ID 读到 `authorization_changed` 终态，再打开设备或验证路由。授权切换时被拒绝的只读终态查询可继续等待，授权和撤权各提交一次。CI 失败时从 `rust-failures-<target>` 取回场景收据、命令结果与独立 Host 日志。
 
 ### IPv6 链路本地地址（NET-09）
 
