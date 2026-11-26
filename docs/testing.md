@@ -87,6 +87,8 @@ cargo fmt --all -- --check
 
 原生预检设置 `native_preflight=true` 和 `desktop_e2e=true`。`native_preflight_target` 可选择单个目标，`macos` 一次复验两种 macOS 架构，`windows-and-macos` 同时复验 Windows。各目标复用原生 E2E 并分别保留日志和收据，完整候选继续按四目标验收。
 
+`native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。每种投递入口单独启动探针，用系统对同一 F10 组合的按下和释放回调判定结果。收据另记已启用的会话观察器及其收到的标记事件数量。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
+
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。

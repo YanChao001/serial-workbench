@@ -50,7 +50,7 @@ on:
           - macos-offline-installer
         required: true
       native_preflight_target:
-        description: 原生预检目标。macos 执行两种 macOS 架构，windows-and-macos 加跑 Windows
+        description: 原生预检目标。macos 执行两种 macOS 架构，macos-input 只诊断系统热键
         type: choice
         default: x86_64-unknown-linux-gnu
         options:
@@ -60,6 +60,7 @@ on:
           - x86_64-apple-darwin
           - macos
           - windows-and-macos
+          - macos-input
         required: true
       native_preflight_chart:
         description: 原生预检只运行签名图表和实际窗口场景
@@ -631,7 +632,7 @@ jobs:
       conflicting_preflight: ${{ inputs.native_preflight }}
 
   native-preflight:
-    if: inputs.native_preflight && !inputs.runtime_preflight
+    if: inputs.native_preflight && !inputs.runtime_preflight && inputs.native_preflight_target != 'macos-input'
     name: 原生全场景预检（${{ matrix.target }}）
     strategy:
       fail-fast: false
@@ -646,6 +647,34 @@ jobs:
       native_file_dialogs: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
       chart_only: ${{ inputs.native_preflight_chart }}
       windows_reference_only: ${{ matrix.target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
+
+  macos-input-preflight:
+    if: inputs.native_preflight && !inputs.runtime_preflight && inputs.native_preflight_target == 'macos-input'
+    name: macOS 系统热键探针（${{ matrix.platform }}）
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: 验证 WindowServer 与登录会话的热键回调
+        shell: bash
+        run: |
+          helper="$RUNNER_TEMP/serial-workbench-global-send"
+          bash e2e/build-macos-global-send.sh "$helper"
+          node e2e/macos-global-send-probe.mjs "$helper" "$RUNNER_TEMP/macos-hotkey-input"
+      - name: 保留系统热键证据
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.1
+        with:
+          name: macos-hotkey-input-${{ matrix.platform }}
+          path: ${{ runner.temp }}/macos-hotkey-input
+          if-no-files-found: ignore
 
   desktop-e2e:
     if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight
@@ -681,6 +710,7 @@ jobs:
         bindings,
         desktop-e2e,
         native-preflight,
+        macos-input-preflight,
       ]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
@@ -698,7 +728,7 @@ jobs:
       - name: 确认原生预检结果
         if: inputs.native_preflight
         env:
-          NATIVE_PREFLIGHT_RESULT: ${{ needs.native-preflight.result }}
+          NATIVE_PREFLIGHT_RESULT: ${{ inputs.native_preflight_target == 'macos-input' && needs.macos-input-preflight.result || needs.native-preflight.result }}
         run: node --input-type=module -e "if (process.env.NATIVE_PREFLIGHT_RESULT !== 'success') process.exit(1)"
       - name: 记录预检范围
         if: inputs.native_preflight

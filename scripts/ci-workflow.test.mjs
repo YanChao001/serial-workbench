@@ -120,7 +120,11 @@ test("preflight shares the full native runner and retains successful source rece
   });
   assert.deepEqual(
     [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
-    [...Object.keys(JSON.parse(runnerMap[1])), ...Object.keys(groups)],
+    [
+      ...Object.keys(JSON.parse(runnerMap[1])),
+      ...Object.keys(groups),
+      "macos-input",
+    ],
   );
   assert.match(preflight, /fail-fast: false/);
   assert.match(
@@ -187,6 +191,28 @@ test("preflight shares the full native runner and retains successful source rece
   assert.match(job("quality-gate"), /NATIVE_PREFLIGHT_RESULT !== 'success'/);
 });
 
+test("macOS input preflight measures OS delivery without building a workbench", () => {
+  const input = job("macos-input-preflight");
+  assert.match(
+    input,
+    /if: inputs\.native_preflight && !inputs\.runtime_preflight && inputs\.native_preflight_target == 'macos-input'/,
+  );
+  assert.match(
+    job("native-preflight"),
+    /inputs\.native_preflight_target != 'macos-input'/,
+  );
+  assert.match(input, /platform: \[macos-15, macos-15-intel\]/);
+  assert.match(input, /bash e2e\/build-macos-global-send\.sh/);
+  assert.match(native, /bash e2e\/build-macos-global-send\.sh/);
+  assert.match(input, /node e2e\/macos-global-send-probe\.mjs/);
+  assert.match(input, /保留系统热键证据\n {8}if: always\(\)/);
+  assert.doesNotMatch(input, /cargo|rustup|pnpm|e2e:build|test:e2e/);
+  assert.match(
+    job("quality-gate"),
+    /target == 'macos-input' && needs\.macos-input-preflight\.result \|\| needs\.native-preflight\.result/,
+  );
+});
+
 test("the gate always gathers every job, and all jobs have a time budget", () => {
   assert.match(
     job("quality-gate"),
@@ -194,7 +220,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   assert.match(
     job("quality-gate"),
-    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,?\s*\]/,
+    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,\s*macos-input-preflight,?\s*\]/,
   );
   assert.match(
     job("quality-gate"),
