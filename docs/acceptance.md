@@ -256,6 +256,14 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 首方 `swb.builtin.automation` 0.1.1 在同一包登记 `swb.builtin.automation.sequence` 和原有定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对 0.1.1 归档和组件描述。Windows 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式安装继续专项验收。
 
+### 自动应答（PROTO-14）
+
+在「规则触发」载入自动应答示例。当前会话确实位于帧边界时，保留 `startAtBoundary: true`。规则使用 `{ "kind": "hex", "hex": "50 49 4E 47" }` 匹配完整请求，并通过 `effect` 的 `bytesBase64` 指定应答。`responseDelayMs` 接受 0–10,000 的整数毫秒，省略时为 0。预览核对请求 `50 49 4E 47`、应答 `50 4F 4E 47` 和 250 毫秒延时。正则或字段条件也可使用相同的延时发送效果。
+
+武装后先发一个等长的不匹配帧，再把匹配请求分成两段注入。核对单次武装仅回复一次，保存匹配原始字节范围和应答写入回执。等待延时期间的手工发送可以完成，实际应答以同一事务租约完整发送。另在等待中取消、造成原始缺口或改变线路配置，核对零应答且无残留租约。新一次武装使用新游标。
+
+用产品固定 Node 运行 `node --test scripts/rule-condition.test.mjs scripts/rule-trigger.test.mjs scripts/product-automation.test.mjs`，核对对齐、限值、取消和重新验权。运行 `pnpm test:ui e2e/browser/rule-trigger.spec.ts --workers=1` 检查宽窄界面、定义错误和提交参数。隔离 Host 的签名包首启与重启测试使用独立虚拟对端，核对真实 RX/TX 及并发手工发送的顺序。物理串口和正式发行另行验收。 [宽窄草稿](./ui-design.md#自动应答草稿proto-14)
+
 ### 规则触发（AUTO-07）
 
 工具窗先列目标会话，再给规则编辑器。定义错误紧随编辑器，成功验证后在操作按钮前展示条件、效果和时限。载入、保存、武装与停止共用工具窗小尺寸。宽窗按钮并排，窄窗自然换行。接纳、武装、取消与结果放在独立状态区，长操作标识和通知消息在区内换行。显式武装时将初始状态带入可见范围，键盘焦点留在原来的控件。命令效果使用当前 Host 目录的动作类型和目标。在宽窄窗都把未登记、不能从会话执行或应改用专用效果的提示紧贴定义字段。错误沿用主题语义色和现有字号，自然换行并关联键盘焦点。在可用命令点击武装后，沿用下方任务状态区反馈当前授权结果。编辑和保存仍可继续，窄窗按钮依旧按空间换行。

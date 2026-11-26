@@ -143,7 +143,7 @@ export type WorkbenchFixture = {
   automationObserveFailures: number;
   finishAutomationCancellation: () => void;
   automationRuleReplyHeld: "preflight" | "admission" | "cancelCheck" | null;
-  emitRuleOperation: () => number;
+  emitRuleOperation: (markMatched?: boolean) => number;
   emitCalendarPeer: () => number;
   calendarCheckHeld: boolean;
   releaseCalendarCheck: () => void;
@@ -1198,9 +1198,16 @@ export async function seedWorkbenchFixture(
       filePickerCalls: [],
       automationCursorPosition: "0",
       automationObserveFailures: 0,
-      emitRuleOperation() {
+      emitRuleOperation(markMatched = false) {
         if (!automationOperation?.actionId.endsWith(".rule"))
           throw new Error("Expected published rule");
+        if (markMatched && automationOperation.state === "running") {
+          automationOperation = {
+            ...automationOperation,
+            revision: String(BigInt(automationOperation.revision) + 1n),
+            progress: { completed: "1", total: "1", unit: "matches" },
+          };
+        }
         return broadcastOperation(automationOperation);
       },
       emitCalendarPeer() {
@@ -2079,7 +2086,8 @@ export async function seedWorkbenchFixture(
                   progress: waitingToArm
                     ? undefined
                     : {
-                        completed: "1",
+                        completed:
+                          rule && automation.state === "held" ? "0" : "1",
                         total: String(count),
                         unit: calendar
                           ? "slots"

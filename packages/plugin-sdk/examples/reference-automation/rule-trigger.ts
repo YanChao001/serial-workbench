@@ -8,6 +8,11 @@ import type {
   SourceRange,
 } from "@serial-workbench/plugin-sdk/node";
 import { endsRuleObservation, watchRuleCondition } from "./rule-observation.ts";
+import { formatHex } from "../../src/hex.ts";
+import {
+  parseRuleRequestHex,
+  parseRuleResponseDelay,
+} from "./rule-response.ts";
 import { decodeAutomationFrame } from "./session-response.ts";
 import {
   acquireTransaction,
@@ -24,7 +29,7 @@ export const ruleTriggerAction = "swb.reference.automation.rule";
 export const builtinRuleTriggerAction = "swb.builtin.automation.rule";
 
 type Effect =
-  | { kind: "send"; bytesBase64: string }
+  | { kind: "send"; bytesBase64: string; delayMs: number }
   | { kind: "notify"; message: string }
   | { kind: "action"; actionId: string; params: Record<string, QueryValue> };
 
@@ -50,10 +55,16 @@ function json(value: unknown, depth = 0): value is QueryValue {
 
 function parseEffect(value: unknown): Effect {
   if (!object(value)) throw new Error("Rule requires an explicit effect");
-  if (value.kind === "send" && Object.keys(value).length === 2)
+  if (
+    value.kind === "send" &&
+    Object.keys(value).every((key) =>
+      ["kind", "bytesBase64", "responseDelayMs"].includes(key),
+    )
+  )
     return {
       kind: "send",
       bytesBase64: decodeAutomationFrame(value.bytesBase64).toString("base64"),
+      delayMs: parseRuleResponseDelay(value.responseDelayMs),
     };
   if (
     value.kind === "notify" &&
@@ -144,6 +155,8 @@ function ruleScope(session: Session, condition: Record<string, QueryValue>) {
   const normalized = { ...condition };
   if (normalized.kind === "regex") normalized.ignoreCase ??= false;
   if (normalized.kind === "field") normalized.compare ??= "decoded";
+  if (normalized.kind === "hex")
+    normalized.hex = formatHex(parseRuleRequestHex(normalized.hex));
   return (
     "swb:rule:" +
     createHash("sha256")
@@ -207,6 +220,7 @@ async function dispatchRuleEffect(
   session: Session,
   effect: Effect,
   source: SourceRange,
+  wait: (ms: number, signal: AbortSignal) => Promise<void>,
 ): Promise<QueryValue> {
   if (
     effect.kind !== "send" &&
@@ -233,6 +247,12 @@ async function dispatchRuleEffect(
       operationId: operation.operationId,
       source,
     };
+  }
+  if (effect.delayMs > 0) {
+    await wait(effect.delayMs, task.signal);
+    task.signal.throwIfAborted();
+    if (!(await fencedTail(task, session, source.eventEnd)))
+      return { outcome: "source_changed" };
   }
   const leaseId = await acquireTransaction(task, session);
   try {
@@ -317,6 +337,7 @@ export function createRuleTrigger(
                 session,
                 plan.effect,
                 observed.source,
+                wait,
               );
             }
           }

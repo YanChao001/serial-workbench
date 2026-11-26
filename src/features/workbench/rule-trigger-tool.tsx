@@ -56,6 +56,18 @@ const example = JSON.stringify(
   2,
 );
 
+const responseExample = JSON.stringify(
+  {
+    version: 1,
+    observationMs: 30_000,
+    startAtBoundary: true,
+    condition: { kind: "hex", hex: "50 49 4E 47" },
+    effect: { kind: "send", bytesBase64: "UE9ORw==", responseDelayMs: 250 },
+  },
+  null,
+  2,
+);
+
 const reservedRuleActions = new Set<string>([
   ...ruleActionIds,
   "session.tx",
@@ -373,11 +385,7 @@ export function RuleTriggerTool({
       {validated ? (
         <p className="text-sm wrap-anywhere">
           {t("ruleTrigger.plan", {
-            condition: t(
-              validated.kind === "regex"
-                ? "ruleTrigger.regex"
-                : "ruleTrigger.field",
-            ),
+            condition: t(`ruleTrigger.${validated.kind}`),
             effect: t(
               validated.effect === "notify"
                 ? "ruleTrigger.notify"
@@ -389,6 +397,31 @@ export function RuleTriggerTool({
           })}
         </p>
       ) : null}
+      {validated?.effect === "send" && (
+        <dl className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+          {validated.requestHex && (
+            <>
+              <dt>{t("ruleTrigger.requestHex")}</dt>
+              <dd className="min-w-0 font-mono wrap-anywhere">
+                {validated.requestHex}
+              </dd>
+            </>
+          )}
+          <dt>{t("ruleTrigger.responseHex")}</dt>
+          <dd className="min-w-0 font-mono wrap-anywhere">
+            {validated.responseHex}
+          </dd>
+          <dt>{t("ruleTrigger.responseDelay")}</dt>
+          <dd className="tabular-nums">
+            {t("ruleTrigger.delayValue", { ms: validated.responseDelayMs })}
+          </dd>
+        </dl>
+      )}
+      {validated?.kind === "hex" && (
+        <p className="text-xs text-muted-foreground">
+          {t("ruleTrigger.hexBoundary")}
+        </p>
+      )}
       <div className="flex flex-wrap items-start gap-2 [&>button]:h-auto [&>button]:min-h-8 [&>button]:max-w-full [&>button]:whitespace-normal">
         <Button
           type="button"
@@ -398,6 +431,15 @@ export function RuleTriggerTool({
           disabled={busy || saving || Boolean(definition.trim())}
         >
           {t("commandSequence.example")}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setDefinition(responseExample)}
+          disabled={busy || saving || Boolean(definition.trim())}
+        >
+          {t("ruleTrigger.responseExample")}
         </Button>
         <Button
           type="button"
@@ -480,7 +522,9 @@ export function RuleTriggerTool({
               cancelling === observedId || shown?.state === "cancel_requested"
                 ? "repeatSend.cancelling"
                 : shown?.progress?.unit === "matches"
-                  ? "ruleTrigger.armed"
+                  ? shown.progress.completed === "1"
+                    ? "ruleTrigger.matched"
+                    : "ruleTrigger.armed"
                   : "ruleTrigger.preparing",
             )}
           </p>

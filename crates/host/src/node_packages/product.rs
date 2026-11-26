@@ -65,6 +65,10 @@ const AUTOMATION_0_1_4_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.4.zip");
 const AUTOMATION_0_1_4_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.4.json");
+const AUTOMATION_0_1_5_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.5.zip");
+const AUTOMATION_0_1_5_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.5.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
@@ -237,6 +241,11 @@ fn previous_packages() -> &'static [ProductPackage; 11] {
                 AUTOMATION_MARKER,
             ),
             ProductPackage::new(
+                AUTOMATION_0_1_5_DESCRIPTOR,
+                AUTOMATION_0_1_5_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
                 PREVIOUS_RFC2217_DESCRIPTOR,
                 PREVIOUS_RFC2217_ARCHIVE,
                 RFC2217_MARKER,
@@ -303,6 +312,7 @@ mod tests {
             recording_automation,
             assertion_automation,
             rule_automation,
+            calendar_automation,
             old_rfc2217,
         ] = previous_packages();
         check_predecessor_upgrade(old_fields, "0.1.0", "0.4.0");
@@ -310,11 +320,12 @@ mod tests {
         check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.5");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.5");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.5");
-        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.5");
-        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.5");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.6");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.6");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.6");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.6");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.6");
+        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.6");
         check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
     }
 

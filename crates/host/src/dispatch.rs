@@ -4124,6 +4124,85 @@ mod tests {
             "bundled_rule duplicate_arm_rejected=true source_bytes=6 confirmed_write_ack=true"
         );
 
+        let response_delay_ms = 1250;
+        peer.serving.store(true, Ordering::Release);
+        let previous_writes = peer.replies.lock().unwrap().len();
+        let cursor = host.inner.streams.current_cursor(&session).unwrap();
+        let definition = serde_json::json!({
+            "version": 1,
+            "startAtBoundary": true,
+            "observationMs": 10_000,
+            "condition": {"kind":"hex","hex":"50 49 4E 47"},
+            "effect": {"kind":"send","bytesBase64":STANDARD.encode(b"PONG"),"responseDelayMs":response_delay_ms},
+        });
+        let mut response = call(
+            &session,
+            "swb.builtin.automation.rule",
+            serde_json::json!({
+                "definition": definition.to_string(),
+                "startEventSeq": cursor.position.get().checked_add(1).unwrap().to_string(),
+            }),
+        );
+        response.execution_mode = Some(ExecutionMode::Independent);
+        let response = host.invoke(&actor, response).await.unwrap();
+        wait_armed(response.operation_id.clone(), "matches").await;
+        let observed_after = tokio::time::Instant::now();
+        // A non-matching fixed frame precedes a request split into two peer writes.
+        peer.incoming
+            .lock()
+            .unwrap()
+            .extend([b"SKIPPI".to_vec(), b"NG".to_vec()]);
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                let state = store.get(&actor, &response.operation_id).unwrap();
+                if state
+                    .progress
+                    .as_ref()
+                    .is_some_and(|p| p.unit == "matches" && p.completed.get() == 1)
+                {
+                    break;
+                }
+                assert!(!state.state.is_terminal(), "{state:?}");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let manual = host.invoke(&actor, call(
+            &session,
+            "session.tx",
+            serde_json::json!({"bytesBase64":STANDARD.encode(b"MANUAL"),"writeWaitMs":"1000"}),
+        )).await.unwrap();
+        assert!(
+            matches!(settled(manual).await, ActionResult::Tx(tx) if tx.outcome == TxOutcome::Accepted)
+        );
+        let reply = read_automation_report(settled(response).await);
+        assert_eq!(reply["outcome"], "written", "{reply}");
+        assert_eq!(
+            reply["source"]["sessionEpoch"],
+            session.session_epoch.as_ref().unwrap().to_string()
+        );
+        let start = reply["source"]["byteStart"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let end = reply["source"]["byteEnd"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        assert_eq!(end - start, 4);
+        assert!(observed_after.elapsed() >= Duration::from_millis(response_delay_ms));
+        assert_eq!(
+            &peer.replies.lock().unwrap()[previous_writes..],
+            &[b"MANUAL".to_vec(), b"PONG".to_vec()]
+        );
+        peer.serving.store(false, Ordering::Release);
+        eprintln!(
+            "bundled_auto_response delay_ms={response_delay_ms} fixed_request=PING peer_writes=MANUAL,PONG"
+        );
+
         let calendar = "swb.builtin.automation.calendar";
         let session_revision = host.devices().snapshot(&session).await.unwrap().revision;
         let now = chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now());
