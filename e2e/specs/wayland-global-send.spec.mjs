@@ -11,6 +11,7 @@ import { language, openDeepLink, ready } from "../helpers.mjs";
 import {
   captureGlobalSendKey,
   closeShortcutHelp,
+  disableGlobalSend,
   editGlobalSend,
   globalShortcutKey,
   openVirtual,
@@ -107,6 +108,42 @@ function checkRaw(page, bytes) {
   assert.deepEqual(tx[0].payload.unknownRanges, []);
   assert.deepEqual(Buffer.from(tx[0].payload.bytesBase64, "base64"), bytes);
   assert.deepEqual(rawRxBytes(page), bytes);
+}
+
+async function sendFromPeer(receipt, read, bytes) {
+  await withHotkey(hotkey, async () => {
+    await browser.waitUntil(
+      async () => {
+        receipt.raw = await read();
+        return (
+          receipt.raw.events.some(({ kind }) => kind === "tx") &&
+          rawRxBytes(receipt.raw).length >= bytes.length
+        );
+      },
+      { timeoutMsg: "The Wayland hotkey produced no Virtual Echo TX and RX" },
+    );
+    await delay(900);
+  });
+  receipt.raw = await read();
+  checkRaw(receipt.raw, bytes);
+}
+
+async function observeRepeatBinding(receipt, readFocus, bytes) {
+  const comparison = (receipt.repeatBinding = {});
+  try {
+    await disableGlobalSend();
+    comparison.componentBefore = await kdeComponent();
+    await editGlobalSend();
+    await captureGlobalSendKey(hotkey);
+    await $("#shortcut-capture").waitForExist({ reverse: true });
+    comparison.binding = await (await globalShortcutKey()).getText();
+    assert.equal(comparison.binding, receipt.binding);
+    await closeShortcutHelp();
+    assert.deepEqual(readFocus(), receipt.focusBefore);
+    await sendFromPeer(comparison, await globalSendRawReader(), bytes);
+  } catch (error) {
+    comparison.failure = error.message;
+  }
 }
 
 async function assertNoTransmit(read, key = hotkey) {
@@ -342,23 +379,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       failures.push(`Peer input control: ${error.message}`);
     }
     try {
-      await withHotkey(hotkey, async () => {
-        await browser.waitUntil(
-          async () => {
-            receipt.raw = await read();
-            return (
-              receipt.raw.events.some(({ kind }) => kind === "tx") &&
-              rawRxBytes(receipt.raw).length >= bytes.length
-            );
-          },
-          {
-            timeoutMsg: "The Wayland hotkey produced no Virtual Echo TX and RX",
-          },
-        );
-        await delay(900);
-      });
-      receipt.raw = await read();
-      checkRaw(receipt.raw, bytes);
+      await sendFromPeer(receipt, read, bytes);
       // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
       await draft.setValue("");
       await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
@@ -367,6 +388,9 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
     } catch (error) {
       failures.push(`Initial dispatch: ${error.message}`);
+      if (receipt.raw?.events.length === 0 && receipt.controlKeys) {
+        await observeRepeatBinding(receipt, readFocus, bytes);
+      }
     }
     try {
       assert.deepEqual(readFocus(), receipt.focusBefore);
