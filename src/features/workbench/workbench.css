@@ -258,6 +258,50 @@
   overflow: hidden;
   border-radius: var(--radius);
 }
+.workbench-remap-output {
+  min-width: 0;
+}
+.workbench-remap-result + .workbench-remap-result {
+  margin-block-start: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--border);
+}
+.workbench-remap-result-header,
+.workbench-compose-mapping {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--workbench-field-gap);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.workbench-remap-apply {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+.workbench-remap-result-header {
+  margin-block-end: 0.25rem;
+  font-family: var(--font-sans);
+}
+.workbench-remap-result-header > span,
+.workbench-remap-status {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: var(--text-xs)/1.4 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.workbench-remap-apply > button {
+  margin-inline-start: auto;
+}
+.workbench-remap-status.workbench-gap {
+  margin-block: 0.5rem;
+  padding-block: 0.25rem;
+}
 .workbench-stream-log {
   min-height: 0;
   overflow: auto;
@@ -778,8 +822,6 @@
 .workbench-send-receipt {
   font-size: 0.75rem;
   overflow-wrap: anywhere;
-  max-height: 8rem;
-  overflow: auto;
 }
 .workbench-workspace-menu {
   min-width: min(17rem, calc(100vw - 2rem));
@@ -1689,6 +1731,14 @@
   }
 }
 @container serial-workbench (max-width:590px) {
+  .workbench-receive-toolbar[data-mapping-available] {
+    height: auto;
+    min-height: var(--app-chrome-height);
+    flex-wrap: wrap;
+  }
+  .workbench-receive-toolbar[data-mapping-available] .workbench-toolbar-spacer {
+    display: none;
+  }
   .workbench-connection {
     flex-wrap: nowrap;
     gap: 0.375rem;
@@ -1845,6 +1895,20 @@
 }
 .workbench-form-grid-pair {
   --workbench-grid-field-min: 13rem;
+}
+.workbench-remap-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: var(--workbench-field-gap);
+}
+.workbench-remap-row > .ui-button {
+  min-height: var(--workbench-control-size);
+}
+@container workbench-tool (min-width: 29rem) {
+  .workbench-remap-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  }
 }
 .workbench-form-grid > *,
 .workbench-dialog label {

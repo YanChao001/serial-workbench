@@ -110,8 +110,11 @@ export type WorkbenchFixture = {
   configureAllowed: boolean;
   deniedReplayReads: string[];
   deniedRawSessions: string[];
+  rawCursorGate?: Promise<void>;
+  releaseRawCursor?: () => void;
   sendHistoryReadable: boolean;
   manualSendRevision: string;
+  manualSendAcceptedBytes?: number;
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
@@ -2588,6 +2591,7 @@ export async function seedWorkbenchFixture(
                   );
                   const start = String(end - length);
                   const limit = String(end);
+                  const accepted = fixture.manualSendAcceptedBytes ?? length;
                   const operation: Operation = {
                     ...sentOperation,
                     target,
@@ -2604,10 +2608,24 @@ export async function seedWorkbenchFixture(
                         bytesBase64,
                         byteStart: start,
                         byteEnd: limit,
-                        acceptedRanges: [{ start: "0", end: String(length) }],
+                        acceptedRanges: accepted
+                          ? [{ start: "0", end: String(accepted) }]
+                          : [],
                         unknownRanges: [],
-                        outcome: "accepted",
+                        outcome:
+                          accepted === length
+                            ? "accepted"
+                            : accepted === 0
+                              ? "rejected"
+                              : "partial",
                         peerAcknowledged: false,
+                        ...(accepted < length && {
+                          backendError: {
+                            code: "PARTIAL_WRITE",
+                            message: "The fixture backend accepted a prefix",
+                            retryable: false,
+                          },
+                        }),
                       },
                     },
                   };
@@ -3422,7 +3440,8 @@ export async function seedWorkbenchFixture(
                   },
                 };
               }
-              if (query.actionId === "stream.cursor")
+              if (query.actionId === "stream.cursor") {
+                if (fixture.rawCursorGate) await fixture.rawCursorGate;
                 return {
                   ok: true,
                   result: {
@@ -3448,6 +3467,7 @@ export async function seedWorkbenchFixture(
                     },
                   },
                 };
+              }
               if (query.actionId === "device.refresh")
                 return {
                   ok: true,

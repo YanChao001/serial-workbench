@@ -35494,6 +35494,57 @@
             "enum": ["create_new", "append", "replace"],
             "type": "string"
           },
+          "CharacterRemapBackspace": {
+            "enum": ["keep", "remove", "apply"],
+            "type": "string"
+          },
+          "CharacterRemapCase": {
+            "enum": ["keep", "lower", "upper"],
+            "type": "string"
+          },
+          "CharacterRemapNewline": {
+            "enum": ["keep", "cr", "lf", "crlf"],
+            "type": "string"
+          },
+          "CharacterRemapReplacement": {
+            "additionalProperties": false,
+            "properties": {
+              "replacement": {
+                "maxLength": 32,
+                "type": "string"
+              },
+              "source": {
+                "maxLength": 1,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["source", "replacement"],
+            "type": "object"
+          },
+          "CharacterRemapRules": {
+            "additionalProperties": false,
+            "properties": {
+              "backspace": {
+                "$ref": "#/definitions/CharacterRemapBackspace"
+              },
+              "letterCase": {
+                "$ref": "#/definitions/CharacterRemapCase"
+              },
+              "newline": {
+                "$ref": "#/definitions/CharacterRemapNewline"
+              },
+              "replacements": {
+                "items": {
+                  "$ref": "#/definitions/CharacterRemapReplacement"
+                },
+                "maxItems": 16,
+                "type": "array"
+              }
+            },
+            "required": ["newline", "backspace", "letterCase", "replacements"],
+            "type": "object"
+          },
           "ClientEffectAction": {
             "oneOf": [
               {
@@ -36677,6 +36728,9 @@
               "sourceInputRef": {
                 "$ref": "#/definitions/ObjectRef"
               },
+              "sourceText": {
+                "$ref": "#/definitions/TxSourceText"
+              },
               "transforms": {
                 "items": {
                   "$ref": "#/definitions/TransformReference"
@@ -36688,6 +36742,48 @@
               }
             },
             "required": ["bytesBase64", "writeWaitMs"],
+            "type": "object"
+          },
+          "TxSourceText": {
+            "additionalProperties": false,
+            "properties": {
+              "encoding": {
+                "$ref": "#/definitions/TextEncoding"
+              },
+              "mapping": {
+                "$ref": "#/definitions/CharacterRemapRules"
+              },
+              "utf8Base64": {
+                "anyOf": [
+                  {
+                    "const": ""
+                  },
+                  {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/Bytes"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "maxLength": 174760,
+                            "type": "string"
+                          },
+                          {
+                            "maxLength": 174764,
+                            "pattern": "=$",
+                            "type": "string"
+                          }
+                        ],
+                        "minLength": 4,
+                        "type": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": ["utf8Base64", "encoding", "mapping"],
             "type": "object"
           },
           "U64": {
@@ -39269,6 +39365,57 @@
             "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
             "type": "string"
           },
+          "CharacterRemapBackspace": {
+            "enum": ["keep", "remove", "apply"],
+            "type": "string"
+          },
+          "CharacterRemapCase": {
+            "enum": ["keep", "lower", "upper"],
+            "type": "string"
+          },
+          "CharacterRemapNewline": {
+            "enum": ["keep", "cr", "lf", "crlf"],
+            "type": "string"
+          },
+          "CharacterRemapReplacement": {
+            "additionalProperties": false,
+            "properties": {
+              "replacement": {
+                "maxLength": 32,
+                "type": "string"
+              },
+              "source": {
+                "maxLength": 1,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": ["source", "replacement"],
+            "type": "object"
+          },
+          "CharacterRemapRules": {
+            "additionalProperties": false,
+            "properties": {
+              "backspace": {
+                "$ref": "#/definitions/CharacterRemapBackspace"
+              },
+              "letterCase": {
+                "$ref": "#/definitions/CharacterRemapCase"
+              },
+              "newline": {
+                "$ref": "#/definitions/CharacterRemapNewline"
+              },
+              "replacements": {
+                "items": {
+                  "$ref": "#/definitions/CharacterRemapReplacement"
+                },
+                "maxItems": 16,
+                "type": "array"
+              }
+            },
+            "required": ["newline", "backspace", "letterCase", "replacements"],
+            "type": "object"
+          },
           "Digest": {
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
@@ -39307,6 +39454,20 @@
             "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
+          "TextEncoding": {
+            "enum": [
+              "utf-8",
+              "gbk",
+              "gb18030",
+              "big5",
+              "shift-jis",
+              "latin1",
+              "ascii",
+              "utf-16le",
+              "utf-16be"
+            ],
+            "type": "string"
+          },
           "TransformReference": {
             "additionalProperties": false,
             "properties": {
@@ -39334,6 +39495,48 @@
               }
             },
             "required": ["earliestUnixMs", "latestUnixMs"],
+            "type": "object"
+          },
+          "TxSourceText": {
+            "additionalProperties": false,
+            "properties": {
+              "encoding": {
+                "$ref": "#/definitions/TextEncoding"
+              },
+              "mapping": {
+                "$ref": "#/definitions/CharacterRemapRules"
+              },
+              "utf8Base64": {
+                "anyOf": [
+                  {
+                    "const": ""
+                  },
+                  {
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/Bytes"
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "maxLength": 174760,
+                            "type": "string"
+                          },
+                          {
+                            "maxLength": 174764,
+                            "pattern": "=$",
+                            "type": "string"
+                          }
+                        ],
+                        "minLength": 4,
+                        "type": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": ["utf8Base64", "encoding", "mapping"],
             "type": "object"
           },
           "U64": {
@@ -39372,6 +39575,9 @@
           },
           "sourceInputRef": {
             "$ref": "#/definitions/ObjectRef"
+          },
+          "sourceText": {
+            "$ref": "#/definitions/TxSourceText"
           },
           "transforms": {
             "items": {

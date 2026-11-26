@@ -434,6 +434,7 @@ export const labels: WorkbenchLabels = {
   requestedBytes: "Requested bytes",
   acceptedBytes: "Bytes accepted by backend",
   unknownBytes: "Bytes with unknown outcome",
+  unacceptedBytes: "Bytes not accepted by backend",
   peerConfirmed: "Device acknowledged",
   peerUnconfirmed: "No device acknowledgement provided",
   connected: "Connected",

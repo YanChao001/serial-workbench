@@ -19,6 +19,7 @@ type LongRecordHighlight = {
 
 export function LongStreamRecordView({
   record,
+  initialOffset,
   labels,
   mode,
   encoding,
@@ -32,11 +33,18 @@ export function LongStreamRecordView({
   mode: LongRecordMode;
   encoding: TextEncoding;
   hexFormat: HexFormat;
+  initialOffset?: bigint;
   receipt?: TxReceipt;
   hexSource?: string;
   highlight?: LongRecordHighlight;
 }) {
-  const [opened, setOpened] = useState(false);
+  const initialPage =
+    initialOffset !== undefined &&
+    initialOffset >= record.offset &&
+    initialOffset < record.end
+      ? Number((initialOffset - record.offset) / BigInt(LONG_RECORD_PAGE_BYTES))
+      : undefined;
+  const [opened, setOpened] = useState(initialPage !== undefined);
   const length = record.end - record.offset;
   const declared = record.message
     ? BigInt(record.message.messageLength)
@@ -47,6 +55,7 @@ export function LongStreamRecordView({
   return (
     <details
       className="workbench-long-record"
+      open={opened}
       onToggle={(event) => setOpened(event.currentTarget.open)}
     >
       <summary>
@@ -60,6 +69,7 @@ export function LongStreamRecordView({
       {opened && (
         <LongRecordPage
           record={record}
+          initialPage={initialPage ?? 0}
           labels={labels}
           mode={mode}
           encoding={encoding}
@@ -74,6 +84,7 @@ export function LongStreamRecordView({
 
 function LongRecordPage({
   record,
+  initialPage,
   labels,
   mode,
   encoding,
@@ -88,8 +99,9 @@ function LongRecordPage({
   hexFormat: HexFormat;
   hexSource?: string;
   highlight?: LongRecordHighlight;
+  initialPage: number;
 }) {
-  const [requested, setRequested] = useState(0);
+  const [requested, setRequested] = useState(initialPage);
   const pageCount = Math.max(
     1,
     Math.ceil(Number(record.end - record.offset) / LONG_RECORD_PAGE_BYTES),

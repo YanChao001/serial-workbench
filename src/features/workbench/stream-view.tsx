@@ -51,6 +51,12 @@ import {
 } from "@/lib/text-encoding";
 import { detectTextEncoding } from "@/lib/encoding-detection";
 import { receiveEncodingSample } from "./encoding-sample";
+import type { CharacterRemapRules } from "./character-remap";
+import {
+  mappedReceiveEncodingSample,
+  projectMappedReceive,
+} from "./mapped-receive";
+import { MappedReceiveView } from "./mapped-receive-view";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { WorkbenchNotice } from "./workbench-notice";
 import { useStreamNotices } from "./stream-notices";
@@ -108,6 +114,7 @@ import {
 import {
   chartSelectionRows,
   retainedChartSelection,
+  rxItemAtOffset,
   sourceSelectionFromDisplay,
   streamHexEventSource,
   type ChartSourceSelection,
@@ -150,6 +157,7 @@ import {
   DEFAULT_RECEIVE_HISTORY,
   RECEIVE_IDLE_MS,
   ReceiveHistoryBuffer,
+  historyAfter,
   type ReceiveHistory,
   type ReceiveIdleMs,
   type HistoryStreamItem,
@@ -160,6 +168,11 @@ function atStreamEnd(element: HTMLElement) {
 }
 
 const AnsiScreen = lazy(() => import("./ansi-screen"));
+
+type ReceiveSnapshot = {
+  display: readonly HistoryStreamItem[];
+  source: readonly StreamItem[];
+};
 
 export type StreamViewProps = {
   keyboard?: AnsiKeyboardTarget;
@@ -178,6 +191,7 @@ export type StreamViewProps = {
   presentationLabels?: StreamPresentationLabels;
   replay?: boolean;
   allowTerminalLinks?: boolean;
+  mappedReceive?: { rules: CharacterRemapRules; label: string };
   initialMode?: "text" | "hex";
   items: readonly HistoryStreamItem[];
   labels: WorkbenchLabels;
@@ -223,6 +237,7 @@ export function StreamView({
   presentationLabels,
   replay = false,
   allowTerminalLinks = false,
+  mappedReceive,
   onOpenCapture,
   onOpenActivity,
   onClearView,
@@ -256,9 +271,15 @@ export function StreamView({
   const [locationTarget, setLocationTarget] = useState<{
     source: readonly StreamItem[];
     itemIndex: number;
+    sourceOffset?: bigint;
   }>();
   const [split, setSplit] = useState(false);
-  const [showAnsi, setShowAnsi] = useState(false);
+  const [ansiSelected, setShowAnsi] = useState(false);
+  const receiveRules = mappedReceive?.rules;
+  const [unmappedRules, setUnmappedRules] = useState<CharacterRemapRules>();
+  const showMapped =
+    receiveRules !== undefined && receiveRules !== unmappedRules && !error;
+  const showAnsi = ansiSelected && !showMapped;
   const [displayOpen, setDisplayOpen] = useState(false);
   const displayTrigger = useRef<HTMLButtonElement>(null);
   const openingHighlights = useRef(false);
@@ -296,7 +317,7 @@ export function StreamView({
     first?: number;
     last?: number;
     ownsFreeze?: boolean;
-    previousFreeze?: readonly HistoryStreamItem[];
+    previousFreeze?: ReceiveSnapshot;
     unavailable?: boolean;
   }>();
   const [numberSample, setNumberSample] = useState<StreamNumberSample>();
@@ -322,9 +343,9 @@ export function StreamView({
   const [timeMode, setTimeMode] = useState<
     "absolute" | "relative" | "interval"
   >("absolute");
-  const [frozen, setFrozen] = useState<readonly HistoryStreamItem[] | null>(
-    null,
-  );
+  const [freeze, setFreeze] = useState<ReceiveSnapshot | null>(null);
+  const frozen = freeze?.display ?? null;
+  const rawItems = chartSourceItems ?? items;
   const [reviewed, setReviewed] = useState<ReadonlySet<string> | null>(null);
   const [query, setQuery] = useState("");
   const [queryMode, setQueryMode] = useState<"text" | "hex">("text");
@@ -342,6 +363,7 @@ export function StreamView({
   const [searched, setSearched] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const rawSearchOpen = searchOpen && !showMapped;
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [regex, setRegex] = useState(false);
@@ -422,8 +444,8 @@ export function StreamView({
           selected.removeAllRanges();
         chartCursor.current = undefined;
         if (chartRevealResult.ownsFreeze)
-          setFrozen((current) =>
-            current === previous
+          setFreeze((current) =>
+            current?.display === previous
               ? (chartRevealResult.previousFreeze ?? null)
               : current,
           );
@@ -454,10 +476,11 @@ export function StreamView({
       snapshot,
       ...bounds,
       ownsFreeze: snapshot !== frozen,
-      previousFreeze: snapshot !== frozen ? (frozen ?? undefined) : undefined,
+      previousFreeze: snapshot !== frozen ? (freeze ?? undefined) : undefined,
     });
-    setFrozen(snapshot);
+    if (snapshot !== frozen) setFreeze({ display: snapshot, source: rawItems });
     setSearchOpen(false);
+    setUnmappedRules(receiveRules);
     setShowAnsi(false);
     setSplit(false);
     setMode("hex");
@@ -467,9 +490,12 @@ export function StreamView({
     chartReveal,
     chartRevealResult,
     chartSourceItems,
+    freeze,
     frozen,
     items,
+    rawItems,
     onReceiveModeChange,
+    receiveRules,
   ]);
   useEffect(() => {
     const previous = chartRevealResult?.snapshot;
@@ -490,14 +516,19 @@ export function StreamView({
   const historyMaxRecords = historyLimits?.maxRecords;
   const historyMaxBytes = historyLimits?.maxBytes;
   useEffect(() => {
-    setFrozen((snapshot) => {
+    setFreeze((snapshot) => {
       if (!snapshot) return snapshot;
       const history = new ReceiveHistoryBuffer({
         maxRecords: historyMaxRecords ?? DEFAULT_RECEIVE_HISTORY.maxRecords,
         maxBytes: historyMaxBytes ?? DEFAULT_RECEIVE_HISTORY.maxBytes,
       });
-      history.append(snapshot);
-      return history.trimmed ? history.items() : snapshot;
+      history.append(snapshot.display);
+      return history.trimmed
+        ? {
+            display: history.items(),
+            source: historyAfter(snapshot.source, history.removed),
+          }
+        : snapshot;
     });
   }, [historyMaxRecords, historyMaxBytes]);
   useEffect(() => {
@@ -546,20 +577,30 @@ export function StreamView({
     setSearched(false);
     setMatchVisibility("all");
     setLocationTarget(undefined);
-    setFrozen(null);
+    setFreeze(null);
     setReviewed(null);
   };
   const projected = useMemo(() => projectStreamItems(displayed), [displayed]);
   const detectEncoding = encoding === null || encodingMenuOpen;
+  const mappedSource = freeze?.source ?? rawItems;
   const encodingSample = useMemo(
-    () => (detectEncoding ? receiveEncodingSample(displayed) : ""),
-    [detectEncoding, displayed],
+    () =>
+      !detectEncoding
+        ? ""
+        : showMapped
+          ? mappedReceiveEncodingSample(mappedSource)
+          : receiveEncodingSample(displayed),
+    [detectEncoding, displayed, mappedSource, showMapped],
   );
   const detection = useMemo(
     () => (detectEncoding ? detectTextEncoding(encodingSample) : undefined),
     [detectEncoding, encodingSample],
   );
   const receiveCodec = encoding ?? detection?.encoding ?? "utf-8";
+  const mappedProjection = useMemo(() => {
+    if (!showMapped || !receiveRules) return;
+    return projectMappedReceive(mappedSource, receiveCodec, receiveRules);
+  }, [mappedSource, receiveCodec, receiveRules, showMapped]);
   const sendCodec = sendEncoding ?? terminalSettings?.sendEncoding ?? "utf-8";
   const searchKey = JSON.stringify([
     query,
@@ -840,8 +881,10 @@ export function StreamView({
         : undefined,
     [showRecordNumbers, locationOpen, rows, projected, displayed],
   );
-  const locatedItem =
-    locationTarget?.source === displayed ? locationTarget.itemIndex : undefined;
+  const location =
+    locationTarget?.source === displayed ? locationTarget : undefined;
+  const locatedItem = location?.itemIndex;
+  const locatedOffset = location?.sourceOffset;
   function locateRecord(
     kind: StreamLocationKind,
     input: string,
@@ -853,11 +896,38 @@ export function StreamView({
     );
     if (result.kind === "found") {
       // Clear the display filter so a retained target can be reached.
+      setUnmappedRules(receiveRules);
       setSearchOpen(false);
-      setFrozen((current) => current ?? displayed);
+      setFreeze(
+        (current) => current ?? { display: displayed, source: rawItems },
+      );
       setLocationTarget({ source: displayed, itemIndex: result.row.itemIndex });
     }
     return result;
+  }
+  function selectOriginalMode(value: TerminalMode) {
+    setUnmappedRules(receiveRules);
+    setShowAnsi(false);
+    setSplit(false);
+    setMode(value);
+    onReceiveModeChange?.(value);
+  }
+  function revealMappedSource(index: number, start: string) {
+    const item = mappedSource[index];
+    if (item?.kind !== "source" || item.event.kind !== "rx") return;
+    const event = item.event;
+    const sourceOffset = BigInt(start);
+    const itemIndex = rxItemAtOffset(displayed, event, sourceOffset, false);
+    if (itemIndex < 0) {
+      toast.info(labels.selectionUnavailable);
+      return;
+    }
+    selectOriginalMode("hex");
+    setSearchOpen(false);
+    setMatchVisibility("all");
+    setFreeze((current) => current ?? { display: displayed, source: rawItems });
+    setLocationTarget({ source: displayed, itemIndex, sourceOffset });
+    viewport.current?.focus({ preventScroll: true });
   }
   const copyLocation = useCallback(
     (reference: string) => {
@@ -890,10 +960,10 @@ export function StreamView({
     };
     frame = requestAnimationFrame(center);
     return () => cancelAnimationFrame(frame);
-  }, [locatedItem, locationTarget, searchOpen, showAnsi]);
+  }, [locatedItem, locationTarget, searchOpen, showAnsi, showMapped]);
   useEffect(() => {
-    if (searchOpen) searchInput.current?.focus();
-  }, [searchOpen]);
+    if (rawSearchOpen) searchInput.current?.focus();
+  }, [rawSearchOpen]);
   const followToEnd = useCallback(() => {
     const element = viewport.current;
     if (!followingActive.current || !element || element.clientHeight === 0)
@@ -918,7 +988,7 @@ export function StreamView({
   useLayoutEffect(() => {
     followingActive.current = following;
     if (following && !showAnsi) followToEnd();
-  }, [displayed, following, followToEnd, showAnsi]);
+  }, [displayed, following, followToEnd, showAnsi, showMapped]);
   useEffect(() => {
     if (showAnsi || !following || !viewport.current || !content.current) return;
     let frame: number | undefined;
@@ -961,7 +1031,9 @@ export function StreamView({
       searching.current?.abort();
       const controller = new AbortController();
       searching.current = controller;
-      setFrozen((current) => current ?? displayed);
+      setFreeze(
+        (current) => current ?? { display: displayed, source: rawItems },
+      );
       setInvalid(false);
       setSearchError(undefined);
       setSearchRows(undefined);
@@ -1018,6 +1090,7 @@ export function StreamView({
     },
     [
       displayed,
+      rawItems,
       query,
       queryMode,
       caseSensitive,
@@ -1038,17 +1111,17 @@ export function StreamView({
     setSearchCount(0);
     setSearchRows(undefined);
     setSearched(false);
-    if (!searchOpen || !query) return;
+    if (!rawSearchOpen || !query) return;
     const timer = setTimeout(() => void latestFind.current(), 120);
     return () => {
       clearTimeout(timer);
       searching.current?.abort();
     };
-  }, [searchKey, searchOpen, query]);
+  }, [searchKey, rawSearchOpen, query]);
   useEffect(() => () => searching.current?.abort(), []);
   const visibleRows = useMemo(
     () =>
-      searchOpen
+      rawSearchOpen
         ? filterStreamRows(
             rows,
             searchDirection,
@@ -1056,7 +1129,13 @@ export function StreamView({
             currentSearch?.ranges,
           )
         : rows,
-    [rows, searchOpen, searchDirection, matchVisibility, currentSearch?.ranges],
+    [
+      rows,
+      rawSearchOpen,
+      searchDirection,
+      matchVisibility,
+      currentSearch?.ranges,
+    ],
   );
   const highlightEnabled =
     !showAnsi &&
@@ -1313,6 +1392,12 @@ export function StreamView({
             {row.longRecord ? (
               <LongStreamRecordView
                 key={row.longRecord.key}
+                initialOffset={
+                  locatedItem !== undefined &&
+                  row.itemIndexes.includes(locatedItem)
+                    ? locatedOffset
+                    : undefined
+                }
                 record={row.longRecord}
                 labels={labels}
                 mode={mode}
@@ -1368,6 +1453,7 @@ export function StreamView({
       showRecordNumbers,
       locations,
       locatedItem,
+      locatedOffset,
       copyLocation,
       labels,
       replay,
@@ -1396,6 +1482,7 @@ export function StreamView({
     >
       <div
         className="workbench-toolbar workbench-receive-toolbar"
+        data-mapping-available={Boolean(mappedReceive) || undefined}
         data-surface="transparent"
       >
         <h2 className="sr-only">{labels.terminal}</h2>
@@ -1404,14 +1491,16 @@ export function StreamView({
           size="sm"
           variant="outline"
           spacing={0}
-          value={showAnsi ? "" : mode}
+          value={showMapped ? "mapped" : showAnsi ? "" : mode}
           aria-label={labels.terminal}
           onValueChange={(value) => {
-            if (value !== "text" && value !== "hex") return;
-            setShowAnsi(false);
-            setSplit(false);
-            setMode(value);
-            onReceiveModeChange?.(value);
+            if (value === "mapped") {
+              setUnmappedRules(undefined);
+              setShowAnsi(false);
+              setSearchOpen(false);
+            } else if (value === "text" || value === "hex") {
+              selectOriginalMode(value);
+            }
           }}
         >
           {(["text", "hex"] as const).map((value) => (
@@ -1419,6 +1508,11 @@ export function StreamView({
               {labels[value]}
             </ToggleGroupItem>
           ))}
+          {mappedReceive && !error && (
+            <ToggleGroupItem value="mapped">
+              {mappedReceive.label}
+            </ToggleGroupItem>
+          )}
         </ToggleGroup>
         <TextEncodingSelect
           value={encoding}
@@ -1444,7 +1538,10 @@ export function StreamView({
           onShowNumbers={setShowRecordNumbers}
           onOpenChange={(open) => {
             setLocationOpen(open);
-            if (open) setShowAnsi(false);
+            if (open) {
+              setUnmappedRules(receiveRules);
+              setShowAnsi(false);
+            }
           }}
           onLocate={locateRecord}
           onCopy={copyLocation}
@@ -1460,11 +1557,12 @@ export function StreamView({
         <WorkbenchIconButton
           ref={searchTrigger}
           label={labels.search}
-          aria-expanded={searchOpen}
+          aria-expanded={rawSearchOpen}
           aria-controls={`${id}-search`}
           onClick={() => {
+            setUnmappedRules(receiveRules);
             setShowAnsi(false);
-            setSearchOpen(!searchOpen);
+            setSearchOpen(showMapped || !searchOpen);
           }}
         >
           <Search aria-hidden="true" />
@@ -1477,7 +1575,7 @@ export function StreamView({
             found.current = undefined;
             if (frozen) resume();
             else {
-              setFrozen([...items]);
+              setFreeze({ display: [...items], source: rawItems });
               setReviewed(null);
             }
             setMatch(null);
@@ -1499,7 +1597,7 @@ export function StreamView({
             <FileText aria-hidden="true" />
           </WorkbenchIconButton>
         )}
-        {!showAnsi && mode !== "text" && (
+        {!showAnsi && !showMapped && mode !== "text" && (
           <StreamCopyPopover
             readSelection={() =>
               readStreamHexSelection(viewport.current, hexFormat)
@@ -1516,7 +1614,7 @@ export function StreamView({
             labels={labels}
           />
         )}
-        {!showAnsi && mode !== "text" && onChartSelection ? (
+        {!showAnsi && !showMapped && mode !== "text" && onChartSelection ? (
           <WorkbenchIconButton
             label={labels.chartReceiveSelection}
             onPointerDownCapture={() => {
@@ -1545,7 +1643,7 @@ export function StreamView({
             <ChartLine aria-hidden="true" />
           </WorkbenchIconButton>
         ) : null}
-        {!showAnsi && mode !== "text" && (
+        {!showAnsi && !showMapped && mode !== "text" && (
           <Popover
             onOpenChange={(open) => {
               if (!open) {
@@ -1656,8 +1754,9 @@ export function StreamView({
               variant="outline"
               aria-pressed={!showAnsi && split}
               onClick={() => {
+                setUnmappedRules(receiveRules);
                 setShowAnsi(false);
-                setSplit(showAnsi || !split);
+                setSplit(showMapped || showAnsi || !split);
               }}
             >
               {labels.split}
@@ -1667,6 +1766,7 @@ export function StreamView({
               variant="outline"
               aria-pressed={showAnsi}
               onClick={() => {
+                setUnmappedRules(receiveRules);
                 setShowAnsi(!showAnsi);
                 if (!showAnsi) {
                   setSearchOpen(false);
@@ -1898,7 +1998,7 @@ export function StreamView({
           {labels.chartReceiveUnavailable}
         </p>
       ) : null}
-      {searchOpen && (
+      {rawSearchOpen && (
         <form
           id={`${id}-search`}
           className="workbench-toolbar workbench-stream-search"
@@ -2076,8 +2176,8 @@ export function StreamView({
           labels={labels}
           receiveEncoding={receiveCodec}
           sendEncoding={sendCodec}
-          sender={replay || error ? undefined : contextSender}
-          sourceAvailable={!error}
+          sender={replay || error || showMapped ? undefined : contextSender}
+          sourceAvailable={!error && !showMapped}
           read={readContext}
           retained={readContextSample}
           onCopyFeedback={setContextCopyFeedback}
@@ -2196,7 +2296,17 @@ export function StreamView({
                 scrollIntent.current = null;
             }}
           >
-            <div ref={content}>{renderedRows}</div>
+            <div ref={content}>
+              {mappedProjection ? (
+                <MappedReceiveView
+                  projection={mappedProjection}
+                  style={terminalTypographyStyle(terminalSettings?.typography)}
+                  onReveal={revealMappedSource}
+                />
+              ) : (
+                renderedRows
+              )}
+            </div>
           </div>
         </StreamContextMenu>
         <div className="workbench-stream-totals" aria-live="off">

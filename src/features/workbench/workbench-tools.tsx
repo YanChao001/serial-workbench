@@ -79,6 +79,7 @@ import { TestSuiteTool } from "./test-suite-tool";
 import { RuleTriggerTool } from "./rule-trigger-tool";
 import { ruleActionIds } from "./rule-trigger-model";
 import { loopbackAction, LoopbackTool } from "./loopback-tool";
+import { CharacterRemapTool } from "./character-remap-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
@@ -333,6 +334,9 @@ export function WorkbenchTools({
       waitForOperation: host.waitForOperation,
       readFile: host.readFile,
     };
+  }
+  if (tool === "characterRemap" && context.characterRemap) {
+    return <CharacterRemapTool {...context.characterRemap} />;
   }
   if (tool === "broadcastSend" && context.broadcastMemory) {
     return (

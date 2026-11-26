@@ -27,6 +27,7 @@ enum TransportScenario {
     Server,
     Rfc2217,
     OwnerExit,
+    MappedFaults,
     Messages,
     BundledUdp,
     BundledWebsocket,
@@ -77,6 +78,12 @@ async fn native_node_dynamic_transport_listens_for_one_peer_per_generation() {
 #[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
 async fn native_node_dynamic_transport_owner_exit_preserves_unknown_tx() {
     signed_transport(TransportScenario::OwnerExit).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_preserves_mapped_tx_on_partial_and_unknown_writes() {
+    signed_transport(TransportScenario::MappedFaults).await;
 }
 
 #[tokio::test]
@@ -202,7 +209,10 @@ async fn signed_transport(scenario: TransportScenario) {
         ))
         .await
         .unwrap();
-        let (client_name, client_kind) = if scenario == TransportScenario::Messages {
+        let (client_name, client_kind) = if matches!(
+            scenario,
+            TransportScenario::Messages | TransportScenario::MappedFaults
+        ) {
             // The desktop action uses the same file-selection client with a non-control context.
             (operator_id, ClientKind::Desktop)
         } else {
@@ -509,6 +519,41 @@ async fn signed_transport(scenario: TransportScenario) {
         } else {
             connect_peer(listener.as_ref(), endpoint).await
         };
+        if scenario == TransportScenario::MappedFaults {
+            let probe = b"probe";
+            let settled = completed(&client, &host_target, tx_call(&client, &first, probe)).await;
+            let Some(ActionResult::Tx(prefix)) = settled.result else {
+                panic!("Expected offset probe");
+            };
+            let mut observed = [0; 5];
+            timeout(WAIT, peer.read_exact(&mut observed))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(&observed, probe);
+            let recording = start_test_recording(
+                &admin,
+                &client,
+                &auth,
+                &operator,
+                &host_target,
+                &first,
+                &path.join("mapped-fault-recording"),
+            )
+            .await;
+            verify_mapped_faults(
+                &client,
+                &host_target,
+                &first,
+                &raw,
+                &mut peer,
+                recording,
+                prefix.byte_end.get(),
+            )
+            .await;
+            raw.close().await.unwrap();
+            return;
+        }
         if scenario == TransportScenario::OwnerExit {
             verify_owner_exit(&client, &manager, &host_target, &device, &first, &mut peer).await;
             assert!(path.join(OWNER_EXIT_MARKER).is_file());
@@ -1263,6 +1308,157 @@ async fn check_bundled_udp(
     }
 }
 
+fn capture_target(host: &Target, reference: &ObjectRef) -> Target {
+    Target {
+        kind: reference.kind.clone(),
+        id: reference.id.clone(),
+        ..host.clone()
+    }
+}
+
+async fn start_test_recording(
+    admin: &HostClient,
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    session: &Target,
+    path: &Path,
+) -> (Box<OperationResult>, ObjectRef) {
+    let registered = completed(
+        admin,
+        host,
+        call(
+            admin,
+            "file.register",
+            host,
+            json!({
+                "path": path, "purpose": "capture_target",
+            }),
+        ),
+    )
+    .await;
+    let Some(ActionResult::FileMetadata(archive)) = registered.result else {
+        panic!("Expected archive reference");
+    };
+    let destination = capture_target(host, &archive.file_ref);
+    grant(
+        auth,
+        operator,
+        client,
+        &destination,
+        &["workspace.modify", "content.read", "metadata.read"],
+    );
+    let mut record = call(
+        client,
+        "capture.start",
+        &destination,
+        json!({
+            "sessionRefs": [session], "targetRef": archive.file_ref, "overflowPolicy": "stop",
+        }),
+    );
+    record.execution_mode = Some(ExecutionMode::Independent);
+    let RpcResult::Operation(owner) =
+        success(client.request(RpcRequest::Invoke(record)).await.unwrap())
+    else {
+        panic!("Expected capture operation");
+    };
+    let owner_id = owner.operation.operation_id.clone();
+    let live = timeout(WAIT, async {
+        loop {
+            let RpcResult::Operation(observed) = success(
+                client
+                    .request(RpcRequest::OperationGet(query(
+                        client,
+                        "operation.get",
+                        host,
+                        json!({"operationId":owner_id}),
+                    )))
+                    .await
+                    .unwrap(),
+            ) else {
+                panic!("Expected capture status");
+            };
+            if let Some(ActionResult::Reference(result)) = observed.operation.result {
+                break result.result_ref;
+            }
+            assert!(
+                !observed.operation.state.is_terminal(),
+                "{:?}",
+                observed.operation.error
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    (owner, live)
+}
+
+async fn seal_test_recording(
+    client: &HostClient,
+    raw: &serial_workbench_client::RawConnection,
+    host: &Target,
+    owner: Box<OperationResult>,
+    live: &ObjectRef,
+    minimum: u64,
+) -> CaptureTailResult {
+    timeout(WAIT, async {
+        loop {
+            let QueryResult::CaptureStatus(progress) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        client,
+                        "capture.status",
+                        &capture_target(host, live),
+                        json!({"captureRef":live}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected live capture");
+            };
+            if progress.summary.watermarks.written.get() >= minimum {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    completed(
+        client,
+        host,
+        call(
+            client,
+            "capture.stop",
+            &capture_target(host, live),
+            json!({"captureRef":live}),
+        ),
+    )
+    .await;
+    let finished = wait_for_terminal(client, host, RpcResult::Operation(owner)).await;
+    assert_eq!(finished.state, OperationState::Succeeded, "{finished:?}");
+    let Some(ActionResult::CaptureStatus(status)) = finished.result else {
+        panic!("Expected finished recording reference");
+    };
+    assert!(status.summary.container_complete && status.summary.source_continuous);
+    let QueryResult::CaptureTail(capture) = query_result(success(
+        raw.request(RpcRequest::Query(query(
+            client,
+            "capture.tail",
+            &capture_target(host, &status.capture_ref),
+            json!({"captureRef":status.capture_ref,"maxRecords":"30","maxBytes":"65536"}),
+        )))
+        .await
+        .unwrap(),
+    )) else {
+        panic!("Expected recorded instances");
+    };
+    capture
+}
+
 async fn check_messages(
     admin: &HostClient,
     client: &HostClient,
@@ -1307,78 +1503,16 @@ async fn check_messages(
         panic!("Expected negotiated message session");
     };
     assert_eq!(snapshot.capabilities.semantics, TransportSemantics::Message);
-    let target_for = |reference: &ObjectRef| Target {
-        kind: reference.kind.clone(),
-        id: reference.id.clone(),
-        ..host.clone()
-    };
-    let registered = completed(
+    let (owner, live) = start_test_recording(
         admin,
-        host,
-        call(
-            admin,
-            "file.register",
-            host,
-            json!({
-                "path": path.join("message-recording"), "purpose": "capture_target",
-            }),
-        ),
-    )
-    .await;
-    let Some(ActionResult::FileMetadata(archive)) = registered.result else {
-        panic!("Expected archive reference");
-    };
-    let destination = target_for(&archive.file_ref);
-    grant(
+        client,
         auth,
         operator,
-        client,
-        &destination,
-        &["workspace.modify", "content.read", "metadata.read"],
-    );
-    let mut record = call(
-        client,
-        "capture.start",
-        &destination,
-        json!({
-            "sessionRefs": [&session], "targetRef": archive.file_ref, "overflowPolicy": "stop",
-        }),
-    );
-    record.execution_mode = Some(ExecutionMode::Independent);
-    let RpcResult::Operation(owner) =
-        success(client.request(RpcRequest::Invoke(record)).await.unwrap())
-    else {
-        panic!("Expected capture operation");
-    };
-    let owner_id = owner.operation.operation_id.clone();
-    let live = timeout(WAIT, async {
-        loop {
-            let RpcResult::Operation(observed) = success(
-                client
-                    .request(RpcRequest::OperationGet(query(
-                        client,
-                        "operation.get",
-                        host,
-                        json!({"operationId":owner_id}),
-                    )))
-                    .await
-                    .unwrap(),
-            ) else {
-                panic!("Expected capture status");
-            };
-            if let Some(ActionResult::Reference(result)) = observed.operation.result {
-                break result.result_ref;
-            }
-            assert!(
-                !observed.operation.state.is_terminal(),
-                "{:?}",
-                observed.operation.error
-            );
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .unwrap();
+        host,
+        &session,
+        &path.join("message-recording"),
+    )
+    .await;
 
     let sent = completed(client, host, tx_call(client, &session, b"probe")).await;
     assert!(matches!(
@@ -1483,58 +1617,7 @@ async fn check_messages(
         }]
     );
 
-    timeout(WAIT, async {
-        loop {
-            let QueryResult::CaptureStatus(progress) = query_result(success(
-                client
-                    .request(RpcRequest::Query(query(
-                        client,
-                        "capture.status",
-                        &target_for(&live),
-                        json!({"captureRef":live}),
-                    )))
-                    .await
-                    .unwrap(),
-            )) else {
-                panic!("Expected live capture");
-            };
-            if progress.summary.watermarks.written.get() >= 8 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .unwrap();
-    completed(
-        client,
-        host,
-        call(
-            client,
-            "capture.stop",
-            &target_for(&live),
-            json!({"captureRef":live}),
-        ),
-    )
-    .await;
-    let finished = wait_for_terminal(client, host, RpcResult::Operation(owner)).await;
-    assert_eq!(finished.state, OperationState::Succeeded, "{finished:?}");
-    let Some(ActionResult::CaptureStatus(status)) = finished.result else {
-        panic!("Expected finished recording reference");
-    };
-    assert!(status.summary.container_complete && status.summary.source_continuous);
-    let QueryResult::CaptureTail(capture) = query_result(success(
-        raw.request(RpcRequest::Query(query(
-            client,
-            "capture.tail",
-            &target_for(&status.capture_ref),
-            json!({"captureRef":status.capture_ref,"maxRecords":"30","maxBytes":"65536"}),
-        )))
-        .await
-        .unwrap(),
-    )) else {
-        panic!("Expected recorded instances");
-    };
+    let capture = seal_test_recording(client, &raw, host, owner, &live, 8).await;
     for expected in [short, zero] {
         assert!(capture.records.iter().any(|record| matches!(record, ReplayRecord::Inline { record }
             if matches!(&record.entry, CaptureEntry::Event(event) if matches!(&event.payload, RawPayload::Rx(rx) if rx == expected)))),
@@ -1784,6 +1867,191 @@ async fn peer_eof(peer: &mut TcpStream) {
     );
 }
 
+async fn verify_mapped_faults(
+    client: &HostClient,
+    host: &Target,
+    session: &Target,
+    raw: &serial_workbench_client::RawConnection,
+    peer: &mut TcpStream,
+    recording: (Box<OperationResult>, ObjectRef),
+    mut source_offset: u64,
+) {
+    let (owner, live) = recording;
+    let mapping = CharacterRemapRules {
+        newline: CharacterRemapNewline::Crlf,
+        backspace: CharacterRemapBackspace::Keep,
+        letter_case: CharacterRemapCase::Upper,
+        replacements: vec![],
+    };
+    let digest = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&mapping).unwrap())
+    );
+    let mut receipts = Vec::new();
+    for (original, mapped, on_wire, outcome) in [
+        (
+            "\n",
+            b"\r\n".as_slice(),
+            b"\r".as_slice(),
+            TxOutcome::Partial,
+        ),
+        (
+            "q\n",
+            b"Q\r\n".as_slice(),
+            b"Q\r\n".as_slice(),
+            TxOutcome::Unknown,
+        ),
+    ] {
+        let params = json!({
+            "bytesBase64":STANDARD.encode(mapped), "writeWaitMs":"1000",
+            "sourceText":{"utf8Base64":STANDARD.encode(original),"encoding":"utf-8","mapping":mapping},
+            "transforms":[{"id":CHARACTER_REMAP_TRANSFORM_ID, "version":CHARACTER_REMAP_TRANSFORM_VERSION,
+                "configurationDigest":digest}],
+        });
+        let request = call(client, "session.tx", session, params.clone());
+        let accepted = success(
+            client
+                .request(RpcRequest::Invoke(request.clone()))
+                .await
+                .unwrap(),
+        );
+        let settled = wait_for_terminal(client, host, accepted).await;
+        let Some(ActionResult::Tx(receipt)) = settled.result else {
+            panic!("Mapped TX must retain its receipt");
+        };
+        assert_eq!(receipt.operation_id, settled.operation_id);
+        assert_eq!(receipt.outcome, outcome);
+        assert_eq!(receipt.byte_start.get(), source_offset);
+        source_offset += mapped.len() as u64;
+        assert_eq!(receipt.byte_end.get(), source_offset);
+        assert_eq!(
+            STANDARD.decode(receipt.bytes_base64.as_str()).unwrap(),
+            mapped
+        );
+        if outcome == TxOutcome::Partial {
+            assert_eq!(settled.state, OperationState::Succeeded);
+            assert_eq!(
+                receipt.accepted_ranges,
+                vec![ByteRange {
+                    start: 0.into(),
+                    end: 1.into()
+                }]
+            );
+            assert!(receipt.unknown_ranges.is_empty());
+            assert_eq!(
+                receipt.backend_error.as_ref().unwrap().code,
+                "PARTIAL_WRITE"
+            );
+        } else {
+            assert_eq!(settled.state, OperationState::Unknown);
+            assert!(receipt.accepted_ranges.is_empty());
+            assert_eq!(
+                receipt.unknown_ranges,
+                vec![ByteRange {
+                    start: 0.into(),
+                    end: (mapped.len() as u64).into()
+                }]
+            );
+        }
+
+        let mut received = vec![0; on_wire.len()];
+        timeout(WAIT, peer.read_exact(&mut received))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received, on_wire);
+        let duplicate = success(client.request(RpcRequest::Invoke(request)).await.unwrap());
+        let RpcResult::Operation(duplicate) = duplicate else {
+            panic!("Expected same-request receipt");
+        };
+        assert_eq!(duplicate.operation.operation_id, settled.operation_id);
+        let input = query(
+            client,
+            "operation.input",
+            host,
+            json!({"operationId":settled.operation_id}),
+        );
+        let QueryResult::OperationInput(OperationInput::Tx(input)) = query_result(success(
+            raw.request(RpcRequest::Query(input)).await.unwrap(),
+        )) else {
+            panic!("Expected the retained mapped request");
+        };
+        assert_eq!(serde_json::to_value(input).unwrap(), params);
+        receipts.push(receipt);
+    }
+    let mut extra = [0];
+    assert!(
+        timeout(Duration::from_millis(120), peer.read(&mut extra))
+            .await
+            .is_err()
+    );
+    let QueryResult::StreamRead(page) = query_result(success(
+        raw.request(RpcRequest::Query(query(
+            client,
+            "stream.read",
+            session,
+            json!({
+                "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+            }),
+        )))
+        .await
+        .unwrap(),
+    )) else {
+        panic!("Expected Raw events");
+    };
+    let raw_writes = page
+        .events
+        .into_iter()
+        .filter(|event| match &event.payload {
+            RawPayload::Tx(receipt) => receipts
+                .iter()
+                .any(|entry| entry.operation_id == receipt.operation_id),
+            RawPayload::TxIntent(intent) => receipts
+                .iter()
+                .any(|entry| entry.operation_id == intent.operation_id),
+            _ => false,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(raw_writes.len(), 4);
+    for receipt in &receipts {
+        assert!(raw_writes.iter().any(
+            |event| matches!(&event.payload, RawPayload::Tx(result) if result.as_ref() == receipt)
+        ));
+        assert!(raw_writes.iter().any(|event| matches!(&event.payload, RawPayload::TxIntent(intent)
+            if intent.operation_id == receipt.operation_id && intent.bytes_base64 == receipt.bytes_base64
+               && intent.byte_start == receipt.byte_start && intent.byte_end == receipt.byte_end)));
+    }
+    let capture =
+        seal_test_recording(client, raw, host, owner, &live, raw_writes.len() as u64).await;
+    let archived = capture
+        .records
+        .into_iter()
+        .filter_map(|record| match record {
+            ReplayRecord::Inline { record } => match record.entry {
+                CaptureEntry::Event(event)
+                    if matches!(event.payload, RawPayload::Tx(_) | RawPayload::TxIntent(_)) =>
+                {
+                    Some(*event)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(archived, raw_writes);
+    completed(
+        client,
+        host,
+        call(client, "session.close", session, json!({})),
+    )
+    .await;
+    peer_eof(peer).await;
+    eprintln!(
+        "mapped_faults partial_peer_hex=0D unknown_peer_hex=510D0A source_ranges=5..7,7..10 raw_and_archive_exact=true same_request_reused=true"
+    );
+}
+
 async fn verify_owner_exit(
     client: &HostClient,
     manager: &HostClient,
@@ -1903,6 +2171,11 @@ async fn install_signed_provider(
                     &serde_json::to_string(&profile.join(OWNER_EXIT_MARKER)).unwrap(),
                 )
                 .into_bytes(),
+            Some(program),
+        )
+    } else if scenario == TransportScenario::MappedFaults {
+        (
+            include_bytes!("mapped_faults_provider.mjs").to_vec(),
             Some(program),
         )
     } else {

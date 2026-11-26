@@ -323,6 +323,66 @@ pub struct TransformReference {
     pub version: String,
     pub configuration_digest: Digest,
 }
+pub const CHARACTER_REMAP_TRANSFORM_ID: &str = "terminal.character-remap";
+pub const CHARACTER_REMAP_TRANSFORM_VERSION: &str = "1";
+pub const CHARACTER_REMAP_MAX_REPLACEMENTS: usize = 16;
+pub const CHARACTER_REMAP_MAX_REPLACEMENT_UTF16: usize = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CharacterRemapNewline {
+    Keep,
+    Cr,
+    Lf,
+    Crlf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CharacterRemapBackspace {
+    Keep,
+    Remove,
+    Apply,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CharacterRemapCase {
+    Keep,
+    Lower,
+    Upper,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CharacterRemapReplacement {
+    #[schemars(length(equal = 1))]
+    pub source: String,
+    #[schemars(length(max = CHARACTER_REMAP_MAX_REPLACEMENT_UTF16))]
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CharacterRemapRules {
+    pub newline: CharacterRemapNewline,
+    pub backspace: CharacterRemapBackspace,
+    pub letter_case: CharacterRemapCase,
+    #[schemars(length(max = CHARACTER_REMAP_MAX_REPLACEMENTS))]
+    pub replacements: Vec<CharacterRemapReplacement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TxSourceText {
+    #[serde(deserialize_with = "tx_source_bytes")]
+    #[schemars(schema_with = "tx_source_bytes_schema")]
+    #[specta(type=Bytes)]
+    pub utf8_base64: Bytes,
+    pub encoding: TextEncoding,
+    pub mapping: CharacterRemapRules,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TxDispatchWindow {
@@ -368,16 +428,38 @@ pub struct TxParams {
         skip_serializing_if = "Option::is_none",
         deserialize_with = "crate::identity::non_null_option"
     )]
+    #[schemars(with = "TxSourceText")]
+    #[specta(type=TxSourceText, optional)]
+    pub source_text: Option<TxSourceText>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
     #[schemars(with = "Vec<TransformReference>")]
     #[specta(type=Vec<TransformReference>, optional)]
     pub transforms: Option<Vec<TransformReference>>,
+}
+fn tx_source_bytes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Bytes, D::Error> {
+    let value = Bytes::deserialize(deserializer)?;
+    if decoded_byte_len(value.as_str()) > TX_MAX_BYTES {
+        return Err(serde::de::Error::custom(
+            "TX source text exceeds the byte limit",
+        ));
+    }
+    Ok(value)
+}
+fn tx_source_bytes_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({"anyOf":[{"const":""}, tx_bytes_schema(generator)]})
+}
+fn decoded_byte_len(text: &str) -> usize {
+    text.len() / 4 * 3 - text.bytes().rev().take_while(|byte| *byte == b'=').count()
 }
 pub(crate) fn tx_bytes<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Bytes, D::Error> {
     let value = Bytes::deserialize(deserializer)?;
-    let text = value.as_str();
-    let decoded = text.len() / 4 * 3 - text.bytes().rev().take_while(|byte| *byte == b'=').count();
+    let decoded = decoded_byte_len(value.as_str());
     if !(1..=TX_MAX_BYTES).contains(&decoded) {
         return Err(serde::de::Error::custom(format!(
             "TX must contain 1 through {TX_MAX_BYTES} decoded bytes"

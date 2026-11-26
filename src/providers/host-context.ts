@@ -47,12 +47,17 @@ import type {
   SessionSnapshot,
   SessionMetrics,
   SessionInputs,
+  TxParams,
   SerialConfiguration,
   WorkspaceDocument,
   WorkspaceDocumentResult,
   WorkspaceListResult,
   Target,
 } from "@serial-workbench/contracts";
+
+export type SendSourceMetadata = Required<
+  Pick<TxParams, "sourceText" | "transforms">
+>;
 
 export type HostInvocation = Pick<
   Call,
@@ -270,6 +275,7 @@ export type HostContextValue = {
     signal?: AbortSignal,
     writeWaitMs?: string,
     expectedRevision?: string,
+    source?: SendSourceMetadata,
   ): Promise<Operation>;
   takeover?(
     target: Target,

@@ -13,6 +13,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 #[path = "support/experiment_browser.rs"]
 mod experiment_browser;
+#[path = "support/mapped_capture_browser.rs"]
+mod mapped_capture_browser;
 #[path = "support/operation_source_host.rs"]
 mod operation_source_host;
 #[path = "support/replay_search_host.rs"]
@@ -37,7 +39,24 @@ impl Fixture {
         Self::with_bundled_packages(false).await
     }
     async fn with_bundled_packages(bundled: bool) -> Self {
+        Self::with_runtime(bundled, None).await
+    }
+    async fn with_runtime(
+        bundled: bool,
+        runtime: Option<serial_workbench_host::node_runtime::VerifiedNodeRuntime>,
+    ) -> Self {
         let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        if runtime.is_some() {
+            let provision = HostServer::bind(dir.path()).await.unwrap();
+            let startup =
+                serial_workbench_ipc::startup_config::resolve(Some(dir.path().into())).unwrap();
+            Host::with_startup_config(provision.store(), provision.auth(), startup.snapshot())
+                .await
+                .unwrap()
+                .shutdown()
+                .await
+                .unwrap();
+        }
         let mut server = HostServer::bind(dir.path()).await.unwrap();
         let store = server.store();
         let auth = server.auth();
@@ -49,7 +68,16 @@ impl Fixture {
         let operator = auth
             .authenticate_user_control(&id("capture-user"), &credential)
             .unwrap();
-        let host = if bundled {
+        let host = if let Some(runtime) = runtime {
+            Host::with_verified_node_runtime_native(
+                store.clone(),
+                auth.clone(),
+                Arc::new(serial_workbench_host::clock::SystemClock::new().unwrap()),
+                runtime,
+            )
+            .await
+            .unwrap()
+        } else if bundled {
             let startup =
                 serial_workbench_ipc::startup_config::resolve(Some(dir.path().to_path_buf()))
                     .unwrap();
@@ -313,7 +341,12 @@ impl Fixture {
             )
             .await;
         let current = self.wait(&operation, true).await;
-        assert_eq!(current.state, OperationState::Running);
+        assert_eq!(
+            current.state,
+            OperationState::Running,
+            "capture start: {:?}",
+            current.error
+        );
         let Some(ActionResult::Reference(reference)) = current.result else {
             panic!("live ref evidence")
         };

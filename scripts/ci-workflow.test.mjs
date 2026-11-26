@@ -200,7 +200,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   }
 });
 
-test("Windows gates real Chromium file transfer and experiment exchange with runner-local evidence", () => {
+test("Windows gates real Chromium file transfer, experiment exchange and mapped capture with runner-local evidence", () => {
   const rust = job("rust");
   const step = rust
     .split("id: paired-workbench-files\n")[1]
@@ -213,7 +213,19 @@ test("Windows gates real Chromium file transfer and experiment exchange with run
   assert.match(step, /文件交接收据缺失/);
   assert.match(step, /实验包交换测试进程失败/);
   assert.match(step, /实验包交换收据缺失/);
-  assert.doesNotMatch(step, /\b(?:cat|tee)\b.*(?:transfer|experiment)\.log/);
+  assert.match(step, /SWB_NODE_RUNTIME_TEST_ROOT=.*cygpath -am/);
+  assert.match(
+    step,
+    /paired_browser_maps_signed_tcp_bytes_and_keeps_raw_recording_and_receipts/,
+  );
+  assert.match(step, /字符映射录制测试进程失败/);
+  assert.match(step, /字符映射录制收据缺失/);
+  assert.match(step, /mapped-capture\/host-receipt\.json/);
+  assert.match(step, /mapped-capture\/browser-receipt\.json/);
+  assert.doesNotMatch(
+    step,
+    /\b(?:cat|tee)\b.*(?:transfer|experiment|mapped-capture)\.log/,
+  );
   assert.match(
     step,
     /SWB_TEST_BROWSER_TRANSFER_OUTPUT=.*\n\s+if ! cargo test .*--test browser_pairing \\\n\s+browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation/,

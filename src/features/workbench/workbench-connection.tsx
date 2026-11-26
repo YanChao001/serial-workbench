@@ -31,6 +31,7 @@ import {
   LoaderCircle,
   X,
   Cable,
+  CaseSensitive,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { useI18n } from "@/providers/i18n";
@@ -490,6 +491,14 @@ export function WorkbenchConnection({
                   onSelect={() => selectToolFromMenu("testSuite")}
                 >
                   {toolLabels.testSuite}
+                </DropdownMenuItem>
+              )}
+              {toolLabels?.characterRemap && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("characterRemap")}
+                >
+                  <CaseSensitive aria-hidden="true" />
+                  {toolLabels.characterRemap}
                 </DropdownMenuItem>
               )}
               {toolLabels?.loopback && (

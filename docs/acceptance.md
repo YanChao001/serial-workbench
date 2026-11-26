@@ -130,6 +130,20 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 桌面 Rust 用例先运行 `pnpm build` 准备 dist。真实窗口使用[同源原生构建](#原生桌面)。
 
+### 字符重映射（LINE-10）
+
+在工作区菜单打开「字符重映射」。先接收含 CR、LF、CRLF 和 BS 的文本，再在发送区准备不同的文本草稿。分别改变接收和发送规则，切换方向时核对配置与输入保持各自归属。对照映射前后的转义文本，核对自定义替换、大小写、退格和错误定位。使用无设备的内置示例核对相同逻辑。二进制报文留在 Raw 和 HEX，预览选择最近可用的连续文本样本，报文边界和缺口两侧不拼接。
+
+运行 `pnpm test src/features/workbench/character-remap.test.ts` 和 `pnpm test:ui e2e/browser/character-remap.spec.ts --workers=1`。无头测试分别检查宽窗英文与窄窗中文。按键移除规则后核对焦点，关闭时核对确认和返回菜单。预览前后比较原始 RX、发送草稿和 Host 写入计数。开启已订阅的静默会话，在第一批字节到来前应用 RX 规则。验证分块 CRLF 和退格、冻结期间收到新字节、恢复显示、返回同一原始 HEX 范围，以及 128 KiB 报文的尾部定位直接打开第 2 页。持住 Raw 重授权回执时核对映射内容立即移除。释放回执后撤销的旧规则仍停用。
+
+在可写会话的文本发送区应用 TX 规则。确认应用时写入数仍为零。核对发送区原稿、最终字节数和点击发送后的请求，核对 HEX 模式暂时绕过规则、返回文本恢复、清除时焦点回到原稿。独立 Host 软件验收运行 `cargo test --locked -j 1 -p serial-workbench-host --test operation_visibility_host`，对照操作回执和受授权的 `operation.input`，复验原稿与最终字节不同、规则摘要校验及撤权。
+
+本机软件整链路先运行 `pnpm build:web`，使用已验证的固定 Node 资源根 `SWB_NODE_RUNTIME_TEST_ROOT`、无头 Chromium 和独立输出目录 `SWB_TEST_MAPPED_CAPTURE_OUTPUT`。运行 `cargo test --locked -j 1 -p serial-workbench-host --test capture_api_host paired_browser_maps_signed_tcp_bytes_and_keeps_raw_recording_and_receipts -- --ignored --test-threads=1`。配对浏览器在首方签名 TCP 窗口连接独立回环对端。核对界面映射、原始 HEX、对端字节、独立 Raw 查询、授权的原稿规则、录制封存和正式回放。CI 的日志、截图和两份验证收据留在运行器临时目录。
+
+异常写入用同一已验证固定 Node 运行时。先运行 `pnpm plugin-sdk:fixture`，再运行 `cargo test --locked -j 1 -p serial-workbench-host --test client_parity native_node_dynamic_transport_preserves_mapped_tx_on_partial_and_unknown_writes -- --ignored --test-threads=1`。签名 TCP 夹具为映射的 CRLF 只递送第一个字节，为下一条消息递送完整字节后丢弃写入确认。逐项核对实际对端字节、Host 结算、原稿、Raw 意图、封存录制和同请求号重读。发送详情回归覆盖非零 TX 偏移、超出 JavaScript 安全整数的偏移，以及部分接纳、结果未知和后端未接纳字节各自的文案。
+
+再通过应用规则的入口启动独立串口对端完成实机验收。比较 RX 映射显示和同段原始录制，核对缺口、分片、撤权及视图切换。比较发送前预览、独立对端实际收到的字节、Raw TX、写入回执和受授权的原稿及变换记录。分别复验空结果、不可编码、超限、取消、部分写入和场景切换，协议字节与 HEX 发送继续按其原有入口发送。
+
 ### 不可信终端序列（SEC-08）
 
 实时与历史记录都沿用工作台的 ANSI 和 HEX 入口。夹具使用合成字节，在正常窗口和窄窗口核对显示、滚动范围、可见焦点与原始内容。实时 OSC 8 只在用户主动激活后通过宿主 HTTP(S) 策略。相同记录出现在录制标签和回放时保留文字与颜色，终端链接列表和链接激活动作都关闭。查看录制的 HEX 或原始字节时，控制指令仍可按数据读取。

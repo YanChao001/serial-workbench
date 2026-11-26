@@ -940,6 +940,24 @@ export type CatalogListResult_Serialize = {
 
 export type Certainty = "confirmed" | "uncertain";
 
+export type CharacterRemapBackspace = "keep" | "remove" | "apply";
+
+export type CharacterRemapCase = "keep" | "lower" | "upper";
+
+export type CharacterRemapNewline = "keep" | "cr" | "lf" | "crlf";
+
+export type CharacterRemapReplacement = {
+  source: string;
+  replacement: string;
+};
+
+export type CharacterRemapRules = {
+  newline: CharacterRemapNewline;
+  backspace: CharacterRemapBackspace;
+  letterCase: CharacterRemapCase;
+  replacements: CharacterRemapReplacement[];
+};
+
 export type ChildCall = ChildCall_Serialize | ChildCall_Deserialize;
 
 export type ChildCall_Deserialize = {
@@ -5381,6 +5399,7 @@ export type TxParams_Deserialize = {
   queueWaitMs?: DurationMs;
   dispatchWindow?: TxDispatchWindow;
   sourceInputRef?: ObjectRef_Deserialize;
+  sourceText?: TxSourceText_Deserialize;
   transforms?: TransformReference[];
 };
 
@@ -5390,6 +5409,7 @@ export type TxParams_Serialize = {
   queueWaitMs?: DurationMs;
   dispatchWindow?: TxDispatchWindow;
   sourceInputRef?: ObjectRef_Serialize;
+  sourceText?: TxSourceText_Serialize;
   transforms?: TransformReference[];
 };
 
@@ -5421,6 +5441,20 @@ export type TxReceipt_Serialize = {
   unknownRanges: ByteRange[];
   peerAcknowledged: false;
   backendError?: HostError_Serialize;
+};
+
+export type TxSourceText = TxSourceText_Serialize | TxSourceText_Deserialize;
+
+export type TxSourceText_Deserialize = {
+  utf8Base64: Bytes;
+  encoding: TextEncoding;
+  mapping: CharacterRemapRules;
+};
+
+export type TxSourceText_Serialize = {
+  utf8Base64: Bytes;
+  encoding: TextEncoding;
+  mapping: CharacterRemapRules;
 };
 
 export type U64 = string;

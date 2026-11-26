@@ -686,6 +686,7 @@ export default function Overview({
       requestedBytes: t("workbench.requestedBytes"),
       acceptedBytes: t("workbench.acceptedBytes"),
       unknownBytes: t("workbench.unknownBytes"),
+      unacceptedBytes: t("workbench.unacceptedBytes"),
       peerConfirmed: t("workbench.peerConfirmed"),
       peerUnconfirmed: t("workbench.peerUnconfirmed"),
       connected: t("workbench.connected"),

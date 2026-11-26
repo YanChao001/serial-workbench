@@ -387,6 +387,7 @@ export type WorkbenchLabels = {
   | "requestedBytes"
   | "acceptedBytes"
   | "unknownBytes"
+  | "unacceptedBytes"
   | "peerConfirmed"
   | "peerUnconfirmed"
   | "connected"

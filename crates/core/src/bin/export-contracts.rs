@@ -1044,6 +1044,8 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         json!({"id":"terminal.crlf","version":"1","configurationDigest":"a".repeat(64)});
     f.object::<TransformReference>("transform-reference", transform.clone(), &[])?;
     f.object::<TxParams>("tx-params", json!({"bytesBase64":"DQo=","writeWaitMs":"1","queueWaitMs":"2147483647","sourceInputRef":{"hostId":"host","kind":"file","id":"input"},"transforms":[transform]}), &["queueWaitMs", "sourceInputRef", "transforms"])?;
+    f.object::<TxSourceText>("tx-source-text", json!({"utf8Base64":"YQo=","encoding":"utf-8","mapping":{"newline":"crlf","backspace":"keep","letterCase":"upper","replacements":[{"source":"a","replacement":"B"}]}}), &[])?;
+    f.add::<TxParams>("tx-source-text-empty", json!({"bytesBase64":"DQo=","writeWaitMs":"1","sourceText":{"utf8Base64":"","encoding":"utf-8","mapping":{"newline":"keep","backspace":"keep","letterCase":"keep","replacements":[]}}}), true)?;
     for (name, bytes, valid) in [
         (
             "tx-limit-16384",
@@ -1858,6 +1860,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         TransformReference,
         TxDispatchWindow,
         TxParams,
+        TxSourceText,
+        CharacterRemapRules,
         ConfigureParams,
         ControlParams,
         ControlReceipt,
