@@ -15,7 +15,7 @@ import type { LineEnding } from "@serial-workbench/contracts";
 import { encodeSend, formatHex } from "@serial-workbench/host-client";
 import { Toaster, toast } from "sonner";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
-import { SendPanel } from "./send-panel";
+import { SendPanel, type SendPanelProps } from "./send-panel";
 import { labels, operation, session } from "./test-fixtures";
 import type { TextSendPreview } from "@/lib/text-encoding";
 
@@ -1141,3 +1141,214 @@ it("keeps caption actions keyboard reachable without admitting a readonly send",
   expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   expect(send).not.toHaveBeenCalled();
 });
+
+function holdSendFixture() {
+  const current = session();
+  const target = {
+    hostId: "host",
+    kind: "session" as const,
+    id: current.sessionId,
+    sessionId: current.sessionId,
+    sessionEpoch: current.sessionEpoch,
+  };
+  const full: Operation = {
+    ...operation(),
+    actionId: "session.tx",
+    target,
+    result: {
+      kind: "tx",
+      value: {
+        operationId: "operation",
+        sessionId: current.sessionId,
+        sessionEpoch: current.sessionEpoch,
+        outcome: "accepted",
+        bytesBase64: "QVQ=",
+        byteStart: "0",
+        byteEnd: "2",
+        acceptedRanges: [{ start: "0", end: "2" }],
+        unknownRanges: [],
+        peerAcknowledged: false,
+      },
+    },
+  };
+  const send = vi
+    .fn<SendPanelProps["onSend"]>()
+    .mockResolvedValue({ ...full, state: "queued", result: undefined });
+  const wait =
+    vi.fn<(operation: Operation, signal: AbortSignal) => Promise<Operation>>();
+  return {
+    full,
+    send,
+    wait,
+    props: {
+      session: current,
+      labels,
+      draft: "AT",
+      onDraftChange: vi.fn(),
+      onSend: send,
+      holdSend: { scope: "view", target, wait },
+    },
+  };
+}
+
+it("repeats only after complete Host settlement and stops on a partial write", async () => {
+  vi.useFakeTimers();
+  try {
+    const { full, send, wait, props } = holdSendFixture();
+    let finish!: (result: Operation) => void;
+    const pending = new Promise<Operation>((resolve) => {
+      finish = resolve;
+    });
+    const result = full.result;
+    if (result?.kind !== "tx") throw new Error("Expected a TX receipt");
+    wait.mockReturnValueOnce(pending).mockResolvedValueOnce({
+      ...full,
+      result: {
+        kind: "tx",
+        value: {
+          ...result.value,
+          outcome: "partial",
+          acceptedRanges: [{ start: "0", end: "1" }],
+        },
+      },
+    });
+    render(<SendPanel {...props} />);
+    const hold = screen.getByRole("button", { name: labels.holdSend });
+
+    fireEvent.keyDown(hold, { key: " " });
+    await act(() => vi.advanceTimersByTimeAsync(349));
+    expect(send).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(send).toHaveBeenCalledExactlyOnceWith(
+      Uint8Array.of(0x41, 0x54),
+      expect.any(AbortSignal),
+      undefined,
+      props.session.revision,
+    );
+    expect(wait).toHaveBeenCalledOnce();
+    fireEvent.keyDown(hold, { key: " ", repeat: true });
+    await act(() => vi.advanceTimersByTimeAsync(600));
+    expect(send).toHaveBeenCalledOnce();
+
+    await act(async () => finish(full));
+    await act(() => vi.advanceTimersByTimeAsync(179));
+    expect(send).toHaveBeenCalledOnce();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(hold).not.toHaveAttribute("aria-busy");
+    await act(() => vi.advanceTimersByTimeAsync(600));
+    expect(send).toHaveBeenCalledTimes(2);
+    fireEvent.keyUp(hold, { key: " " });
+  } finally {
+    cleanup();
+    vi.useRealTimers();
+  }
+});
+
+it("stops repeating and keeps the admitted receipt when status cannot be read", async () => {
+  vi.useFakeTimers();
+  try {
+    const { send, wait, props } = holdSendFixture();
+    wait.mockRejectedValue(new Error("Status read failed"));
+    render(<SendPanel {...props} />);
+    const hold = screen.getByRole("button", { name: labels.holdSend });
+
+    fireEvent.keyDown(hold, { key: " " });
+    await act(() => vi.advanceTimersByTimeAsync(950));
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(hold).not.toHaveAttribute("aria-busy");
+    expect(getUserLog()).toEqual([
+      expect.objectContaining({ message: labels.holdSendWaitFailed }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: labels.receipt }));
+    expect(
+      screen.getByRole("status", { name: labels.receipt }),
+    ).toHaveTextContent(labels.queued);
+  } finally {
+    cleanup();
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  "short press",
+  "release",
+  "blur",
+  "hidden",
+  "draft",
+  "permission",
+  "disconnect",
+  "epoch",
+  "revision",
+] as const)(
+  "stops held TX on %s and keeps an admitted write intact",
+  async (change) => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    try {
+      const { full, send, wait, props } = holdSendFixture();
+      let finish!: (result: Operation) => void;
+      wait.mockReturnValue(
+        new Promise<Operation>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const view = render(<SendPanel {...props} />);
+      const hold = screen.getByRole("button", { name: labels.holdSend });
+      fireEvent.keyDown(hold, { key: "Enter" });
+      if (change === "short press") {
+        fireEvent.keyUp(hold, { key: "Enter" });
+        await act(() => vi.advanceTimersByTimeAsync(600));
+        expect(send).not.toHaveBeenCalled();
+        return;
+      }
+      await act(() => vi.advanceTimersByTimeAsync(350));
+      expect(send).toHaveBeenCalledOnce();
+      const waitSignal = wait.mock.calls[0]?.[1];
+      const sentSignal = send.mock.calls[0]?.[1];
+      if (!waitSignal || !sentSignal)
+        throw new Error("Missing active Host request signals");
+      if (change === "release") fireEvent.keyUp(hold, { key: "Enter" });
+      if (change === "blur") fireEvent(window, new Event("blur"));
+      if (change === "hidden") {
+        hidden.mockReturnValue(true);
+        fireEvent(document, new Event("visibilitychange"));
+      }
+      if (change === "draft")
+        view.rerender(<SendPanel {...props} draft="other" />);
+      if (change === "permission")
+        view.rerender(<SendPanel {...props} permissionAllowed={false} />);
+      if (change === "disconnect")
+        view.rerender(
+          <SendPanel
+            {...props}
+            session={{ ...props.session, state: "disconnected" }}
+          />,
+        );
+      if (change === "epoch")
+        view.rerender(
+          <SendPanel
+            {...props}
+            session={{ ...props.session, sessionEpoch: "92" }}
+          />,
+        );
+      if (change === "revision")
+        view.rerender(
+          <SendPanel
+            {...props}
+            session={{ ...props.session, revision: "31" }}
+          />,
+        );
+      expect(waitSignal.aborted).toBe(true);
+      if (change === "release") expect(sentSignal.aborted).toBe(false);
+      await act(async () => finish(full));
+      await act(() => vi.advanceTimersByTimeAsync(600));
+      expect(send).toHaveBeenCalledOnce();
+    } finally {
+      hidden.mockRestore();
+      cleanup();
+      vi.useRealTimers();
+    }
+  },
+);

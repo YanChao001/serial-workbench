@@ -412,6 +412,12 @@ recorded_send_2                   recorded_send_2
 
 核对一份带表头、跨行引号字段的 UTF-8 CSV。结果应显示每条记录开始的物理行号，变量表从第 1 个数据行计数。让第一轮匹配、第二轮超时、第三轮跳过，核对面板、JUnit XML 和 HTML 的来源位置，以及前两轮的 Host 操作 ID。在最后一行设置越界字节，核对导入拒绝并保留原草稿。编辑定义时也应禁止运行无效套件。运行 `pnpm exec vitest run src/features/workbench/test-suite.test.ts` 和 `pnpm test:ui e2e/browser/test-suite.spec.ts --workers 1` 复验。真实串口对端按同一顺序核对实际字节、应答与报告，正式发行使用同一候选验收。
 
+### 一键与热键发送（IO-08）
+
+在可写实时会话输入 `AT`，单击「发送」或在草稿内用当前平台的主修饰键加 Enter，核对恰好一次调用。短按「按住连发」不写入，按住 350 ms 后核对首笔。上一笔未终态时等待，确认完整写入后至少间隔 180 ms，第二笔使用同一目标、修订和字节。用鼠标、Space 或 Enter 复验。把指针移出按钮再松开，以及失焦、隐藏、撤权、断线、换代、修改草稿或部分写入，均停止后续提交。保留已提交操作的回执。
+
+运行 `pnpm test src/features/workbench/send-panel.test.tsx` 和 `pnpm test:ui e2e/browser/hold-send.spec.ts --workers=1`。宽窄窗核对草稿与双按钮顶边和高度一致，键盘焦点可达，松手后仍保留原稿。配对浏览器的入口限当前页面。真实配对流程在 `pnpm build:web` 后运行 `cargo test --locked -j 1 -p serial-workbench-host --test capture_api_host paired_browser_held_send_settles_two_writes_and_stops_on_release -- --ignored --test-threads=1`，设置独立输出目录 `SWB_TEST_HOLD_SEND_OUTPUT`。核对两条浏览器请求、独立 Raw TX 回执，以及 Virtual Echo 的实际回显。桌面全局热键按各平台的注册、冲突、目标和写入授权专项验收。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

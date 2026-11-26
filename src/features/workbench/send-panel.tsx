@@ -14,11 +14,13 @@ import {
   Save,
   Settings2,
   ReceiptText,
+  Repeat2,
 } from "lucide-react";
 import type {
   LineEnding,
   Operation,
   SessionSnapshot,
+  Target,
   TerminalSettings,
   TerminalMode,
   TextEncoding,
@@ -39,6 +41,7 @@ import {
   WorkbenchNotice,
 } from "./workbench-notice";
 import { nativeErrorCode } from "@/lib/native-error";
+import { parseU64 } from "@/lib/u64";
 import { formatByteSize } from "./metric-format";
 import {
   Popover,
@@ -68,6 +71,8 @@ import {
   workbenchStatus,
 } from "./stream-presentation";
 import { TxReceiptFacts } from "./tx-receipt-facts";
+import { confirmedSessionWrite } from "./send-history-model";
+import { useHoldSend } from "./use-hold-send";
 import {
   appendSendChecksum,
   DEFAULT_SEND_CHECKSUM,
@@ -139,7 +144,13 @@ export type SendPanelProps = {
     bytes: Uint8Array,
     signal?: AbortSignal,
     source?: SendSourceMetadata,
+    expectedRevision?: string,
   ) => Promise<Operation>;
+  holdSend?: {
+    scope: string;
+    target: Target;
+    wait: (operation: Operation, signal: AbortSignal) => Promise<Operation>;
+  };
   sendRemap?: CharacterRemapRules;
   onClearSendRemap?: () => void;
   /** 最终发送字节的不可变快照，非法输入和卸载时为 null。 */
@@ -218,6 +229,7 @@ export function SendPanel({
   onDraftChange,
   labels,
   onSend,
+  holdSend,
   sendRemap,
   onClearSendRemap,
   onPreviewChange,
@@ -299,11 +311,17 @@ export function SendPanel({
   const busy = currentSend?.busy ?? false;
   const admittedReceipt = currentSend?.receipt;
   const receiptId = admittedReceipt?.operationId;
+  const admittedRevision = parseU64(admittedReceipt?.revision);
   const receipt =
-    operations.find(
-      (operation) =>
-        admittedReceipt && sameReceiptIdentity(operation, admittedReceipt),
-    ) ?? admittedReceipt;
+    operations.find((operation) => {
+      if (!admittedReceipt || admittedRevision === undefined) return false;
+      const revision = parseU64(operation.revision);
+      return (
+        revision !== undefined &&
+        revision >= admittedRevision &&
+        sameReceiptIdentity(operation, admittedReceipt)
+      );
+    }) ?? admittedReceipt;
   const txReceipt =
     receipt?.result?.kind === "tx" ? receipt.result.value : undefined;
   const receiptStatus =
@@ -530,12 +548,24 @@ export function SendPanel({
         : !preview.prepared?.byteLength
           ? labels.emptyDraft
           : `${formatShortcut(SEND_EDITOR_SHORTCUT)} ${labels.send}`);
-  async function send() {
+  async function send(holdSignal?: AbortSignal) {
     const prepared = preview.prepared;
-    if (disabled || preview.invalid || busy || !prepared?.byteLength) return;
+    if (
+      disabled ||
+      preview.invalid ||
+      busy ||
+      pending.current ||
+      !prepared?.byteLength ||
+      holdSignal?.aborted
+    )
+      return;
     const controller = new AbortController();
     pending.current = controller;
-    setSendState({ scope: sessionScope, busy: true, receipt: admittedReceipt });
+    setSendState((current) => ({
+      scope: sessionScope,
+      busy: true,
+      receipt: current.scope === sessionScope ? current.receipt : undefined,
+    }));
     const isCurrent = () =>
       !controller.signal.aborted && pending.current === controller;
     try {
@@ -545,27 +575,94 @@ export function SendPanel({
         ? [await characterRemapTransform(sourceText.mapping)]
         : undefined;
       if (!isCurrent()) return;
-      const result =
-        sourceText && transforms
-          ? await onSend(bytes, controller.signal, { sourceText, transforms })
+      if (holdSignal?.aborted) {
+        setSendState((current) =>
+          current.scope === sessionScope
+            ? { ...current, busy: false }
+            : current,
+        );
+        return;
+      }
+      const source =
+        sourceText && transforms ? { sourceText, transforms } : undefined;
+      const result = holdSignal
+        ? await onSend(bytes, controller.signal, source, session?.revision)
+        : source
+          ? await onSend(bytes, controller.signal, source)
           : await onSend(bytes, controller.signal);
-      if (isCurrent())
+      if (isCurrent()) {
         setSendState({ scope: sessionScope, busy: false, receipt: result });
+        return result;
+      }
     } catch (reason) {
       const code = nativeErrorCode(reason);
       if (isCurrent())
-        setSendState({
+        setSendState((current) => ({
           scope: sessionScope,
           busy: false,
-          receipt: admittedReceipt,
+          receipt: current.scope === sessionScope ? current.receipt : undefined,
           error: formatError?.({ code }) ?? `${labels.send}: ${labels.failed}`,
           errorCode: code,
           errorEventKey: operationFailureEventKey(reason),
-        });
+        }));
     } finally {
       if (pending.current === controller) pending.current = null;
     }
   }
+  const canHold =
+    !!holdSend &&
+    !disabled &&
+    !preview.invalid &&
+    !!preview.prepared?.byteLength;
+  const hold = useHoldSend(
+    canHold && holdSend
+      ? JSON.stringify([
+          holdSend.scope,
+          sessionScope,
+          session?.revision,
+          checksumOwner,
+        ])
+      : undefined,
+    preview.prepared,
+    !busy,
+    async (signal) => {
+      if (!holdSend || !preview.prepared) return false;
+      const admitted = await send(signal);
+      if (!admitted || signal.aborted) return false;
+      let settled: Operation | undefined;
+      let errorCode: string | undefined;
+      try {
+        settled = await holdSend.wait(admitted, signal);
+      } catch (reason) {
+        // 属于本操作的失败终态已由 Host 投影。
+        if (operationFailureEventKey(reason) === operationFailureKey(admitted))
+          return false;
+        errorCode = nativeErrorCode(reason);
+      }
+      if (signal.aborted) return false;
+      if (!settled || !sameReceiptIdentity(settled, admitted)) {
+        setSendState({
+          scope: sessionScope,
+          busy: false,
+          receipt: admitted,
+          error: labels.holdSendWaitFailed,
+          errorCode,
+        });
+        return false;
+      }
+      setSendState({ scope: sessionScope, busy: false, receipt: settled });
+      const bytes = preview.prepared.readBytes();
+      return !!confirmedSessionWrite(
+        settled,
+        { bytes, bytesBase64: bytesToBase64(bytes) },
+        holdSend.target,
+      );
+    },
+  );
+  function sendOnce() {
+    if (!hold.isHolding()) void send();
+  }
+
   const emptyDraft = draft.length === 0;
   const invalidChecksum = preview.reason === "checksum";
   const toolbar = useMemo(
@@ -909,7 +1006,11 @@ export function SendPanel({
         />
       )}
       <span role="status" className="sr-only">
-        {receiptStatus ? `${labels.receipt}: ${receiptStatus}` : ""}
+        {hold.holding
+          ? labels.holdingSend
+          : receiptStatus
+            ? `${labels.receipt}: ${receiptStatus}`
+            : ""}
       </span>
       {draftCaption && (
         <span id={`${id}-draft-owner`} className="sr-only">
@@ -971,7 +1072,7 @@ export function SendPanel({
                   );
                   return;
                 }
-                void send();
+                sendOnce();
               }
             }}
           />
@@ -991,13 +1092,31 @@ export function SendPanel({
           variant="default"
           className="workbench-send-button"
           aria-describedby={`${id}-send-reason`}
-          onClick={() => void send()}
+          onClick={sendOnce}
           disabled={
-            disabled || preview.invalid || !preview.prepared?.byteLength || busy
+            disabled ||
+            preview.invalid ||
+            !preview.prepared?.byteLength ||
+            busy ||
+            hold.holding
           }
         >
           <Send aria-hidden="true" />
         </WorkbenchIconButton>
+        {holdSend && (
+          <WorkbenchIconButton
+            {...hold.handlers}
+            label={labels.holdSend}
+            tooltip={hold.holding ? labels.holdingSend : labels.holdSendHint}
+            aria-busy={hold.holding || undefined}
+            aria-describedby={`${id}-send-reason`}
+            variant={hold.holding ? "secondary" : "outline"}
+            className="workbench-hold-send-button"
+            disabled={!canHold || (busy && !hold.holding)}
+          >
+            <Repeat2 aria-hidden="true" />
+          </WorkbenchIconButton>
+        )}
       </div>
       {preview.invalid && (
         <p

@@ -13,6 +13,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 #[path = "support/experiment_browser.rs"]
 mod experiment_browser;
+#[path = "support/hold_send_browser.rs"]
+mod hold_send_browser;
 #[path = "support/mapped_capture_browser.rs"]
 mod mapped_capture_browser;
 #[path = "support/operation_source_host.rs"]
