@@ -72,8 +72,12 @@ xdotool windowfocus --sync "$SWB_E2E_KWIN_WINDOW"
 [[ $(xdotool getwindowfocus) == "$SWB_E2E_KWIN_WINDOW" ]]
 timeout 15 wayland-info > "$evidence/wayland-info.txt"
 
+# KWin generates its own repeat events. Outer X11 repeat injects extra release and press pairs.
+xset r off
+xset q > "$evidence/outer-keyboard.txt"
+grep -Eq 'auto repeat:[[:space:]]+off' "$evidence/outer-keyboard.txt"
+
 # Resolving function-key symbols in xdotool injected Mod1 in this nested server.
-# Use the current Xvfb map's unmodified keycodes for every test chord.
 xmodmap -pk > "$evidence/input-keymap.txt"
 declare -A keycodes
 mapping=()

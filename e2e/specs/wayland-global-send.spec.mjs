@@ -130,6 +130,7 @@ function checkRaw(page, bytes) {
 }
 
 async function sendFromPeer(receipt, read, bytes) {
+  const before = readFileSync(portalTrace, "utf8").length;
   await withHotkey(hotkey, async () => {
     await browser.waitUntil(
       async () => {
@@ -144,6 +145,20 @@ async function sendFromPeer(receipt, read, bytes) {
     await delay(900);
   });
   receipt.raw = await read();
+  const component =
+    receipt.componentAfter?.path ?? receipt.componentBefore?.path;
+  receipt.kwinRepeat = readFileSync(portalTrace, "utf8")
+    .slice(before)
+    .split("\n")
+    .filter((line) =>
+      line.endsWith(
+        `path=${component}; interface=org.kde.kglobalaccel.Component; member=globalShortcutRepeated`,
+      ),
+    );
+  assert.ok(
+    receipt.kwinRepeat.length > 0,
+    "KWin did not repeat the held shortcut",
+  );
   checkRaw(receipt.raw, bytes);
 }
 
@@ -308,6 +323,8 @@ async function checkSystemSettings(receipt, draft, bytes) {
   receipt.conflict = await kdeControl("conflict", "Cancel");
   assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
 
+  await startRecordingNewKey();
+  await withHotkey(replacement);
   await kdeControl(
     "settings",
     `Default shortcut ${receipt.binding} is enabled.`,
@@ -317,8 +334,6 @@ async function checkSystemSettings(receipt, draft, bytes) {
     `Default shortcut ${receipt.binding} is disabled.`,
     "observe",
   );
-  await startRecordingNewKey();
-  await withHotkey(replacement);
   receipt.applied = await kdeControl("settings", "Apply");
   await browser.waitUntil(async () => {
     receipt.changedBinding = await (await globalShortcutKey()).getText();
@@ -468,6 +483,13 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     }
     try {
       await sendFromPeer(receipt, read, bytes);
+      const readSecondPress = await globalSendRawReader();
+      await withHotkey(hotkey);
+      await browser.waitUntil(async () => {
+        receipt.secondPress = await readSecondPress();
+        return rawRxBytes(receipt.secondPress).length >= bytes.length;
+      });
+      checkRaw(receipt.secondPress, bytes);
       // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
       await draft.setValue("");
       await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
