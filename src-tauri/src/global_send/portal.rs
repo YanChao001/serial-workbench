@@ -1,7 +1,7 @@
 use super::{ErrorCode, NativeError, NativeResult, ShortcutBinding};
 use futures_util::StreamExt;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use zbus::{
     Connection, MatchRule, MessageStream, Proxy,
     fdo::DBusProxy,
@@ -18,6 +18,10 @@ const SHORTCUTS: &str = "org.freedesktop.portal.GlobalShortcuts";
 const REQUEST: &str = "org.freedesktop.portal.Request";
 const SESSION: &str = "org.freedesktop.portal.Session";
 const ACTION: &str = "send-draft";
+const CREATE_TOKEN: &str = "create_send_shortcut";
+const BIND_TOKEN: &str = "bind_send_shortcut";
+const SESSION_TOKEN: &str = "send_shortcut";
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
 
 type Properties = HashMap<String, OwnedValue>;
 type Shortcuts = Vec<(String, Properties)>;
@@ -34,6 +38,8 @@ pub(super) struct Portal {
     owner_changes: MessageStream,
     proxy: Proxy<'static>,
     version: u32,
+    pending_request: Option<OwnedObjectPath>,
+    session: Option<OwnedObjectPath>,
 }
 
 #[derive(Clone)]
@@ -128,6 +134,8 @@ impl Portal {
             owner_changes,
             proxy,
             version,
+            pending_request: None,
+            session: None,
         })
     }
 
@@ -141,16 +149,21 @@ impl Portal {
     pub(super) async fn create_session(&mut self) -> NativeResult<OwnedObjectPath> {
         // 各候选的连接独立，令牌仅需在这一连接的请求之间保持唯一。
         let options = HashMap::from([
-            ("handle_token", Value::from("create_send_shortcut")),
-            ("session_handle_token", Value::from("send_shortcut")),
+            ("handle_token", Value::from(CREATE_TOKEN)),
+            ("session_handle_token", Value::from(SESSION_TOKEN)),
         ]);
-        let mut response = self.request("CreateSession", &options, None).await?;
+        self.session = Some(self.expected_handle("session", SESSION_TOKEN)?);
+        let mut response = self
+            .request("CreateSession", &options, None, CREATE_TOKEN)
+            .await?;
         // 门户 1.16 以字符串传递会话路径，沿用协议保留的格式。
-        response
+        let session = response
             .remove("session_handle")
             .and_then(|value| String::try_from(value).ok())
             .and_then(|path| OwnedObjectPath::try_from(path).ok())
-            .ok_or_else(protocol_error)
+            .ok_or_else(protocol_error)?;
+        self.session = Some(session.clone());
+        Ok(session)
     }
 
     pub(super) async fn bind(
@@ -167,13 +180,14 @@ impl Portal {
                 ("preferred_trigger", Value::from(trigger.as_str())),
             ]),
         )];
-        let options = HashMap::from([("handle_token", Value::from("bind_send_shortcut"))]);
+        let options = HashMap::from([("handle_token", Value::from(BIND_TOKEN))]);
         // Tauri 使用 GTK3；未导出的 Wayland 父窗口句柄按协议传空。
         let mut response = self
             .request(
                 "BindShortcuts",
                 &(session, &shortcuts[..], "", options),
                 Some(session),
+                BIND_TOKEN,
             )
             .await?;
         let shortcuts = response
@@ -195,15 +209,19 @@ impl Portal {
         method: &str,
         arguments: &B,
         session: Option<&OwnedObjectPath>,
+        token: &str,
     ) -> NativeResult<Properties>
     where
         B: Serialize + DynamicType,
     {
+        // 发送后、返回实际对象路径前也可能发生文档换代。
+        self.pending_request = Some(self.expected_handle("request", token)?);
         let path: OwnedObjectPath = self
             .proxy
             .call(method, arguments)
             .await
             .map_err(portal_error)?;
+        self.pending_request = Some(path.clone());
         while let Some(message) = self.next_message().await {
             let message = message.map_err(portal_error)?;
             let header = message.header();
@@ -214,6 +232,7 @@ impl Portal {
                 && header.member().is_some_and(|name| name == "Response")
                 && header.path().is_some_and(|name| *name == path.as_ref())
             {
+                self.pending_request = None;
                 let (code, results): (u32, Properties) =
                     message.body().deserialize().map_err(portal_error)?;
                 return match code {
@@ -230,6 +249,11 @@ impl Portal {
             }
         }
         Err(super::unavailable())
+    }
+
+    fn expected_handle(&self, kind: &str, token: &str) -> NativeResult<OwnedObjectPath> {
+        let sender = self.connection.unique_name().ok_or_else(protocol_error)?;
+        handle_path(sender.as_str(), kind, token)
     }
 
     pub(super) async fn next(&mut self, session: &OwnedObjectPath) -> Signal {
@@ -279,12 +303,40 @@ impl Portal {
     }
 
     pub(super) async fn disconnect(self) {
+        if let Some(path) = &self.pending_request {
+            self.close_handle(path, REQUEST).await;
+        }
+        if let Some(path) = &self.session {
+            self.close_handle(path, SESSION).await;
+        }
         let connection = self.connection.clone();
         drop(self);
         if let Err(error) = connection.close().await {
             log::debug!("Global shortcuts bus connection closed: {error}");
         }
     }
+
+    async fn close_handle(&self, path: &OwnedObjectPath, interface: &str) {
+        let close = self.connection.call_method(
+            Some(self.proxy.destination().as_str()),
+            path.as_ref(),
+            Some(interface),
+            "Close",
+            &(),
+        );
+        match tokio::time::timeout(CLOSE_TIMEOUT, close).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => log::debug!("Cannot close global shortcuts {interface}: {error}"),
+            Err(error) => log::debug!("Timed out closing global shortcuts {interface}: {error}"),
+        }
+    }
+}
+
+fn handle_path(sender: &str, kind: &str, token: &str) -> NativeResult<OwnedObjectPath> {
+    let sender = sender.strip_prefix(':').ok_or_else(protocol_error)?;
+    let sender = sender.replace('.', "_");
+    OwnedObjectPath::try_from(format!("{DESKTOP}/{kind}/{sender}/{token}"))
+        .map_err(|_| protocol_error())
 }
 
 fn portal_owner_loss_rule(owner: &str) -> zbus::Result<MatchRule<'_>> {
@@ -354,6 +406,25 @@ fn protocol_error() -> NativeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn predicted_handles_are_local_to_the_connection_and_operation() {
+        let request = handle_path(":1.42", "request", BIND_TOKEN).unwrap();
+        assert_eq!(
+            request.as_str(),
+            "/org/freedesktop/portal/desktop/request/1_42/bind_send_shortcut"
+        );
+        let session = handle_path(":1.42", "session", SESSION_TOKEN).unwrap();
+        assert_eq!(
+            session.as_str(),
+            "/org/freedesktop/portal/desktop/session/1_42/send_shortcut"
+        );
+        assert_ne!(
+            request,
+            handle_path(":1.43", "request", BIND_TOKEN).unwrap()
+        );
+        assert!(handle_path(SERVICE, "request", BIND_TOKEN).is_err());
+    }
 
     #[test]
     fn portal_owner_watch_matches_handoff_even_while_the_previous_peer_stays_connected() {

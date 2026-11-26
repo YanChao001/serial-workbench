@@ -147,7 +147,7 @@ B 按精确串口会话代次发布命名 MCP 的活动摘要。会话投影与�
 
 Wayland 用首选组合请求初次绑定，由系统决定实际键位。活动会话的新键位从系统设置管理。应用支持通过 portal v2 的 `ConfigureShortcuts` 打开设置，较早的门户在编辑区引导用户到桌面设置。请求设置由持有绑定的窗口发起，系统事件是键位变化的依据。改变键位时暂停该注册的发送授权，当前视图重新发布授权后再接纳触发。 [门户协议](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)
 
-Wayland 的请求和系统绑定归窗口当前文档及独立的会话总线连接。保存时向门户提供建议组合，按门户返回的实际键位更新速查。换键先等待候选会话确认，取消则保留已有注册。文档换代撤销候选与当前会话，门户撤回或退出也终止派发。两种 Linux 后端沿用同一当前草稿和授权检查。缺少门户的系统会话继续记在 IO-08 专项内，检查现场平台覆盖后再判定兼容结果。
+Wayland 的请求和系统绑定归窗口当前文档及独立的会话总线连接。文档换代立即撤回派发资格，并由原连接依次显式关闭待定请求和系统会话。关闭调用各有期限，调用失败或超时后仍断开原连接回收本地资源。清理待定申请期间保留原申请的占用，避免新文档与旧系统弹窗争用键位。门户撤回或退出同样终止派发。验收从独立桌面核对待定弹窗关闭、旧键停止写入，以及新文档可以显式申请。两种 Linux 后端沿用同一当前草稿和授权检查。 [请求关闭](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html#method-close) · [会话关闭](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Session.html#method-close)
 
 接收编码以当前视图中最近连续 RX 段的有界前缀识别。BOM、严格 UTF-8 校验和统计候选保留各自的依据，统计分数用于排序。菜单在手动编码下也可按需分析。选择候选只更新当前视图的解释，文本、ANSI、搜索与文本导出从同一原始留存重新解码，HEX、录制内容和发送编码保持原有归属。验收核对拆包、证据不足、候选切换后的字节一致及保存范围。
 

@@ -25,16 +25,22 @@ def control(target, name, action):
     desktop = pyatspi.Registry.getDesktop(0)
     seen_windows = set()
     seen_controls = set()
+    matching_windows = []
     while time.monotonic() < end:
-        matching_window = False
+        matching_windows.clear()
         for app in desktop:
             for window in app:
                 title = window.name or ""
                 seen_windows.add(title)
                 if titles[target] not in title:
                     continue
-                matching_window = True
                 if action == "wait-closed":
+                    state = window.getState()
+                    matching_windows.append({
+                        "title": title,
+                        "showing": state.contains(pyatspi.STATE_SHOWING),
+                        "active": state.contains(pyatspi.STATE_ACTIVE),
+                    })
                     continue
                 for item in descendants(window):
                     if item.getRole() not in (pyatspi.ROLE_PUSH_BUTTON, pyatspi.ROLE_CHECK_BOX):
@@ -52,12 +58,14 @@ def control(target, name, action):
                         raise RuntimeError(f"KDE did not activate {name!r}")
                     print(json.dumps({"dialog": title, "control": label, "action": action, "active": active}))
                     return
-        if action == "wait-closed" and not matching_window:
+        if action == "wait-closed" and not matching_windows:
             print(json.dumps({"dialog": titles[target], "action": action}))
             return
         time.sleep(0.2)
     if action == "wait-closed":
-        raise RuntimeError(f"{titles[target]!r} stayed open after the request was dropped")
+        raise RuntimeError(
+            f"{titles[target]!r} still appears in the accessibility tree: {matching_windows}"
+        )
     raise RuntimeError(
         f"No visible, enabled {name!r} in {titles[target]!r}. "
         f"Windows: {sorted(seen_windows)}. Controls: {sorted(seen_controls)}"

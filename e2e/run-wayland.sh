@@ -104,6 +104,10 @@ dbus-monitor --session \
   "type='signal',interface='org.freedesktop.portal.GlobalShortcuts'" \
   "type='signal',interface='org.freedesktop.impl.portal.GlobalShortcuts'" \
   "type='signal',interface='org.kde.kglobalaccel.Component'" \
+  "type='method_call',interface='org.freedesktop.portal.Request',member='Close'" \
+  "type='method_call',interface='org.freedesktop.impl.portal.Request',member='Close'" \
+  "type='method_call',interface='org.freedesktop.portal.Session',member='Close'" \
+  "type='method_call',interface='org.freedesktop.impl.portal.Session',member='Close'" \
   > "$evidence/shortcuts-dbus.log" 2>&1 &
 children+=("$!")
 

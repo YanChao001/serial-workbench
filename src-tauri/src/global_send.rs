@@ -121,7 +121,7 @@ mod desktop {
     struct PendingPortal {
         owner: usize,
         id: String,
-        _cancel: oneshot::Sender<()>,
+        cancel: Option<oneshot::Sender<()>>,
     }
 
     enum Backend {
@@ -419,12 +419,13 @@ mod desktop {
             let mut dispatch = state.lock().unwrap();
             dispatch.documents[owner] += 1;
             #[cfg(target_os = "linux")]
-            if dispatch
+            if let Some(pending) = dispatch
                 .pending_portal
-                .as_ref()
-                .is_some_and(|pending| pending.owner == owner)
+                .as_mut()
+                .filter(|pending| pending.owner == owner)
             {
-                dispatch.pending_portal.take();
+                // 通知登记任务撤回系统请求。占用保留到它完成清理。
+                drop(pending.cancel.take());
             }
             if dispatch
                 .active
@@ -493,7 +494,7 @@ mod desktop {
             dispatch.pending_portal = Some(PendingPortal {
                 owner,
                 id: id.clone(),
-                _cancel: cancel,
+                cancel: Some(cancel),
             });
             if binding.is_none() {
                 dispatch.active.take()
