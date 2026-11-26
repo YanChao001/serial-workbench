@@ -118,7 +118,10 @@ import {
   historyTrimmedAfter,
   type HistoryPosition,
 } from "@/lib/receive-history";
-import { WorkspaceSendPanel } from "./workspace-send-panel";
+import {
+  WorkspaceSendPanel,
+  type SendPermissionPreview,
+} from "./workspace-send-panel";
 import { useManualSendRecording } from "./use-manual-send-recording";
 import {
   ManualRecordingControls,
@@ -796,7 +799,9 @@ export function WorkspaceLayout({
     mode: unboundSendMode,
     encoding: unboundSendEncoding,
   };
-  const [checkBytes, setCheckBytes] = useState<Uint8Array | null>(null);
+  const [sendPermissionPreview, setSendPermissionPreview] =
+    useState<SendPermissionPreview | null>(null);
+  const checkBytes = sendPermissionPreview?.bytes;
   const [availability, setAvailability] = useState<
     readonly HostActionAvailability[]
   >([]);
@@ -2780,12 +2785,16 @@ export function WorkspaceLayout({
         }
         session={session}
         permissionAllowed={sendAllowed}
-        onPreviewChange={setCheckBytes}
+        onPreviewChange={setSendPermissionPreview}
         drafts={draftStore}
         draftKey={draftKey}
         labels={labels}
         operations={state.operations}
-        globalSendAllowed={allowed("session.tx") && !dialog && !promptDevice}
+        globalSendPreview={
+          allowed("session.tx") && !dialog && !promptDevice
+            ? sendPermissionPreview?.prepared
+            : undefined
+        }
         holdSend={
           writableViewScope && target
             ? { scope: writableViewScope, target, wait: host.waitForOperation }
@@ -3111,7 +3120,7 @@ export function WorkspaceLayout({
                   dialog === "repeatSend" ||
                   dialog === "calendarSchedule" ||
                   dialog === "broadcastSend"
-                    ? (checkBytes ?? undefined)
+                    ? checkBytes
                     : undefined,
                 characterRemap:
                   dialog === "characterRemap"

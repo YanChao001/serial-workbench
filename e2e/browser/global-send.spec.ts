@@ -9,6 +9,7 @@ declare global {
       enabled: boolean;
       revision: number;
       allowed: boolean;
+      publishedTargets: number;
       press(revision: number): void;
     };
   }
@@ -40,6 +41,7 @@ test("desktop global send keeps the registered key on conflict and follows autho
       enabled: false,
       revision: 0,
       allowed: true,
+      publishedTargets: 0,
       press: (_revision: number) => {},
     };
     window.globalSendProbe = probe;
@@ -57,6 +59,7 @@ test("desktop global send keeps the registered key on conflict and follows autho
       if (command === "set_global_send_target") {
         probe.revision = Number(args.revision);
         probe.enabled = args.enabled === true;
+        if (probe.enabled) probe.publishedTargets++;
         return null;
       }
       const request = args.request as RpcRequest | undefined;
@@ -158,6 +161,9 @@ test("desktop global send keeps the registered key on conflict and follows autho
   ]);
 
   const authorizedTarget = await revision();
+  const publishedTargets = () =>
+    page.evaluate(() => window.globalSendProbe.publishedTargets);
+  const countBeforeEdit = await publishedTargets();
   await page.evaluate(() => {
     window.globalSendProbe.allowed = false;
   });
@@ -167,6 +173,7 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await expect(
     send.getByRole("button", { name: "Send", exact: true }),
   ).toBeDisabled();
+  expect(await publishedTargets()).toBe(countBeforeEdit);
   await press(authorizedTarget);
   await press(await revision());
   expect(await writes()).toEqual(["QVQ=", "T0s="]);

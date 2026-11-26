@@ -18,6 +18,11 @@ import {
   type CommandLibrarySource,
 } from "./command-library";
 
+export type SendPermissionPreview = {
+  prepared: TextSendPreview;
+  bytes: Uint8Array;
+};
+
 /** 文字只订阅当前草稿，权限预览在输入停顿后才编码。保存和发送始终使用同步正文。 */
 export function WorkspaceSendPanel({
   drafts,
@@ -41,7 +46,7 @@ export function WorkspaceSendPanel({
   drafts: DraftStore;
   draftKey: string;
   commandLibrary?: CommandLibrarySource;
-  onPreviewChange?: (bytes: Uint8Array | null) => void;
+  onPreviewChange?: (preview: SendPermissionPreview | null) => void;
 }) {
   const snapshot = useCallback(() => drafts.get(draftKey), [drafts, draftKey]);
   const draft = useSyncExternalStore(drafts.subscribe, snapshot, snapshot);
@@ -107,7 +112,7 @@ export function WorkspaceSendPanel({
       onPreviewChange?.(null);
       if (onPreviewChange && prepared?.byteLength)
         timer.current = setTimeout(
-          () => onPreviewChange(prepared.readBytes()),
+          () => onPreviewChange({ prepared, bytes: prepared.readBytes() }),
           150,
         );
     },

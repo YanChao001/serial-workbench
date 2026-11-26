@@ -154,7 +154,7 @@ export type SendPanelProps = {
     target: Target;
     wait: (operation: Operation, signal: AbortSignal) => Promise<Operation>;
   };
-  globalSendAllowed?: boolean;
+  globalSendPreview?: TextSendPreview;
   sendRemap?: CharacterRemapRules;
   onClearSendRemap?: () => void;
   /** 最终发送字节的不可变快照，非法输入和卸载时为 null。 */
@@ -234,7 +234,7 @@ export function SendPanel({
   labels,
   onSend,
   holdSend,
-  globalSendAllowed,
+  globalSendPreview,
   sendRemap,
   onClearSendRemap,
   onPreviewChange,
@@ -671,8 +671,9 @@ export function SendPanel({
   }
   const registerGlobalTarget =
     useContext(CommandsContext)?.globalSend?.registerTarget;
-  const globalTarget = globalSendAllowed ? sendScope : undefined;
-  const globalDraft = globalTarget ? preview.prepared : undefined;
+  // 预检查按草稿防抖，授权快照只能启用对应的最终字节。
+  const globalDraft =
+    globalSendPreview === preview.prepared ? globalSendPreview : undefined;
   const globalSend = useRef<(signal: AbortSignal) => void>(undefined);
   useLayoutEffect(() => {
     globalSend.current = (signal) => {
@@ -680,9 +681,9 @@ export function SendPanel({
     };
   });
   useLayoutEffect(() => {
-    if (!globalTarget || !globalDraft) return;
+    if (!sendScope || !globalDraft) return;
     return registerGlobalTarget?.((signal) => globalSend.current?.(signal));
-  }, [globalDraft, globalTarget, registerGlobalTarget]);
+  }, [globalDraft, registerGlobalTarget, sendScope]);
   const holdHint = hold.holding
     ? labels.holdingSend
     : canHold && !busy
