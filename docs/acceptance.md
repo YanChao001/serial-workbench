@@ -450,6 +450,8 @@ recorded_send_2                   recorded_send_2
 
 运行 `pnpm test:ui e2e/browser/global-send.spec.ts --workers=1`。无头用例经 IPC 夹具核对宽窄弹窗、捕获焦点、应用内冲突、原生拒绝后的旧键位、目标切换、授权拒绝与旧事件丢弃。普通浏览器的速查中只有页面内入口。Linux 的隔离原生 CI 在 Xvfb 与 Openbox 下由独立 X11 进程占用 Ctrl+Shift+F10，确认冲突后原键仍被工作台独占。另一个应用置前时按住原组合，从独立 Raw 读回核对一笔 TX、一致的操作 ID 和完整 Virtual Echo 回环。停用后再次按原键，Raw 不得新增记录，独立进程应能注册原键。结果见 `artifacts/e2e/fresh/native-global-send.json`。
 
+X11 再次注册 F9 后保存 Ctrl+Shift+F8。独立客户端必须能接管旧键，另一应用保持前台，原键零写入，新键仅产生一笔已接纳 TX 与逐字节回环。
+
 Windows 与 macOS 的隔离原生 E2E 在原有桌面阶段内构建并启动一个独立辅助应用。它占用主修饰键加 Shift+F10，核对更改失败后仍显示 F9，并向系统确认 F9 仍被原窗口独占。独立应用获得前台后按住 F9 组合并发送重复按下，验收从同一会话的源尾游标独立读取 Raw。要求一笔完整 TX、一致的操作 ID 和精确的 Virtual Echo RX。停用后，辅助应用应能重新注册 F9。结果及受控进程日志见 `artifacts/e2e/fresh/native-global-send.json` 与 `global-send-peer.log`。macOS 缺少系统输入授权时记录该项缺口，可保留冲突和释放证据，跨应用触发仍须在已授权的独立会话中验证。
 
 macOS 辅助程序通过 Launch Services 启动一个专用计算器实例。切换和按键前后核对系统报告的前台进程与该实例一致，并记录实际及预期的进程 ID。探针在登录会话中分别投递修饰键和带平台标志的功能键。先确认独占的 F10 收到一次系统按下与释放回调，再以相同方式投递 F9，检查工作台写入。发送超时时保留最后一页 Raw 并继续验证停用与释放。辅助程序退出时请求结束其启动的计算器实例。系统回调缺失时，先运行[两架构输入诊断](./testing.md#持续集成)，确认系统能收到探针的 F10 按下和释放，再运行工作台的 F9 与 Raw 收发。

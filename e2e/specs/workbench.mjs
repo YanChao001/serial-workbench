@@ -565,6 +565,50 @@ export function workbenchChecks() {
             receipt.reclaimed = true;
           },
         );
+
+        await editGlobalSend();
+        await captureGlobalSendKey("F9");
+        await $("#shortcut-capture").waitForExist({ reverse: true });
+        registered = true;
+        assert.equal(
+          await (await globalShortcutKey()).getText(),
+          receipt.binding,
+        );
+        await closeShortcutHelp();
+        await editGlobalSend();
+        await captureGlobalSendKey("F8");
+        await $("#shortcut-capture").waitForExist({ reverse: true });
+        receipt.changedBinding = await (await globalShortcutKey()).getText();
+        assert.match(receipt.changedBinding, /F8$/);
+        await closeShortcutHelp();
+        await withGlobalSendPeer(
+          grabHelper,
+          join(directory, "x11-global-send-change.log"),
+          async (_peer, command) => {
+            await command("reclaim");
+            receipt.reclaimedAfterChange = true;
+          },
+        );
+
+        const readChanged = await globalSendRawReader();
+        await xdo("windowactivate", "--sync", otherWindow);
+        receipt.changedFocusBefore = await xdo("getactivewindow");
+        assert.equal(receipt.changedFocusBefore, otherWindow);
+        await xdo("key", hotkey);
+        await delay(500);
+        receipt.oldKeyRaw = await readChanged();
+        assert.deepEqual(receipt.oldKeyRaw.events, []);
+        await xdo("key", "ctrl+shift+F8");
+        await browser.waitUntil(async () => {
+          receipt.newKeyRaw = await readChanged();
+          return (
+            receipt.newKeyRaw.events.some(({ kind }) => kind === "tx") &&
+            rawRxBytes(receipt.newKeyRaw).length >= bytes.length
+          );
+        });
+        checkGlobalSendRaw(receipt.newKeyRaw, bytes);
+        receipt.changedFocusAfter = await xdo("getactivewindow");
+        assert.equal(receipt.changedFocusAfter, otherWindow);
       } catch (error) {
         receipt.failure =
           error instanceof Error ? error.message : String(error);
