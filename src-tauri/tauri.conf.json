@@ -51,6 +51,7 @@
       "../NOTICE": "NOTICE",
       "../resources/third-party/tauri.LICENSE": "third-party/tauri.LICENSE",
       "../resources/third-party/webview2-com.LICENSE": "third-party/webview2-com.LICENSE",
+      "../resources/third-party/global-hotkey.LICENSE": "third-party/global-hotkey.LICENSE",
       "../resources/third-party/windows-core.LICENSE": "third-party/windows-core.LICENSE",
       "../resources/third-party/tauri-desktop-starter.LICENSE": "third-party/tauri-desktop-starter.LICENSE",
       "../resources/third-party/xterm.LICENSE": "third-party/xterm.LICENSE",
