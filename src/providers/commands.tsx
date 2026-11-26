@@ -72,7 +72,9 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     setOverlay(open ? "actions" : null);
   }, []);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const globalSend = useGlobalSendShortcut(overlay !== null || aboutOpen);
+  const globalSend = useGlobalSendShortcut(
+    pathname !== "/" || overlay !== null || aboutOpen,
+  );
   const [registrations, setRegistrations] = useState<
     Map<symbol, readonly AppCommand[]>
   >(() => new Map());

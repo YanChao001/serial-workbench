@@ -164,6 +164,21 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await press(firstTarget);
   await expect.poll(writes).toEqual(["QVQ="]);
 
+  await page.evaluate(() => {
+    window.location.hash = "#/settings";
+  });
+  await expect(page.locator("#settings-language")).toBeVisible();
+  await expect.poll(enabled).toBe(false);
+  await press(firstTarget);
+  await press(await revision());
+  expect(await writes()).toEqual(["QVQ="]);
+  await page.evaluate(() => {
+    window.location.hash = "#/";
+  });
+  await expect(draft).toHaveValue("AT");
+  await expect.poll(enabled).toBe(true);
+  await expect.poll(revision).toBeGreaterThan(firstTarget);
+
   await page
     .getByRole("combobox", { name: "Choose device", exact: true })
     .click();
