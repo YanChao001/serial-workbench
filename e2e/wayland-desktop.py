@@ -64,17 +64,19 @@ def control(target, name, action):
     )
 
 
-def report_focus(output):
+def report_focus(output, keys_output):
     import gi
 
     gi.require_version("Gtk", "3.0")
-    from gi.repository import Gtk
+    from gi.repository import Gdk, Gtk
 
     window = Gtk.Window(title="Serial Workbench Wayland Focus Peer")
     display = window.get_display()
     if display.__gtype__.name != "GdkWaylandDisplay":
         raise RuntimeError(f"Unexpected display: {display.__gtype__.name}")
     target = Path(output)
+    keys_target = Path(keys_output)
+    keys_target.write_text("", encoding="utf-8")
 
     def record(*_args):
         pending = target.with_suffix(".tmp")
@@ -86,9 +88,23 @@ def report_focus(output):
         }), encoding="utf-8")
         pending.replace(target)
 
+    def record_key(_window, event, edge):
+        key = Gdk.keyval_name(event.keyval)
+        if key in ("F8", "F9", "F10"):
+            with keys_target.open("a", encoding="utf-8") as output_file:
+                print(json.dumps({
+                    "key": key,
+                    "edge": edge,
+                    "control": bool(event.state & Gdk.ModifierType.CONTROL_MASK),
+                    "shift": bool(event.state & Gdk.ModifierType.SHIFT_MASK),
+                }), file=output_file)
+        return False
+
     window.set_default_size(360, 120)
     window.add(Gtk.Label(label="Focus for the global shortcut acceptance test"))
     window.connect("notify::is-active", record)
+    window.connect("key-press-event", record_key, "down")
+    window.connect("key-release-event", record_key, "up")
     window.connect("destroy", Gtk.main_quit)
     window.show_all()
     record()
@@ -99,7 +115,7 @@ if __name__ == "__main__":
     command, *args = sys.argv[1:]
     if command == "control" and len(args) == 3 and args[2] in ("click", "observe", "wait-closed"):
         control(*args)
-    elif command == "focus" and len(args) == 1:
+    elif command == "focus" and len(args) == 2:
         report_focus(*args)
     else:
-        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|observe|wait-closed, or focus PATH")
+        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|observe|wait-closed, or focus FOCUS_PATH KEYS_PATH")

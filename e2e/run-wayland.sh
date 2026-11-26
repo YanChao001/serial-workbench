@@ -90,4 +90,12 @@ printf 'GlobalShortcuts=%s\n' "$portal" | tee -a "$evidence/environment.txt"
 export SWB_E2E_PORTAL_VERSION=${BASH_REMATCH[1]}
 bus_method GetNameOwner org.freedesktop.impl.portal.desktop.kde | tee -a "$evidence/environment.txt"
 
+export SWB_E2E_WAYLAND_APP_NAME=$name
+dbus-monitor --session \
+  "type='signal',interface='org.freedesktop.portal.GlobalShortcuts'" \
+  "type='signal',interface='org.freedesktop.impl.portal.GlobalShortcuts'" \
+  "type='signal',interface='org.kde.kglobalaccel.Component'" \
+  > "$evidence/shortcuts-dbus.log" 2>&1 &
+children+=("$!")
+
 pnpm test:e2e --interactive --skip-build --wayland-global-send

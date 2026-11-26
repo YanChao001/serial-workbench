@@ -25,12 +25,47 @@ const artifactDir = join(
   "wayland-global-send",
 );
 const focusPath = join(artifactDir, "peer-focus.json");
+const keyPath = join(artifactDir, "peer-keys.jsonl");
 const scenario = process.env.SWB_E2E_WAYLAND_SCENARIO;
-const hotkey = "ctrl+shift+F9";
-const replacement = "ctrl+shift+F10";
+const hotkey = "F9";
+const replacement = "F10";
 
 async function inject(...args) {
   return (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
+}
+
+async function withHotkey(key, held = async () => {}) {
+  try {
+    await inject("keydown", "Control_L", "Shift_L", key);
+    await held();
+  } finally {
+    await inject("keyup", key, "Shift_L", "Control_L");
+  }
+}
+
+async function kdeComponent() {
+  try {
+    const reply = await execute(
+      "gdbus",
+      [
+        "call",
+        "--session",
+        "--timeout",
+        "3",
+        "--dest",
+        "org.kde.kglobalaccel",
+        "--object-path",
+        "/kglobalaccel",
+        "--method",
+        "org.kde.KGlobalAccel.getComponent",
+        process.env.SWB_E2E_WAYLAND_APP_NAME,
+      ],
+      { timeout: 5000 },
+    );
+    return { path: reply.stdout.trim() };
+  } catch (error) {
+    return { error: error.stderr?.trim() || error.message };
+  }
 }
 
 async function kdeControl(target, name, action = "click") {
@@ -57,7 +92,7 @@ function checkRaw(page, bytes) {
 }
 
 async function assertNoTransmit(read, key = hotkey) {
-  await inject("key", key);
+  await withHotkey(key);
   await delay(650);
   const page = await read();
   assert.deepEqual(
@@ -145,7 +180,7 @@ async function checkSystemSettings(receipt, draft, bytes) {
     `Default shortcut ${receipt.binding} is enabled.`,
   );
   await startRecordingNewKey();
-  await inject("key", replacement);
+  await withHotkey(replacement);
   receipt.applied = await kdeControl("settings", "Apply");
   await browser.waitUntil(async () => {
     receipt.changedBinding = await (await globalShortcutKey()).getText();
@@ -164,7 +199,7 @@ async function checkSystemSettings(receipt, draft, bytes) {
     "observe",
   );
   assert.equal(receipt.settingsFocus.active, true);
-  await inject("key", replacement);
+  await withHotkey(replacement);
   await browser.waitUntil(async () => {
     receipt.newKeyRaw = await readChanged();
     return rawRxBytes(receipt.newKeyRaw).length >= bytes.length;
@@ -182,6 +217,27 @@ async function checkSystemSettings(receipt, draft, bytes) {
     await globalSendRawReader(),
     replacement,
   );
+}
+
+async function peerInput(key) {
+  let events;
+  await browser.waitUntil(
+    () => {
+      events = readFileSync(keyPath, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .filter((event) => event.key === key && event.control && event.shift);
+      return ["down", "up"].every((edge) =>
+        events.some((event) => event.edge === edge),
+      );
+    },
+    {
+      timeoutMsg: `The independent Wayland client did not receive Control+Shift+${key}`,
+    },
+  );
+  return events;
 }
 
 it(`honors the ${scenario} shortcut decision with a separate foreground Wayland client`, async () => {
@@ -210,8 +266,10 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
 
     await editGlobalSend();
     assert.equal(await (await globalShortcutKey()).getText(), "Off");
+    receipt.componentBefore = await kdeComponent();
     await captureGlobalSendKey("F9");
     await settleConsent(receipt, payload);
+    receipt.componentAfter = await kdeComponent();
     receipt.binding = await (await globalShortcutKey()).getText();
     if (scenario !== "approve") {
       assert.equal(receipt.binding, "Off");
@@ -222,7 +280,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     }
 
     const read = await globalSendRawReader();
-    peer = spawn("/usr/bin/python3", [helper, "focus", focusPath], {
+    peer = spawn("/usr/bin/python3", [helper, "focus", focusPath, keyPath], {
       stdio: ["ignore", "ignore", "inherit"],
     });
     const readFocus = () => JSON.parse(readFileSync(focusPath, "utf8"));
@@ -247,39 +305,56 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
 
     if (scenario !== "approve") {
       receipt.raw = await assertNoTransmit(read);
+      receipt.unboundKey = await peerInput(hotkey);
       receipt.focusAfter = readFocus();
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
       return;
     }
 
-    await inject("keydown", hotkey);
+    const failures = [];
     try {
-      await browser.waitUntil(
-        async () => {
-          receipt.raw = await read();
-          return (
-            receipt.raw.events.some(({ kind }) => kind === "tx") &&
-            rawRxBytes(receipt.raw).length >= bytes.length
-          );
-        },
-        { timeoutMsg: "The Wayland hotkey produced no Virtual Echo TX and RX" },
-      );
-      await delay(900);
-    } finally {
-      await inject("keyup", hotkey);
+      await withHotkey("F8");
+      receipt.controlKeys = await peerInput("F8");
+    } catch (error) {
+      failures.push(`Peer input control: ${error.message}`);
     }
-    receipt.raw = await read();
-    checkRaw(receipt.raw, bytes);
-    // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
-    await draft.setValue("");
-    await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
-    receipt.emptyDraft = await assertNoTransmit(await globalSendRawReader());
-    receipt.focusAfter = readFocus();
-    assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
-    peer.kill();
-    peer = undefined;
+    try {
+      await withHotkey(hotkey, async () => {
+        await browser.waitUntil(
+          async () => {
+            receipt.raw = await read();
+            return (
+              receipt.raw.events.some(({ kind }) => kind === "tx") &&
+              rawRxBytes(receipt.raw).length >= bytes.length
+            );
+          },
+          {
+            timeoutMsg: "The Wayland hotkey produced no Virtual Echo TX and RX",
+          },
+        );
+        await delay(900);
+      });
+      receipt.raw = await read();
+      checkRaw(receipt.raw, bytes);
+      // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
+      await draft.setValue("");
+      await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
+      receipt.emptyDraft = await assertNoTransmit(await globalSendRawReader());
+      receipt.focusAfter = readFocus();
+      assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
+    } catch (error) {
+      failures.push(`Initial dispatch: ${error.message}`);
+    } finally {
+      peer.kill();
+      peer = undefined;
+    }
     const changedBytes = Buffer.from(`${payload}-UPDATED`, "ascii");
-    await checkSystemSettings(receipt, draft, changedBytes);
+    try {
+      await checkSystemSettings(receipt, draft, changedBytes);
+    } catch (error) {
+      failures.push(`KDE settings: ${error.message}`);
+    }
+    if (failures.length) throw new Error(failures.join("\n"));
   } catch (error) {
     receipt.failure = error instanceof Error ? error.message : String(error);
     throw error;
