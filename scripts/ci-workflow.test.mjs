@@ -105,20 +105,24 @@ test("preflight shares the full native runner and retains successful source rece
   assert.ok(targetInput);
   assert.match(targetInput, /type: choice/);
   assert.match(targetInput, /default: x86_64-unknown-linux-gnu/);
+  const targetGroups = preflight.match(
+    /fromJSON\('([^']+)'\)\[inputs\.native_preflight_target\]/,
+  );
+  assert.ok(targetGroups);
+  const groups = JSON.parse(targetGroups[1]);
+  assert.deepEqual(groups, {
+    macos: ["aarch64-apple-darwin", "x86_64-apple-darwin"],
+    "windows-and-macos": [
+      "x86_64-pc-windows-msvc",
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+    ],
+  });
   assert.deepEqual(
     [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
-    [...Object.keys(JSON.parse(runnerMap[1])), "windows-and-macos"],
+    [...Object.keys(JSON.parse(runnerMap[1])), ...Object.keys(groups)],
   );
   assert.match(preflight, /fail-fast: false/);
-  const desktopGroup = preflight.match(
-    /inputs\.native_preflight_target == 'windows-and-macos' && fromJSON\('([^']+)'\)/,
-  );
-  assert.ok(desktopGroup);
-  assert.deepEqual(JSON.parse(desktopGroup[1]), [
-    "x86_64-pc-windows-msvc",
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-  ]);
   assert.match(
     preflight,
     /fromJSON\(format\('\["\{0\}"\]', inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu'\)\)/,

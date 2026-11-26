@@ -16,7 +16,7 @@
 
 ### 本轮交付与验收
 
-- M4 桌面热键（IO-08）的当前草稿授权、原生注册和 Wayland 系统改键进入 #89。候选 `c80dfbd` 通过 X11 跨应用单次发送，Windows 和两种 macOS 架构的原生收据确认系统冲突和原键保留。Windows 的 Raw 分页读取及 macOS 的独立应用前台切换已在任务分支调整，跨应用 Raw 验收和释放继续复验。Wayland 需有 GlobalShortcuts 服务的独立桌面，物理串口及正式安装包按专项验收。 [PR #89](https://github.com/YanChao001/serial-workbench/pull/89) · [候选证据](https://github.com/YanChao001/serial-workbench/actions/runs/45863879445)
+- M4 桌面热键（IO-08）的当前草稿授权、原生注册和 Wayland 系统改键进入 #89。`c80dfbd` 通过 X11 跨应用单次发送。`022ce13` 在 Windows 验证系统冲突、原键保留、后台仅发送一次、24 字节 Raw 回环和退出释放。同候选的两种 macOS 架构通过冲突与原键保留，前台切换未通过，尚未触发发送，下一批复验 Launch Services 前台探针。Wayland 服务交接已有本地协议测试，实测需有独立桌面和 GlobalShortcuts 服务。物理串口及正式安装包按专项验收。 [PR #89](https://github.com/YanChao001/serial-workbench/pull/89) · [X11 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45863879445/job/140061636746) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45866771347/artifacts/15141565894) · [macOS 预检](https://github.com/YanChao001/serial-workbench/actions/runs/45866771347)
 - M4 工作台按住连发逐笔确认实际写入，松手、授权失效或写入状态无法确认时停止后续提交，并保留已接纳回执。四平台门禁、365 项本机无头 Chromium 回归和真实配对 Raw 写入复验通过。 [PR #83](https://github.com/YanChao001/serial-workbench/pull/83) · [四目标检查](https://github.com/YanChao001/serial-workbench/actions/runs/45774688836/attempts/2)
 - M5 独立市场交付了签名目录、时效和回退检查、版本兼容筛选，以及评分来源与时间。宿主固定引用市场主线提交 `455348126b56c58a7b975f3b5075da8d925be23d`。 [Marketplace PR #3](https://github.com/YanChao001/serial-workbench-plugins/pull/3) · [目录四平台检查](https://github.com/YanChao001/serial-workbench-plugins/actions/runs/45790904133)
 
