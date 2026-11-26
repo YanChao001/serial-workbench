@@ -358,7 +358,7 @@ mod tests {
             })).unwrap()))
         };
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("continuous");
+        let path = dir.path().canonicalize().unwrap().join("continuous");
         let rules = vec![CaptureRedactionRule {
             pattern: "token=[^ ]+".into(),
             replacement: "token=[hidden]".into(),
