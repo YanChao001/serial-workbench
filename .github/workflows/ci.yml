@@ -50,7 +50,7 @@ on:
           - macos-offline-installer
         required: true
       native_preflight_target:
-        description: 原生预检目标。macos 执行两种架构，macos-input 诊断系统热键，wayland-global-send 验证 KDE Wayland 热键
+        description: 原生预检目标。macos 执行两种架构，linux-desktop 同时执行 X11 原生与 KDE Wayland 热键场景
         type: choice
         default: x86_64-unknown-linux-gnu
         options:
@@ -60,6 +60,7 @@ on:
           - x86_64-apple-darwin
           - macos
           - windows-and-macos
+          - linux-desktop
           - macos-input
           - wayland-global-send
         required: true
@@ -639,14 +640,14 @@ jobs:
       fail-fast: false
       matrix:
         target: >-
-          ${{ fromJSON('{"macos":["aarch64-apple-darwin","x86_64-apple-darwin"],"windows-and-macos":["x86_64-pc-windows-msvc","aarch64-apple-darwin","x86_64-apple-darwin"]}')[inputs.native_preflight_target]
+          ${{ fromJSON('{"macos":["aarch64-apple-darwin","x86_64-apple-darwin"],"windows-and-macos":["x86_64-pc-windows-msvc","aarch64-apple-darwin","x86_64-apple-darwin"],"linux-desktop":["x86_64-unknown-linux-gnu"]}')[inputs.native_preflight_target]
             || fromJSON(format('["{0}"]', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu')) }}
     uses: ./.github/workflows/native-e2e.yml
     with:
       platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[matrix.target] }}
       target: ${{ matrix.target }}
       native_file_dialogs: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
-      chart_only: ${{ inputs.native_preflight_chart }}
+      chart_only: ${{ inputs.native_preflight_chart && inputs.native_preflight_target != 'linux-desktop' }}
       windows_reference_only: ${{ matrix.target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
 
   macos-input-preflight:
@@ -678,7 +679,7 @@ jobs:
           if-no-files-found: ignore
 
   wayland-global-send-preflight:
-    if: inputs.native_preflight && !inputs.runtime_preflight && inputs.native_preflight_target == 'wayland-global-send'
+    if: inputs.native_preflight && !inputs.runtime_preflight && (inputs.native_preflight_target == 'wayland-global-send' || inputs.native_preflight_target == 'linux-desktop')
     name: KDE Wayland 全局发送预检
     runs-on: ubuntu-26.04
     timeout-minutes: 35
@@ -790,10 +791,11 @@ jobs:
         if: inputs.native_preflight
         env:
           NATIVE_PREFLIGHT_RESULT: >-
-            ${{ inputs.native_preflight_target == 'macos-input' && needs.macos-input-preflight.result
+            ${{ inputs.native_preflight_target == 'linux-desktop' && format('{0},{1}', needs.native-preflight.result, needs.wayland-global-send-preflight.result)
+            || inputs.native_preflight_target == 'macos-input' && needs.macos-input-preflight.result
             || inputs.native_preflight_target == 'wayland-global-send' && needs.wayland-global-send-preflight.result
             || needs.native-preflight.result }}
-        run: node --input-type=module -e "if (process.env.NATIVE_PREFLIGHT_RESULT !== 'success') process.exit(1)"
+        run: node --input-type=module -e "if (process.env.NATIVE_PREFLIGHT_RESULT.split(',').some(result => result !== 'success')) process.exit(1)"
       - name: 记录预检范围
         if: inputs.native_preflight
         env:

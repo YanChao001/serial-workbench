@@ -117,6 +117,7 @@ test("preflight shares the full native runner and retains successful source rece
       "aarch64-apple-darwin",
       "x86_64-apple-darwin",
     ],
+    "linux-desktop": ["x86_64-unknown-linux-gnu"],
   });
   assert.deepEqual(
     [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
@@ -167,7 +168,7 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(
     preflight,
-    /chart_only: \$\{\{ inputs\.native_preflight_chart \}\}/,
+    /chart_only: \$\{\{ inputs\.native_preflight_chart && inputs\.native_preflight_target != 'linux-desktop' \}\}/,
   );
   assert.match(
     native,
@@ -189,7 +190,10 @@ test("preflight shares the full native runner and retains successful source rece
     job("quality-gate"),
     /确认所有检查通过\n {8}if: \$\{\{ !inputs\.native_preflight \}\}/,
   );
-  assert.match(job("quality-gate"), /NATIVE_PREFLIGHT_RESULT !== 'success'/);
+  assert.match(
+    job("quality-gate"),
+    /NATIVE_PREFLIGHT_RESULT\.split\(','\)\.some\(result => result !== 'success'\)/,
+  );
 });
 
 test("macOS input preflight measures OS delivery without building a workbench", () => {
@@ -218,7 +222,7 @@ test("Wayland hotkeys run in a separate manual desktop preflight", () => {
   const wayland = job("wayland-global-send-preflight");
   assert.match(
     wayland,
-    /if: inputs\.native_preflight && !inputs\.runtime_preflight && inputs\.native_preflight_target == 'wayland-global-send'/,
+    /if: inputs\.native_preflight && !inputs\.runtime_preflight && \(inputs\.native_preflight_target == 'wayland-global-send' \|\| inputs\.native_preflight_target == 'linux-desktop'\)/,
   );
   assert.match(wayland, /runs-on: ubuntu-26\.04/);
   assert.match(wayland, /bash scripts\/ci-linux-deps\.sh wayland/);
@@ -234,6 +238,10 @@ test("Wayland hotkeys run in a separate manual desktop preflight", () => {
   assert.match(
     job("native-preflight"),
     /inputs\.native_preflight_target != 'wayland-global-send'/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /target == 'linux-desktop' && format\('\{0\},\{1\}', needs\.native-preflight\.result, needs\.wayland-global-send-preflight\.result\)/,
   );
   assert.match(
     job("quality-gate"),

@@ -87,6 +87,8 @@ cargo fmt --all -- --check
 
 原生预检设置 `native_preflight=true` 和 `desktop_e2e=true`。`native_preflight_target` 可选择单个目标，`macos` 一次复验两种 macOS 架构，`windows-and-macos` 同时复验 Windows。各目标复用原生 E2E 并分别保留日志和收据，完整候选继续按四目标验收。
 
+`native_preflight_target=linux-desktop` 在一次预检中并行执行 Ubuntu 22.04 的 X11 原生场景和 Ubuntu 26.04 的双版本 Wayland 热键专项。两个作业分别保留收据，均通过后预检才通过。
+
 `native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。探针确认带功能键标志的 F10 在独立应用前台时收到一对 Carbon 按下和释放回调。收据记录会话内标记事件的数量和修饰键。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
 
 `native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的独立 KWin 会话分别验证批准、取消、清除系统分配后确认，以及系统弹窗待定时重载工作台。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。批准会话核对同一个绑定在主工作台置前时写入一次，在速查、偏好设置及次窗口置前时没有新增 TX，返回原发送面后能向 Virtual Echo 再次写入。从工作台打开 KDE 快捷键设置，选择工作台的条目，操作捕获取消、系统键位冲突、换键和撤回。从 Virtual Echo 的独立 Raw 读回核对写入结果。另一个独立配置用同一组合键触发 KWin 的关闭窗口，用来检查输入是否被 KWin 当成全局热键。`wayland-global-send` 产物保存候选摘要、门户和后端版本、前台窗口、门户请求和会话关闭、KWin 注册日志与 Raw 收据。其它环境按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
