@@ -198,8 +198,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 11] {
-    static PREVIOUS: OnceLock<[ProductPackage; 11]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 12] {
+    static PREVIOUS: OnceLock<[ProductPackage; 12]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
