@@ -1716,7 +1716,8 @@
 }
 
 /* 工具窗共用紧凑的字段组、动作栏和稳定的数值空间。 */
-.workbench-dialog:has(.workbench-tool-form .workbench-tool-pages) {
+.workbench-dialog:has(.workbench-tool-form .workbench-tool-pages),
+.workbench-dialog:has(.workbench-tool-form-fixed) {
   --workbench-dialog-height: 28rem;
 }
 .workbench-dialog-body .workbench-tool-form:has(.workbench-tool-pages) {
@@ -1733,6 +1734,12 @@
 }
 .workbench-dialog-body .workbench-tool-form {
   height: auto;
+}
+.workbench-dialog-body:has(.workbench-tool-form-fixed) {
+  overflow: hidden;
+}
+.workbench-dialog-body .workbench-tool-form-fixed {
+  height: 100%;
 }
 
 .workbench-dialog-body fieldset:not(.workbench-choice) {

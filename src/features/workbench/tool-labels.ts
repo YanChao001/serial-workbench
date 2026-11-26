@@ -417,6 +417,7 @@ export function workbenchToolLabels(t: Translate) {
     commandSequence: t("commandSequence.title"),
     testSuite: t("testSuite.title"),
     ruleTrigger: t("ruleTrigger.title"),
+    loopback: t("loopback.title"),
     manualRecording: {
       title: t("manualRecording.title"),
       description: t("manualRecording.description"),

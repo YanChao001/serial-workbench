@@ -64,10 +64,12 @@ export async function acquireTransaction(
   task: NodeTaskContext,
   session: Session,
   ttlMs = transactionTtlMs,
+  expectedRevision?: string,
 ) {
   let owner = await task.actions.invokeChild({
     actionId: "lease.acquire",
     target: session,
+    ...(expectedRevision !== undefined ? { expectedRevision } : {}),
     params: { kind: "transaction", ttlMs: String(ttlMs) },
   });
   while (pending(owner)) {
@@ -146,11 +148,13 @@ export async function sendTransactionWithDeadline(
   leaseId: string,
   bytesBase64: string,
   writeWaitMs: number,
+  expectedRevision?: string,
 ) {
   const child = await task.actions.invokeChild({
     actionId: "session.tx",
     target: session,
     leaseId,
+    ...(expectedRevision !== undefined ? { expectedRevision } : {}),
     params: {
       bytesBase64,
       writeWaitMs: String(writeWaitMs),

@@ -1,16 +1,17 @@
 {
   "id": "swb.reference.modbus",
-  "version": "0.1.0",
-  "archiveSha256": "be6982176c772c0e1bce9a01f94dad981e52f71f3c76db3a35e6e44105a7a079",
-  "compiledModuleSha256": "72cc3bfe79b86208aa7b7bea933f11111c22f3cca6565de28daa859ba9fcc363",
-  "manifestSha256": "01cac9c7c1d02b3562439455e75d84564403ba55bbbc71a04c7f95ee059158c0",
+  "version": "0.1.1",
+  "archiveSha256": "f66c76ef4d1a4f95ac4b08af9ce3041033334a951c393dca5c8d19c34709712f",
+  "compiledModuleSha256": "70bc8f1758c6811fc3c69297b64b693c9d1e5492108e388be12fa28424f7c8e9",
+  "manifestSha256": "74455dbd524b8b5dd536935d7507fbcaf544f8edd33f7d0170607dcc7d6a2510",
   "sourceApproval": {
-    "keyId": "built-in-modbus-0.1.0",
+    "keyId": "built-in-modbus-0.1.1",
     "publicKey": [
-      199, 212, 118, 18, 89, 218, 154, 10, 118, 198, 41, 217, 216, 154, 45, 170,
-      77, 83, 243, 55, 251, 139, 235, 175, 186, 151, 255, 162, 40, 109, 250, 34
+      201, 116, 212, 125, 236, 199, 46, 128, 147, 68, 245, 234, 40, 218, 246,
+      213, 12, 102, 242, 199, 32, 209, 8, 228, 104, 2, 253, 148, 129, 130, 28,
+      225
     ],
-    "publicKeySha256": "269dbb40e956c67f2c2bc504a09e36fb75c48c0d8ffdbbc62a87b30d5b8c6982",
+    "publicKeySha256": "11430a93bc9d6debd4986758df2718c47f3580432d4c730a7a48ab1188503927",
     "source": "swb.product"
   }
 }

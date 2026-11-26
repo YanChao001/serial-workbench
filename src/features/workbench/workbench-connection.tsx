@@ -474,6 +474,13 @@ export function WorkbenchConnection({
                   {toolLabels.testSuite}
                 </DropdownMenuItem>
               )}
+              {toolLabels?.loopback && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("loopback")}
+                >
+                  {toolLabels.loopback}
+                </DropdownMenuItem>
+              )}
               {toolLabels?.ruleTrigger ? (
                 <DropdownMenuItem
                   onSelect={() => selectToolFromMenu("ruleTrigger")}

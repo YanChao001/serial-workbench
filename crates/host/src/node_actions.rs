@@ -138,6 +138,9 @@ impl Host {
         )?);
         call.params = binding.normalize_parameters(&call.params)?;
         binding.validate_call(&call)?;
+        if call.action_id.as_str() == "swb.builtin.automation.loopback" {
+            self.validate_loopback_target(&call)?;
+        }
         binding.current()?;
         call.reveal_target = binding.spec().reveal_target.clone();
         if serde_json::to_vec(&call).map_err(|_| invalid())?.len()
@@ -163,6 +166,62 @@ impl Host {
             authority,
             plugin,
         })
+    }
+    fn validate_loopback_target(&self, call: &Call) -> HostResult<()> {
+        let session = self.inner.devices.session(&call.target)?.snapshot()?;
+        if session.state != SessionState::Open
+            || session.read_only
+            || session.tx_gate != TxGate::Ready
+        {
+            return Err(HostError::new(
+                "LOOPBACK_TARGET_UNAVAILABLE",
+                "Loopback requires a writable open session",
+            ));
+        }
+        for (name, value) in [
+            ("sessionRevision", session.revision),
+            ("configurationRevision", session.configuration_revision),
+        ] {
+            if call.params.get(name) != Some(&JsonValue::String(value.get().to_string())) {
+                return Err(HostError::new(
+                    "REVISION_CONFLICT",
+                    "Loopback session configuration changed",
+                ));
+            }
+        }
+        let device = self
+            .inner
+            .device_runtime
+            .as_ref()
+            .ok_or_else(|| {
+                HostError::new(
+                    "LOOPBACK_TARGET_UNAVAILABLE",
+                    "The Host device directory is unavailable",
+                )
+            })?
+            .descriptor(&session.device_id)?;
+        let wired = call.params.get("wired") == Some(&JsonValue::Bool(true));
+        let source = match device.fingerprint.transport {
+            DeviceTransportKind::Virtual
+                if device.device_id.as_str() == "virtual:echo" && !wired =>
+            {
+                "virtual_echo"
+            }
+            DeviceTransportKind::Serial if wired => "serial_loopback",
+            _ => {
+                return Err(HostError::new(
+                    "LOOPBACK_TARGET_UNAVAILABLE",
+                    "Select Virtual Echo or confirm TX/RX wiring on a native serial port",
+                ));
+            }
+        };
+        if call.params.get("source") != Some(&JsonValue::String(source.into())) {
+            return Err(HostError::new(
+                "LOOPBACK_TARGET_UNAVAILABLE",
+                "The supplied loopback source does not match the session",
+            ));
+        }
+        Ok(())
     }
     fn prepare_extension_request(
         &self,

@@ -2943,6 +2943,7 @@ mod tests {
                     (&automation, "swb.builtin.automation.sequence"),
                     (&automation, "swb.builtin.automation.rule"),
                     (&automation, "swb.builtin.automation.calendar"),
+                    (&automation, "swb.builtin.automation.loopback"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3108,14 +3109,16 @@ mod tests {
             async move {
                 let catalog = &host.inner.registry.runtime;
                 let mut updates = catalog.subscribe();
-                let package = NodePackageId::try_from("swb.builtin.tcp").unwrap();
+                let packages = ["swb.builtin.tcp", "swb.builtin.automation"].map(|id| NodePackageId::try_from(id).unwrap());
                 timeout(Duration::from_secs(30), async {
                     loop {
-                        let status = catalog.status(&package).unwrap();
-                        if status.phase == NodePackageRuntimePhase::Active {
-                            break;
+                        let mut active = true;
+                        for package in &packages {
+                            let status = catalog.status(package).unwrap();
+                            assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                            active &= status.phase == NodePackageRuntimePhase::Active;
                         }
-                        assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                        if active { break; }
                         updates.changed().await.unwrap();
                     }
                 })
@@ -3183,6 +3186,63 @@ mod tests {
                         .unwrap()
                     }
                 };
+
+                let echo_device = Target { id: id("virtual:echo"), ..device.clone() };
+                grant(&echo_device, vec!["device.modify".into()]);
+                let opened = host.invoke(&actor, call(&echo_device, "device.open", serde_json::json!({
+                    "configuration": SerialConfiguration::default(),
+                }))).await.unwrap();
+                let ActionResult::Opened(echo) = settled(opened).await else {
+                    panic!("Expected the native Host Virtual Echo session");
+                };
+                let echo = Target {
+                    kind: ResourceKind::try_from("session").unwrap(),
+                    id: echo.session_id.clone(),
+                    session_id: Some(echo.session_id),
+                    session_epoch: Some(echo.session_epoch),
+                    ..echo_device
+                };
+                let loopback_action = "swb.builtin.automation.loopback";
+                let snapshot = host.devices().snapshot(&echo).await.unwrap();
+                let params = serde_json::json!({
+                    "source": "virtual_echo", "seed": 123, "count": 4, "frameBytes": 64,
+                    "timeoutMs": 1000, "startEventSeq": "1",
+                    "sessionRevision": snapshot.revision,
+                    "configurationRevision": snapshot.configuration_revision,
+                });
+                grant(&echo, vec!["metadata.read".into(), "content.read".into()]);
+                let denied = host.invoke(&actor, call(&echo, loopback_action, params.clone())).await.unwrap_err();
+                assert_eq!(denied.code, "PERMISSION_DENIED");
+                grant(&echo, vec!["metadata.read".into(), "content.read".into(), "device.modify".into()]);
+                let mut mislabeled = params.clone();
+                mislabeled["source"] = serde_json::json!("serial_loopback");
+                mislabeled["wired"] = serde_json::json!(true);
+                let denied = host.invoke(&actor, call(&echo, loopback_action, mislabeled)).await.unwrap_err();
+                assert_eq!(denied.code, "LOOPBACK_TARGET_UNAVAILABLE");
+                let mut stale = params.clone();
+                stale["sessionRevision"] = serde_json::json!(snapshot.revision.checked_next().unwrap());
+                let denied = host.invoke(&actor, call(&echo, loopback_action, stale)).await.unwrap_err();
+                assert_eq!(denied.code, "REVISION_CONFLICT");
+                let measured = host.invoke(&actor, call(&echo, loopback_action, params)).await.unwrap();
+                let ActionResult::Reference(output) = settled(measured).await else {
+                    panic!("Expected the signed loopback measurement result");
+                };
+                let file = host.inner.files.read(FileReadParams {
+                    file_ref: output.result_ref, offset: 0.into(), max_bytes: 8192.into(),
+                }, &actor).unwrap();
+                assert!(file.at_end);
+                let report: serde_json::Value = serde_json::from_slice(&STANDARD.decode(file.bytes_base64.as_str()).unwrap()).unwrap();
+                assert_eq!(report["outcome"], "completed", "{report}");
+                assert_eq!(report["source"], "virtual_echo");
+                assert_eq!(report["sentBytes"], 256);
+                assert_eq!(report["comparedBits"], 1536);
+                assert_eq!(report["bitErrors"], 0);
+                assert_eq!(report["frames"].as_array().unwrap().len(), 4);
+                assert!(report["latencyNs"]["mean"].as_f64().unwrap() > 0.0);
+                assert!(report["throughputBytesPerSecond"].as_f64().unwrap() > 0.0);
+                let closing = host.invoke(&actor, call(&echo, "session.close", serde_json::json!({}))).await.unwrap();
+                settled(closing).await;
+                eprintln!("bundled_loopback source=virtual_echo frames=4 sent_bytes=256 compared_bits=1536 bit_errors=0 unauthorized_wrong_source_and_stale_rejected=true");
 
                 grant(&device, vec!["device.modify".into()]);
                 let mut previous_epoch = None;

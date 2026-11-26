@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.modbus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Modbus Master",
   "description": "Send a paced Modbus request and trace its session response",
   "license": "Apache-2.0",

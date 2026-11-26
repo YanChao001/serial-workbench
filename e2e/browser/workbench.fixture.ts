@@ -646,6 +646,7 @@ export async function seedWorkbenchFixture(
     windowGeometry: geometry,
     openedSession: {
       ...fixtureSession,
+      deviceId: device?.deviceId ?? fixtureSession.deviceId,
       readOnly,
       configuration: openedConfiguration ?? fixtureSession.configuration,
       capabilities: openedCapabilities ?? fixtureSession.capabilities,
@@ -2037,6 +2038,7 @@ export async function seedWorkbenchFixture(
                 const sequence = call.actionId.endsWith(".sequence");
                 const rule = call.actionId.endsWith(".rule");
                 const calendar = call.actionId.endsWith(".calendar");
+                const loopback = call.actionId.endsWith(".loopback");
                 const waitingToArm =
                   calendar && automation.calendarInitiallyQueued;
                 const retry = sequence && automation.sequenceRetry;
@@ -2068,7 +2070,9 @@ export async function seedWorkbenchFixture(
                         ? ++calendarRuns === 1
                           ? "fixture-calendar"
                           : "fixture-calendar-" + calendarRuns
-                        : "fixture-repeat";
+                        : loopback
+                          ? "fixture-loopback"
+                          : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
@@ -2100,7 +2104,9 @@ export async function seedWorkbenchFixture(
                             ? "matches"
                             : sequence
                               ? "steps"
-                              : "rounds",
+                              : loopback
+                                ? "frames"
+                                : "rounds",
                       },
                   result:
                     automation.state === "held"
@@ -2167,6 +2173,33 @@ export async function seedWorkbenchFixture(
                         ),
                       },
                 );
+                if (loopback) {
+                  const size = Number(call.params.frameBytes);
+                  automationFile = JSON.stringify({
+                    outcome: "completed",
+                    source: call.params.source,
+                    sentBytes: count * size,
+                    comparedBits: count * (size - 16) * 8,
+                    bitErrors: 0,
+                    bitErrorRate: 0,
+                    throughputBytesPerSecond: 12800,
+                    latencyNs: { min: 5000000, max: 5000000, mean: 5000000 },
+                    frames: [
+                      {
+                        sequence: 1,
+                        operationId: "loopback-tx-1",
+                        outcome: "compared",
+                        receivedBytes: size,
+                        source: {
+                          ...call.target,
+                          direction: "rx",
+                          byteStart: "10",
+                          byteEnd: String(10 + size),
+                        },
+                      },
+                    ],
+                  });
+                }
                 if (calendar) {
                   const schedule = call.params.schedule;
                   const at =
@@ -3399,8 +3432,9 @@ export async function seedWorkbenchFixture(
                       cursor: {
                         hostId: hostAttachment.attachment.hostId,
                         instanceEpoch: "1",
-                        scopeId: [".sequence", ".rule"].some((suffix) =>
-                          automation?.action.actionId.endsWith(suffix),
+                        scopeId: [".sequence", ".rule", ".loopback"].some(
+                          (suffix) =>
+                            automation?.action.actionId.endsWith(suffix),
                         )
                           ? (fixture.automationCursorScope ??
                             [

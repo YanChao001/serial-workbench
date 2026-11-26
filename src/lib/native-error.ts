@@ -4,6 +4,7 @@ import { isRecord } from "./settings-model";
 const ERROR_KEYS: Record<string, MessageKey> = {
   ACCESS_DENIED: "nativeError.accessDenied",
   DEVICE_BUSY: "nativeError.deviceBusy",
+  LOOPBACK_TARGET_UNAVAILABLE: "loopback.unavailable",
   PLUGIN_TRANSPORT_OPEN_FAILED: "nativeError.pluginTransportOpenFailed",
   HOST_BUSY: "nativeError.hostBusy",
   BROWSER_CONNECTION_CLOSED: "workbench.hostUnavailable",

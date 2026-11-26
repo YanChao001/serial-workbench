@@ -831,6 +831,10 @@ FC01/02 的独立响应保留装有位值和填充的 `bitBytes`，FC03/04 响�
 
 运行 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "Modbus master timeline"`，核对实际工作台入口、错误请求不会发送、精确会话调用、超时与重发分行、共用轴和经摘要检查的结果文件。隔离 Host 另核对首发有确证 TX、分块 RX 首尾引用与重发的真实原始范围。`native_node_bundled_protocol_registers_on_first_start_and_restart` 核对随包登记、重启不改 revision、缺少会话写权限时拒绝及授权后 Virtual Echo 会话的实际 TX 终态。组件清单按 Host 记录包 ID、版本与归档摘要。
 
+#### 首方主站与从站的归档升级
+
+Modbus 主站和从站分别从 0.1.0 升到 0.1.1。通过 `pnpm plugin-sdk:fixture` 重建两份入口，用 `sign_reference_modbus` 和 `sign_reference_modbus_slave` 各自签名，并执行 `node --test scripts/product-modbus.test.mjs` 核对编译产物、清单及归档摘要。原签名包作为已知前驱，`node_packages::product::tests::known_predecessor_upgrades_and_preserves_the_profile_decision` 覆盖已启用、已停用与已卸载三种配置及再次启动不重复安装。隔离原生启动用例核对新版归档在两个 Host 实例代次的实际激活，并执行主站 TX 和从站分块请求应答。实体线路和正式安装包仍按各专项验收。
+
 ### Modbus 寄存器与监视（PROTO-10、PROTO-20）
 
 在可写会话打开「协议分帧」中的「Modbus 寄存器与监视」。选择 RTU、ASCII 或 TCP，设置单元标识、地址基准、变量数和响应时限。保持寄存器读取使用 FC03，输入寄存器使用 FC04。核对零基地址 100 与一基地址 101 生成相同 PDU 地址。16 位格式每变量使用一字，32 位和浮点格式每变量使用两字。检查 AB、BA 及 ABCD、BADC、CDAB、DCBA 对照样本，核对表中原始寄存器字和变量值。 [Modbus 应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf)
@@ -1004,6 +1008,14 @@ Host 软件验收应核对一致修订、篡改与未来版本、源访问受限
 在工作台选择串口、PTY 或虚拟串口，从工作区菜单打开「会话模板」。STM32 调试和 AT 模组示例使用 115200 / 8N1，Modbus RTU 从站示例使用 19200 / 8E1。按设备文档核对线路参数后选择「按模板打开」。检查 Host 收到明确的配置，超时及重连间隔按原设备配置传入。打开已有会话时，切到线路参数不同的模板，核对仍显示原配置并要求先关闭。分别查看固件日志、载入 AT 示例，以及载入 Modbus 从站模型。只有显式发送、模拟请求或启动从站才执行对应操作。用 `pnpm test:ui e2e/browser/session-templates.spec.ts --workers 1` 核对两种从站动作可见性、参数和接线。
 
 若从站动作缺失，从模板进入「管理插件」，用可信签名包启用或安装 Modbus Slave（`swb.reference.modbus.slave`），在工作台重新打开模板。检查目录已有从站动作，打开端口后以独立主站对照实际帧。STM32 接合适电平的串口设备读取启动日志，AT 模组按其实际设置核对命令回显、最终结果和异步通知。离线发行按同一签名候选分别复验首次启动和插件恢复。
+
+### 环回自检（DIAG-01／LINE-15）
+
+打开 Virtual Echo 会话，从工作区菜单进入「环回自检」。检查端口和虚拟来源、帧数、每帧字节数、种子、等待时间和发送总量。启动前核对没有测试 TX，运行后按源会话和实际任务检查每帧 TX 回执、RX 字节范围、误码位与比较位、吞吐和往返延迟。回环标记包含种子、序号和本次运行标识。吞吐使用首帧发送意图至最后一帧完整返回的 Host 单调时钟区间。误码率以通过标记核验的实际比较负载位数为分母。写入量只累计完整确认的帧，查询各帧的操作回执可见部分或未知写入。
+
+- **软件。** 运行 `node --test scripts/loopback-test.test.mjs scripts/product-automation.test.mjs`，核对拆段、位翻转、标记错误、缺字节、超时、缺口、配置变化、部分写和取消。运行 `pnpm test:ui e2e/browser/loopback-tool.spec.ts --workers=1` 检查中英文宽窄窗、预览、接线确认与停止后的真实终态。原生签名集合中的 `native_node_bundled_tcp_opens_both_roles_and_sends_exact_bytes` 同时运行 Virtual Echo，自检四帧、256 个确认发送字节和 1,536 个比较位，并检查权限、来源和会话 revision 拒绝。
+- **实体 TX/RX。** 在独立设备上按端口的电平与引脚定义短接该端口 TX/RX。记下设备、线路配置、精确候选和实际接线，打开对应端口后确认接线再运行。记录同种子多帧的接收范围、误码、吞吐、往返延迟与测试期间的真实回执。移除短接后重新发起，核对超时和缺字节提示。停止测试时以任务终态和最后一笔实际写入回执确认结束。虚拟回环和无头实体端口夹具的结果各保留其来源。
+- **发行。** 用精确发行候选离线安装，核对首方自动化的签名摘要、首次启动及重启后的动作登记、0.1.6 升级前驱与既有启用意图。分别保存已验的虚拟与实体结果。
 
 ### 故障向导（DIAG-02）
 

@@ -193,6 +193,7 @@ export type WorkbenchTool =
   | "commandSequence"
   | "testSuite"
   | "ruleTrigger"
+  | "loopback"
   | "diagnostics";
 type WorkbenchPanel =
   | WorkbenchTool
@@ -227,6 +228,7 @@ function activityPanel(
     case "calendarSchedule":
     case "commandSequence":
     case "ruleTrigger":
+    case "loopback":
     case "diagnostics":
     case "capture":
     case "activity":
@@ -332,6 +334,7 @@ export type WorkspaceLayoutProps = {
         | "commandSequence"
         | "testSuite"
         | "ruleTrigger"
+        | "loopback"
       >
     | "more"
     | "chooseDevice"
@@ -353,6 +356,7 @@ export type WorkspaceLayoutProps = {
     commandSequence?: string;
     testSuite?: string;
     ruleTrigger?: string;
+    loopback?: string;
     manualRecording?: ManualRecordingLabels;
   };
   renderTool?: (

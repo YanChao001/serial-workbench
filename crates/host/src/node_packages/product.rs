@@ -28,10 +28,20 @@ const FIELD_0_3_DESCRIPTOR: &str =
 const FIELD_MARKER: &str = "node-packages:bundled-protocol-fields";
 const MODBUS_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/modbus.zip");
 const MODBUS_DESCRIPTOR: &str = include_str!("../../resources/node-packages/modbus.json");
+const MODBUS_MARKER: &str = "node-packages:bundled-modbus";
+const PREVIOUS_MODBUS_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/modbus-0.1.0.zip");
+const PREVIOUS_MODBUS_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/modbus-0.1.0.json");
 const MODBUS_SLAVE_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/modbus-slave.zip");
 const MODBUS_SLAVE_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/modbus-slave.json");
+const MODBUS_SLAVE_MARKER: &str = "node-packages:bundled-modbus-slave";
+const PREVIOUS_MODBUS_SLAVE_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/modbus-slave-0.1.0.zip");
+const PREVIOUS_MODBUS_SLAVE_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/modbus-slave-0.1.0.json");
 const CHART_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/chart.zip");
 const CHART_DESCRIPTOR: &str = include_str!("../../resources/node-packages/chart.json");
 const PREVIOUS_CHART_ARCHIVE: &[u8] =
@@ -69,6 +79,10 @@ const AUTOMATION_0_1_5_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.5.zip");
 const AUTOMATION_0_1_5_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.5.json");
+const AUTOMATION_0_1_6_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.6.zip");
+const AUTOMATION_0_1_6_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.6.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
@@ -180,15 +194,11 @@ pub(super) fn packages() -> &'static [ProductPackage] {
                 "node-packages:bundled-framing",
             ),
             ProductPackage::new(FIELD_DESCRIPTOR, FIELD_ARCHIVE, FIELD_MARKER),
-            ProductPackage::new(
-                MODBUS_DESCRIPTOR,
-                MODBUS_ARCHIVE,
-                "node-packages:bundled-modbus",
-            ),
+            ProductPackage::new(MODBUS_DESCRIPTOR, MODBUS_ARCHIVE, MODBUS_MARKER),
             ProductPackage::new(
                 MODBUS_SLAVE_DESCRIPTOR,
                 MODBUS_SLAVE_ARCHIVE,
-                "node-packages:bundled-modbus-slave",
+                MODBUS_SLAVE_MARKER,
             ),
             ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
             ProductPackage::new(AUTOMATION_DESCRIPTOR, AUTOMATION_ARCHIVE, AUTOMATION_MARKER),
@@ -198,8 +208,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 12] {
-    static PREVIOUS: OnceLock<[ProductPackage; 12]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 15] {
+    static PREVIOUS: OnceLock<[ProductPackage; 15]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -246,9 +256,24 @@ fn previous_packages() -> &'static [ProductPackage; 12] {
                 AUTOMATION_MARKER,
             ),
             ProductPackage::new(
+                AUTOMATION_0_1_6_DESCRIPTOR,
+                AUTOMATION_0_1_6_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
                 PREVIOUS_RFC2217_DESCRIPTOR,
                 PREVIOUS_RFC2217_ARCHIVE,
                 RFC2217_MARKER,
+            ),
+            ProductPackage::new(
+                PREVIOUS_MODBUS_DESCRIPTOR,
+                PREVIOUS_MODBUS_ARCHIVE,
+                MODBUS_MARKER,
+            ),
+            ProductPackage::new(
+                PREVIOUS_MODBUS_SLAVE_DESCRIPTOR,
+                PREVIOUS_MODBUS_SLAVE_ARCHIVE,
+                MODBUS_SLAVE_MARKER,
             ),
         ]
     })
@@ -313,20 +338,26 @@ mod tests {
             assertion_automation,
             rule_automation,
             calendar_automation,
+            response_automation,
             old_rfc2217,
+            old_modbus,
+            old_modbus_slave,
         ] = previous_packages();
         check_predecessor_upgrade(old_fields, "0.1.0", "0.4.0");
         check_predecessor_upgrade(recent_fields, "0.2.0", "0.4.0");
         check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.6");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.6");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.6");
-        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.6");
-        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.6");
-        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.6");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.7");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.7");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.7");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.7");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.7");
+        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.7");
+        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.7");
         check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
+        check_predecessor_upgrade(old_modbus, "0.1.0", "0.1.1");
+        check_predecessor_upgrade(old_modbus_slave, "0.1.0", "0.1.1");
     }
 
     fn check_predecessor_upgrade(old: &ProductPackage, old_version: &str, next_version: &str) {
