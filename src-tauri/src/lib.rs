@@ -229,6 +229,8 @@ pub fn run() {
     builder
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {
+                #[cfg(all(feature = "e2e", target_os = "linux"))]
+                log::debug!("WebView committed a document for {}", webview.label());
                 let app = webview.app_handle();
                 global_send::reset_window(app, webview.label());
                 if let Some(window) = app.get_webview_window(webview.label()) {

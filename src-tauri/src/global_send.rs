@@ -425,6 +425,8 @@ mod desktop {
                 .filter(|pending| pending.owner == owner)
             {
                 // 通知登记任务撤回系统请求。占用保留到它完成清理。
+                #[cfg(feature = "e2e")]
+                log::debug!("Withdrawing the pending global send request for {label}");
                 drop(pending.cancel.take());
             }
             if dispatch
