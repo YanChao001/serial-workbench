@@ -565,19 +565,50 @@ export function workbenchChecks() {
 
             const read = await globalSendRawReader();
             if (peer.canPost) {
-              await command("focus");
+              receipt.focus = await command("focus");
+              if (process.platform === "darwin" && !receipt.focus.foreground) {
+                await browser.waitUntil(
+                  async () => {
+                    receipt.focus = await command("foreground");
+                    return (
+                      receipt.focus.foreground ||
+                      receipt.focus.peerWindowClickable
+                    );
+                  },
+                  {
+                    timeoutMsg:
+                      "The independent hotkey peer window was not visible for activation",
+                  },
+                );
+                if (!receipt.focus.foreground) {
+                  receipt.focus = await command("focus-click");
+                }
+              }
               await browser.waitUntil(
-                async () => (await command("foreground")).foreground,
+                async () => {
+                  receipt.focus = await command("foreground");
+                  return receipt.focus.foreground;
+                },
+                {
+                  timeoutMsg:
+                    "The independent hotkey peer did not get foreground",
+                },
               );
               assert.equal((await command("press")).foreground, true);
               receipt.inputPostedWithPeerForeground = true;
-              await browser.waitUntil(async () => {
-                const page = await read();
-                return (
-                  page.events.some(({ kind }) => kind === "tx") &&
-                  rawRxBytes(page).length >= bytes.length
-                );
-              });
+              await browser.waitUntil(
+                async () => {
+                  const page = await read();
+                  return (
+                    page.events.some(({ kind }) => kind === "tx") &&
+                    rawRxBytes(page).length >= bytes.length
+                  );
+                },
+                {
+                  timeoutMsg:
+                    "No matching Virtual Echo TX and RX reached the Raw page",
+                },
+              );
               await delay(300);
               const page = await read();
               const tx = page.events.filter(({ kind }) => kind === "tx");
