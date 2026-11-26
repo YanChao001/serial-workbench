@@ -471,8 +471,13 @@ export function workbenchChecks() {
     process.platform === "linux" &&
     process.env.SWB_E2E_X11_GLOBAL_SEND === "1"
   ) {
-    it("sends once for an X11 hotkey with another native application focused and stops after disable", async () => {
+    it("preserves an X11 hotkey on conflict, dispatches once, and releases it", async () => {
       const hotkey = "ctrl+shift+F9";
+      const grabHelper = process.env.SWB_E2E_X11_GRAB_HELPER;
+      assert.ok(
+        grabHelper,
+        "The isolated X11 suite must provide its grab helper",
+      );
       const draft = await sendDraft();
       const original = await draft.getValue();
       const payload = "SWB-X11-GLOBAL-SEND-" + randomUUID().slice(0, 8);
@@ -496,6 +501,27 @@ export function workbenchChecks() {
         receipt.binding = await (await globalShortcutKey()).getText();
         assert.match(receipt.binding, /F9$/);
         await closeShortcutHelp();
+
+        await withGlobalSendPeer(
+          grabHelper,
+          join(directory, "x11-global-send-conflict.log"),
+          async (peer, command) => {
+            receipt.conflictingPeer = peer;
+            await editGlobalSend();
+            await captureGlobalSendKey("F10");
+            const conflict = await $("#shortcut-conflict");
+            await conflict.waitForDisplayed();
+            assert.match(await conflict.getText(), /system, another app/i);
+            receipt.conflictBinding = await (
+              await globalShortcutKey()
+            ).getText();
+            assert.equal(receipt.conflictBinding, receipt.binding);
+            await command("retained");
+            receipt.retained = true;
+            await clickEnabled("button=Cancel");
+            await closeShortcutHelp();
+          },
+        );
 
         const read = await globalSendRawReader();
         const title = "Serial Workbench X11 test focus";
@@ -531,6 +557,14 @@ export function workbenchChecks() {
         await delay(500);
         receipt.disabledRaw = await readDisabled();
         assert.deepEqual(receipt.disabledRaw.events, []);
+        await withGlobalSendPeer(
+          grabHelper,
+          join(directory, "x11-global-send-release.log"),
+          async (_peer, command) => {
+            await command("reclaim");
+            receipt.reclaimed = true;
+          },
+        );
       } catch (error) {
         receipt.failure =
           error instanceof Error ? error.message : String(error);

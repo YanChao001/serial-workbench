@@ -152,6 +152,8 @@ jobs:
           if [[ "$CHART_ONLY" == true ]]; then
             dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build --chart-automated'
           else
+            export SWB_E2E_X11_GRAB_HELPER="$RUNNER_TEMP/serial-workbench-x11-grab"
+            cc -std=c17 -Wall -Wextra -Werror e2e/x11-global-send-grab.c -lX11 -o "$SWB_E2E_X11_GRAB_HELPER"
             dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
           fi
 

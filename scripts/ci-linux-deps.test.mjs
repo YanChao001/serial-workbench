@@ -215,6 +215,7 @@ for (const mode of ["rust", "native", "wayland"]) {
         for (const required of [
           "dbus-x11",
           "openbox",
+          "libx11-dev",
           "gdb",
           "libc6-dbg",
           "fonts-noto-cjk",

@@ -37,7 +37,7 @@ install_linux_dependencies() {
   case "$mode" in
     rust) ;;
     native)
-      packages+=(xvfb xauth dbus-x11 openbox xdotool x11-utils gdb libc6-dbg fonts-noto-cjk gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav)
+      packages+=(xvfb xauth dbus-x11 openbox xdotool x11-utils libx11-dev gdb libc6-dbg fonts-noto-cjk gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav)
       ;;
     wayland)
       packages+=(xvfb xauth xdotool x11-xserver-utils dbus at-spi2-core libglib2.0-bin wayland-utils
