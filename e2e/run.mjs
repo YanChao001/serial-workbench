@@ -331,7 +331,7 @@ try {
           : undefined,
     });
     owned.push(app);
-    if (nativePickers) env.STARTER_E2E_APP_PID = String(app.child.pid);
+    env.STARTER_E2E_APP_PID = String(app.child.pid);
     let runner;
     try {
       await waitForWebDriver(app, port, cancellation.signal);

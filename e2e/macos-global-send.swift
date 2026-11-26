@@ -167,6 +167,18 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 try press(CGKeyCode(kVK_F10), repeating: false)
             case "press":
                 try press(CGKeyCode(kVK_F9), repeating: true)
+            case "press-workbench":
+                guard let value = ProcessInfo.processInfo.environment["STARTER_E2E_APP_PID"],
+                      let pid = Int32(value), pid > 0 else {
+                    throw ProbeError("Missing the owned workbench process ID.")
+                }
+                try press(CGKeyCode(kVK_F9), repeating: false, expectedPID: pid)
+                let result = foregroundReply(expectedPID: pid)
+                guard result.foreground == true else {
+                    throw ProbeError("The owned workbench lost foreground.")
+                }
+                reply(result)
+                return
             case "retained":
                 var handle: EventHotKeyRef?
                 let status = register(key: UInt32(kVK_F9), id: 2, handle: &handle)
@@ -213,9 +225,9 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func foregroundReply() -> ProbeReply {
+    private func foregroundReply(expectedPID: Int32? = nil) -> ProbeReply {
         let front = NSWorkspace.shared.frontmostApplication
-        let expected = foregroundTarget?.processIdentifier
+        let expected = expectedPID ?? foregroundTarget?.processIdentifier
         return ProbeReply(ok: true, foreground: expected != nil && front?.processIdentifier == expected,
                           foregroundPID: front?.processIdentifier, expectedForegroundPID: expected,
                           foregroundBundleIdentifier: front?.bundleIdentifier,
@@ -226,12 +238,18 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                           sessionPressFlags: controlEvents.sessionPressFlags)
     }
 
-    private func press(_ key: CGKeyCode, repeating: Bool) throws {
+    private func press(_ key: CGKeyCode, repeating: Bool, expectedPID: Int32? = nil) throws {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             throw ProbeError("Cannot create the native keyboard event source.")
+        }
+        func targetIsForeground() -> Bool {
+            if let expectedPID {
+                return NSWorkspace.shared.frontmostApplication?.processIdentifier == expectedPID
+            }
+            return foreground
         }
         func event(_ key: CGKeyCode, down: Bool, flags: CGEventFlags, modifier: Bool = false) throws -> CGEvent {
             guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else {
@@ -256,7 +274,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             down.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
             up.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
         }
-        guard foreground else { throw ProbeError("The independent test application is not in the foreground.") }
+        guard targetIsForeground() else { throw ProbeError("The expected test application is not in the foreground.") }
         let tap = CGEventTapLocation.cgSessionEventTap
         commandDown.post(tap: tap)
         shiftDown.post(tap: tap)
@@ -269,7 +287,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         guard repeating else { return }
         for _ in 0..<4 {
             Thread.sleep(forTimeInterval: 0.2)
-            guard foreground else { throw ProbeError("The independent test application lost foreground.") }
+            guard targetIsForeground() else { throw ProbeError("The expected test application lost foreground.") }
             down.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
             down.post(tap: tap)
         }

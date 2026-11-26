@@ -317,6 +317,25 @@ export async function disableGlobalSend() {
   await closeShortcutHelp();
 }
 
+async function checkWorkbenchForegroundSend(receipt, press, bytes) {
+  await nativeValue("plugin:window|set_focus", { label: "main" });
+  const focused = () => browser.execute(() => document.hasFocus());
+  await browser.waitUntil(focused, {
+    timeoutMsg: "The workbench did not take foreground focus",
+  });
+  const read = await globalSendRawReader();
+  receipt.workbenchFocus = await press();
+  await browser.waitUntil(async () => {
+    receipt.workbenchFocusedRaw = await read();
+    return rawRxBytes(receipt.workbenchFocusedRaw).length >= bytes.length;
+  });
+  await delay(300);
+  receipt.workbenchFocusedRaw = await read();
+  checkGlobalSendRaw(receipt.workbenchFocusedRaw, bytes);
+  receipt.workbenchKeptFocus = await focused();
+  assert.equal(receipt.workbenchKeptFocus, true);
+}
+
 export async function checkTrayHiddenGlobalSend(receipt, press) {
   const window = { label: "main" };
   const visible = () => nativeValue("plugin:window|is_visible", window);
@@ -558,6 +577,16 @@ export function workbenchChecks() {
           },
         );
 
+        await checkWorkbenchForegroundSend(
+          receipt,
+          async () => {
+            const foregroundWindow = await xdo("getactivewindow");
+            await xdo("key", hotkey);
+            assert.equal(await xdo("getactivewindow"), foregroundWindow);
+            return { foregroundWindow };
+          },
+          bytes,
+        );
         const read = await globalSendRawReader();
         const title = "Serial Workbench X11 test focus";
         other = spawn("xmessage", ["-title", title, "Native hotkey focus"], {
@@ -725,10 +754,22 @@ export function workbenchChecks() {
             await clickEnabled("button=Cancel");
             await closeShortcutHelp();
 
-            const read = await globalSendRawReader();
             let dispatchFailure;
             try {
               if (peer.canPost) {
+                const pid = Number(process.env.STARTER_E2E_APP_PID);
+                assert.ok(Number.isSafeInteger(pid) && pid > 0);
+                await checkWorkbenchForegroundSend(
+                  receipt,
+                  async () => {
+                    const posted = await command("press-workbench");
+                    assert.equal(posted.foreground, true);
+                    assert.equal(posted.foregroundPID, pid);
+                    return posted;
+                  },
+                  bytes,
+                );
+                const read = await globalSendRawReader();
                 receipt.focus = await command("focus");
                 await browser.waitUntil(
                   async () => {

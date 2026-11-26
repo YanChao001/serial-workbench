@@ -136,7 +136,7 @@ internal static class TerminalPickerWindow
     private static void DriveGlobalSend()
     {
         const uint modifiers = 0x0002 | 0x0004 | 0x4000;
-        const ushort control = 0x11, shift = 0x10, f9 = 0x78, f10 = 0x79;
+        const ushort f9 = 0x78, f10 = 0x79;
         const int occupied = 1, reclaimed = 2;
         using (var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true })
         using (var peer = new Form { Text = "Serial Workbench global send peer", Width = 360, Height = 130 })
@@ -166,23 +166,18 @@ internal static class TerminalPickerWindow
                                 case "foreground":
                                     break;
                                 case "press":
-                                    RequirePeerForeground(window);
-                                    try
-                                    {
-                                        SendKeys(new[] { Key(control, 0, 0), Key(shift, 0, 0), Key(f9, 0, 0) });
-                                        // 重复键按下沿同一次物理按键周期发送，最后再释放主键和修饰键。
-                                        for (int repeat = 0; repeat < 4; repeat++)
-                                        {
-                                            Thread.Sleep(200);
-                                            RequirePeerForeground(window);
-                                            SendKeys(new[] { Key(f9, 0, 0) });
-                                        }
-                                    }
-                                    finally
-                                    {
-                                        SendKeys(new[] { Key(f9, 0, KeyUp), Key(shift, 0, KeyUp), Key(control, 0, KeyUp) });
-                                    }
+                                    PressGlobalSend(window, f9, repeating: true);
                                     break;
+                                case "press-workbench":
+                                    uint workbenchPid;
+                                    var workbenchWindow = GetForegroundWindow();
+                                    if (!uint.TryParse(Environment.GetEnvironmentVariable("STARTER_E2E_APP_PID"), out workbenchPid) ||
+                                        workbenchPid == 0 || !BelongsTo(workbenchWindow, workbenchPid))
+                                        throw new InvalidOperationException("The owned workbench is not in the foreground.");
+                                    PressGlobalSend(workbenchWindow, f9, repeating: false);
+                                    RequireGlobalSendForeground(workbenchWindow);
+                                    reply(new { ok = true, foreground = true, foregroundPID = workbenchPid });
+                                    return;
                                 case "retained":
                                     if (RegisterHotKey(window, reclaimed, modifiers, f9))
                                     {
@@ -226,10 +221,32 @@ internal static class TerminalPickerWindow
         }
     }
 
-    private static void RequirePeerForeground(IntPtr window)
+    private static void PressGlobalSend(IntPtr window, ushort key, bool repeating)
+    {
+        const ushort control = 0x11, shift = 0x10;
+        RequireGlobalSendForeground(window);
+        try
+        {
+            SendKeys(new[] { Key(control, 0, 0), Key(shift, 0, 0), Key(key, 0, 0) });
+            if (!repeating) return;
+            // 重复键按下沿同一次物理按键周期发送，最后再释放主键和修饰键。
+            for (int repeat = 0; repeat < 4; repeat++)
+            {
+                Thread.Sleep(200);
+                RequireGlobalSendForeground(window);
+                SendKeys(new[] { Key(key, 0, 0) });
+            }
+        }
+        finally
+        {
+            SendKeys(new[] { Key(key, 0, KeyUp), Key(shift, 0, KeyUp), Key(control, 0, KeyUp) });
+        }
+    }
+
+    private static void RequireGlobalSendForeground(IntPtr window)
     {
         if (GetForegroundWindow() != window)
-            throw new InvalidOperationException("The independent global send peer is not in the foreground.");
+            throw new InvalidOperationException("The expected global send window is not in the foreground.");
     }
 
     private static void WriteReceipt(object receipt)
