@@ -9,6 +9,7 @@ import {
   ready,
   navigate,
   windowPlacement,
+  readWindowPlacementFixture,
   recordWindowPlacement,
 } from "../helpers.mjs";
 
@@ -53,20 +54,14 @@ describe("App process restart", () => {
           entry.reference.id === backgroundFixture.id,
       ),
     );
-    const expectedPosition = JSON.parse(
-      readFileSync(
-        join(
-          process.env.STARTER_E2E_DATA_ROOT,
-          "window-placement-fixture.json",
-        ),
-        "utf8",
-      ),
-    );
+    const { position: expectedPosition, size: expectedSize } =
+      readWindowPlacementFixture();
     const started = Date.now();
     let firstObserved;
     let placement;
     const positionDetails = () => ({
       expected: expectedPosition,
+      expectedSize,
       firstObserved,
       actual: placement?.position,
       outerSize: placement?.outerSize,
@@ -105,20 +100,8 @@ describe("App process restart", () => {
     );
     const geometry = await invoke("get_window_geometry");
     assert.equal(geometry.ok, true);
-    assert.equal(
-      geometry.value.width,
-      Math.min(
-        geometry.value.maxWidth,
-        Math.max(geometry.value.minWidth, 1000),
-      ),
-    );
-    assert.equal(
-      geometry.value.height,
-      Math.min(
-        geometry.value.maxHeight,
-        Math.max(geometry.value.minHeight, 680),
-      ),
-    );
+    assert.equal(geometry.value.width, expectedSize.width);
+    assert.equal(geometry.value.height, expectedSize.height);
     assert.equal(
       (await invoke("plugin:window|is_visible", { label: "main" })).value,
       true,

@@ -856,37 +856,61 @@ describe("Real Tauri desktop", () => {
       ),
     );
     const geometry = (await invoke("get_window_geometry")).value;
-    assert.equal(
-      (
-        await invoke("set_window_size", {
-          width: Math.min(geometry.maxWidth, Math.max(geometry.minWidth, 1000)),
-          height: Math.min(
-            geometry.maxHeight,
-            Math.max(geometry.minHeight, 680),
-          ),
-        })
-      ).ok,
-      true,
-    );
+    // macOS 小屏先使用已验证的正常窗口尺寸，留出空间供 AppKit 原生缩放。
+    const size =
+      process.platform === "darwin"
+        ? { width: geometry.minWidth, height: geometry.minHeight }
+        : {
+            width: Math.min(
+              geometry.maxWidth,
+              Math.max(geometry.minWidth, 1000),
+            ),
+            height: Math.min(
+              geometry.maxHeight,
+              Math.max(geometry.minHeight, 680),
+            ),
+          };
+    assert.equal((await invoke("set_window_size", size)).ok, true);
+    await browser.waitUntil(async () => {
+      const result = await invoke("get_window_geometry");
+      const zoom = await invoke("plugin:window|is_maximized", {
+        label: "main",
+      });
+      return (
+        result.ok &&
+        result.value.width === size.width &&
+        result.value.height === size.height &&
+        zoom.ok &&
+        zoom.value === false
+      );
+    });
     await $("[data-window-position=remember]").click();
     await browser.waitUntil(
       async () =>
         (await readSettings()).settings?.windowPosition === "remember",
     );
     const position = await placeNearWorkAreaCorner();
-    writeFileSync(
-      join(process.env.STARTER_E2E_DATA_ROOT, "window-placement-fixture.json"),
-      JSON.stringify(position),
-    );
-    // 测试 runner 会强制回收进程，先调用原生插件完成正常退出时的位置写盘。
+    const maximized = await invoke("plugin:window|is_maximized", {
+      label: "main",
+    });
+    assert.equal(maximized.ok, true);
+    // 测试 runner 会强制回收进程，先使用原生插件的默认配置保存位置和显示状态。
     assert.equal(
-      (await invoke("plugin:window-state|save_window_state", { flags: 2 })).ok,
+      (await invoke("plugin:window-state|save_window_state")).ok,
       true,
     );
-    recordWindowPlacement("before-restart", {
+    const placement = recordWindowPlacement("before-restart", {
       expected: position,
+      expectedSize: size,
+      maximized: maximized.value,
       ...(await windowPlacement()),
     });
+    assert.equal(maximized.value, false, "The fixture needs a normal window");
+    assert.equal(placement.windowState.main?.maximized, false);
+    writeFileSync(
+      join(process.env.STARTER_E2E_DATA_ROOT, "window-placement-fixture.json"),
+      JSON.stringify({ position, size }),
+    );
     // 落盘值不能证明当前窗口的设置效果已成功，保留最终用户可见状态。
     let finalUi;
     let checkFailed = false;

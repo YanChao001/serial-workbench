@@ -8,6 +8,7 @@ import {
   invoke,
   windowPlacement,
   placeNearWorkAreaCorner,
+  readWindowPlacementFixture,
   recordWindowPlacement,
 } from "../helpers.mjs";
 
@@ -34,14 +35,9 @@ describe("Centered window startup", () => {
     assert.equal((await readSettings()).settings.windowPosition, "center");
     await waitForCenteredWindow("centered-main");
     const geometry = (await invoke("get_window_geometry")).value;
-    assert.equal(
-      geometry.width,
-      Math.min(geometry.maxWidth, Math.max(geometry.minWidth, 1000)),
-    );
-    assert.equal(
-      geometry.height,
-      Math.min(geometry.maxHeight, Math.max(geometry.minHeight, 680)),
-    );
+    const { size } = readWindowPlacementFixture();
+    assert.equal(geometry.width, size.width);
+    assert.equal(geometry.height, size.height);
     const main = await browser.getWindowHandle();
     assert.equal((await invoke("open_secondary_window")).ok, true);
     await browser.waitUntil(
