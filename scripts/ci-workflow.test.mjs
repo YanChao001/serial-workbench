@@ -266,6 +266,24 @@ test("all native Rust targets exercise CLI-owned Host and batched replay", () =>
   );
 });
 
+test("all native Rust targets run LAN recovery with fresh isolated profiles", () => {
+  const step = job("rust")
+    .split("- name: 验证双栈 LAN 停用与恢复\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.doesNotMatch(step, /\bif:/);
+  assert.match(step, /mkdtempSync/);
+  assert.match(
+    step,
+    /node e2e\/lan-route\.mjs "\$binaries\/serial-workbench-host\$suffix"/,
+  );
+  assert.match(
+    step,
+    /"\$binaries\/serial-workbench-cli\$suffix" "\$binaries\/serial-workbench-mcp\$suffix"/,
+  );
+  assert.match(step, /"\$evidence\/run" --loopback-roles/);
+});
+
 test("Linux verified backend checks are required and use an independent fixed runtime", () => {
   const backend = job("linux-node-backend");
   assert.match(backend, /runs-on: ubuntu-22\.04/);

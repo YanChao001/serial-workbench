@@ -230,6 +230,18 @@ jobs:
           cargo test --locked -p serial-workbench-cli --test commands headless_offline_ -- --ignored --test-threads=1
           cargo test --locked -p serial-workbench-host --test capture_api_host cli_batch_replay_search_ -- --ignored --test-threads=1
 
+      - name: 验证双栈 LAN 停用与恢复
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          binaries="$PWD/src-tauri/target/debug"
+          evidence="$(node -p 'require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(),"swb-lan-ci-"))')"
+          node e2e/lan-route.mjs "$binaries/serial-workbench-host$suffix" \
+            "$binaries/serial-workbench-cli$suffix" "$binaries/serial-workbench-mcp$suffix" \
+            "$evidence/run" --loopback-roles
+
       - name: 保留失败 Rust 场景现场
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

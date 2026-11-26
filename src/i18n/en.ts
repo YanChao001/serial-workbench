@@ -955,6 +955,8 @@ export const en = {
   "lanAccess.description":
     "Exchange pairing information and choose which serial ports the other computer can use.",
   "lanAccess.manage": "Manage sharing",
+  "lanAccess.scopeRequired":
+    "Add this computer’s numeric interface index to the link-local IPv6 address, for example [fe80::1%12]:8022.",
   "lanAccess.address": "Local listen address",
   "lanAccess.start": "Allow LAN connections",
   "lanAccess.stop": "Stop listening",

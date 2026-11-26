@@ -888,6 +888,8 @@ export const zhCN = {
   "lanAccess.title": "局域网共享",
   "lanAccess.description": "与对端交换配对信息，并选择它能使用的串口。",
   "lanAccess.manage": "管理共享",
+  "lanAccess.scopeRequired":
+    "链路本地 IPv6 地址需要填写这台电脑的数字接口索引，例如 [fe80::1%12]:8022。",
   "lanAccess.address": "本机监听地址",
   "lanAccess.start": "允许局域网连接",
   "lanAccess.stop": "停止监听",

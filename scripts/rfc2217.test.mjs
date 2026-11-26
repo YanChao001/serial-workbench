@@ -33,7 +33,7 @@ async function fixture(
 ) {
   const server = createServer();
   const listening = once(server, "listening");
-  server.listen({ host: "127.0.0.1", port: 0 });
+  server.listen({ host: settings.host ?? "127.0.0.1", port: 0 });
   await listening;
   const connecting = once(server, "connection");
   const pending = open({
@@ -154,6 +154,7 @@ test(
       t,
       {
         baudRate: 65535,
+        host: "::1",
         dataBits: 7,
         parity: "even",
         stopBits: "2",
@@ -243,10 +244,10 @@ test(
 );
 
 test(
-  "a different baud reply rejects opening and retains both wire values",
+  "an IPv6 peer with a different baud reply rejects opening and retains both wire values",
   { timeout: 8000 },
   async (t) => {
-    const { peer, pending } = await fixture(t);
+    const { peer, pending } = await fixture(t, { host: "::1" });
     assert.deepEqual(
       await readWire(peer, openingOptions.length),
       Buffer.from(openingOptions),
