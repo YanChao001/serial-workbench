@@ -54,8 +54,7 @@ jobs:
         timeout-minutes: 2
         run: |
           helper="$RUNNER_TEMP/serial-workbench-global-send"
-          xcrun swiftc -parse-as-library -swift-version 5 e2e/macos-global-send.swift -o "$helper" \
-            -framework AppKit -framework Carbon -framework CoreGraphics
+          bash e2e/build-macos-global-send.sh "$helper"
           echo "SWB_E2E_GLOBAL_SEND_HELPER=$helper" >> "$GITHUB_ENV"
 
       - name: 安装 Linux 桌面依赖

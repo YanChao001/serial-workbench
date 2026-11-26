@@ -9,7 +9,8 @@ import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { openDeepLink, reloadDocument } from "../helpers.mjs";
-import { globalSendRawReader, withGlobalSendPeer } from "../global-send.mjs";
+import { withGlobalSendPeer } from "../global-send-peer.mjs";
+import { globalSendRawReader } from "../global-send.mjs";
 import { sessionScopes } from "../session-scopes.mjs";
 import {
   hostQuery,

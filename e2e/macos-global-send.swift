@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import CoreFoundation
 import CoreGraphics
 import Foundation
 
@@ -12,6 +13,8 @@ struct ProbeReply: Encodable {
     var ready: Bool? = nil
     var pid: Int32? = nil
     var canPost: Bool? = nil
+    var canListen: Bool? = nil
+    var secureInput: Bool? = nil
     var ok: Bool? = nil
     var foreground: Bool? = nil
     var foregroundPID: Int32? = nil
@@ -19,13 +22,20 @@ struct ProbeReply: Encodable {
     var foregroundBundleIdentifier: String? = nil
     var controlPresses: Int? = nil
     var controlReleases: Int? = nil
+    var sessionMonitor: Bool? = nil
+    var sessionPresses: Int? = nil
+    var sessionReleases: Int? = nil
     var error: String? = nil
 }
 
 private final class ControlEvents {
     var presses = 0
     var releases = 0
+    var sessionPresses = 0
+    var sessionReleases = 0
 }
+
+private let controlEventTag: Int64 = 0x53574246
 
 @MainActor
 final class GlobalSendPeer: NSObject, NSApplicationDelegate {
@@ -33,6 +43,8 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
     private var foregroundTarget: NSRunningApplication?
     private let controlEvents = ControlEvents()
     private var controlHandler: EventHandlerRef?
+    private var sessionTap: CFMachPort?
+    private var sessionSource: CFRunLoopSource?
     private var occupied: EventHotKeyRef?
     private var reclaimed: EventHotKeyRef?
 
@@ -41,7 +53,8 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             try observeControlShortcut()
             occupied = try reserve(key: UInt32(kVK_F10), id: 1)
             reply(ProbeReply(ready: true, pid: ProcessInfo.processInfo.processIdentifier,
-                             canPost: CGPreflightPostEventAccess()))
+                             canPost: CGPreflightPostEventAccess(), canListen: CGPreflightListenEventAccess(),
+                             secureInput: IsSecureEventInputEnabled()))
         } catch {
             FileHandle.standardError.write(Data("\(error)\n".utf8))
             exit(1)
@@ -59,6 +72,8 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         if let reclaimed { _ = UnregisterEventHotKey(reclaimed) }
         if let occupied { _ = UnregisterEventHotKey(occupied) }
         if let controlHandler { _ = RemoveEventHandler(controlHandler) }
+        if let sessionSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), sessionSource, .commonModes) }
+        if let sessionTap { CFMachPortInvalidate(sessionTap) }
     }
 
     private var foreground: Bool {
@@ -110,6 +125,29 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func observeSessionEvents() {
+        guard sessionTap == nil, CGPreflightListenEventAccess() else { return }
+        let context = Unmanaged.passUnretained(controlEvents).toOpaque()
+        let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue) |
+            (CGEventMask(1) << CGEventType.keyUp.rawValue)
+        // 只记录探针在隔离会话中标记的 F10 事件，不保存其他输入。
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap,
+                                         options: .listenOnly, eventsOfInterest: mask,
+                                         callback: { _, type, event, context in
+            if let context, event.getIntegerValueField(.eventSourceUserData) == controlEventTag,
+               event.getIntegerValueField(.keyboardEventKeycode) == Int64(kVK_F10) {
+                let events = Unmanaged<ControlEvents>.fromOpaque(context).takeUnretainedValue()
+                if type == .keyDown { events.sessionPresses += 1 }
+                if type == .keyUp { events.sessionReleases += 1 }
+            }
+            return Unmanaged.passUnretained(event)
+        }, userInfo: context), let source = CFMachPortCreateRunLoopSource(nil, tap, 0) else { return }
+        sessionTap = tap
+        sessionSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
     private func execute(_ command: String) {
         do {
             switch command {
@@ -118,8 +156,12 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 return
             case "foreground":
                 break
+            case "observe-session":
+                observeSessionEvents()
             case "press-control":
                 try press(CGKeyCode(kVK_F10), repeating: false)
+            case "press-control-session":
+                try press(CGKeyCode(kVK_F10), repeating: false, tap: .cgSessionEventTap)
             case "press":
                 try press(CGKeyCode(kVK_F9), repeating: true)
             case "retained":
@@ -174,10 +216,13 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         return ProbeReply(ok: true, foreground: expected != nil && front?.processIdentifier == expected,
                           foregroundPID: front?.processIdentifier, expectedForegroundPID: expected,
                           foregroundBundleIdentifier: front?.bundleIdentifier,
-                          controlPresses: controlEvents.presses, controlReleases: controlEvents.releases)
+                          controlPresses: controlEvents.presses, controlReleases: controlEvents.releases,
+                          sessionMonitor: sessionTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
+                          sessionPresses: controlEvents.sessionPresses,
+                          sessionReleases: controlEvents.sessionReleases)
     }
 
-    private func press(_ key: CGKeyCode, repeating: Bool) throws {
+    private func press(_ key: CGKeyCode, repeating: Bool, tap: CGEventTapLocation = .cghidEventTap) throws {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
@@ -201,21 +246,25 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let up = try event(key, down: false, flags: flags)
         let shiftUp = try event(shift, down: false, flags: .maskCommand, modifier: true)
         let commandUp = try event(command, down: false, flags: [], modifier: true)
+        if key == CGKeyCode(kVK_F10) {
+            down.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
+            up.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
+        }
         guard foreground else { throw ProbeError("The independent test application is not in the foreground.") }
-        commandDown.post(tap: .cghidEventTap)
-        shiftDown.post(tap: .cghidEventTap)
-        down.post(tap: .cghidEventTap)
+        commandDown.post(tap: tap)
+        shiftDown.post(tap: tap)
+        down.post(tap: tap)
         defer {
-            up.post(tap: .cghidEventTap)
-            shiftUp.post(tap: .cghidEventTap)
-            commandUp.post(tap: .cghidEventTap)
+            up.post(tap: tap)
+            shiftUp.post(tap: tap)
+            commandUp.post(tap: tap)
         }
         guard repeating else { return }
         for _ in 0..<4 {
             Thread.sleep(forTimeInterval: 0.2)
             guard foreground else { throw ProbeError("The independent test application lost foreground.") }
             down.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
-            down.post(tap: .cghidEventTap)
+            down.post(tap: tap)
         }
     }
 
