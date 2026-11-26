@@ -581,6 +581,7 @@ export function workbenchChecks() {
               await browser.waitUntil(
                 async () => {
                   const page = await read();
+                  receipt.raw = page;
                   return (
                     page.events.some(({ kind }) => kind === "tx") &&
                     rawRxBytes(page).length >= bytes.length
@@ -593,6 +594,7 @@ export function workbenchChecks() {
               );
               await delay(300);
               const page = await read();
+              receipt.raw = page;
               const tx = page.events.filter(({ kind }) => kind === "tx");
               const intents = page.events.filter(
                 ({ kind }) => kind === "tx_intent",
@@ -616,7 +618,6 @@ export function workbenchChecks() {
               assert.deepEqual(rawRxBytes(page), bytes);
               assert.equal((await command("foreground")).foreground, true);
               receipt.dispatch = "passed";
-              receipt.raw = page;
             } else {
               receipt.dispatch = "system-input-authorization-unavailable";
               assert.equal(process.platform, "darwin");
