@@ -32,6 +32,7 @@ const portalTrace = join(
   process.env.SWB_E2E_WAYLAND_ARTIFACTS,
   "shortcuts-dbus.log",
 );
+const kwinTrace = join(process.env.SWB_E2E_WAYLAND_ARTIFACTS, "kwin.log");
 const scenario = process.env.SWB_E2E_WAYLAND_SCENARIO;
 const hotkey = "F9";
 const replacement = "F10";
@@ -64,44 +65,43 @@ function withHotkey(key, held) {
   return withKeys(["Control_L", "Shift_L", key], held);
 }
 
+async function busCall(destination, path, method, ...args) {
+  const { stdout } = await execute(
+    "gdbus",
+    [
+      "call",
+      "--session",
+      "--timeout",
+      "3",
+      "--dest",
+      destination,
+      "--object-path",
+      path,
+      "--method",
+      method,
+      ...args,
+    ],
+    { timeout: 5000 },
+  );
+  return stdout.trim();
+}
+
 async function kdeComponent() {
   try {
-    const reply = await execute(
-      "gdbus",
-      [
-        "call",
-        "--session",
-        "--timeout",
-        "3",
-        "--dest",
-        "org.kde.kglobalaccel",
-        "--object-path",
-        "/kglobalaccel",
-        "--method",
-        "org.kde.KGlobalAccel.getComponent",
-        process.env.SWB_E2E_WAYLAND_APP_NAME,
-      ],
-      { timeout: 5000 },
+    const reply = await busCall(
+      "org.kde.kglobalaccel",
+      "/kglobalaccel",
+      "org.kde.KGlobalAccel.getComponent",
+      process.env.SWB_E2E_WAYLAND_APP_NAME,
     );
-    const path = /objectpath '([^']+)'/.exec(reply.stdout)?.[1];
-    assert.ok(path, `KDE component returned no object path: ${reply.stdout}`);
-    const info = await execute(
-      "gdbus",
-      [
-        "call",
-        "--session",
-        "--timeout",
-        "3",
-        "--dest",
-        "org.kde.kglobalaccel",
-        "--object-path",
-        path,
-        "--method",
-        "org.kde.kglobalaccel.Component.allShortcutInfos",
-      ],
-      { timeout: 5000 },
+    const path = /objectpath '([^']+)'/.exec(reply)?.[1];
+    assert.ok(path, `KDE component returned no object path: ${reply}`);
+    const shortcuts = await busCall(
+      "org.kde.kglobalaccel",
+      path,
+      "org.kde.kglobalaccel.Component.allShortcutInfos",
     );
-    return { path, shortcuts: info.stdout.trim() };
+    return { path, shortcuts };
   } catch (error) {
     return { error: error.stderr?.trim() || error.message };
   }
@@ -116,6 +116,87 @@ async function kdeControl(target, name, action = "click") {
     },
   );
   return JSON.parse(result.stdout);
+}
+
+async function clickSettingsCheckbox(receipt, name) {
+  const control = await kdeControl("settings", name, "bounds");
+  receipt.defaultPointer = { control };
+  assert.equal(control.active, true);
+  const marker = `swb-e2e-window-${randomUUID()}`;
+  const script = join(artifactDir, `${marker}.js`);
+  // Read the foreground client's origin in nested KWin. Qt exposes the item relative to it.
+  writeFileSync(
+    script,
+    `
+const active = workspace.activeWindow;
+if (active) {
+  const { x, y, width, height } = active.clientGeometry;
+  console.log(${JSON.stringify(marker + " ")} + JSON.stringify([active.caption, x, y, width, height]));
+}
+`,
+  );
+  const loaded = await busCall(
+    "org.kde.KWin",
+    "/Scripting",
+    "org.kde.kwin.Scripting.loadScript",
+    script,
+    marker,
+  );
+  const id = /^\((?:int32 )?(\d+),\)$/.exec(loaded)?.[1];
+  assert.ok(id, `KWin could not load the window probe: ${loaded}`);
+  try {
+    await busCall(
+      "org.kde.KWin",
+      `/Scripting/Script${id}`,
+      "org.kde.kwin.Script.run",
+    );
+    await browser.waitUntil(
+      () => {
+        const line = readFileSync(kwinTrace, "utf8")
+          .split("\n")
+          .find((value) => value.includes(`${marker} [`));
+        if (!line) return false;
+        const start = line.indexOf(`${marker} [`);
+        receipt.defaultPointer.geometry = JSON.parse(
+          line.slice(start + marker.length + 1),
+        );
+        return true;
+      },
+      {
+        timeout: 5000,
+        timeoutMsg: "KWin did not report the active settings window",
+      },
+    );
+  } finally {
+    await busCall(
+      "org.kde.KWin",
+      "/Scripting",
+      "org.kde.kwin.Scripting.unloadScript",
+      marker,
+    );
+  }
+  const [title, x, y, width, height] = receipt.defaultPointer.geometry;
+  const normalizeCaption = (value) => value.trim().replace(/\s+/g, " ");
+  assert.equal(normalizeCaption(title), normalizeCaption(control.dialog));
+  const [itemX, itemY, itemWidth, itemHeight] = control.bounds;
+  assert.ok([x, y, width, height, ...control.bounds].every(Number.isFinite));
+  assert.ok(itemX >= 0 && itemY >= 0 && itemWidth > 0 && itemHeight > 0);
+  assert.ok(itemX + itemWidth <= width && itemY + itemHeight <= height);
+  const outer = process.env.SWB_E2E_KWIN_WINDOW;
+  assert.equal(await inject("getwindowfocus"), outer);
+  const pointer = [
+    Math.round(x + itemX + itemWidth / 2),
+    Math.round(y + itemY + itemHeight / 2),
+  ];
+  receipt.defaultPointer.point = pointer;
+  await inject(
+    "mousemove",
+    "--window",
+    outer,
+    ...pointer.map(String),
+    "click",
+    "1",
+  );
 }
 
 function checkRaw(page, bytes) {
@@ -330,14 +411,10 @@ async function checkSystemSettings(receipt, draft, bytes) {
 
   await startRecordingNewKey();
   await withHotkey(replacement);
-  receipt.defaultFocus = await kdeControl(
-    "settings",
+  await clickSettingsCheckbox(
+    receipt,
     `Default shortcut ${receipt.binding} is enabled.`,
-    "focus",
   );
-  assert.equal(receipt.defaultFocus.active, true);
-  assert.equal(receipt.defaultFocus.focused, true);
-  await withKeys(["space"]);
   receipt.defaultDisabled = await kdeControl(
     "settings",
     `Default shortcut ${receipt.binding} is disabled.`,

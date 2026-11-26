@@ -58,7 +58,7 @@ export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
   sha256sum "$binary"
 } > "$evidence/environment.txt"
 
-QT_LOGGING_RULES='kf.globalaccel.kglobalacceld.debug=true' \
+QT_LOGGING_RULES='kf.globalaccel.kglobalacceld.debug=true;js.debug=true' \
   kwin_wayland --x11-display "$DISPLAY" --socket "$WAYLAND_DISPLAY" \
   --width 1440 --height 1000 --no-lockscreen > "$evidence/kwin.log" 2>&1 &
 kwin=$!
@@ -81,7 +81,7 @@ grep -Eq 'auto repeat:[[:space:]]+off' "$evidence/outer-keyboard.txt"
 xmodmap -pk > "$evidence/input-keymap.txt"
 declare -A keycodes
 mapping=()
-for key in Control_L Shift_L Alt_L space F4 F8 F9 F10; do
+for key in Control_L Shift_L Alt_L F4 F8 F9 F10; do
   code=$(awk -v symbol="($key)" '$3 == symbol { print $1; exit }' "$evidence/input-keymap.txt")
   [[ $code =~ ^[1-9][0-9]*$ ]]
   keycodes[$key]=$code
