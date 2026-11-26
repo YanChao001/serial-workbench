@@ -8,7 +8,7 @@ import sys
 import time
 
 
-def find_consent(action):
+def control(target, name, action):
     import pyatspi
 
     def descendants(node):
@@ -16,24 +16,43 @@ def find_consent(action):
         for child in node:
             yield from descendants(child)
 
+    titles = {
+        "consent": "Global Shortcuts Requested",
+        "settings": "System Settings",
+        "conflict": "Resolve Shortcut Conflict",
+    }
     end = time.monotonic() + 20
     desktop = pyatspi.Registry.getDesktop(0)
+    seen_windows = set()
+    seen_controls = set()
     while time.monotonic() < end:
         for app in desktop:
             for window in app:
-                title = window.name
-                if title != "Global Shortcuts Requested":
+                title = window.name or ""
+                seen_windows.add(title)
+                if titles[target] not in title:
                     continue
                 for item in descendants(window):
-                    if (item.name == action and item.getRole() == pyatspi.ROLE_PUSH_BUTTON
-                            and item.getState().contains(pyatspi.STATE_SHOWING)
-                            and item.getState().contains(pyatspi.STATE_ENABLED)):
-                        if not item.queryAction().doAction(0):
-                            raise RuntimeError(f"KDE dialog did not activate {action}")
-                        print(json.dumps({"dialog": title, "action": action}))
-                        return
+                    if item.getRole() not in (pyatspi.ROLE_PUSH_BUTTON, pyatspi.ROLE_CHECK_BOX):
+                        continue
+                    state = item.getState()
+                    visible = state.contains(pyatspi.STATE_SHOWING)
+                    enabled = state.contains(pyatspi.STATE_ENABLED)
+                    label = (item.name or "").strip()
+                    if visible:
+                        seen_controls.add(label)
+                    if not (visible and enabled and label == name):
+                        continue
+                    active = window.getState().contains(pyatspi.STATE_ACTIVE)
+                    if action == "click" and not item.queryAction().doAction(0):
+                        raise RuntimeError(f"KDE did not activate {name!r}")
+                    print(json.dumps({"dialog": title, "control": label, "action": action, "active": active}))
+                    return
         time.sleep(0.2)
-    raise RuntimeError(f"No visible, enabled {action} button in the KDE shortcut dialog")
+    raise RuntimeError(
+        f"No visible, enabled {name!r} in {titles[target]!r}. "
+        f"Windows: {sorted(seen_windows)}. Controls: {sorted(seen_controls)}"
+    )
 
 
 def report_focus(output):
@@ -68,10 +87,10 @@ def report_focus(output):
 
 
 if __name__ == "__main__":
-    command, value = sys.argv[1:]
-    if command == "consent" and value in ("OK", "Cancel"):
-        find_consent(value)
-    elif command == "focus":
-        report_focus(value)
+    command, *args = sys.argv[1:]
+    if command == "control" and len(args) == 3 and args[2] in ("click", "observe"):
+        control(*args)
+    elif command == "focus" and len(args) == 1:
+        report_focus(*args)
     else:
-        raise SystemExit("Usage: wayland-desktop.py consent OK|Cancel, or focus PATH")
+        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|observe, or focus PATH")

@@ -305,7 +305,7 @@ export async function closeShortcutHelp() {
   await (await shortcutDialog()).waitForExist({ reverse: true });
 }
 
-export async function disableGlobalSend() {
+async function disableGlobalSend() {
   await editGlobalSend();
   await clickEnabled("button=Disable");
   await $("#shortcut-capture").waitForExist({ reverse: true });

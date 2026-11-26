@@ -11,7 +11,6 @@ import { language, openDeepLink, ready } from "../helpers.mjs";
 import {
   captureGlobalSendKey,
   closeShortcutHelp,
-  disableGlobalSend,
   editGlobalSend,
   globalShortcutKey,
   openVirtual,
@@ -28,9 +27,21 @@ const artifactDir = join(
 const focusPath = join(artifactDir, "peer-focus.json");
 const consent = process.env.SWB_E2E_WAYLAND_CONSENT;
 const hotkey = "ctrl+shift+F9";
+const replacement = "ctrl+shift+F10";
 
 async function inject(...args) {
   return (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
+}
+
+async function kdeControl(target, name, action = "click") {
+  const result = await execute(
+    "/usr/bin/python3",
+    [helper, "control", target, name, action],
+    {
+      timeout: 22000,
+    },
+  );
+  return JSON.parse(result.stdout);
 }
 
 function checkRaw(page, bytes) {
@@ -45,8 +56,8 @@ function checkRaw(page, bytes) {
   assert.deepEqual(rawRxBytes(page), bytes);
 }
 
-async function assertNoTransmit(read) {
-  await inject("key", hotkey);
+async function assertNoTransmit(read, key = hotkey) {
+  await inject("key", key);
   await delay(650);
   const page = await read();
   assert.deepEqual(
@@ -54,6 +65,94 @@ async function assertNoTransmit(read) {
     [],
   );
   return page;
+}
+
+async function exitEditor() {
+  const closeEditor = await $("button=Cancel");
+  await closeEditor.waitForEnabled();
+  await closeEditor.click();
+  await closeShortcutHelp();
+}
+
+async function startRecordingNewKey() {
+  await kdeControl("settings", "Add custom shortcut");
+  const capture = await kdeControl(
+    "settings",
+    "Cancel capturing shortcut",
+    "observe",
+  );
+  assert.equal(
+    capture.active,
+    true,
+    "KDE Settings must receive the key sequence",
+  );
+}
+
+async function checkSystemSettings(receipt, draft, bytes) {
+  assert.ok(
+    Number(receipt.portalVersion) >= 2,
+    "The settings scenario requires GlobalShortcuts v2",
+  );
+  await draft.setValue(bytes.toString("ascii"));
+  await editGlobalSend();
+  const systemSettings = await $("button=Open system shortcut settings");
+  await systemSettings.waitForEnabled();
+  await systemSettings.click();
+
+  await startRecordingNewKey();
+  receipt.cancelledEdit = await kdeControl(
+    "settings",
+    "Cancel capturing shortcut",
+  );
+  assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
+
+  await startRecordingNewKey();
+  await inject("key", "alt+F4");
+  receipt.conflict = await kdeControl("conflict", "Cancel");
+  assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
+
+  await kdeControl(
+    "settings",
+    `Default shortcut ${receipt.binding} is enabled.`,
+  );
+  await startRecordingNewKey();
+  await inject("key", replacement);
+  receipt.applied = await kdeControl("settings", "Apply");
+  await browser.waitUntil(async () => {
+    receipt.changedBinding = await (await globalShortcutKey()).getText();
+    return (
+      /F10$/.test(receipt.changedBinding) &&
+      !receipt.changedBinding.includes("F9")
+    );
+  });
+  await exitEditor();
+
+  const readChanged = await globalSendRawReader();
+  receipt.oldKeyRaw = await assertNoTransmit(readChanged);
+  receipt.settingsFocus = await kdeControl(
+    "settings",
+    "Add custom shortcut",
+    "observe",
+  );
+  assert.equal(receipt.settingsFocus.active, true);
+  await inject("key", replacement);
+  await browser.waitUntil(async () => {
+    receipt.newKeyRaw = await readChanged();
+    return rawRxBytes(receipt.newKeyRaw).length >= bytes.length;
+  });
+  checkRaw(receipt.newKeyRaw, bytes);
+
+  await kdeControl("settings", "Delete shortcut");
+  receipt.revoke = await kdeControl("settings", "Apply");
+  await editGlobalSend();
+  await browser.waitUntil(
+    async () => (await (await globalShortcutKey()).getText()) === "Off",
+  );
+  await exitEditor();
+  receipt.revokedKeyRaw = await assertNoTransmit(
+    await globalSendRawReader(),
+    replacement,
+  );
 }
 
 it(`honors KDE consent ${consent} with a separate foreground Wayland client`, async () => {
@@ -82,14 +181,7 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
     await editGlobalSend();
     assert.equal(await (await globalShortcutKey()).getText(), "Off");
     await captureGlobalSendKey("F9");
-    const decision = await execute(
-      "/usr/bin/python3",
-      [helper, "consent", consent],
-      {
-        timeout: 22000,
-      },
-    );
-    receipt.consent = JSON.parse(decision.stdout);
+    receipt.consent = await kdeControl("consent", consent);
     if (consent === "Cancel") {
       const status = await $("#shortcut-conflict");
       await status.waitForDisplayed();
@@ -103,13 +195,11 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
     receipt.binding = await (await globalShortcutKey()).getText();
     if (consent === "Cancel") {
       assert.equal(receipt.binding, "Off");
-      const closeEditor = await $("button=Cancel");
-      await closeEditor.waitForEnabled();
-      await closeEditor.click();
+      await exitEditor();
     } else {
       assert.match(receipt.binding, /F9$/);
+      await closeShortcutHelp();
     }
-    await closeShortcutHelp();
 
     const read = await globalSendRawReader();
     peer = spawn("/usr/bin/python3", [helper, "focus", focusPath], {
@@ -168,8 +258,8 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
     assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
     peer.kill();
     peer = undefined;
-    await disableGlobalSend();
-    receipt.disabled = true;
+    const changedBytes = Buffer.from(`${payload}-UPDATED`, "ascii");
+    await checkSystemSettings(receipt, draft, changedBytes);
   } catch (error) {
     receipt.failure = error instanceof Error ? error.message : String(error);
     throw error;
@@ -180,4 +270,4 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
       JSON.stringify(receipt, null, 2),
     );
   }
-});
+}).timeout(150000);

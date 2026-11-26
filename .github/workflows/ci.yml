@@ -706,7 +706,7 @@ jobs:
           cache-on-failure: true
       - name: 构建测试专用桌面应用
         run: pnpm e2e:build
-      - name: 验证系统批准、取消与跨应用发送
+      - name: 验证系统分配、系统改键与跨应用发送
         timeout-minutes: 5
         run: bash e2e/run-wayland.sh
       - name: 保留 Wayland 原生证据
