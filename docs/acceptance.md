@@ -450,9 +450,9 @@ recorded_send_2                   recorded_send_2
 
 运行 `pnpm test:ui e2e/browser/global-send.spec.ts --workers=1`。无头用例经 IPC 夹具核对宽窄弹窗、捕获焦点、应用内冲突、原生拒绝后的旧键位、目标切换、授权拒绝与旧事件丢弃。普通浏览器的速查中只有页面内入口。Linux 的隔离原生 CI 在 Xvfb 与 Openbox 下切换到另一个 X11 应用，用系统按键触发 Virtual Echo 的发送区并检查实际 TX 回执。
 
-Windows 与 macOS 的隔离原生 E2E 在原有桌面阶段内构建并启动一个独立辅助应用。它占用主修饰键加 Shift+F10，核对更改失败后仍显示 F9，并向系统确认 F9 仍被原窗口独占。辅助应用获得前台后按住 F9 组合并发送重复按下，验收从同一会话的源尾游标独立读取 Raw。要求一笔完整 TX、一致的操作 ID 和精确的 Virtual Echo RX。停用后，辅助应用应能重新注册 F9。结果及受控进程日志见 `artifacts/e2e/fresh/native-global-send.json` 与 `global-send-peer.log`。macOS 缺少系统输入授权时记录该项缺口，可保留冲突和释放证据，跨应用触发仍须在已授权的独立会话中验证。
+Windows 与 macOS 的隔离原生 E2E 在原有桌面阶段内构建并启动一个独立辅助应用。它占用主修饰键加 Shift+F10，核对更改失败后仍显示 F9，并向系统确认 F9 仍被原窗口独占。独立应用获得前台后按住 F9 组合并发送重复按下，验收从同一会话的源尾游标独立读取 Raw。要求一笔完整 TX、一致的操作 ID 和精确的 Virtual Echo RX。停用后，辅助应用应能重新注册 F9。结果及受控进程日志见 `artifacts/e2e/fresh/native-global-send.json` 与 `global-send-peer.log`。macOS 缺少系统输入授权时记录该项缺口，可保留冲突和释放证据，跨应用触发仍须在已授权的独立会话中验证。
 
-macOS 辅助程序有系统输入许可且 AppKit 激活请求后仍在后台时，先确认测试窗口在点击位置处于顶层，再点击一次该窗口。切换和按键前后核对系统报告的前台进程。收据记录实际前台与点击结果，区分窗口激活、按键、Raw 读回和释放各阶段。
+macOS 辅助程序通过 Launch Services 启动一个专用计算器实例。切换和按键前后核对系统报告的前台进程与该实例一致，并记录实际及预期的进程 ID。辅助程序退出时请求结束其启动的计算器实例。
 
 在独立 Windows、macOS 和 Linux 桌面运行同一候选，记下系统版本和 Linux 会话类型。
 

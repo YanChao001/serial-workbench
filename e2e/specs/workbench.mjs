@@ -566,24 +566,6 @@ export function workbenchChecks() {
             const read = await globalSendRawReader();
             if (peer.canPost) {
               receipt.focus = await command("focus");
-              if (process.platform === "darwin" && !receipt.focus.foreground) {
-                await browser.waitUntil(
-                  async () => {
-                    receipt.focus = await command("foreground");
-                    return (
-                      receipt.focus.foreground ||
-                      receipt.focus.peerWindowClickable
-                    );
-                  },
-                  {
-                    timeoutMsg:
-                      "The independent hotkey peer window was not visible for activation",
-                  },
-                );
-                if (!receipt.focus.foreground) {
-                  receipt.focus = await command("focus-click");
-                }
-              }
               await browser.waitUntil(
                 async () => {
                   receipt.focus = await command("foreground");
@@ -591,7 +573,7 @@ export function workbenchChecks() {
                 },
                 {
                   timeoutMsg:
-                    "The independent hotkey peer did not get foreground",
+                    "The independent test application did not get foreground",
                 },
               );
               assert.equal((await command("press")).foreground, true);

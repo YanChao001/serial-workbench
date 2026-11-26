@@ -15,27 +15,20 @@ struct ProbeReply: Encodable {
     var ok: Bool? = nil
     var foreground: Bool? = nil
     var foregroundPID: Int32? = nil
-    var peerWindowClickable: Bool? = nil
-    var focusClickPosted: Bool? = nil
+    var expectedForegroundPID: Int32? = nil
+    var foregroundBundleIdentifier: String? = nil
     var error: String? = nil
 }
 
 @MainActor
 final class GlobalSendPeer: NSObject, NSApplicationDelegate {
-    private let window = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 360, height: 130),
-        styleMask: [.titled],
-        backing: .buffered,
-        defer: false
-    )
+    private let foregroundBundle = "com.apple.calculator"
+    private var foregroundTarget: NSRunningApplication?
     private var occupied: EventHotKeyRef?
     private var reclaimed: EventHotKeyRef?
-    private var focusClickPosted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            window.title = "Serial Workbench global send peer"
-            window.center()
             occupied = try reserve(key: UInt32(kVK_F10), id: 1)
             reply(ProbeReply(ready: true, pid: ProcessInfo.processInfo.processIdentifier,
                              canPost: CGPreflightPostEventAccess()))
@@ -52,13 +45,14 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        _ = foregroundTarget?.terminate()
         if let reclaimed { _ = UnregisterEventHotKey(reclaimed) }
         if let occupied { _ = UnregisterEventHotKey(occupied) }
     }
 
     private var foreground: Bool {
-        NSWorkspace.shared.frontmostApplication?.processIdentifier ==
-            ProcessInfo.processInfo.processIdentifier
+        guard let foregroundTarget else { return false }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == foregroundTarget.processIdentifier
     }
 
     private func register(key: UInt32, id: UInt32, handle: inout EventHotKeyRef?) -> OSStatus {
@@ -82,16 +76,12 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
 
     private func execute(_ command: String) {
         do {
-            var peerWindowClickable: Bool? = nil
             switch command {
             case "focus":
-                window.makeKeyAndOrderFront(nil)
-                window.orderFrontRegardless()
-                NSApp.activate()
+                try launchForegroundTarget()
+                return
             case "foreground":
-                peerWindowClickable = !foreground && visiblePeerClickPoint() != nil
-            case "focus-click":
-                if !foreground { try postFocusClick() }
+                break
             case "press":
                 try press()
             case "retained":
@@ -107,58 +97,45 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             default:
                 throw ProbeError("Unknown global send probe command.")
             }
-            let foregroundPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-            reply(ProbeReply(ok: true,
-                             foreground: foregroundPID == ProcessInfo.processInfo.processIdentifier,
-                             foregroundPID: foregroundPID, peerWindowClickable: peerWindowClickable,
-                             focusClickPosted: focusClickPosted))
+            reply(foregroundReply())
         } catch {
             reply(ProbeReply(ok: false, error: String(describing: error)))
         }
     }
 
-    private func visiblePeerClickPoint() -> CGPoint? {
-        // AppKit may decline a background activation request. A click on our own
-        // visible window exercises normal desktop activation with input permission.
-        guard window.isVisible, window.windowNumber > 0 else { return nil }
-        let number = window.windowNumber
-        let pid = ProcessInfo.processInfo.processIdentifier
-        guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-        ) as? [[String: Any]],
-            let peer = windows.first(where: {
-                ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == number &&
-                    ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid
-            }), let peerBounds = bounds(of: peer), !peerBounds.isEmpty else { return nil }
-        let point = CGPoint(x: peerBounds.midX, y: peerBounds.midY)
-        let front = windows.first { info in
-            ((info[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 0) > 0 &&
-                bounds(of: info)?.contains(point) == true
+    private func launchForegroundTarget() throws {
+        let workspace = NSWorkspace.shared
+        guard foregroundTarget == nil,
+              let url = workspace.urlForApplication(withBundleIdentifier: foregroundBundle) else {
+            throw ProbeError("Cannot locate a new Calculator instance for the native test.")
         }
-        return (front?[kCGWindowNumber as String] as? NSNumber)?.intValue == number ? point : nil
+        let existing = Set(NSRunningApplication.runningApplications(withBundleIdentifier: foregroundBundle)
+            .map(\.processIdentifier))
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.createsNewApplicationInstance = true
+        configuration.addsToRecentItems = false
+        configuration.promptsUserIfNeeded = false
+        workspace.openApplication(at: url, configuration: configuration) { application, error in
+            DispatchQueue.main.async {
+                guard let application, application.bundleIdentifier == self.foregroundBundle,
+                      !existing.contains(application.processIdentifier) else {
+                    self.reply(ProbeReply(ok: false, error: error?.localizedDescription ??
+                        "Launch Services did not create an independent Calculator process."))
+                    return
+                }
+                self.foregroundTarget = application
+                self.reply(self.foregroundReply())
+            }
+        }
     }
 
-    private func postFocusClick() throws {
-        guard !focusClickPosted, CGPreflightPostEventAccess(),
-              let point = visiblePeerClickPoint() else {
-            throw ProbeError("The independent peer window cannot receive the activation click.")
-        }
-        guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                                 mouseCursorPosition: point, mouseButton: .left),
-              let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                               mouseCursorPosition: point, mouseButton: .left) else {
-            throw ProbeError("Cannot create the mouse click to activate the independent peer.")
-        }
-        focusClickPosted = true
-        down.setIntegerValueField(.mouseEventClickState, value: 1)
-        up.setIntegerValueField(.mouseEventClickState, value: 1)
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
-    }
-
-    private func bounds(of info: [String: Any]) -> CGRect? {
-        guard let value = info[kCGWindowBounds as String] as? [String: Any] else { return nil }
-        return CGRect(dictionaryRepresentation: value as CFDictionary)
+    private func foregroundReply() -> ProbeReply {
+        let front = NSWorkspace.shared.frontmostApplication
+        let expected = foregroundTarget?.processIdentifier
+        return ProbeReply(ok: true, foreground: expected != nil && front?.processIdentifier == expected,
+                          foregroundPID: front?.processIdentifier, expectedForegroundPID: expected,
+                          foregroundBundleIdentifier: front?.bundleIdentifier)
     }
 
     private func press() throws {
@@ -170,14 +147,14 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
               let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false) else {
             throw ProbeError("Cannot create the native keyboard event.")
         }
-        guard foreground else { throw ProbeError("The independent peer is not in the foreground.") }
+        guard foreground else { throw ProbeError("The independent test application is not in the foreground.") }
         down.flags = [.maskCommand, .maskShift]
         up.flags = down.flags
         down.post(tap: .cghidEventTap)
         defer { up.post(tap: .cghidEventTap) }
         for _ in 0..<4 {
             Thread.sleep(forTimeInterval: 0.2)
-            guard foreground else { throw ProbeError("The independent peer lost foreground.") }
+            guard foreground else { throw ProbeError("The independent test application lost foreground.") }
             down.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
             down.post(tap: .cghidEventTap)
         }
