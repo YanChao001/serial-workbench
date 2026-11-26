@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { once } from "node:events";
+import { createServer as createHttpServer } from "node:http";
+import { createServer } from "node:net";
+import type { TransportOpenHandler } from "../../packages/plugin-sdk/src/node";
 import { en } from "../../src/i18n/en";
 import { session } from "../../src/features/workbench/test-fixtures";
 import type { DeviceDescriptor } from "@serial-workbench/contracts";
 import { seedWorkbenchFixture } from "./workbench.fixture";
+import { register as registerDeviceWebsocket } from "../../packages/plugin-sdk/examples/reference-websocket/builtin";
 
 const device = {
   deviceId: "device",
@@ -413,6 +418,250 @@ test("the narrow Chinese UDP form retains a failed broadcast draft and returns f
   await port.fill("42001");
   await expect(feedback).toHaveCount(0);
   await port.press("Escape");
+  await page.getByRole("button", { name: "放弃并继续", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(connection).toBeFocused();
+});
+
+const builtinWebsocket = {
+  ...device,
+  systemName: "swb.builtin.websocket.transport",
+  driver: "swb.builtin.websocket",
+} satisfies DeviceDescriptor;
+
+test("Chromium exchanges messages over the independent device WebSocket listener", async ({
+  page,
+}) => {
+  const reserved = createServer();
+  reserved.listen(0, "127.0.0.1");
+  await once(reserved, "listening");
+  const address = reserved.address();
+  if (!address || typeof address === "string")
+    throw new Error("No loopback address");
+  await new Promise<void>((resolve) => reserved.close(() => resolve()));
+
+  const registered: { open?: TransportOpenHandler } = {};
+  const dispose = await registerDeviceWebsocket({
+    transports: {
+      register(_id: string, handler: TransportOpenHandler) {
+        registered.open = handler;
+      },
+    },
+  } as Parameters<typeof registerDeviceWebsocket>[0]);
+  const peerPage = createHttpServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "text/html" });
+    response.end("<!doctype html><title>Device WebSocket peer</title>");
+  });
+  try {
+    // Chromium needs the real loopback response address for its network checks.
+    peerPage.listen(0, "127.0.0.1");
+    await once(peerPage, "listening");
+    const peerAddress = peerPage.address();
+    if (!peerAddress || typeof peerAddress === "string")
+      throw new Error("No browser peer address");
+    await page.goto("http://127.0.0.1:" + peerAddress.port + "/");
+    const signal = AbortSignal.timeout(5_000);
+    if (!registered.open)
+      throw new Error("Device WebSocket was not registered");
+    const connection = await registered.open({
+      params: {
+        role: "server",
+        path: "/device",
+        port: address.port,
+        browserOrigin: new URL(page.url()).origin,
+      },
+      signal,
+    });
+    if (!("readMessage" in connection))
+      throw new Error("Expected a message connection");
+    const browser = page
+      .evaluate(
+        (url) =>
+          new Promise<number[]>((resolve, reject) => {
+            const socket = new WebSocket(url);
+            socket.binaryType = "arraybuffer";
+            socket.onopen = () => socket.send("Chromium");
+            socket.onerror = () => reject(new Error("Device handshake failed"));
+            socket.onclose = () =>
+              reject(new Error("Device closed before sending a message"));
+            socket.onmessage = (event: MessageEvent<unknown>) => {
+              if (!(event.data instanceof ArrayBuffer)) {
+                reject(new Error("Expected binary frame"));
+                return;
+              }
+              resolve(Array.from(new Uint8Array(event.data)));
+              socket.close(1000);
+            };
+          }),
+        "ws://127.0.0.1:" + address.port + "/device",
+      )
+      .then(
+        (data) => ({ data }),
+        (error: unknown) => ({ error }),
+      );
+    const options = { maxBytes: 128 * 1024, waitMs: 4_000, signal };
+    expect(await connection.readMessage(options)).toEqual({
+      bytes: Buffer.from("Chromium"),
+      messageType: "text",
+    });
+    expect(
+      await connection.write({
+        bytes: Uint8Array.of(0, 255, 13),
+        waitMs: 2_000,
+        signal,
+      }),
+    ).toBe(3);
+    expect(await browser).toEqual({ data: [0, 255, 13] });
+    expect(await connection.readMessage(options)).toBeNull();
+  } finally {
+    try {
+      await dispose();
+    } finally {
+      await new Promise<void>((resolve) => peerPage.close(() => resolve()));
+    }
+  }
+});
+
+test("the wide WebSocket listener sends only its validated role parameters", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { device: builtinWebsocket });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open WebSocket device", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "WebSocket device",
+    exact: true,
+  });
+  const role = dialog.getByRole("combobox", { name: "Role", exact: true });
+  const type = dialog.getByRole("combobox", { name: "Send type" });
+  const url = dialog.getByRole("textbox", { name: "Endpoint URL" });
+  await expect(role).toBeFocused();
+  await url.fill("https://device.example/");
+  await dialog.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(url).toBeFocused();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    en["websocketConnection.invalidUrl"],
+  );
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectRequests),
+  ).toEqual([]);
+
+  await url.fill("wss://device.example/data");
+  await role.click();
+  await page.getByRole("option", { name: "Listen for a peer" }).click();
+  const port = dialog.getByRole("textbox", { name: "Port", exact: true });
+  const local = dialog.getByRole("textbox", {
+    name: "Local address",
+    exact: true,
+  });
+  const origin = dialog.getByRole("textbox", { name: "Browser origin" });
+  const listen = dialog.getByRole("button", {
+    name: "Start listening",
+    exact: true,
+  });
+  await expect(local).toHaveValue("127.0.0.1");
+  await port.fill("43100");
+  await origin.fill("http://localhost:5173/page");
+  await listen.click();
+  await expect(origin).toBeFocused();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    en["websocketConnection.invalidOrigin"],
+  );
+  await origin.fill("http://localhost:5173/");
+  await type.click();
+  await page.getByRole("option", { name: "UTF-8 text" }).click();
+  await role.click();
+  await page.getByRole("option", { name: "Connect to device" }).click();
+  await expect(url).toHaveValue("wss://device.example/data");
+  await role.click();
+  await page.getByRole("option", { name: "Listen for a peer" }).click();
+  await expect(port).toHaveValue("43100");
+
+  const [roleBox, localBox, portBox, buttonBox] = await Promise.all(
+    [role, local, port, listen].map((control) => control.boundingBox()),
+  );
+  expect(localBox!.y).toBe(portBox!.y);
+  expect(localBox!.x).toBe(roleBox!.x);
+  expect(
+    new Set([
+      roleBox!.height,
+      localBox!.height,
+      portBox!.height,
+      buttonBox!.height,
+    ]).size,
+  ).toBe(1);
+  await dialog.screenshot({
+    path: info.outputPath("websocket-listener-wide.png"),
+  });
+  await listen.click();
+  await expect(dialog).toBeHidden();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectRequests),
+  ).toEqual([
+    {
+      deviceId: builtinWebsocket.deviceId,
+      params: expect.objectContaining({
+        transportParams: {
+          role: "server",
+          sendType: "text",
+          bindAddress: "127.0.0.1",
+          port: 43100,
+          path: "/device",
+          browserOrigin: "http://localhost:5173",
+        },
+      }),
+    },
+  ]);
+});
+
+test("the narrow Chinese WebSocket client retains its draft and returns focus", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 540 });
+  await seedWorkbenchFixture(page, {
+    device: builtinWebsocket,
+    language: "zh",
+    theme: "dark",
+    connectFailure: {
+      code: "DEVICE_BUSY",
+      message: "Fixture device is busy",
+      retryable: true,
+    },
+  });
+  await page.goto("./#/");
+  const connection = page.getByRole("button", {
+    name: "打开 WebSocket 设备",
+    exact: true,
+  });
+  await connection.click();
+  const dialog = page.getByRole("dialog", {
+    name: "WebSocket 设备",
+    exact: true,
+  });
+  const role = dialog.getByRole("combobox", { name: "角色", exact: true });
+  const type = dialog.getByRole("combobox", { name: "发送类型", exact: true });
+  const url = dialog.getByRole("textbox", { name: "端点 URL", exact: true });
+  await url.fill("ws://[::1]:43100/device");
+  const [roleBox, typeBox] = await Promise.all([
+    role.boundingBox(),
+    type.boundingBox(),
+  ]);
+  expect(roleBox!.x).toBe(typeBox!.x);
+  expect(typeBox!.y).toBeGreaterThanOrEqual(roleBox!.y + roleBox!.height);
+  await dialog.getByRole("button", { name: "连接", exact: true }).click();
+  const feedback = dialog.getByRole("alert");
+  await expect(feedback).toBeVisible();
+  await expect(
+    page.getByText(await feedback.innerText(), { exact: true }),
+  ).toHaveCount(1);
+  await expect(url).toHaveValue("ws://[::1]:43100/device");
+  await dialog.screenshot({
+    path: info.outputPath("websocket-client-narrow.png"),
+  });
+  await url.press("Escape");
   await page.getByRole("button", { name: "放弃并继续", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(connection).toBeFocused();

@@ -649,6 +649,21 @@ cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_
 
 重建归档运行 `pnpm plugin-sdk:fixture`，将 `.cache/plugin-sdk/examples/reference-udp/builtin.js` 交给 `sign_builtin_udp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。核对公钥、归档、编译入口与清单摘要，验证首次登记及同一 profile 重启。双机上复验实际网卡的限域及定向广播、IPv4 和 IPv6 组播、独立端口和选错接口时的反馈，然后记录适用平台与发行套件证据。
 
+#### WebSocket 设备（NET-03、CONN-12）
+
+工作台选「WebSocket 设备」打开[连接窗](./ui-design.md#websocket-设备连接草稿)。主动连接使用 `ws://` 或 `wss://` URL，侦听指定本机 IP、端口及握手路径。回环场景可以用独立浏览器作为对端，在连接窗填该页面的 HTTP 来源。每个侦听会话接纳一个对端。主机的配对页面继续通过原配对控制通道工作。发送类型可选二进制或 UTF-8 文本。
+
+```sh
+pnpm plugin-sdk:fixture
+node --test scripts/websocket-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+```
+
+独立套接字验证消息分片、空消息、128 KiB 上限、错误路径和浏览器来源、取消握手、正常与异常断连以及再次绑定。独立 Chromium 用浏览器原生 WebSocket 和设备侦听互发文本及二进制。签名 Host 的双角色用例用独立 Rust WebSocket 对端，核对未授权打开被拒、实际线上的发送类型、Raw 数据与同消息标识、旧会话终态和端口回收。先准备固定 Node，再按签名启动用例核对首启、重启及准确归档。WSS 可用本机专用测试证书验证，默认信任配置拒绝未授权证书，仅将测试证书设为一轮隔离 Node 进程的额外信任根后验证文本交换。
+
+首方 `swb.builtin.websocket` 归档由 `sign_builtin_websocket <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>` 生成，编译入口位于 `.cache/plugin-sdk/examples/reference-websocket/builtin.js`。归档内的 `third-party/ws.LICENSE` 对照锁定依赖随产品分发。独立设备与网络上的运行、客户证书及正式发行按相应专项继续验收。
+
 #### RFC 2217（NET-06）
 
 参考包 `reference.rfc2217` 使用独立设备贡献 `reference.rfc2217.transport`。通过已有插件参数入口指定 `host`、`port` 与整数 `baudRate`。默认 8N1、无流控，可显式提交 `dataBits`、`parity`、`stopBits`、`flowControl`、`dtr`、`rts`。停止位取字符串 `1`、`1.5`、`2`，1.5 适用于 5 数据位。选用硬件流控时由流控管理 RTS。 [RFC 2217](https://www.rfc-editor.org/rfc/rfc2217)

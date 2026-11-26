@@ -43,6 +43,10 @@ import {
   builtinUdpProviderId,
 } from "../../../packages/plugin-sdk/examples/reference-udp/endpoint";
 import {
+  builtinWebsocketPackageId,
+  builtinWebsocketProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-websocket/endpoint";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -131,6 +135,11 @@ export function WorkbenchConnection({
   const lan = useContext(LanWorkbenchContext);
   const { t } = useI18n();
   function deviceName(device: DeviceDescriptor | undefined) {
+    if (
+      device?.systemName === builtinWebsocketProviderId &&
+      device.driver === builtinWebsocketPackageId
+    )
+      return t("websocketConnection.title");
     if (
       device?.systemName === builtinUdpProviderId &&
       device.driver === builtinUdpPackageId

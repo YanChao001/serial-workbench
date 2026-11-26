@@ -29,6 +29,7 @@ enum TransportScenario {
     OwnerExit,
     Messages,
     BundledUdp,
+    BundledWebsocket,
 }
 
 const EXIT_DURING_WRITE: &str = r#"
@@ -96,11 +97,25 @@ async fn native_node_dynamic_transport_opens_bundled_udp_and_preserves_datagrams
     signed_transport(TransportScenario::BundledUdp).await;
 }
 
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_opens_bundled_websocket_and_preserves_frames() {
+    signed_transport(TransportScenario::BundledWebsocket).await;
+}
+
 async fn signed_transport(scenario: TransportScenario) {
     let rfc2217 = scenario == TransportScenario::Rfc2217;
     let bundled_udp = scenario == TransportScenario::BundledUdp;
+    let bundled_websocket = scenario == TransportScenario::BundledWebsocket;
+    let bundled = bundled_udp || bundled_websocket;
     let (package_id, provider_id, example) = if bundled_udp {
         ("swb.builtin.udp", "swb.builtin.udp.transport", "")
+    } else if bundled_websocket {
+        (
+            "swb.builtin.websocket",
+            "swb.builtin.websocket.transport",
+            "",
+        )
     } else if rfc2217 {
         (
             "reference.rfc2217",
@@ -111,7 +126,7 @@ async fn signed_transport(scenario: TransportScenario) {
         (PACKAGE, PROVIDER, "reference-transport")
     };
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let program = if bundled_udp {
+    let program = if bundled {
         None
     } else if scenario == TransportScenario::Messages {
         Some(include_bytes!("message_provider.mjs").to_vec())
@@ -140,7 +155,7 @@ async fn signed_transport(scenario: TransportScenario) {
     .await
     .unwrap();
     let path = profile.path().to_path_buf();
-    if bundled_udp {
+    if bundled {
         let provision = HostServer::bind(&path).await.unwrap();
         let config = serial_workbench_ipc::startup_config::resolve(Some(path.clone())).unwrap();
         Host::with_startup_config(provision.store(), provision.auth(), config.snapshot())
@@ -297,15 +312,22 @@ async fn signed_transport(scenario: TransportScenario) {
             id: provider.device_id.clone(),
             ..host_target.clone()
         };
-        if bundled_udp {
-            let descriptor: Value =
-                serde_json::from_str(include_str!("../../resources/node-packages/udp.json"))
-                    .unwrap();
+        if bundled {
+            let descriptor: Value = serde_json::from_str(if bundled_udp {
+                include_str!("../../resources/node-packages/udp.json")
+            } else {
+                include_str!("../../resources/node-packages/websocket.json")
+            })
+            .unwrap();
             assert_eq!(
                 runtime_status.archive_sha256.as_ref().unwrap().as_str(),
                 descriptor["archiveSha256"].as_str().unwrap()
             );
-            check_bundled_udp(&client, &auth, &operator, &host_target, &device).await;
+            if bundled_udp {
+                check_bundled_udp(&client, &auth, &operator, &host_target, &device).await;
+            } else {
+                check_bundled_websocket(&client, &auth, &operator, &host_target, &device).await;
+            }
             return;
         }
         let enabled = enabled.expect("The reference transport was installed");
@@ -905,6 +927,200 @@ fn denied(reply: RpcReply) {
         matches!(&reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"),
         "{reply:?}",
     );
+}
+
+async fn check_bundled_websocket(
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    device: &Target,
+) {
+    use futures_util::{SinkExt, StreamExt};
+    use std::net::Ipv6Addr;
+    use tokio_tungstenite::{
+        accept_async, client_async,
+        tungstenite::{Message, client::IntoClientRequest, http::HeaderValue},
+    };
+
+    let mut prior_epoch = None;
+    for listening in [false, true] {
+        let listener = if listening {
+            TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap()
+        } else {
+            TcpListener::bind((Ipv6Addr::LOCALHOST, 0)).await.unwrap()
+        };
+        let address = listener.local_addr().unwrap();
+        let url = format!("ws://{address}/device");
+        let transport = if listening {
+            json!({"role":"server","port":address.port(),"path":"/device","browserOrigin":"http://127.0.0.1:5173"})
+        } else {
+            json!({"role":"client","url":url,"sendType":"text"})
+        };
+        let params =
+            json!({"configuration":SerialConfiguration::default(),"transportParams":transport});
+        if !listening {
+            denied(
+                client
+                    .request(RpcRequest::Invoke(call(
+                        client,
+                        "device.open",
+                        device,
+                        params.clone(),
+                    )))
+                    .await
+                    .unwrap(),
+            );
+            grant(auth, operator, client, device, &["device.modify"]);
+        }
+        let remote = if listening {
+            drop(listener);
+            None
+        } else {
+            Some(tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                accept_async(socket).await.unwrap()
+            }))
+        };
+        let session = open_session(client, host, device, params).await;
+        assert!(session.session_epoch > prior_epoch);
+        prior_epoch = session.session_epoch;
+        let mut peer = if let Some(remote) = remote {
+            timeout(WAIT, remote).await.unwrap().unwrap()
+        } else {
+            let mut request = url.into_client_request().unwrap();
+            request
+                .headers_mut()
+                .insert("origin", HeaderValue::from_static("http://127.0.0.1:5173"));
+            let stream = TcpStream::connect(address).await.unwrap();
+            timeout(WAIT, client_async(request, stream))
+                .await
+                .unwrap()
+                .unwrap()
+                .0
+        };
+
+        grant(
+            auth,
+            operator,
+            client,
+            &session,
+            &["metadata.read", "content.read", "device.modify"],
+        );
+        let snapshot = || async {
+            let QueryResult::Session(snapshot) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        client,
+                        "session.get",
+                        &session,
+                        json!({}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected the WebSocket session");
+            };
+            snapshot
+        };
+        assert_eq!(
+            snapshot().await.capabilities.semantics,
+            TransportSemantics::Message
+        );
+        let raw = client.connect_raw().await.unwrap();
+        let tx = completed(client, host, tx_call(client, &session, b"probe")).await;
+        assert!(matches!(
+            tx.result,
+            Some(ActionResult::Tx(TxReceipt {
+                outcome: TxOutcome::Accepted,
+                ..
+            }))
+        ));
+        let wire = timeout(WAIT, peer.next()).await.unwrap().unwrap().unwrap();
+        if listening {
+            assert_eq!(wire, Message::Binary(b"probe".as_slice().into()));
+        } else {
+            assert_eq!(wire, Message::Text("probe".into()));
+        }
+
+        let text = "device \u{6d4b}\u{8bd5}";
+        let binary = vec![0xa7; 20_001];
+        peer.send(Message::Text(text.into())).await.unwrap();
+        peer.send(Message::Text("".into())).await.unwrap();
+        peer.send(Message::Binary(binary.clone().into()))
+            .await
+            .unwrap();
+        let chunks = timeout(WAIT, async {
+            loop {
+                let QueryResult::StreamRead(page) = query_result(success(
+                    raw.request(RpcRequest::Query(query(
+                        client,
+                        "stream.read",
+                        &session,
+                        json!({
+                            "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                            "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+                        }),
+                    )))
+                    .await
+                    .unwrap(),
+                )) else {
+                    panic!("Expected WebSocket Raw events");
+                };
+                let chunks = page
+                    .events
+                    .into_iter()
+                    .filter_map(|event| match event.payload {
+                        RawPayload::Rx(rx) => Some(rx),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                if chunks.len() >= 4 {
+                    break chunks;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let [short, empty, first, last] = chunks.as_slice() else {
+            panic!("Expected text, empty text and two binary fragments");
+        };
+        let decode = |rx: &RxPayload| STANDARD.decode(rx.bytes_base64.as_str()).unwrap();
+        let message = |rx: &RxPayload| rx.message.clone().expect("WebSocket message metadata");
+        assert_eq!(decode(short), text.as_bytes());
+        assert_eq!(message(short).message_type, "text");
+        assert_eq!(message(empty).message_type, "text");
+        assert_eq!(message(empty).message_length.get(), 0);
+        assert_eq!(empty.byte_start, empty.byte_end);
+        assert_eq!(message(first).message_type, "binary");
+        assert_eq!(message(first).message_id, message(last).message_id);
+        assert_eq!(message(last).fragment_offset.get(), 16384);
+        assert_eq!(message(last).message_length.get(), binary.len() as u64);
+        assert_eq!([decode(first), decode(last)].concat(), binary);
+
+        peer.close(None).await.unwrap();
+        assert!(matches!(
+            timeout(WAIT, peer.next()).await.unwrap(),
+            Some(Ok(Message::Close(_)))
+        ));
+        timeout(WAIT, async {
+            while snapshot().await.state != SessionState::Disconnected {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        raw.close().await.unwrap();
+        if listening {
+            let reclaimed = TcpListener::bind(address).await.unwrap();
+            drop(reclaimed);
+        }
+        eprintln!(
+            "bundled_websocket listening={listening} raw_messages=3 empty_events=1 binary_bytes={} peer_closed=true",
+            binary.len()
+        );
+    }
 }
 
 async fn check_bundled_udp(

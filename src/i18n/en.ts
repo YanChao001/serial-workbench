@@ -2524,6 +2524,24 @@ export const en = {
   "udpConnection.automaticPort": "Leave blank for an automatic port.",
   "udpConnection.open": "Open session",
   "udpConnection.opening": "Opening socket…",
+  "websocketConnection.title": "WebSocket device",
+  "websocketConnection.client": "Connect to device",
+  "websocketConnection.server": "Listen for a peer",
+  "websocketConnection.sendType": "Send type",
+  "websocketConnection.binary": "Binary",
+  "websocketConnection.text": "UTF-8 text",
+  "websocketConnection.url": "Endpoint URL",
+  "websocketConnection.listenerSettings": "Listener settings",
+  "websocketConnection.path": "Handshake path",
+  "websocketConnection.browserOrigin": "Browser origin",
+  "websocketConnection.originHelp":
+    "Enter a browser origin to allow it. Leave blank for peers that send no Origin.",
+  "websocketConnection.invalidUrl":
+    "Enter a ws:// or wss:// URL without credentials or a fragment.",
+  "websocketConnection.invalidPath":
+    "Enter a path starting with /, without a query or fragment.",
+  "websocketConnection.invalidOrigin":
+    "Enter only the HTTP or HTTPS origin, such as http://localhost:5173.",
   "nativeError.pluginTransportOpenFailed":
     "Could not open the plugin connection. Check the endpoint and parameters, then try again.",
   "rfc2217Connection.title": "RFC 2217 remote serial",

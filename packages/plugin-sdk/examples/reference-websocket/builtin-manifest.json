@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.builtin.websocket",
+  "version": "0.1.0",
+  "displayName": "WebSocket Device Transport",
+  "description": "Open an independent WebSocket device client or a one-peer listener.",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE", "third-party/ws.LICENSE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["device.modify"],
+        "targetKinds": ["device"]
+      }
+    ],
+    "executionPurposes": ["websocket-transport"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [],
+    "queries": [],
+    "transports": [
+      {
+        "actionId": "swb.builtin.websocket.transport",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": ["client", "server"]
+            },
+            "sendType": {
+              "type": "string",
+              "enum": ["binary", "text"]
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "bindAddress": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "browserOrigin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string"
+            },
+            "sessionEpoch": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "reused": {
+              "type": "boolean"
+            },
+            "recentError": {
+              "type": "object"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision", "reused"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["device"],
+        "executionLocation": "resource_host",
+        "permissions": ["device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      }
+    ],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

@@ -2323,6 +2323,23 @@ export const zhCN = {
   "udpConnection.automaticPort": "留空时由系统分配端口。",
   "udpConnection.open": "打开会话",
   "udpConnection.opening": "正在打开套接字…",
+  "websocketConnection.title": "WebSocket 设备",
+  "websocketConnection.client": "主动连接",
+  "websocketConnection.server": "侦听对端",
+  "websocketConnection.sendType": "发送类型",
+  "websocketConnection.binary": "二进制",
+  "websocketConnection.text": "UTF-8 文本",
+  "websocketConnection.url": "端点 URL",
+  "websocketConnection.listenerSettings": "侦听设置",
+  "websocketConnection.path": "握手路径",
+  "websocketConnection.browserOrigin": "浏览器来源",
+  "websocketConnection.originHelp":
+    "填写允许的浏览器来源。留空时只接纳未发送 Origin 的对端。",
+  "websocketConnection.invalidUrl":
+    "请输入不含凭据和片段的 ws:// 或 wss:// URL。",
+  "websocketConnection.invalidPath": "请输入以 / 开头且不含查询或片段的路径。",
+  "websocketConnection.invalidOrigin":
+    "只填写 HTTP 或 HTTPS 来源，例如 http://localhost:5173。",
   "nativeError.pluginTransportOpenFailed":
     "插件连接失败。请检查地址、端口和连接参数后重试。",
   "rfc2217Connection.title": "RFC 2217 远程串口",

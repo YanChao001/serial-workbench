@@ -89,6 +89,8 @@ const page = await task.streams.read({
 
 [首方 UDP 传输](./examples/reference-udp/)用同一消息接口实现 IPv4、IPv6 单播和组播以及 IPv4 广播。示例展示按地址族绑定、限制接收队列、交付空数据报和等待套接字释放。 [UDP 专项验收](../../docs/acceptance.md#udpnet-02)
 
+[首方 WebSocket 传输](./examples/reference-websocket/)实现设备客户端与单对端侦听，交付独立文本和二进制消息。示例使用固定消息预算与有界握手，等待套接字实际关闭。 [WebSocket 设备验收](../../docs/acceptance.md#websocket-设备net-03conn-12)
+
 [串口监听参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图，显示已连接串口的收发数据。编译、签名与原生管理验证见[终端参考包验收](../../docs/acceptance.md#终端参考包验收)。
 
 [图表参考包](./examples/reference-chart/) 的签名解析器从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/acceptance.md#图表参考包后台采样)。

@@ -2859,6 +2859,7 @@ mod tests {
         let tcp = NodePackageId::try_from("swb.builtin.tcp").unwrap();
         let rfc2217 = NodePackageId::try_from("swb.builtin.rfc2217").unwrap();
         let udp = NodePackageId::try_from("swb.builtin.udp").unwrap();
+        let websocket = NodePackageId::try_from("swb.builtin.websocket").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         let mut pending_calendar: Option<(Id, tokio::time::Instant, ContextToken)> = None;
@@ -2909,6 +2910,7 @@ mod tests {
                         catalog.status(&tcp).unwrap(),
                         catalog.status(&rfc2217).unwrap(),
                         catalog.status(&udp).unwrap(),
+                        catalog.status(&websocket).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2966,6 +2968,7 @@ mod tests {
                             (&tcp, "swb.builtin.tcp.transport"),
                             (&rfc2217, "swb.builtin.rfc2217.transport"),
                             (&udp, "swb.builtin.udp.transport"),
+                            (&websocket, "swb.builtin.websocket.transport"),
                         ]
                         .into_iter()
                         .all(|(package, contribution)| {
@@ -3024,7 +3027,7 @@ mod tests {
             assert!(registered.unwrap());
             assert!(
                 transports_registered.unwrap(),
-                "bundled TCP, RFC 2217, and UDP providers were not registered"
+                "bundled TCP, RFC 2217, UDP and WebSocket providers were not registered"
             );
             if let Some(execution) = execution {
                 pending_calendar = Some(execution.expect("bundled field actions on the real Host"));
@@ -3053,6 +3056,11 @@ mod tests {
                     &udp,
                     "udp",
                     include_str!("../resources/node-packages/udp.json"),
+                ),
+                (
+                    &websocket,
+                    "websocket",
+                    include_str!("../resources/node-packages/websocket.json"),
                 ),
             ];
             for status in statuses {

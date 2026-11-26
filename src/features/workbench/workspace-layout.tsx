@@ -59,6 +59,7 @@ import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { TcpConnectionParameters } from "./tcp-connection-parameters";
 import { UdpConnectionParameters } from "./udp-connection-parameters";
+import { WebsocketConnectionParameters } from "./websocket-connection-parameters";
 import {
   rfc2217OpenDiagnostic,
   rfc2217OpenDiagnosticText,
@@ -81,6 +82,10 @@ import {
   builtinUdpPackageId,
   builtinUdpProviderId,
 } from "../../../packages/plugin-sdk/examples/reference-udp/endpoint";
+import {
+  builtinWebsocketPackageId,
+  builtinWebsocketProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-websocket/endpoint";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { CommandLibrarySource } from "./command-library";
@@ -137,6 +142,33 @@ import "./workbench.css";
 
 const ReplayComparisonDialog = lazy(() => import("./replay-comparison-dialog"));
 const LiveSessionComparison = lazy(() => import("./live-session-comparison"));
+
+const transportForms = [
+  {
+    provider: builtinTcpProviderId,
+    packageId: builtinTcpPackageId,
+    form: TcpConnectionParameters,
+    title: "tcpConnection.title",
+  },
+  {
+    provider: builtinRfc2217ProviderId,
+    packageId: builtinRfc2217PackageId,
+    form: Rfc2217ConnectionParameters,
+    title: "rfc2217Connection.title",
+  },
+  {
+    provider: builtinUdpProviderId,
+    packageId: builtinUdpPackageId,
+    form: UdpConnectionParameters,
+    title: "udpConnection.title",
+  },
+  {
+    provider: builtinWebsocketProviderId,
+    packageId: builtinWebsocketPackageId,
+    form: WebsocketConnectionParameters,
+    title: "websocketConnection.title",
+  },
+] as const;
 
 type TabNameSource = { sourceKey?: string; sessionKey?: string; name?: string };
 function sameActionInput(
@@ -713,26 +745,16 @@ export function WorkspaceLayout({
             entry.fingerprint.transport === "plugin",
         )
       : undefined;
-  const tcpPrompt =
-    promptDevice?.systemName === builtinTcpProviderId &&
-    promptDevice.driver === builtinTcpPackageId;
-  const rfc2217Prompt =
-    promptDevice?.systemName === builtinRfc2217ProviderId &&
-    promptDevice.driver === builtinRfc2217PackageId;
-  const udpPrompt =
-    promptDevice?.systemName === builtinUdpProviderId &&
-    promptDevice.driver === builtinUdpPackageId;
+  const transportForm = transportForms.find(
+    ({ provider, packageId }) =>
+      promptDevice?.systemName === provider &&
+      promptDevice.driver === packageId,
+  );
   const promptFailure =
     openError && promptDevice && failure?.deviceId === promptDevice.deviceId
       ? failure
       : undefined;
-  const TransportParameters = rfc2217Prompt
-    ? Rfc2217ConnectionParameters
-    : tcpPrompt
-      ? TcpConnectionParameters
-      : udpPrompt
-        ? UdpConnectionParameters
-        : PluginTransportParameters;
+  const TransportParameters = transportForm?.form ?? PluginTransportParameters;
   useEffect(() => {
     if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
   }, [promptDevice, transportPrompt]);
@@ -2687,13 +2709,9 @@ export function WorkspaceLayout({
         open={!!promptDevice}
         scopeKey={transportScope}
         title={
-          rfc2217Prompt
-            ? t("rfc2217Connection.title")
-            : tcpPrompt
-              ? t("tcpConnection.title")
-              : udpPrompt
-                ? t("udpConnection.title")
-                : labels.pluginTransportParameters
+          transportForm
+            ? t(transportForm.title)
+            : labels.pluginTransportParameters
         }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
@@ -2706,7 +2724,8 @@ export function WorkspaceLayout({
             labels={labels}
             opening={opening === promptDevice.deviceId}
             error={
-              rfc2217Prompt && promptFailure?.rfc2217
+              transportForm?.provider === builtinRfc2217ProviderId &&
+              promptFailure?.rfc2217
                 ? rfc2217OpenDiagnosticText(promptFailure.rfc2217, t)
                 : promptFailure?.message
             }
