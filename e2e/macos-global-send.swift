@@ -177,6 +177,8 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 try press(controlEvents.key, repeating: false)
             case "press-control-session":
                 try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap)
+            case "press-control-function":
+                try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap, functionKey: true)
             case "press":
                 try press(CGKeyCode(kVK_F9), repeating: true)
             case "retained":
@@ -238,7 +240,8 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                           sessionPressFlags: controlEvents.sessionPressFlags)
     }
 
-    private func press(_ key: CGKeyCode, repeating: Bool, tap: CGEventTapLocation = .cghidEventTap) throws {
+    private func press(_ key: CGKeyCode, repeating: Bool, tap: CGEventTapLocation = .cghidEventTap,
+                       functionKey: Bool = false) throws {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
@@ -256,10 +259,11 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let command = CGKeyCode(kVK_Command)
         let shift = CGKeyCode(kVK_Shift)
         let flags: CGEventFlags = [.maskCommand, .maskShift]
+        let keyFlags = functionKey ? flags.union(.maskSecondaryFn) : flags
         let commandDown = try event(command, down: true, flags: .maskCommand, modifier: true)
         let shiftDown = try event(shift, down: true, flags: flags, modifier: true)
-        let down = try event(key, down: true, flags: flags)
-        let up = try event(key, down: false, flags: flags)
+        let down = try event(key, down: true, flags: keyFlags)
+        let up = try event(key, down: false, flags: keyFlags)
         let shiftUp = try event(shift, down: false, flags: .maskCommand, modifier: true)
         let commandUp = try event(command, down: false, flags: [], modifier: true)
         if key == controlEvents.key {
