@@ -200,7 +200,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   }
 });
 
-test("Windows gates real Chromium file transfer, experiment exchange and mapped capture with runner-local evidence", () => {
+test("Windows gates real Chromium file transfer, experiments, mapped capture and held sends with runner-local evidence", () => {
   const rust = job("rust");
   const step = rust
     .split("id: paired-workbench-files\n")[1]
@@ -220,11 +220,19 @@ test("Windows gates real Chromium file transfer, experiment exchange and mapped 
   );
   assert.match(step, /字符映射录制测试进程失败/);
   assert.match(step, /字符映射录制收据缺失/);
+  assert.match(
+    step,
+    /paired_browser_held_send_settles_two_writes_and_stops_on_release/,
+  );
+  assert.match(step, /按住连发测试进程失败/);
+  assert.match(step, /按住连发收据缺失/);
+  assert.match(step, /hold-send\/host-receipt\.json/);
+  assert.match(step, /hold-send\/browser-receipt\.json/);
   assert.match(step, /mapped-capture\/host-receipt\.json/);
   assert.match(step, /mapped-capture\/browser-receipt\.json/);
   assert.doesNotMatch(
     step,
-    /\b(?:cat|tee)\b.*(?:transfer|experiment|mapped-capture)\.log/,
+    /\b(?:cat|tee)\b.*(?:transfer|experiment|mapped-capture|hold-send)\.log/,
   );
   assert.match(
     step,

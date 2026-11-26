@@ -664,6 +664,11 @@ export const en = {
   "workbench.invalidUtf8":
     "These bytes are not valid UTF-8. The HEX draft is unchanged.",
   "workbench.sending": "Sending",
+  "workbench.holdSend": "Hold to repeat sending",
+  "workbench.holdSendHint": "Hold to repeat. Release to stop.",
+  "workbench.holdingSend": "Repeating send while held.",
+  "workbench.holdSendWaitFailed":
+    "Could not confirm the write. Repeating send stopped.",
   "workbench.awaitingReceipt": "Receipt unavailable; outcome not confirmed",
   "workbench.receipt": "Receipt",
   "workbench.sendFile": "Send file",

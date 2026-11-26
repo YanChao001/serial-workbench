@@ -377,7 +377,7 @@ jobs:
               | tee artifacts/reference-chart/paired-browser.log
           fi
 
-      - name: 验证真实配对浏览器文件、实验包与字符映射录制
+      - name: 验证真实配对浏览器工作台
         id: paired-workbench-files
         if: runner.os == 'Windows'
         shell: bash
@@ -419,6 +419,18 @@ jobs:
           fi
           if ! test -s "$output/mapped-capture/host-receipt.json" || ! test -s "$output/mapped-capture/browser-receipt.json"; then
             echo "::error::真实配对浏览器字符映射录制收据缺失。"
+            exit 1
+          fi
+
+          export SWB_TEST_HOLD_SEND_OUTPUT="$output/hold-send"
+          if ! cargo test --locked -p serial-workbench-host --test capture_api_host \
+              paired_browser_held_send_settles_two_writes_and_stops_on_release \
+              -- --ignored --test-threads=1 > "$output/hold-send.log" 2>&1; then
+            echo "::error::真实配对浏览器按住连发测试进程失败。"
+            exit 1
+          fi
+          if ! test -s "$output/hold-send/host-receipt.json" || ! test -s "$output/hold-send/browser-receipt.json"; then
+            echo "::error::真实配对浏览器按住连发收据缺失。"
             exit 1
           fi
 

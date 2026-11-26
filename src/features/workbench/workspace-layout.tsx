@@ -1918,7 +1918,7 @@ export function WorkspaceLayout({
     terminalSettings?.sendMode ??
     selectedTab?.view?.sendMode ??
     "text";
-  const sendRemapOwner =
+  const writableViewScope =
     state.status === "ready" &&
     draftsReady &&
     selectedTab &&
@@ -1939,11 +1939,11 @@ export function WorkspaceLayout({
   }>();
   useEffect(() => {
     setAppliedSend((current) =>
-      current?.owner === sendRemapOwner ? current : undefined,
+      current?.owner === writableViewScope ? current : undefined,
     );
-  }, [sendRemapOwner]);
+  }, [writableViewScope]);
   const sendRules =
-    appliedSend?.owner === sendRemapOwner ? appliedSend?.rules : undefined;
+    appliedSend?.owner === writableViewScope ? appliedSend?.rules : undefined;
   const historyHostId = host.connection?.attachment.hostId;
   const historyDestination =
     sendAllowed &&
@@ -2785,13 +2785,18 @@ export function WorkspaceLayout({
         draftKey={draftKey}
         labels={labels}
         operations={state.operations}
+        holdSend={
+          writableViewScope && target
+            ? { scope: writableViewScope, target, wait: host.waitForOperation }
+            : undefined
+        }
         sendRemap={sendRules}
         onClearSendRemap={() => setAppliedSend(undefined)}
-        onSend={(bytes, signal, source) =>
+        onSend={(bytes, signal, source, expectedRevision) =>
           submitManualBytes(
             bytes,
             signal,
-            source ? session?.revision : undefined,
+            expectedRevision ?? (source ? session?.revision : undefined),
             source,
           )
         }
@@ -3125,9 +3130,12 @@ export function WorkspaceLayout({
                           : undefined,
                         appliedSend: sendRules,
                         onApplySend:
-                          sendRemapOwner && draftSendMode === "text"
+                          writableViewScope && draftSendMode === "text"
                             ? (rules) =>
-                                setAppliedSend({ owner: sendRemapOwner, rules })
+                                setAppliedSend({
+                                  owner: writableViewScope,
+                                  rules,
+                                })
                             : undefined,
                         sendText:
                           draftsReady && draftSendMode === "text"

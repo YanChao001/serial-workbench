@@ -808,6 +808,13 @@
   width: 3rem;
   flex-shrink: 0;
 }
+.workbench-hold-send-button {
+  align-self: stretch;
+  height: auto;
+  width: max(2rem, var(--app-toolbar-control-size));
+  flex-shrink: 0;
+  touch-action: none;
+}
 .workbench-send-button:disabled {
   opacity: 1;
   background: var(--muted);
