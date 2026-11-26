@@ -1093,6 +1093,18 @@ export function SendPanel({
           </span>
         </div>
         <WorkbenchIconButton
+          {...hold.handlers}
+          label={labels.holdSend}
+          tooltip={holdHint}
+          aria-busy={hold.holding || undefined}
+          aria-describedby={holdHintId}
+          variant={hold.holding ? "secondary" : "outline"}
+          className="workbench-hold-send-button"
+          disabled={!canHold || (busy && !hold.holding)}
+        >
+          <Repeat2 aria-hidden="true" />
+        </WorkbenchIconButton>
+        <WorkbenchIconButton
           label={busy ? labels.sending : labels.send}
           tooltip={sendHint}
           variant="default"
@@ -1108,18 +1120,6 @@ export function SendPanel({
           }
         >
           <Send aria-hidden="true" />
-        </WorkbenchIconButton>
-        <WorkbenchIconButton
-          {...hold.handlers}
-          label={labels.holdSend}
-          tooltip={holdHint}
-          aria-busy={hold.holding || undefined}
-          aria-describedby={holdHintId}
-          variant={hold.holding ? "secondary" : "outline"}
-          className="workbench-hold-send-button"
-          disabled={!canHold || (busy && !hold.holding)}
-        >
-          <Repeat2 aria-hidden="true" />
         </WorkbenchIconButton>
       </div>
       {preview.invalid && (

@@ -57,7 +57,8 @@ test("holding sends only in the active workbench and preserves the draft layout"
     expect(holdButton.y).toBe(editor.y);
     expect(normalButton.height).toBe(editor.height);
     expect(holdButton.height).toBe(editor.height);
-    expect(holdButton.x + holdButton.width).toBeLessThanOrEqual(width);
+    expect(holdButton.x + holdButton.width).toBeLessThan(normalButton.x);
+    expect(normalButton.x + normalButton.width).toBeLessThanOrEqual(width);
   }
 
   await page.setViewportSize({ width: 420, height: 610 });
