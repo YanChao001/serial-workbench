@@ -10,7 +10,11 @@ import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { openDeepLink, reloadDocument } from "../helpers.mjs";
 import { withGlobalSendPeer } from "../global-send-peer.mjs";
-import { globalSendRawReader } from "../global-send.mjs";
+import {
+  checkGlobalSendRaw,
+  globalSendRawReader,
+  rawRxBytes,
+} from "../global-send.mjs";
 import { sessionScopes } from "../session-scopes.mjs";
 import {
   hostQuery,
@@ -313,14 +317,6 @@ export async function disableGlobalSend() {
   await closeShortcutHelp();
 }
 
-export function rawRxBytes({ events }) {
-  return Buffer.concat(
-    events
-      .filter(({ kind }) => kind === "rx")
-      .map(({ payload }) => Buffer.from(payload.bytesBase64, "base64")),
-  );
-}
-
 export function workbenchChecks() {
   it("edits and clones saved views through the real workspace menu and preserves independent drafts", async () => {
     await openDeepLink("/");
@@ -475,45 +471,76 @@ export function workbenchChecks() {
     process.platform === "linux" &&
     process.env.SWB_E2E_X11_GLOBAL_SEND === "1"
   ) {
-    it("sends once for an X11 hotkey with another native application focused", async () => {
+    it("sends once for an X11 hotkey with another native application focused and stops after disable", async () => {
       const hotkey = "ctrl+shift+F9";
       const draft = await sendDraft();
       const original = await draft.getValue();
+      const payload = "SWB-X11-GLOBAL-SEND-" + randomUUID().slice(0, 8);
+      const bytes = Buffer.from(payload, "ascii");
+      const directory = join("artifacts", "e2e", process.env.STARTER_E2E_PHASE);
+      const receipt = {
+        platform: "x11",
+        osRelease: osRelease(),
+        candidate: process.env.GITHUB_SHA,
+      };
+      const xdo = async (...args) =>
+        (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
       let registered = false;
       let other;
       try {
-        await draft.setValue("NATIVE-GLOBAL-SEND");
+        await draft.setValue(payload);
         await editGlobalSend();
         await captureGlobalSendKey("F9");
         await $("#shortcut-capture").waitForExist({ reverse: true });
         registered = true;
+        receipt.binding = await (await globalShortcutKey()).getText();
+        assert.match(receipt.binding, /F9$/);
         await closeShortcutHelp();
 
+        const read = await globalSendRawReader();
         const title = "Serial Workbench X11 test focus";
         other = spawn("xmessage", ["-title", title, "Native hotkey focus"], {
           stdio: "ignore",
         });
-        const xdo = async (...args) =>
-          (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
         const otherWindow = await xdo("search", "--sync", "--name", title);
         await xdo("windowactivate", "--sync", otherWindow);
-        assert.equal(await xdo("getactivewindow"), otherWindow);
+        receipt.focusBefore = await xdo("getactivewindow");
+        assert.equal(receipt.focusBefore, otherWindow);
         await xdo("keydown", hotkey);
         try {
-          await browser.waitUntil(
-            async () =>
-              (await streamPayloadState("NATIVE-GLOBAL-SEND"))
-                .acceptedTxRows === 1,
-          );
+          await browser.waitUntil(async () => {
+            receipt.raw = await read();
+            return rawRxBytes(receipt.raw).length >= bytes.length;
+          });
           await delay(800);
-          const sent = await streamPayloadState("NATIVE-GLOBAL-SEND");
-          assert.equal(sent.txRows, 1);
-          assert.equal(sent.acceptedTxRows, 1);
-          assert.equal(await xdo("getactivewindow"), otherWindow);
         } finally {
           await xdo("keyup", hotkey);
         }
+        receipt.raw = await read();
+        checkGlobalSendRaw(receipt.raw, bytes);
+        receipt.focusAfter = await xdo("getactivewindow");
+        assert.equal(receipt.focusAfter, otherWindow);
+
+        await disableGlobalSend();
+        registered = false;
+        const readDisabled = await globalSendRawReader();
+        await xdo("windowactivate", "--sync", otherWindow);
+        receipt.disabledFocus = await xdo("getactivewindow");
+        assert.equal(receipt.disabledFocus, otherWindow);
+        await xdo("key", hotkey);
+        await delay(500);
+        receipt.disabledRaw = await readDisabled();
+        assert.deepEqual(receipt.disabledRaw.events, []);
+      } catch (error) {
+        receipt.failure =
+          error instanceof Error ? error.message : String(error);
+        throw error;
       } finally {
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(
+          join(directory, "native-global-send.json"),
+          JSON.stringify(receipt, null, 2),
+        );
         other?.kill();
         if (registered) await disableGlobalSend();
         await draft.setValue(original);
@@ -618,27 +645,7 @@ export function workbenchChecks() {
                 await delay(300);
                 const page = await read();
                 receipt.raw = page;
-                const tx = page.events.filter(({ kind }) => kind === "tx");
-                const intents = page.events.filter(
-                  ({ kind }) => kind === "tx_intent",
-                );
-                assert.equal(
-                  tx.length,
-                  1,
-                  "Repeated key-down must not produce another TX",
-                );
-                assert.equal(intents.length, 1);
-                assert.equal(
-                  tx[0].payload.operationId,
-                  intents[0].payload.operationId,
-                );
-                assert.equal(tx[0].payload.outcome, "accepted");
-                assert.deepEqual(tx[0].payload.unknownRanges, []);
-                assert.deepEqual(
-                  Buffer.from(tx[0].payload.bytesBase64, "base64"),
-                  bytes,
-                );
-                assert.deepEqual(rawRxBytes(page), bytes);
+                checkGlobalSendRaw(page, bytes);
                 assert.equal((await command("foreground")).foreground, true);
                 receipt.dispatch = "passed";
               } else {

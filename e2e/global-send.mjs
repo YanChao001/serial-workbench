@@ -3,6 +3,26 @@ import { randomUUID } from "node:crypto";
 import { sessionScopes } from "./session-scopes.mjs";
 import { hostQuery, nativeValue } from "./settings.mjs";
 
+export function rawRxBytes({ events }) {
+  return Buffer.concat(
+    events
+      .filter(({ kind }) => kind === "rx")
+      .map(({ payload }) => Buffer.from(payload.bytesBase64, "base64")),
+  );
+}
+
+export function checkGlobalSendRaw(page, bytes) {
+  const tx = page.events.filter(({ kind }) => kind === "tx");
+  const intents = page.events.filter(({ kind }) => kind === "tx_intent");
+  assert.equal(tx.length, 1, "One shortcut press must produce one TX");
+  assert.equal(intents.length, 1);
+  assert.equal(tx[0].payload.operationId, intents[0].payload.operationId);
+  assert.equal(tx[0].payload.outcome, "accepted");
+  assert.deepEqual(tx[0].payload.unknownRanges, []);
+  assert.deepEqual(Buffer.from(tx[0].payload.bytesBase64, "base64"), bytes);
+  assert.deepEqual(rawRxBytes(page), bytes);
+}
+
 export async function globalSendRawReader() {
   const { attachment, generation } = await nativeValue("host_attachment");
   const scopes = await hostQuery("state.scopes", "host");

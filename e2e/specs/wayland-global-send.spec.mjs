@@ -6,7 +6,11 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { $, browser } from "@wdio/globals";
-import { globalSendRawReader } from "../global-send.mjs";
+import {
+  checkGlobalSendRaw,
+  globalSendRawReader,
+  rawRxBytes,
+} from "../global-send.mjs";
 import { language, openDeepLink, ready } from "../helpers.mjs";
 import {
   captureGlobalSendKey,
@@ -15,7 +19,6 @@ import {
   editGlobalSend,
   globalShortcutKey,
   openVirtual,
-  rawRxBytes,
   saveDrafts,
   sendDraft,
 } from "./workbench.mjs";
@@ -199,18 +202,6 @@ if (active) {
   );
 }
 
-function checkRaw(page, bytes) {
-  const tx = page.events.filter(({ kind }) => kind === "tx");
-  const intents = page.events.filter(({ kind }) => kind === "tx_intent");
-  assert.equal(tx.length, 1);
-  assert.equal(intents.length, 1);
-  assert.equal(tx[0].payload.operationId, intents[0].payload.operationId);
-  assert.equal(tx[0].payload.outcome, "accepted");
-  assert.deepEqual(tx[0].payload.unknownRanges, []);
-  assert.deepEqual(Buffer.from(tx[0].payload.bytesBase64, "base64"), bytes);
-  assert.deepEqual(rawRxBytes(page), bytes);
-}
-
 async function sendFromPeer(receipt, read, bytes) {
   const before = readFileSync(portalTrace, "utf8").length;
   await withHotkey(hotkey, async () => {
@@ -241,7 +232,7 @@ async function sendFromPeer(receipt, read, bytes) {
     receipt.kwinRepeat.length > 0,
     "KWin did not repeat the held shortcut",
   );
-  checkRaw(receipt.raw, bytes);
+  checkGlobalSendRaw(receipt.raw, bytes);
 }
 
 async function observeRepeatBinding(receipt, readFocus, bytes) {
@@ -443,7 +434,7 @@ async function checkSystemSettings(receipt, draft, bytes) {
     receipt.newKeyRaw = await readChanged();
     return rawRxBytes(receipt.newKeyRaw).length >= bytes.length;
   });
-  checkRaw(receipt.newKeyRaw, bytes);
+  checkGlobalSendRaw(receipt.newKeyRaw, bytes);
 
   await kdeControl("settings", "Delete shortcut");
   receipt.revoke = await kdeControl("settings", "Apply");
@@ -561,7 +552,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
           receipt.manualRaw = await read();
           return rawRxBytes(receipt.manualRaw).length >= bytes.length;
         });
-        checkRaw(receipt.manualRaw, bytes);
+        checkGlobalSendRaw(receipt.manualRaw, bytes);
       }
       return;
     }
@@ -581,7 +572,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
         receipt.secondPress = await readSecondPress();
         return rawRxBytes(receipt.secondPress).length >= bytes.length;
       });
-      checkRaw(receipt.secondPress, bytes);
+      checkGlobalSendRaw(receipt.secondPress, bytes);
       // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
       await draft.setValue("");
       await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
