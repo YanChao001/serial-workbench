@@ -19189,6 +19189,19 @@
             "enum": ["raw", "redacted"],
             "type": "string"
           },
+          "CaptureRedactionRule": {
+            "additionalProperties": false,
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "replacement": {
+                "type": "string"
+              }
+            },
+            "required": ["pattern", "replacement"],
+            "type": "object"
+          },
           "CaptureStorageLimits": {
             "additionalProperties": false,
             "properties": {
@@ -19315,6 +19328,12 @@
           "overflowPolicy": {
             "$ref": "#/definitions/OverflowPolicy"
           },
+          "redactionRules": {
+            "items": {
+              "$ref": "#/definitions/CaptureRedactionRule"
+            },
+            "type": "array"
+          },
           "sessionRefs": {
             "items": {
               "$ref": "#/definitions/Target"
@@ -19345,6 +19364,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "definitions": {
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureState": {
             "enum": [
               "recording",
@@ -19363,6 +19386,9 @@
               },
               "containerComplete": {
                 "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/definitions/CaptureMode"
               },
               "sourceContinuous": {
                 "type": "boolean"
@@ -19519,6 +19545,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "definitions": {
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureState": {
             "enum": [
               "recording",
@@ -19537,6 +19567,9 @@
               },
               "containerComplete": {
                 "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/definitions/CaptureMode"
               },
               "sourceContinuous": {
                 "type": "boolean"
@@ -19693,6 +19726,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "definitions": {
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureState": {
             "enum": [
               "recording",
@@ -19711,6 +19748,9 @@
               },
               "containerComplete": {
                 "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/definitions/CaptureMode"
               },
               "sourceContinuous": {
                 "type": "boolean"
@@ -19914,6 +19954,20 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "redacted",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/CaptureRedactedRecord"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "tx_settlement",
                     "type": "string"
                   },
@@ -19940,6 +19994,10 @@
               }
             ]
           },
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureRecord": {
             "additionalProperties": false,
             "properties": {
@@ -19952,6 +20010,88 @@
             },
             "required": ["recordOrdinal", "entry"],
             "type": "object"
+          },
+          "CaptureRedactedRecord": {
+            "additionalProperties": false,
+            "properties": {
+              "byteRange": {
+                "$ref": "#/definitions/DirectionalRange"
+              },
+              "eventEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "eventStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "result": {
+                "$ref": "#/definitions/CaptureRedactedResult"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "timestamp": {
+                "$ref": "#/definitions/Timestamp"
+              }
+            },
+            "required": [
+              "hostId",
+              "instanceEpoch",
+              "sessionId",
+              "sessionEpoch",
+              "eventStart",
+              "eventEnd",
+              "timestamp",
+              "result"
+            ],
+            "type": "object"
+          },
+          "CaptureRedactedResult": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "replacements": {
+                    "$ref": "#/definitions/U64"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "text", "replacements"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "omitted",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/definitions/CaptureRedactionOmission"
+                  }
+                },
+                "required": ["kind", "reason"],
+                "type": "object"
+              }
+            ]
+          },
+          "CaptureRedactionOmission": {
+            "enum": ["boundary", "invalid_text", "line_too_long", "incomplete"],
+            "type": "string"
           },
           "CaptureState": {
             "enum": [
@@ -20596,6 +20736,9 @@
           "firstRecord": {
             "$ref": "#/definitions/U64"
           },
+          "mode": {
+            "$ref": "#/definitions/CaptureMode"
+          },
           "records": {
             "items": {
               "$ref": "#/definitions/ReplayRecord"
@@ -20635,6 +20778,74 @@
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["file", "capture"]
+    },
+    {
+      "actionId": "capture.redactionPreview",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "CaptureRedactionRule": {
+            "additionalProperties": false,
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "replacement": {
+                "type": "string"
+              }
+            },
+            "required": ["pattern", "replacement"],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "rules": {
+            "items": {
+              "$ref": "#/definitions/CaptureRedactionRule"
+            },
+            "type": "array"
+          },
+          "sample": {
+            "type": "string"
+          }
+        },
+        "required": ["rules", "sample"],
+        "title": "CaptureRedactionPreviewParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "replacements": {
+            "$ref": "#/definitions/U64"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": ["text", "replacements"],
+        "title": "CaptureRedactionPreviewResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench",
+        "panelId": "capture"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
     },
     {
       "actionId": "capture.verify",
@@ -20691,6 +20902,10 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "definitions": {
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureVolumeResult": {
             "additionalProperties": false,
             "properties": {
@@ -20727,6 +20942,9 @@
         "properties": {
           "containerComplete": {
             "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/definitions/CaptureMode"
           },
           "recoverable": {
             "type": "boolean"
@@ -21303,6 +21521,20 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "redacted",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/CaptureRedactedRecord"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "tx_settlement",
                     "type": "string"
                   },
@@ -21329,6 +21561,10 @@
               }
             ]
           },
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureRecord": {
             "additionalProperties": false,
             "properties": {
@@ -21341,6 +21577,88 @@
             },
             "required": ["recordOrdinal", "entry"],
             "type": "object"
+          },
+          "CaptureRedactedRecord": {
+            "additionalProperties": false,
+            "properties": {
+              "byteRange": {
+                "$ref": "#/definitions/DirectionalRange"
+              },
+              "eventEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "eventStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "result": {
+                "$ref": "#/definitions/CaptureRedactedResult"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "timestamp": {
+                "$ref": "#/definitions/Timestamp"
+              }
+            },
+            "required": [
+              "hostId",
+              "instanceEpoch",
+              "sessionId",
+              "sessionEpoch",
+              "eventStart",
+              "eventEnd",
+              "timestamp",
+              "result"
+            ],
+            "type": "object"
+          },
+          "CaptureRedactedResult": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "replacements": {
+                    "$ref": "#/definitions/U64"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "text", "replacements"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "omitted",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/definitions/CaptureRedactionOmission"
+                  }
+                },
+                "required": ["kind", "reason"],
+                "type": "object"
+              }
+            ]
+          },
+          "CaptureRedactionOmission": {
+            "enum": ["boundary", "invalid_text", "line_too_long", "incomplete"],
+            "type": "string"
           },
           "CaptureTxSettlement": {
             "additionalProperties": false,
@@ -22018,6 +22336,9 @@
         "properties": {
           "atEnd": {
             "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/definitions/CaptureMode"
           },
           "nextRecord": {
             "$ref": "#/definitions/U64"
@@ -22438,6 +22759,20 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "redacted",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/CaptureRedactedRecord"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "tx_settlement",
                     "type": "string"
                   },
@@ -22464,6 +22799,10 @@
               }
             ]
           },
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureRecord": {
             "additionalProperties": false,
             "properties": {
@@ -22476,6 +22815,88 @@
             },
             "required": ["recordOrdinal", "entry"],
             "type": "object"
+          },
+          "CaptureRedactedRecord": {
+            "additionalProperties": false,
+            "properties": {
+              "byteRange": {
+                "$ref": "#/definitions/DirectionalRange"
+              },
+              "eventEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "eventStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "result": {
+                "$ref": "#/definitions/CaptureRedactedResult"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "timestamp": {
+                "$ref": "#/definitions/Timestamp"
+              }
+            },
+            "required": [
+              "hostId",
+              "instanceEpoch",
+              "sessionId",
+              "sessionEpoch",
+              "eventStart",
+              "eventEnd",
+              "timestamp",
+              "result"
+            ],
+            "type": "object"
+          },
+          "CaptureRedactedResult": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "replacements": {
+                    "$ref": "#/definitions/U64"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "text", "replacements"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "omitted",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/definitions/CaptureRedactionOmission"
+                  }
+                },
+                "required": ["kind", "reason"],
+                "type": "object"
+              }
+            ]
+          },
+          "CaptureRedactionOmission": {
+            "enum": ["boundary", "invalid_text", "line_too_long", "incomplete"],
+            "type": "string"
           },
           "CaptureTxSettlement": {
             "additionalProperties": false,
@@ -23153,6 +23574,9 @@
         "properties": {
           "atEnd": {
             "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/definitions/CaptureMode"
           },
           "nextRecord": {
             "$ref": "#/definitions/U64"
@@ -31720,6 +32144,20 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "redacted",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/CaptureRedactedRecord"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "tx_settlement",
                     "type": "string"
                   },
@@ -31746,6 +32184,10 @@
               }
             ]
           },
+          "CaptureMode": {
+            "enum": ["raw", "redacted"],
+            "type": "string"
+          },
           "CaptureRecord": {
             "additionalProperties": false,
             "properties": {
@@ -31758,6 +32200,88 @@
             },
             "required": ["recordOrdinal", "entry"],
             "type": "object"
+          },
+          "CaptureRedactedRecord": {
+            "additionalProperties": false,
+            "properties": {
+              "byteRange": {
+                "$ref": "#/definitions/DirectionalRange"
+              },
+              "eventEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "eventStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "result": {
+                "$ref": "#/definitions/CaptureRedactedResult"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "timestamp": {
+                "$ref": "#/definitions/Timestamp"
+              }
+            },
+            "required": [
+              "hostId",
+              "instanceEpoch",
+              "sessionId",
+              "sessionEpoch",
+              "eventStart",
+              "eventEnd",
+              "timestamp",
+              "result"
+            ],
+            "type": "object"
+          },
+          "CaptureRedactedResult": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "text",
+                    "type": "string"
+                  },
+                  "replacements": {
+                    "$ref": "#/definitions/U64"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "text", "replacements"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "omitted",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/definitions/CaptureRedactionOmission"
+                  }
+                },
+                "required": ["kind", "reason"],
+                "type": "object"
+              }
+            ]
+          },
+          "CaptureRedactionOmission": {
+            "enum": ["boundary", "invalid_text", "line_too_long", "incomplete"],
+            "type": "string"
           },
           "CaptureState": {
             "enum": [
@@ -31793,6 +32317,9 @@
               },
               "containerComplete": {
                 "type": "boolean"
+              },
+              "mode": {
+                "$ref": "#/definitions/CaptureMode"
               },
               "sourceContinuous": {
                 "type": "boolean"
@@ -33764,6 +34291,9 @@
               "atEnd": {
                 "type": "boolean"
               },
+              "mode": {
+                "$ref": "#/definitions/CaptureMode"
+              },
               "nextRecord": {
                 "$ref": "#/definitions/U64"
               },
@@ -34514,6 +35044,9 @@
               "containerComplete": {
                 "type": "boolean"
               },
+              "mode": {
+                "$ref": "#/definitions/CaptureMode"
+              },
               "recoverable": {
                 "type": "boolean"
               },
@@ -34884,6 +35417,19 @@
             "enum": ["raw", "redacted"],
             "type": "string"
           },
+          "CaptureRedactionRule": {
+            "additionalProperties": false,
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "replacement": {
+                "type": "string"
+              }
+            },
+            "required": ["pattern", "replacement"],
+            "type": "object"
+          },
           "CaptureStartParams": {
             "additionalProperties": false,
             "properties": {
@@ -34900,6 +35446,12 @@
               },
               "overflowPolicy": {
                 "$ref": "#/definitions/OverflowPolicy"
+              },
+              "redactionRules": {
+                "items": {
+                  "$ref": "#/definitions/CaptureRedactionRule"
+                },
+                "type": "array"
               },
               "sessionRefs": {
                 "items": {

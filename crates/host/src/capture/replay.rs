@@ -186,6 +186,7 @@ impl ReplayReader {
         report_playback: bool,
     ) -> ReplayReadResult {
         ReplayReadResult {
+            mode: self.archive.format.mode(),
             records,
             reader_generation: self.generation,
             next_record: (playback.position as u64 + 1).into(),
@@ -226,11 +227,12 @@ impl ReplayReader {
             && playback.position < self.archive.index.records.len()
         {
             let (record, observed, json) = self.archive.read_verified_record(playback.position)?;
-            let source_time = if self.mixed_source_clocks {
-                observed
-            } else {
-                record_time(&record)
-            };
+            let source_time =
+                if self.mixed_source_clocks || self.archive.format == CaptureFormat::Redacted {
+                    observed
+                } else {
+                    record_time(&record)
+                };
             if !single_step
                 && let (ReplayRate::Timed { speed_percent }, Some(source_ns)) =
                     (playback.rate, source_time)
@@ -436,6 +438,7 @@ mod format_tests {
             CaptureLimits::default(),
             native_volume_opener(),
             CaptureFormat::Legacy,
+            None,
         )
         .unwrap();
         for host in hosts {

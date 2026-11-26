@@ -16,6 +16,7 @@ import { clearUserLog, getUserLog } from "@/lib/user-log";
 import userEvent from "@testing-library/user-event";
 import { defaults } from "@serial-workbench/contracts";
 import { CaptureTools } from "./capture-tools";
+import type { RedactionPreview } from "./capture-redaction-fields";
 import { operation } from "./test-fixtures";
 import {
   selectedFile,
@@ -32,6 +33,90 @@ async function selectOption(label: string, name: string) {
   await user.click(screen.getByRole("combobox", { name: label }));
   await user.click(await screen.findByRole("option", { name }));
 }
+it("invalidates a late preview, focuses a rejected rule and submits current rules without a sample", async () => {
+  let finishPreview: (
+    result: Awaited<ReturnType<RedactionPreview>>,
+  ) => void = () => {};
+  const preview = vi
+    .fn<RedactionPreview>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPreview = resolve;
+        }),
+    )
+    .mockRejectedValueOnce({
+      code: "INVALID_ARGUMENT",
+      details: { details: { ruleIndex: 1 } },
+    });
+  const start = vi.fn().mockResolvedValue(operation());
+  const user = userEvent.setup();
+  const redaction = toolLabels.redaction;
+  render(
+    <CaptureTools
+      contextKey="redaction-host"
+      watchActions={allowControlActions}
+      labels={toolLabels}
+      sessionRefs={[
+        {
+          hostId: "host",
+          kind: "session",
+          id: "visible",
+          sessionId: "visible",
+          sessionEpoch: "1",
+        },
+      ]}
+      pickFile={async () => selectedFile}
+      onRedactionPreview={preview}
+      onStart={start}
+    />,
+  );
+  await user.click(
+    screen.getByRole("button", { name: toolLabels.selectTarget }),
+  );
+  await selectOption(toolLabels.writeMode, toolLabels.append);
+  await selectOption(toolLabels.contentType, toolLabels.redacted);
+  const submit = screen.getByRole("button", { name: toolLabels.startCapture });
+  expect(submit).toBeDisabled();
+  expect(screen.getByText(toolLabels.redactedAppendHint)).toBeVisible();
+  fireEvent.change(screen.getByRole("textbox", { name: redaction.pattern }), {
+    target: { value: "[" },
+  });
+  await user.click(screen.getByRole("tab", { name: redaction.preview }));
+  const sample = screen.getByRole("textbox", { name: redaction.sample });
+  const run = screen.getByRole("button", { name: redaction.run });
+  await user.click(run);
+  expect(preview).toHaveBeenCalledOnce();
+  fireEvent.change(sample, { target: { value: "token=changed\n" } });
+  expect(preview.mock.calls[0]?.[1].aborted).toBe(true);
+  await act(async () =>
+    finishPreview({ text: "stale value", replacements: "0" }),
+  );
+  expect(screen.queryByText("stale value")).not.toBeInTheDocument();
+  await user.click(run);
+  const expression = await screen.findByRole("textbox", {
+    name: redaction.pattern,
+  });
+  expect(expression).toHaveFocus();
+  expect(expression).toHaveAttribute("aria-invalid", "true");
+  fireEvent.change(expression, { target: { value: "token=[^\\s]+" } });
+  fireEvent.change(
+    screen.getByRole("textbox", { name: redaction.replacement }),
+    { target: { value: "token=[hidden]" } },
+  );
+  await waitFor(() => expect(submit).toBeEnabled());
+  await user.click(submit);
+  expect(start.mock.calls[0]?.[0]).toMatchObject({
+    mode: "redacted",
+    writeMode: "append",
+    sessionRefs: [{ id: "visible" }],
+    redactionRules: [
+      { pattern: "token=[^\\s]+", replacement: "token=[hidden]" },
+    ],
+  });
+  expect(start.mock.calls[0]?.[0]).not.toHaveProperty("sample");
+  expect(preview).toHaveBeenCalledTimes(2);
+});
 it("keeps a new recording ready when unrelated destination metadata arrives", async () => {
   let finish!: (
     value: import("@serial-workbench/contracts").FileMetadata,

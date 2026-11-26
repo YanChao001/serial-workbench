@@ -225,6 +225,23 @@ test("Windows gates real Chromium file transfer and experiment exchange with run
   assert.doesNotMatch(rust, /artifacts\/paired-workbench/);
 });
 
+test("all native Rust targets run the real redacted archive readback", () => {
+  const step = job("rust")
+    .split("- name: 独立读取真实脱敏录制卷\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.doesNotMatch(step, /\bif:/);
+  assert.match(step, /SWB_TEST_CAPTURE_NODE_BIN=.*process\.execPath/);
+  assert.match(
+    step,
+    /cargo test --locked -p serial-workbench-host --test capture_api_host/,
+  );
+  assert.match(
+    step,
+    /redacted_host_archive_passes_independent_readback -- --ignored --exact --test-threads=1/,
+  );
+});
+
 test("Linux verified backend checks are required and use an independent fixed runtime", () => {
   const backend = job("linux-node-backend");
   assert.match(backend, /runs-on: ubuntu-22\.04/);

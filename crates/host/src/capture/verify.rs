@@ -6,6 +6,13 @@ use std::{
     io::{Read, Seek, SeekFrom},
     path::Path,
 };
+#[derive(Default)]
+struct RedactionBounds {
+    event_position: u64,
+    rx_line_end: Option<U64>,
+    tx_line_end: Option<U64>,
+}
+
 pub struct VerifiedCapture {
     pub report: VerificationReport,
     pub summary: CaptureSummary,
@@ -89,6 +96,11 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
     let value: serde_json::Value = read_json(&path.join("manifest.json"))?;
     let format = CaptureFormat::from_version(value.get("formatVersion").and_then(|v| v.as_str()))?;
     let manifest: Manifest = serde_json::from_value(value).map_err(|_| corrupt())?;
+    if manifest.mode != format.mode()
+        || (format == CaptureFormat::Redacted) != manifest.redaction_digest.is_some()
+    {
+        return Err(corrupt());
+    }
     let stored_index = if rebuild_index {
         None
     } else {
@@ -112,6 +124,7 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
     let mut settled = HashSet::new();
     let mut pending = HashSet::new();
     let mut sequences: HashMap<SourceIdentity, u64> = HashMap::new();
+    let mut redaction_bounds: HashMap<SourceIdentity, RedactionBounds> = HashMap::new();
     let mut record_digests = Vec::new();
     let mut first_clock = None;
     let mut mixed_source_clocks = false;
@@ -189,6 +202,10 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
                 all = false;
                 break;
             }
+            if format.validate_entry(&record.entry).is_err() {
+                all = false;
+                break;
+            }
             let source = match validate_entry_source(&record.entry, &manifest.streams) {
                 Ok(source) => source,
                 Err(_) => {
@@ -196,7 +213,20 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
                     break;
                 }
             };
+            continuous &= !breaks_continuity(&record.entry);
             match &record.entry {
+                CaptureEntry::Redacted(record) => {
+                    let bounds = redaction_bounds.entry(source).or_default();
+                    bounds.event_position = bounds.event_position.max(record.event_end.get() - 1);
+                    if let Some(range) = &record.byte_range {
+                        let line_end = match range.direction {
+                            Direction::Rx => &mut bounds.rx_line_end,
+                            Direction::Tx => &mut bounds.tx_line_end,
+                        };
+                        *line_end = matches!(&record.result, CaptureRedactedResult::Text { .. })
+                            .then_some(range.end);
+                    }
+                }
                 CaptureEntry::Event(event) => {
                     let (host, epoch, clock) = first_clock.get_or_insert_with(|| {
                         (
@@ -217,7 +247,6 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
                         break;
                     }
                     match &event.payload {
-                        RawPayload::Gap(_) => continuous = false,
                         RawPayload::TxIntent(intent) => {
                             pending.insert(SettlementKey::intent(source, intent));
                         }
@@ -240,8 +269,19 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
                     }
                     pending.remove(&key);
                 }
+                CaptureEntry::ReaderGap(gap) if format == CaptureFormat::Redacted => {
+                    if gap.missing_event_range.end <= gap.missing_event_range.start {
+                        all = false;
+                        break;
+                    }
+                    let bounds = redaction_bounds.entry(source).or_default();
+                    bounds.event_position = bounds
+                        .event_position
+                        .max(gap.missing_event_range.end.get() - 1);
+                    bounds.rx_line_end = None;
+                    bounds.tx_line_end = None;
+                }
                 CaptureEntry::ReaderGap(gap) => {
-                    continuous = false;
                     sequences.insert(source, gap.missing_event_range.end.get().saturating_sub(1));
                 }
             }
@@ -282,6 +322,25 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
     if manifest.source_continuous != continuous {
         all = false
     }
+    if let Some(positions) = &manifest.redaction_resume {
+        all &= format == CaptureFormat::Redacted
+            && manifest.state == CaptureState::Complete
+            && positions.len() == manifest.streams.len()
+            && manifest
+                .streams
+                .iter()
+                .zip(positions)
+                .all(|(stream, position)| {
+                    let known = redaction_bounds.get(&SourceIdentity::source(stream));
+                    position.event_position.get() >= known.map_or(0, |bounds| bounds.event_position)
+                        && position.rx.is_none_or(|end| {
+                            Some(end.byte_end) == known.and_then(|bounds| bounds.rx_line_end)
+                        })
+                        && position.tx.is_none_or(|end| {
+                            Some(end.byte_end) == known.and_then(|bounds| bounds.tx_line_end)
+                        })
+                });
+    }
     let after = fingerprint(path)?;
     if before != after {
         return Err(changed());
@@ -294,6 +353,7 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
         .collect();
     pending.sort();
     let report = VerificationReport {
+        mode: manifest.mode,
         verification_id: Id::try_from(format!("verification-{}", uuid::Uuid::new_v4()).as_str())?,
         source_fingerprint: after,
         verified_prefix: prefix.into(),
@@ -306,6 +366,7 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
     let mut watermarks = manifest.watermarks.clone();
     watermarks.verified = watermarks.verified.min(prefix.into());
     let summary = CaptureSummary {
+        mode: manifest.mode,
         capture_id: manifest.capture_id.clone(),
         state: if all {
             manifest.state
@@ -342,7 +403,7 @@ fn decode_record(
     if len == 0 || len > MAX_RECORD {
         return Err(corrupt());
     }
-    let observed = if format == CaptureFormat::RecorderClock {
+    let observed = if format.uses_recorder_clock() {
         let mut time = [0; 8];
         file.read_exact(&mut time).map_err(|_| corrupt())?;
         Some(u64::from_le_bytes(time))

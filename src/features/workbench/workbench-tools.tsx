@@ -11,10 +11,12 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import {
+  ContractValidationError,
   defaults,
   type SerialConfiguration,
 } from "@serial-workbench/contracts";
 import type {
+  CaptureRedactionPreviewParams,
   Operation,
   RecentList,
   WorkspaceDocument,
@@ -264,6 +266,25 @@ export function WorkbenchTools({
   }): Target => ({ hostId: ref.hostId, kind: ref.kind, id: ref.id });
   const watchHostActions = host.watchActions;
   const catalog = host.state.catalog;
+  const connection = host.connection;
+  const previewRedaction = useCallback(
+    async (params: CaptureRedactionPreviewParams, signal: AbortSignal) => {
+      if (!connection) throw new Error("HOST_UNAVAILABLE");
+      const result = await connection.client.query(
+        connection.buildQuery(
+          "capture.redactionPreview",
+          connection.hostTarget,
+          params,
+        ),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (result.kind !== "capture_redaction_preview")
+        throw new ContractValidationError();
+      return result.value;
+    },
+    [connection],
+  );
   const watchActions = useCallback<HostContextValue["watchActions"]>(
     (inputs, listener) =>
       watchHostActions(inputs, (values) =>
@@ -983,6 +1004,13 @@ export function WorkbenchTools({
             : host.pickFile(role, signal)
         }
         readMetadata={host.fileMetadata}
+        onRedactionPreview={
+          catalog.some(
+            ({ actionId }) => actionId === "capture.redactionPreview",
+          )
+            ? previewRedaction
+            : undefined
+        }
         onStart={(params, signal) =>
           context
             .trackCapture(

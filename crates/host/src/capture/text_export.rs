@@ -165,6 +165,27 @@ fn export_bound<T>(
                     row["entry"] = serde_json::to_value(&record.entry).map_err(|_| corrupt())?;
                 }
             }
+            CaptureEntry::Redacted(redacted) => {
+                row["timestamp"] =
+                    serde_json::to_value(&redacted.timestamp).map_err(|_| corrupt())?;
+                row["hostId"] = serde_json::to_value(&redacted.host_id).map_err(|_| corrupt())?;
+                row["instanceEpoch"] =
+                    serde_json::to_value(redacted.instance_epoch).map_err(|_| corrupt())?;
+                row["sessionId"] =
+                    serde_json::to_value(&redacted.session_id).map_err(|_| corrupt())?;
+                row["sessionEpoch"] =
+                    serde_json::to_value(redacted.session_epoch).map_err(|_| corrupt())?;
+                if let Some(range) = &redacted.byte_range {
+                    row["direction"] =
+                        serde_json::to_value(range.direction).map_err(|_| corrupt())?;
+                    row["byteStart"] = serde_json::to_value(range.start).map_err(|_| corrupt())?;
+                    row["byteEnd"] = serde_json::to_value(range.end).map_err(|_| corrupt())?;
+                }
+                if let CaptureRedactedResult::Text { text, .. } = &redacted.result {
+                    row["text"] = serde_json::to_value(text).map_err(|_| corrupt())?;
+                }
+                row["entry"] = serde_json::to_value(&record.entry).map_err(|_| corrupt())?;
+            }
             _ => row["entry"] = serde_json::to_value(&record.entry).map_err(|_| corrupt())?,
         };
         write_row(output, format, &row)?;

@@ -128,6 +128,26 @@ fn canonical_input(call: &Call) -> HostResult<Vec<u8>> {
     Ok(bytes)
 }
 
+// The full normalized call still defines deduplication. The inspectable history
+// excludes capture rule bodies, which may contain private literal replacements.
+pub(super) fn durable_input(action: &Id, input: Vec<u8>) -> HostResult<Vec<u8>> {
+    if action.as_str() != "capture.start" {
+        return Ok(input);
+    }
+    let mut value: serde_json::Value = serde_json::from_slice(&input).map_err(|_| unavailable())?;
+    if value
+        .get_mut("params")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|params| params.remove("redactionRules"))
+        .is_none()
+    {
+        return Ok(input);
+    }
+    let mut durable = Vec::new();
+    write_canonical(&value, &mut durable)?;
+    Ok(durable)
+}
+
 pub(super) fn write_canonical(value: &serde_json::Value, output: &mut Vec<u8>) -> HostResult<()> {
     match value {
         serde_json::Value::Object(object) => {
@@ -402,6 +422,7 @@ impl Database {
             client_effect_receipt: None,
             error: None,
         };
+        let input = durable_input(&call.action_id, input)?;
         transaction.execute(
             "INSERT INTO operations(operation_id,actor_id,context_digest,request_id,digest,input_json,operation_json,dispatched,terminal) VALUES(?1,?2,?3,?4,?5,?6,?7,0,0)",
             params![operation.operation_id.as_str(), actor.id().as_str(), context.digest.as_str(), call.request_id.as_str(), digest.as_str(),

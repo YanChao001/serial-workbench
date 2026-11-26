@@ -1,5 +1,6 @@
 pub mod format;
 pub mod recovery;
+pub(crate) mod redaction;
 pub mod replay;
 pub mod text_export;
 pub mod verify;
@@ -83,6 +84,8 @@ struct PumpBudget {
 }
 struct CapturedBatch {
     entries: Vec<CaptureEntry>,
+    source_index: usize,
+    source_position: U64,
     observed_ns: u64,
     _capture: OwnedSemaphorePermit,
     _host: OwnedSemaphorePermit,
@@ -138,12 +141,6 @@ impl CaptureService {
         owner: &Operation,
         actor: &AuthenticatedActor,
     ) -> HostResult<ObjectRef> {
-        if params.mode != CaptureMode::Raw {
-            return Err(HostError::new(
-                "UNSUPPORTED_CAPABILITY",
-                "Redacted capture is not implemented",
-            ));
-        }
         if params.overflow_policy != OverflowPolicy::Stop {
             return Err(HostError::new(
                 "UNSUPPORTED_CAPABILITY",
@@ -158,6 +155,17 @@ impl CaptureService {
         {
             return Err(invalid());
         }
+        let redaction_rules = match (params.mode, params.redaction_rules) {
+            (CaptureMode::Raw, None) => None,
+            (CaptureMode::Redacted, Some(rules)) => Some(rules),
+            _ => return Err(invalid()),
+        };
+        let redaction_bytes = match &redaction_rules {
+            Some(rules) => {
+                redaction::recording_reservation(params.session_refs.len(), rules.len())?
+            }
+            None => 0,
+        };
         let _start = {
             let mut starts = self.starts.lock().map_err(|_| busy())?;
             if !starts.insert(params.target_ref.id.clone()) {
@@ -210,9 +218,10 @@ impl CaptureService {
             #[cfg(test)]
             before_queue: self.before_queue.clone(),
         };
-        let reserved =
-            u32::try_from(reader_bytes * params.session_refs.len() + CAPTURE_QUEUE_METADATA)
-                .map_err(|_| invalid())?;
+        let reserved = u32::try_from(
+            reader_bytes * params.session_refs.len() + CAPTURE_QUEUE_METADATA + redaction_bytes,
+        )
+        .map_err(|_| invalid())?;
         let reader_local = budget
             .capture
             .clone()
@@ -227,6 +236,14 @@ impl CaptureService {
             HOST_CAPTURE_QUEUE_BYTES - budget.host.available_permits(),
             Ordering::Relaxed,
         );
+        let (mut redactor, redaction_digest) = match redaction_rules {
+            Some(rules) => {
+                let (redactor, digest) =
+                    blocking(move || redaction::RecordingRedactor::new(rules)).await?;
+                (Some(redactor), Some(digest))
+            }
+            None => (None, None),
+        };
         let mut sources = Vec::new();
         let mut append_positions = Vec::new();
         let mut subscriptions = Vec::new();
@@ -302,6 +319,15 @@ impl CaptureService {
         let files = self.runtime.files.clone();
         let location = params.target_ref.clone();
         let creator = actor.clone();
+        let redaction_start = redactor.as_ref().map(|_| {
+            let identities = sources.iter().map(format::SourceIdentity::source).collect();
+            let positions = append_positions
+                .iter()
+                .copied()
+                .map(format::RedactionSourcePosition::without_line_ends)
+                .collect();
+            (identities, positions)
+        });
         let mut limits = self.limits.clone();
         if let Some(storage_limits) = params.storage_limits {
             limits.capacity_bytes = storage_limits.capacity_bytes.get();
@@ -311,15 +337,25 @@ impl CaptureService {
         let writer = blocking(move || {
             files.require_reference(&location, &creator, "workspace.modify")?;
             match mode {
-                CaptureWriteMode::CreateNew => {
-                    CaptureWriter::create_at(guard, sources, limits, opener)
-                }
+                CaptureWriteMode::CreateNew => (match redaction_digest {
+                    Some(digest) => CaptureWriter::create_at_format(
+                        guard,
+                        sources,
+                        limits,
+                        opener,
+                        format::CaptureFormat::Redacted,
+                        Some(digest),
+                    ),
+                    None => CaptureWriter::create_at(guard, sources, limits, opener),
+                })
+                .map(|writer| (writer, None)),
                 CaptureWriteMode::Append => CaptureWriter::append_at_positions(
                     guard,
                     sources,
                     limits,
                     opener,
                     Some(append_positions),
+                    redaction_digest,
                 ),
                 CaptureWriteMode::Replace => CaptureWriter::replace_at(
                     guard,
@@ -327,17 +363,22 @@ impl CaptureService {
                     limits,
                     expected.as_ref().ok_or_else(invalid)?,
                     opener,
-                ),
+                    redaction_digest,
+                )
+                .map(|writer| (writer, None)),
             }
         })
         .await;
-        let writer = match writer {
+        let (writer, resume) = match writer {
             Ok(w) => w,
             Err(e) => {
                 close_readers(&subscriptions);
                 return Err(e);
             }
         };
+        if let (Some(redactor), Some((identities, positions))) = (&mut redactor, redaction_start) {
+            redactor.bind_sources(identities, resume.unwrap_or(positions));
+        }
         let initial = writer.summary();
         let files = self.runtime.files.clone();
         let location = params.target_ref.clone();
@@ -388,7 +429,7 @@ impl CaptureService {
                 done: done_rx.clone(),
             },
         );
-        for reader in subscriptions {
+        for (source_index, reader) in subscriptions.into_iter().enumerate() {
             let runtime = self.runtime.clone();
             let actor = actor.clone();
             let reference = capture_ref.clone();
@@ -402,7 +443,7 @@ impl CaptureService {
                     runtime,
                     actor,
                     reference,
-                    reader.clone(),
+                    (source_index, reader.clone()),
                     send.clone(),
                     stopped,
                     budget,
@@ -467,18 +508,31 @@ impl CaptureService {
                         }
                     };
                     for entry in batch.entries {
-                        if let Err(error) =
-                            writer.push_observed(entry, clock.mono_ns(), Some(batch.observed_ns))
-                        {
+                        let mut persist = |output| {
+                            writer.push_observed(
+                                output,
+                                clock.mono_ns(),
+                                Some(batch.observed_ns),
+                            )?;
+                            publish_summary(writer.summary())
+                        };
+                        let result = match &mut redactor {
+                            Some(redactor) => redactor.push(entry, persist),
+                            None => persist(entry),
+                        };
+                        if let Err(error) = result {
                             failure = Some(error);
                             stopped.send_replace(true);
                             break;
                         }
-                        if let Err(error) = publish_summary(writer.summary()) {
-                            failure = Some(error);
-                            stopped.send_replace(true);
-                            break;
-                        }
+                    }
+                    if failure.is_none()
+                        && let Some(redactor) = &mut redactor
+                        && let Err(error) =
+                            redactor.processed(batch.source_index, batch.source_position)
+                    {
+                        failure = Some(error);
+                        stopped.send_replace(true);
                     }
                     if failure.is_some() {
                         break;
@@ -486,6 +540,18 @@ impl CaptureService {
                 }
                 if failure.is_none() {
                     failure = worker_reason.lock().ok().and_then(|v| v.clone());
+                }
+                let mut redaction_resume = None;
+                if failure.is_none()
+                    && let Some(redactor) = &mut redactor
+                {
+                    match redactor.finish(|output| {
+                        writer.push(output, clock.mono_ns())?;
+                        publish_summary(writer.summary())
+                    }) {
+                        Ok(positions) => redaction_resume = Some(positions),
+                        Err(error) => failure = Some(error),
+                    }
                 }
                 // A failed disk stops producers; discard their queued suffix and await
                 // reader closure before releasing the reserved upstream budget.
@@ -499,20 +565,22 @@ impl CaptureService {
                     summary_tx.send_replace(summary);
                     Err(error)
                 } else {
-                    let result = writer.finish_in_place().and_then(|summary| {
-                        publish_summary(summary.clone())?;
-                        let fingerprint = summary
-                            .source_fingerprint
-                            .as_ref()
-                            .ok_or_else(format::corrupt)?;
-                        files.publish_capture(
-                            &publication_ref,
-                            &final_path,
-                            fingerprint,
-                            &publication_actor,
-                        )?;
-                        Ok(summary)
-                    });
+                    let result = writer
+                        .finish_in_place(redaction_resume)
+                        .and_then(|summary| {
+                            publish_summary(summary.clone())?;
+                            let fingerprint = summary
+                                .source_fingerprint
+                                .as_ref()
+                                .ok_or_else(format::corrupt)?;
+                            files.publish_capture(
+                                &publication_ref,
+                                &final_path,
+                                fingerprint,
+                                &publication_actor,
+                            )?;
+                            Ok(summary)
+                        });
                     if let Ok(summary) = &result {
                         summary_tx.send_replace(summary.clone());
                     } else {
@@ -704,6 +772,7 @@ impl CaptureService {
                 .map_err(|_| format::changed())?;
             let prefix = scan.report.verified_prefix.get();
             let mut result = CaptureTailResult {
+                mode: scan.summary.mode,
                 capture_ref: reference.clone(),
                 source_fingerprint: scan.report.source_fingerprint.clone(),
                 state: scan.summary.state,
@@ -908,11 +977,12 @@ async fn pump(
     runtime: Arc<CaptureRuntime>,
     actor: AuthenticatedActor,
     reference: ObjectRef,
-    reader: RawSubscription,
+    source: (usize, RawSubscription),
     sender: mpsc::SyncSender<CapturedBatch>,
     mut stopped: watch::Receiver<bool>,
     budget: PumpBudget,
 ) -> HostResult<()> {
+    let (source_index, reader) = source;
     let mut granted = budget.reader_credit;
     loop {
         if *stopped.borrow() {
@@ -962,6 +1032,7 @@ async fn pump(
                 "Capture requires bound recording grants",
             )
         })?;
+        let source_position = batch.batch().cursor.position;
         #[cfg(test)]
         let before_queue = batch
             .batch()
@@ -984,6 +1055,8 @@ async fn pump(
                 sender
                     .try_send(CapturedBatch {
                         entries: items,
+                        source_index,
+                        source_position,
                         observed_ns: clock.mono_ns(),
                         _capture: local,
                         _host: global,

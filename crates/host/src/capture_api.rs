@@ -1,7 +1,7 @@
 //! Capture/replay business routing behind the shared Host dispatcher.
 use crate::{
     auth::{AuthService, AuthenticatedActor},
-    capture::{CaptureRuntime, CaptureService, replay::ReplayService},
+    capture::{CaptureRuntime, CaptureService, redaction, replay::ReplayService},
     dispatch::AcceptedCall,
     files::FileService,
     ipc::ConnectionContext,
@@ -9,7 +9,8 @@ use crate::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serial_workbench_core::*;
-use tokio::sync::RwLock;
+use std::sync::Arc;
+use tokio::sync::{RwLock, Semaphore};
 
 pub(crate) struct CaptureApi {
     captures: CaptureService,
@@ -18,6 +19,7 @@ pub(crate) struct CaptureApi {
     auth: AuthService,
     store: Store,
     closing: RwLock<bool>,
+    previews: Arc<Semaphore>,
 }
 
 #[cfg(test)]
@@ -37,6 +39,7 @@ pub(crate) fn with_storage_for_test(
         store: runtime.store.clone(),
         captures: CaptureService::with_storage(runtime, limits, opener),
         closing: RwLock::new(false),
+        previews: Arc::new(Semaphore::new(1)),
     }
 }
 impl CaptureApi {
@@ -58,6 +61,7 @@ impl CaptureApi {
             store: runtime.store.clone(),
             captures: CaptureService::new(runtime),
             closing: RwLock::new(false),
+            previews: Arc::new(Semaphore::new(1)),
         }
     }
     pub(crate) async fn authorize(
@@ -69,6 +73,12 @@ impl CaptureApi {
     ) -> HostResult<()> {
         target.validate()?;
         match action {
+            BuiltinAction::CaptureRedactionPreview => {
+                let auth = self.auth.clone();
+                let actor = actor.clone();
+                let target = target.clone();
+                blocking(move || auth.require(&actor, "metadata.read", &target)).await
+            }
             BuiltinAction::CaptureStart => {
                 let params: CaptureStartParams = decode(params)?;
                 reference_target(target, &params.target_ref)?;
@@ -229,6 +239,22 @@ impl CaptureApi {
             }
             BuiltinAction::CaptureTail => {
                 QueryResult::CaptureTail(self.captures.tail(decode(&query.params)?, actor).await?)
+            }
+            BuiltinAction::CaptureRedactionPreview => {
+                let permit = self.previews.clone().try_acquire_owned().map_err(|_| {
+                    HostError::new(
+                        "HOST_BUSY",
+                        "A capture redaction preview is already running",
+                    )
+                })?;
+                let params = decode(&query.params)?;
+                QueryResult::CaptureRedactionPreview(
+                    blocking(move || {
+                        let _permit = permit;
+                        redaction::preview(params)
+                    })
+                    .await?,
+                )
             }
             BuiltinAction::ReplayRead => {
                 QueryResult::ReplayRead(self.replays.read(decode(&query.params)?, actor).await?)

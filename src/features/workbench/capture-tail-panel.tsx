@@ -17,6 +17,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { StreamView } from "./stream-view";
+import { CaptureRedactedRecords } from "./capture-redacted-records";
 import {
   captureRecordItems,
   captureRecordSources,
@@ -184,6 +185,7 @@ export function CaptureTailPanel({
         <>
           <div className="flex shrink-0 items-center gap-2 text-sm">
             <span className="text-muted-foreground">{labels.readOnly}</span>
+            {value.mode === "redacted" && <span>{labels.captureRedacted}</span>}
             {!value.containerComplete && (
               <span role="status" aria-label={labels.capturePartial}>
                 {labels.containerComplete}: {labels.captureNo}
@@ -275,13 +277,21 @@ export function CaptureTailPanel({
             </Popover>
           </div>
           {!value.records.length && <p role="status">{labels.captureEmpty}</p>}
-          <StreamView
-            key={key}
-            items={captureRecordItems(records)}
-            labels={labels}
-            terminalSettings={terminalSettings}
-            presentationLabels={presentationLabels}
-          />
+          {value.mode === "redacted" ? (
+            <CaptureRedactedRecords
+              key={key}
+              records={records}
+              labels={labels}
+            />
+          ) : (
+            <StreamView
+              key={key}
+              items={captureRecordItems(records)}
+              labels={labels}
+              terminalSettings={terminalSettings}
+              presentationLabels={presentationLabels}
+            />
+          )}
         </>
       )}
     </section>

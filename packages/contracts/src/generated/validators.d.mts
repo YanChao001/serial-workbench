@@ -24,6 +24,12 @@ import type {
   Cancellation,
   CancellationResult,
   CaptureRecord,
+  CaptureRedactedRecord,
+  CaptureRedactedResult,
+  CaptureRedactionOmission,
+  CaptureRedactionPreviewParams,
+  CaptureRedactionPreviewResult,
+  CaptureRedactionRule,
   CaptureStartParams,
   CaptureStatusResult,
   CaptureStopParams,
@@ -385,6 +391,24 @@ export declare function validateCancellationResult(
 export declare function validateCaptureRecord(
   value: unknown,
 ): value is CaptureRecord;
+export declare function validateCaptureRedactedRecord(
+  value: unknown,
+): value is CaptureRedactedRecord;
+export declare function validateCaptureRedactedResult(
+  value: unknown,
+): value is CaptureRedactedResult;
+export declare function validateCaptureRedactionOmission(
+  value: unknown,
+): value is CaptureRedactionOmission;
+export declare function validateCaptureRedactionPreviewParams(
+  value: unknown,
+): value is CaptureRedactionPreviewParams;
+export declare function validateCaptureRedactionPreviewResult(
+  value: unknown,
+): value is CaptureRedactionPreviewResult;
+export declare function validateCaptureRedactionRule(
+  value: unknown,
+): value is CaptureRedactionRule;
 export declare function validateCaptureStartParams(
   value: unknown,
 ): value is CaptureStartParams;

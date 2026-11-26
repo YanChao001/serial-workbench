@@ -56,6 +56,7 @@ import type {
 } from "./session-comparison-model";
 import { captureRecordItems } from "./capture-record-items";
 import { StreamView } from "./stream-view";
+import { CaptureRedactedRecords } from "./capture-redacted-records";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { WorkbenchDialog } from "./workbench-dialog";
 import {
@@ -217,6 +218,7 @@ export function ReplayPanel({
     [expanded, page],
   );
   const items = useMemo(() => captureRecordItems(records), [records]);
+  const redacted = page?.mode === "redacted";
   const linked = chartLink?.page === page ? chartLink : undefined;
   const target = {
     sessionId: session.sessionId,
@@ -257,7 +259,7 @@ export function ReplayPanel({
     searchChecks,
     search?.watchActions,
   );
-  const searchAllowed = canReadSearchSource(searchChecks[0]);
+  const searchAllowed = !redacted && canReadSearchSource(searchChecks[0]);
   if (!searchAllowed && searchLocation) setSearchLocation(undefined);
   const playback = page?.playback;
   const availableControls = !disabled && !busy;
@@ -480,6 +482,7 @@ export function ReplayPanel({
             ? [status, locatedLabel].filter(Boolean).join(" · ")
             : status}
         </span>
+        {redacted && <span>{labels.captureRedacted}</span>}
         {playbackSupported ? (
           <Popover>
             <PopoverTrigger asChild>
@@ -576,24 +579,26 @@ export function ReplayPanel({
             </PopoverContent>
           </Popover>
         ) : null}
-        <WorkbenchIconButton
-          label={labels.replayFieldChart}
-          disabled={
-            busy ||
-            !items.some(
-              (item) => item.kind === "source" && item.event.kind === "rx",
-            )
-          }
-          onClick={(event) => {
-            if (pending.current) return;
-            chartTrigger.current = event.currentTarget;
-            setChartLink(undefined);
-            setChartOpen(true);
-          }}
-        >
-          <ChartLine aria-hidden="true" />
-        </WorkbenchIconButton>
-        {comparison ? (
+        {!redacted && (
+          <WorkbenchIconButton
+            label={labels.replayFieldChart}
+            disabled={
+              busy ||
+              !items.some(
+                (item) => item.kind === "source" && item.event.kind === "rx",
+              )
+            }
+            onClick={(event) => {
+              if (pending.current) return;
+              chartTrigger.current = event.currentTarget;
+              setChartLink(undefined);
+              setChartOpen(true);
+            }}
+          >
+            <ChartLine aria-hidden="true" />
+          </WorkbenchIconButton>
+        )}
+        {!redacted && comparison ? (
           <ReplayComparisonButton comparison={comparison} disabled={disabled} />
         ) : null}
         <Popover open={detailsOpen} onOpenChange={setDetailsOpen}>
@@ -708,28 +713,32 @@ export function ReplayPanel({
           <span role="alert">{labels.operationText.failure(error.code)}</span>
         ) : null}
       </WorkbenchNotice>
-      <StreamView
-        key={page?.readerGeneration ?? "unread"}
-        items={items}
-        chartReveal={linked?.reveal}
-        onChartSelection={
-          page && !busy
-            ? (selection, trigger) => {
-                if (pending.current) return;
-                chartTrigger.current = trigger;
-                setChartLink({ page, selection });
-                setChartOpen(true);
-              }
-            : undefined
-        }
-        labels={labels}
-        terminalSettings={terminalSettings}
-        presentationLabels={presentationLabels}
-        highlightRules={highlightRules}
-        onHighlightRulesChange={onHighlightRulesChange}
-      />
+      {redacted ? (
+        <CaptureRedactedRecords records={records} labels={labels} />
+      ) : (
+        <StreamView
+          key={page?.readerGeneration ?? "unread"}
+          items={items}
+          chartReveal={linked?.reveal}
+          onChartSelection={
+            page && !busy
+              ? (selection, trigger) => {
+                  if (pending.current) return;
+                  chartTrigger.current = trigger;
+                  setChartLink({ page, selection });
+                  setChartOpen(true);
+                }
+              : undefined
+          }
+          labels={labels}
+          terminalSettings={terminalSettings}
+          presentationLabels={presentationLabels}
+          highlightRules={highlightRules}
+          onHighlightRulesChange={onHighlightRulesChange}
+        />
+      )}
       <WorkbenchDialog
-        open={chartOpen}
+        open={chartOpen && !redacted}
         scopeKey={JSON.stringify([
           session.sessionId,
           session.sessionEpoch,

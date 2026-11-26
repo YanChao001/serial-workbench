@@ -71,6 +71,7 @@ fn recover_bound(
         CaptureLimits::default(),
         super::writer::native_volume_opener(),
         scan.format,
+        scan.manifest.redaction_digest.clone(),
     )?;
     writer.recover_from(report.source_fingerprint.clone());
     for position in 0..report.verified_prefix.get() as usize {

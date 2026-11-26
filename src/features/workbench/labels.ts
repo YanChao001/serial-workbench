@@ -1,12 +1,20 @@
 import type { OperationText } from "./operation-text";
-import type { CaptureState } from "@serial-workbench/contracts";
+import type {
+  CaptureRedactionOmission,
+  CaptureState,
+} from "@serial-workbench/contracts";
 /** Supplied by the application dictionary; components never choose a locale. */
 export type WorkbenchLabels = {
   replayComparison?: (count: number) => string;
+  captureRedactionOmitted: Record<CaptureRedactionOmission, string>;
 } & Record<
   | "captureSource"
   | "captureFirstRecord"
   | "captureTail"
+  | "captureRedacted"
+  | "captureRedactedGap"
+  | "captureRedactedEvents"
+  | "captureRedactionTxAttempt"
   | "capturePartial"
   | "captureEmpty"
   | "captureLoading"

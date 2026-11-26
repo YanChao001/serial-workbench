@@ -348,6 +348,9 @@ impl CaptureProbe {
                 }
                 CaptureEntry::ReaderGap(gap) => panic!("Capture reader gap: {gap:?}"),
                 CaptureEntry::TxSettlement(_) => {}
+                CaptureEntry::Redacted(_) => {
+                    panic!("Raw task fixture produced a transformed record")
+                }
             }
         }
         assert_eq!(saved_rx, self.rx);

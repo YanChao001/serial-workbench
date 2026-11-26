@@ -274,6 +274,24 @@ export function workbenchToolLabels(t: Translate) {
     append: t("workbench.tools.append"),
     replace: t("workbench.tools.replace"),
     raw: t("workbench.tools.raw"),
+    contentType: t("workbench.tools.captureContentType"),
+    redacted: t("workbench.captureRedacted"),
+    redactedAppendHint: t("workbench.tools.captureRedactedAppendHint"),
+    redaction: {
+      rules: t("workbench.tools.redaction.rules"),
+      edit: t("workbench.tools.redaction.edit"),
+      preview: t("workbench.tools.redaction.preview"),
+      pattern: t("workbench.tools.redaction.pattern"),
+      replacement: t("workbench.tools.redaction.replacement"),
+      add: t("workbench.tools.redaction.add"),
+      remove: t("workbench.tools.redaction.remove"),
+      sample: t("workbench.tools.redaction.sample"),
+      run: t("workbench.tools.redaction.run"),
+      result: t("workbench.tools.redaction.result"),
+      replacements: (count) =>
+        t("workbench.tools.redaction.replacements", { count }),
+      invalidRule: t("workbench.tools.redaction.invalidRule"),
+    },
     overflowPolicy: t("workbench.tools.overflowPolicy"),
     stop: t("workbench.tools.stop"),
     dropWithGap: t("workbench.tools.dropWithGap"),
@@ -306,7 +324,7 @@ export function workbenchToolLabels(t: Translate) {
     yes: t("workbench.tools.yes"),
     no: t("workbench.tools.no"),
     unavailable: t("workbench.tools.unavailable"),
-    draft: t("workbench.tools.draft"),
+    draft: t("workbench.tools.captureDraft"),
     saveUnavailable: t("workbench.tools.saveUnavailable"),
   };
   const diagnostics: DiagnosticLabels = {

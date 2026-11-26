@@ -65,6 +65,9 @@ fn tail_bytes_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptureTailResult {
+    #[serde(default, skip_serializing_if = "CaptureMode::is_raw")]
+    #[specta(optional)]
+    pub mode: CaptureMode,
     pub capture_ref: ObjectRef,
     pub source_fingerprint: Digest,
     pub state: CaptureState,

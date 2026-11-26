@@ -12,9 +12,45 @@ use specta::Type;
 )]
 pub enum CaptureEntry {
     Event(Box<RawEvent>),
+    Redacted(Box<CaptureRedactedRecord>),
     TxSettlement(Box<CaptureTxSettlement>),
     ReaderGap(Box<ReaderGap>),
 }
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CaptureRedactedRecord {
+    pub host_id: Id,
+    pub instance_epoch: U64,
+    pub session_id: Id,
+    pub session_epoch: U64,
+    pub event_start: U64,
+    pub event_end: U64,
+    pub timestamp: Timestamp,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "DirectionalRange")]
+    #[specta(type = DirectionalRange, optional)]
+    pub byte_range: Option<DirectionalRange>,
+    pub result: CaptureRedactedResult,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CaptureRedactedResult {
+    Text { text: String, replacements: U64 },
+    Omitted { reason: CaptureRedactionOmission },
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureRedactionOmission {
+    Boundary,
+    InvalidText,
+    LineTooLong,
+    Incomplete,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptureTxSettlement {
@@ -43,6 +79,11 @@ pub enum CaptureMode {
     #[default]
     Raw,
     Redacted,
+}
+impl CaptureMode {
+    pub(crate) fn is_raw(&self) -> bool {
+        *self == Self::Raw
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type, Default)]
 #[serde(rename_all = "snake_case")]
@@ -73,6 +114,9 @@ impl Default for CaptureWatermarks {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptureSummary {
+    #[serde(default, skip_serializing_if = "CaptureMode::is_raw")]
+    #[specta(optional)]
+    pub mode: CaptureMode,
     pub capture_id: Id,
     pub state: CaptureState,
     pub watermarks: CaptureWatermarks,
@@ -102,6 +146,27 @@ impl Default for CaptureStorageLimits {
         }
     }
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CaptureRedactionRule {
+    pub pattern: String,
+    pub replacement: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CaptureRedactionPreviewParams {
+    pub rules: Vec<CaptureRedactionRule>,
+    pub sample: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CaptureRedactionPreviewResult {
+    pub text: String,
+    pub replacements: U64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptureStartParams {
@@ -109,6 +174,14 @@ pub struct CaptureStartParams {
     pub target_ref: ObjectRef,
     #[serde(default)]
     pub mode: CaptureMode,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "Vec<CaptureRedactionRule>")]
+    #[specta(type = Vec<CaptureRedactionRule>, optional)]
+    pub redaction_rules: Option<Vec<CaptureRedactionRule>>,
     pub overflow_policy: OverflowPolicy,
     #[serde(default)]
     pub write_mode: CaptureWriteMode,
@@ -156,6 +229,9 @@ pub struct CaptureVolumeResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VerificationReport {
+    #[serde(default, skip_serializing_if = "CaptureMode::is_raw")]
+    #[specta(optional)]
+    pub mode: CaptureMode,
     pub verification_id: Id,
     pub source_fingerprint: Digest,
     pub verified_prefix: U64,
@@ -320,6 +396,9 @@ pub struct ReplayReadParams {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplayReadResult {
+    #[serde(default, skip_serializing_if = "CaptureMode::is_raw")]
+    #[specta(optional)]
+    pub mode: CaptureMode,
     pub records: Vec<ReplayRecord>,
     pub reader_generation: U64,
     pub next_record: U64,

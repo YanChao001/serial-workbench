@@ -9,6 +9,7 @@ use std::{
 };
 pub const MAGIC: &[u8; 7] = b"SWBR01\n";
 pub const TIMED_MAGIC: &[u8; 7] = b"SWBR02\n";
+const REDACTED_MAGIC: &[u8; 7] = b"SWBR03\n";
 pub const MAX_RECORD: usize = 1024 * 1024;
 pub(super) const MAX_CAPTURE_RECORDS: usize = 100_000;
 pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
@@ -17,6 +18,7 @@ pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
 pub(crate) enum CaptureFormat {
     Legacy,
     RecorderClock,
+    Redacted,
 }
 
 impl CaptureFormat {
@@ -24,6 +26,7 @@ impl CaptureFormat {
         match version {
             Some("0.1") => Ok(Self::Legacy),
             Some("0.2") => Ok(Self::RecorderClock),
+            Some("0.3") => Ok(Self::Redacted),
             _ => Err(HostError::new(
                 "FUTURE_FORMAT",
                 "Capture format is unsupported",
@@ -35,6 +38,7 @@ impl CaptureFormat {
         match self {
             Self::Legacy => "0.1",
             Self::RecorderClock => "0.2",
+            Self::Redacted => "0.3",
         }
     }
 
@@ -42,7 +46,59 @@ impl CaptureFormat {
         match self {
             Self::Legacy => MAGIC,
             Self::RecorderClock => TIMED_MAGIC,
+            Self::Redacted => REDACTED_MAGIC,
         }
+    }
+
+    pub(crate) fn uses_recorder_clock(self) -> bool {
+        self != Self::Legacy
+    }
+
+    pub(crate) fn mode(self) -> CaptureMode {
+        if self == Self::Redacted {
+            CaptureMode::Redacted
+        } else {
+            CaptureMode::Raw
+        }
+    }
+
+    pub(crate) fn validate_entry(self, entry: &CaptureEntry) -> HostResult<()> {
+        match entry {
+            CaptureEntry::ReaderGap(_) => Ok(()),
+            CaptureEntry::Redacted(record) if self == Self::Redacted => {
+                if record.event_start.get() == 0
+                    || record.event_end <= record.event_start
+                    || record
+                        .byte_range
+                        .as_ref()
+                        .is_some_and(|range| range.end <= range.start)
+                {
+                    return Err(corrupt());
+                }
+                if let CaptureRedactedResult::Text { text, replacements } = &record.result
+                    && (record.byte_range.is_none()
+                        || !super::redaction::valid_output(text, *replacements))
+                {
+                    return Err(corrupt());
+                }
+                Ok(())
+            }
+            CaptureEntry::Event(_) | CaptureEntry::TxSettlement(_) if self != Self::Redacted => {
+                Ok(())
+            }
+            _ => Err(corrupt()),
+        }
+    }
+}
+
+pub(crate) fn breaks_continuity(entry: &CaptureEntry) -> bool {
+    match entry {
+        CaptureEntry::ReaderGap(_) => true,
+        CaptureEntry::Event(event) => matches!(event.payload, RawPayload::Gap(_)),
+        CaptureEntry::Redacted(record) => {
+            matches!(record.result, CaptureRedactedResult::Omitted { .. })
+        }
+        CaptureEntry::TxSettlement(_) => false,
     }
 }
 
@@ -88,6 +144,12 @@ impl SourceIdentity {
                 event.instance_epoch,
                 &event.session_id,
                 event.session_epoch,
+            ),
+            CaptureEntry::Redacted(record) => (
+                &record.host_id,
+                record.instance_epoch,
+                &record.session_id,
+                record.session_epoch,
             ),
             CaptureEntry::TxSettlement(settlement) => (
                 &settlement.host_id,
@@ -189,6 +251,10 @@ pub struct Manifest {
     pub format_version: String,
     pub capture_id: Id,
     pub mode: CaptureMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redaction_digest: Option<Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) redaction_resume: Option<Vec<RedactionSourcePosition>>,
     pub streams: Vec<CaptureSource>,
     pub volumes: Vec<Volume>,
     pub state: CaptureState,
@@ -196,6 +262,31 @@ pub struct Manifest {
     pub source_continuous: bool,
     pub recovered_from: Option<Digest>,
     pub verified_prefix: U64,
+}
+/// Index-aligned with `Manifest::streams`. No raw bytes survive a recorder stop.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RedactionSourcePosition {
+    pub event_position: U64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rx: Option<RedactionLineEnd>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx: Option<RedactionLineEnd>,
+}
+impl RedactionSourcePosition {
+    pub(crate) fn without_line_ends(event_position: U64) -> Self {
+        Self {
+            event_position,
+            rx: None,
+            tx: None,
+        }
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RedactionLineEnd {
+    pub byte_end: U64,
+    pub configuration_revision: U64,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

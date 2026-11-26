@@ -213,6 +213,13 @@ jobs:
         # 保留全部测试程序的结果。后续步骤复用本次编译的三个伴随程序及 software_scenarios。
         run: cargo test --locked --workspace --no-fail-fast
 
+      - name: 独立读取真实脱敏录制卷
+        shell: bash
+        run: |
+          export SWB_TEST_CAPTURE_NODE_BIN="$(node -p 'process.execPath')"
+          cargo test --locked -p serial-workbench-host --test capture_api_host \
+            redacted_host_archive_passes_independent_readback -- --ignored --exact --test-threads=1
+
       - name: 保留失败 Rust 场景现场
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

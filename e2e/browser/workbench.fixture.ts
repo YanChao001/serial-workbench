@@ -21,6 +21,7 @@ import type {
   HostError,
   Query,
   Call,
+  CaptureRedactionPreviewResult,
   FileMetadata,
   FileReadResult,
   NodePackageInstallation,
@@ -239,6 +240,7 @@ export async function seedWorkbenchFixture(
     observations,
     readOnly = false,
     captureTarget,
+    captureRedactionPreview,
     transferSource,
     fileMetadata,
     hostStart = "ready",
@@ -281,6 +283,7 @@ export async function seedWorkbenchFixture(
     manualSendReceipts?: boolean;
     readOnly?: boolean;
     captureTarget?: SelectedFileResource;
+    captureRedactionPreview?: CaptureRedactionPreviewResult;
     transferSource?: SelectedFileResource;
     fileMetadata?: FileMetadata;
     hostStart?: "ready" | "failed" | "pending";
@@ -656,6 +659,7 @@ export async function seedWorkbenchFixture(
       : undefined,
     observationProfile: observations ?? null,
     captureTarget: captureTarget ?? null,
+    captureRedactionPreview,
     transferSource,
     fileMetadata: fileMetadata ?? null,
     sentOperation: fixtureOperation,
@@ -699,6 +703,7 @@ export async function seedWorkbenchFixture(
       secondSession,
       observationProfile,
       captureTarget,
+      captureRedactionPreview,
       transferSource,
       fileMetadata,
       sentOperation,
@@ -3136,6 +3141,17 @@ export async function seedWorkbenchFixture(
               }
               if (refreshUnavailable && query.actionId === "catalog.list")
                 throw startupFailure;
+              if (
+                query.actionId === "capture.redactionPreview" &&
+                captureRedactionPreview
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "capture_redaction_preview",
+                    value: captureRedactionPreview,
+                  },
+                };
               if (query.actionId === "capture.tail") {
                 fixture.captureTailRequests.push({
                   transport: command === "host_raw_request" ? "raw" : "control",

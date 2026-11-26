@@ -350,6 +350,143 @@ async fn capture_tail_bounds_reference_json_and_requires_current_content_authori
 }
 
 #[tokio::test]
+async fn redacted_large_record_reference_serves_only_transformed_bytes_until_revoked() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sha2::{Digest as _, Sha256};
+    let f = Fixture::new().await;
+    let session = f.open().await;
+    let destination = f.register("tail-large-redacted").await;
+    let owner = f
+        .invoke(
+            &f.user,
+            "capture.start",
+            f.reference_target(&destination),
+            json!({
+                "sessionRefs":[session], "targetRef":destination, "mode":"redacted",
+                "overflowPolicy":"stop",
+                "redactionRules":[{"pattern":"token=[^ ]+","replacement":"token=[hidden]"}],
+            }),
+        )
+        .await;
+    let running = f.wait(&owner, true).await;
+    let Some(ActionResult::Reference(live)) = running.result else {
+        panic!("capture did not start: {:?}", running.error);
+    };
+    let body = "measurement ".repeat(384);
+    let input = format!("{body}token=LONG-RECORD-CANARY\n");
+    let sent = f
+        .action(
+            &f.user,
+            "session.tx",
+            session,
+            json!({"bytesBase64":STANDARD.encode(&input),"writeWaitMs":"1000"}),
+        )
+        .await;
+    assert_eq!(sent.state, OperationState::Succeeded, "{:?}", sent.error);
+    f.wait_written(&live.result_ref, 2).await;
+    let fixed = f.stop_capture(&owner, &live.result_ref).await;
+    let fixed = fixed.capture_ref;
+
+    let observer = f.observer.connect_raw().await.unwrap();
+    let tail = tail_query(&f, &f.observer, &fixed, 1, 1024);
+    assert_eq!(
+        failure(
+            observer
+                .request(RpcRequest::Query(tail.clone()))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED"
+    );
+    let authority = f.reference_target(&destination);
+    f.grant("content.read", authority.clone());
+    let RpcResult::Query(QueryResult::CaptureTail(tail)) =
+        success(observer.request(RpcRequest::Query(tail)).await.unwrap())
+    else {
+        panic!("redacted tail expected");
+    };
+    assert_eq!(tail.mode, CaptureMode::Redacted);
+    assert!(serde_json::to_vec(&tail).unwrap().len() <= 1024);
+    let [
+        ReplayRecord::Reference {
+            record_ref,
+            record_ordinal,
+            json_bytes,
+            json_sha256,
+        },
+    ] = tail.records.as_slice()
+    else {
+        panic!("expected a single bounded record reference");
+    };
+    assert!(json_bytes.get() > 4096);
+    let read = |offset: usize| {
+        RpcRequest::Query(f.query(
+            &f.observer,
+            "file.read",
+            f.reference_target(record_ref),
+            json!({"fileRef":record_ref,"offset":offset.to_string(),"maxBytes":"1024"}),
+        ))
+    };
+    let mut bytes = Vec::new();
+    loop {
+        let RpcResult::Query(QueryResult::FileRead(page)) =
+            success(observer.request(read(bytes.len())).await.unwrap())
+        else {
+            panic!("referenced record page expected");
+        };
+        assert_eq!(page.offset.get(), bytes.len() as u64);
+        assert_eq!(&page.total_bytes, json_bytes);
+        assert_eq!(&page.fingerprint, json_sha256);
+        let part = STANDARD.decode(page.bytes_base64.as_str()).unwrap();
+        assert!((1..=1024).contains(&part.len()));
+        bytes.extend(part);
+        assert_eq!(page.next_offset.get(), bytes.len() as u64);
+        if page.at_end {
+            break;
+        }
+    }
+    assert_eq!(bytes.len() as u64, json_bytes.get());
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&bytes)),
+        json_sha256.as_str()
+    );
+    assert!(
+        !bytes
+            .windows(b"LONG-RECORD-CANARY".len())
+            .any(|part| part == b"LONG-RECORD-CANARY")
+    );
+    let record: CaptureRecord = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(&record.record_ordinal, record_ordinal);
+    let CaptureEntry::Redacted(record) = record.entry else {
+        panic!("captured raw data")
+    };
+    assert_eq!(record.byte_range.unwrap().end.get(), input.len() as u64);
+    assert_eq!(
+        record.result,
+        CaptureRedactedResult::Text {
+            text: format!("{body}token=[hidden]"),
+            replacements: 1.into()
+        }
+    );
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.observer.attachment().actor_id.clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![authority],
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        failure(observer.request(read(1024)).await.unwrap()).code,
+        "PERMISSION_DENIED"
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
 async fn capture_tail_live_reference_refuses_active_writer_then_returns_published_revision() {
     let f = Fixture::new().await;
     let session = f.open().await;

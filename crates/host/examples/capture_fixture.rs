@@ -176,6 +176,9 @@ fn expected(source: &CaptureSource, records: &[CaptureRecord]) -> Result<Value> 
             CaptureEntry::ReaderGap(_) => {
                 return Err("Fixed input must not silently introduce a reader gap".into());
             }
+            CaptureEntry::Redacted(_) => {
+                return Err("The fixed raw fixture cannot contain a transformed record".into());
+            }
         };
         if let Some((base64, start, end)) = payload {
             let bytes = checked(STANDARD.decode(base64))?;

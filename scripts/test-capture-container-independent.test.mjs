@@ -157,6 +157,8 @@ function expectations(records) {
 // and never imports the Rust writer or the reader's parsing/hash helpers.
 function saveContainer(directory, records, expected, times) {
   const capture = join(directory, "capture");
+  const redacted = expected.mode === "redacted";
+  const version = redacted ? "0.3" : times ? "0.2" : "0.1";
   mkdirSync(capture, { recursive: true });
   const locations = [],
     volumes = [];
@@ -166,7 +168,7 @@ function saveContainer(directory, records, expected, times) {
     start < records.length;
     start += 4, ordinal++
   ) {
-    const chunks = [Buffer.from(times ? "SWBR02\n" : "SWBR01\n")];
+    const chunks = [Buffer.from(`SWBR0${version.at(-1)}\n`)];
     let offset = 7;
     for (const record of records.slice(start, start + 4)) {
       const body = Buffer.from(JSON.stringify(record));
@@ -210,9 +212,10 @@ function saveContainer(directory, records, expected, times) {
   writeFileSync(
     join(capture, "manifest.json"),
     JSON.stringify({
-      formatVersion: times ? "0.2" : "0.1",
+      formatVersion: version,
       captureId: "fixture-capture",
-      mode: "raw",
+      mode: expected.mode ?? "raw",
+      ...(redacted ? { redactionDigest: expected.redactionDigest } : {}),
       streams: [{ ...source }],
       volumes,
       state: "complete",
@@ -222,7 +225,7 @@ function saveContainer(directory, records, expected, times) {
         synced: count,
         verified: count,
       },
-      sourceContinuous: true,
+      sourceContinuous: expected.sourceContinuous ?? !redacted,
       recoveredFrom: null,
       verifiedPrefix: "0",
     }),
@@ -230,7 +233,7 @@ function saveContainer(directory, records, expected, times) {
   writeFileSync(
     join(capture, "index.json"),
     JSON.stringify({
-      formatVersion: times ? "0.2" : "0.1",
+      formatVersion: version,
       records: locations,
     }),
   );
@@ -251,6 +254,203 @@ function sourceHashes(directory) {
       .map((name) => [name, hash(readFileSync(join(capture, name)))]),
   );
 }
+function redactedFixture(change = (records) => records) {
+  const fields = { ...source, timestamp: "2026-11-25T03:00:00Z" };
+  const textEntry = (ordinal, direction, text) => ({
+    recordOrdinal: String(ordinal),
+    entry: {
+      kind: "redacted",
+      value: {
+        ...fields,
+        eventStart: String(2 * ordinal - 1),
+        eventEnd: String(2 * ordinal + 1),
+        byteRange: {
+          direction,
+          start: "9007199254740999",
+          end: "9007199254741012",
+        },
+        result: { kind: "text", text, replacements: "1" },
+      },
+    },
+  });
+  const records = change([
+    textEntry(1, "rx", "设备 token=[hidden]"),
+    textEntry(2, "tx", "token=[hidden]"),
+    {
+      recordOrdinal: "3",
+      entry: {
+        kind: "redacted",
+        value: {
+          ...fields,
+          eventStart: "5",
+          eventEnd: "7",
+          result: { kind: "omitted", reason: "incomplete" },
+        },
+      },
+    },
+    {
+      recordOrdinal: "4",
+      entry: {
+        kind: "reader_gap",
+        value: {
+          ...source,
+          reason: "capture_overflow",
+          missingEventRange: { start: "7", end: "8" },
+        },
+      },
+    },
+    textEntry(5, "rx", "temperature=24 token=[hidden]"),
+  ]);
+  const directory = mkdtempSync(join(tmpdir(), "swb-independent-redacted-"));
+  const recordedMonoNs = ["0", "10", "20", "30", "30"];
+  const expected = {
+    ...expectations(records),
+    mode: "redacted",
+    redactionDigest: hash("fixed redaction fixture policy"),
+    recordedMonoNs,
+  };
+  saveContainer(directory, records, expected, recordedMonoNs);
+  return directory;
+}
+
+test("independently reads two 0.3 volumes and reports transformed record hashes and omissions", () => {
+  const directory = redactedFixture();
+  const before = sourceHashes(directory);
+  const result = readFixtureContainer(directory);
+  assert.equal(result.mode, "redacted");
+  assert.equal(result.recordCount, 5);
+  assert.equal(result.volumes.length, 2);
+  assert.deepEqual(result.recordedMonoNs, ["0", "10", "20", "30", "30"]);
+  assert.deepEqual(result.rawPayloads, []);
+  assert.equal(
+    result.redactedRecords[0].textSha256,
+    hash("设备 token=[hidden]"),
+  );
+  assert.deepEqual(result.redactedRecords[2], {
+    recordOrdinal: "3",
+    kind: "omitted",
+    reason: "incomplete",
+  });
+  assert.deepEqual(sourceHashes(directory), before);
+});
+
+test("checks a redacted resume cursor and only accepts line ends after the last gap", () => {
+  const directory = redactedFixture();
+  const path = join(directory, "capture", "manifest.json");
+  const manifest = JSON.parse(readFileSync(path, "utf8"));
+  const lineEnd = { byteEnd: "9007199254741012", configurationRevision: "2" };
+  const resume = { eventPosition: "11", rx: lineEnd };
+  manifest.redactionResume = [resume];
+  writeFileSync(path, JSON.stringify(manifest));
+  assert.equal(readFixtureContainer(directory).recordCount, 5);
+
+  manifest.redactionResume = [{ ...resume, tx: lineEnd }];
+  writeFileSync(path, JSON.stringify(manifest));
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /resume line end differs/,
+  );
+
+  manifest.redactionResume = [{ ...resume, eventPosition: "9" }];
+  writeFileSync(path, JSON.stringify(manifest));
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /resume cursor precedes/,
+  );
+});
+
+test("rejects raw entries in a redacted container even with rebuilt digests and oracle", () => {
+  const directory = redactedFixture((records) => [
+    { ...inputs()[1], recordOrdinal: "1" },
+    ...records.slice(1),
+  ]);
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /Unexpected capture entry kind/,
+  );
+});
+
+test("rejects raw payload fields nested inside a redacted result", () => {
+  const directory = redactedFixture((records) => {
+    records[0].entry.value.result.bytesBase64 = "U0VDUkVU";
+    return records;
+  });
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /Unexpected redacted text result fields/,
+  );
+});
+
+test("validates the redaction policy against the pre-write oracle", () => {
+  const directory = redactedFixture();
+  const path = join(directory, "expected.json");
+  const expected = JSON.parse(readFileSync(path, "utf8"));
+  writeFileSync(
+    path,
+    JSON.stringify({ ...expected, redactionDigest: "0".repeat(64) }),
+  );
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /Redaction policy digest/,
+  );
+});
+
+test("rejects files outside the closed redacted volume layout", () => {
+  const directory = redactedFixture();
+  writeFileSync(join(directory, "capture", "unexpected.bin"), Buffer.of(0, 1));
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /Unexpected file in a redacted capture/,
+  );
+});
+
+test("the live redaction oracle rejects wrong text with a self-consistent index and digests", () => {
+  const rules = [{ pattern: "token=[^ ]+", replacement: "token=[hidden]" }];
+  const expected = {
+    fixtureVersion: "virtual-echo-redacted-1",
+    mode: "redacted",
+    minimumVolumes: 1,
+    rules,
+    redactionDigest: hash(JSON.stringify(["utf8-lines-1", rules])),
+    streams: [source],
+    records: ["rx", "tx"].map((direction) => ({
+      direction,
+      start: "0",
+      end: "19",
+      text: "token=[hidden]",
+      replacements: "1",
+    })),
+    rawPayloads: [],
+    finalReceipts: [],
+    sourceContinuous: true,
+  };
+  const records = expected.records.map(
+    ({ direction, start, end, text, replacements }, index) => ({
+      recordOrdinal: String(index + 1),
+      entry: {
+        kind: "redacted",
+        value: {
+          ...source,
+          eventStart: String(index + 1),
+          eventEnd: String(index + 2),
+          timestamp: "2026-11-25T03:00:00Z",
+          byteRange: { direction, start, end },
+          result: { kind: "text", text, replacements },
+        },
+      },
+    }),
+  );
+  const directory = mkdtempSync(join(tmpdir(), "swb-independent-live-oracle-"));
+  saveContainer(directory, records, expected, ["0", "17"]);
+  assert.equal(readFixtureContainer(directory).recordCount, 2);
+  records[0].entry.value.result.text = "token=[wrong]";
+  saveContainer(directory, records, expected, ["0", "18"]);
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /Transformed lines differ from the Virtual Echo input oracle/,
+  );
+});
+
 test("independent reader compares all eight records, six raw payloads and both final receipt blocks", () => {
   const directory = fixture();
   const before = sourceHashes(directory);

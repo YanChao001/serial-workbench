@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { FolderOpen } from "lucide-react";
 import { defaults } from "@serial-workbench/contracts";
 import type {
+  CaptureMode,
   CaptureStorageLimits,
   CaptureStartParams,
   FileMetadata,
@@ -40,6 +41,17 @@ import type {
 } from "@/providers/host-context";
 
 import { useToolActionAvailability } from "./use-tool-action-availability";
+import {
+  CaptureRedactionFields,
+  emptyRedactionRules,
+  redactionRuleIndex,
+  redactionRuleParams,
+  redactionRulesReady,
+  type CaptureRedactionLabels,
+  type RedactionPreview,
+  type RedactionRuleDraft,
+} from "./capture-redaction-fields";
+import { useUnsavedWork } from "@/providers/unsaved-work";
 
 export type CaptureToolsLabels = Record<
   | "captureTools"
@@ -52,6 +64,9 @@ export type CaptureToolsLabels = Record<
   | "append"
   | "replace"
   | "raw"
+  | "contentType"
+  | "redacted"
+  | "redactedAppendHint"
   | "overflowPolicy"
   | "stop"
   | "dropWithGap"
@@ -93,6 +108,7 @@ export type CaptureToolsLabels = Record<
   sourceFile: string;
   destinationFile: string;
   recoveryDestinationFile: string;
+  redaction: CaptureRedactionLabels;
   operationText: OperationText;
 };
 export type CaptureToolsDraft = {
@@ -117,6 +133,7 @@ export type CaptureToolsProps = {
   ) => Promise<SelectedFileResource | null>;
   readMetadata?: HostContextValue["fileMetadata"];
   onStart?: Action<CaptureStartParams>;
+  onRedactionPreview?: RedactionPreview;
   onVerify?: Action<CaptureVerifyParams>;
   onRecover?: Action<RecoverPrefixParams>;
   onExport?: Action<TextExportParams>;
@@ -194,6 +211,7 @@ function CaptureToolsForm({
   pickFile,
   readMetadata,
   onStart,
+  onRedactionPreview,
   onVerify,
   onRecover,
   onExport,
@@ -202,6 +220,15 @@ function CaptureToolsForm({
   watchActions,
 }: CaptureToolsProps) {
   const [page, setPage] = useState("recording");
+  const [mode, setMode] = useState<CaptureMode>("raw");
+  const [rules, setRules] =
+    useState<readonly RedactionRuleDraft[]>(emptyRedactionRules);
+  const [submittedRules, setSubmittedRules] = useState<{
+    rules: readonly RedactionRuleDraft[];
+    operation?: Operation;
+    errorIndex?: number;
+  }>();
+  const rulesId = useId();
   const [target, setTarget] = useState<SelectedFileResource>();
   const [exportTargets, setExportTargets] = useState<
     Partial<Record<TextExportFormat, SelectedFileResource>>
@@ -281,6 +308,34 @@ function CaptureToolsForm({
   const currentResult =
     operations?.find((value) => value.operationId === result?.operationId) ??
     result;
+  const redacted = mode === "redacted";
+  const redactedAppend = redacted && draft.writeMode === "append";
+  const sameRules = submittedRules?.rules === rules;
+  const submittedOperation = submittedRules?.operation;
+  const recorded =
+    submittedOperation &&
+    (operations?.find(
+      (value) => value.operationId === submittedOperation.operationId,
+    ) ??
+      submittedOperation);
+  const applied =
+    sameRules &&
+    (recorded?.result?.kind === "reference" ||
+      recorded?.result?.kind === "capture_status" ||
+      recorded?.state === "succeeded");
+  const rejectedRule = sameRules
+    ? (submittedRules?.errorIndex ?? redactionRuleIndex(recorded?.error))
+    : undefined;
+  useUnsavedWork({
+    id: `capture-redaction-${rulesId}`,
+    label: labels.redaction.rules,
+    dirty: rules !== emptyRedactionRules && !applied,
+    retainAfterUnmount: false,
+    discard: () => {
+      setRules(emptyRedactionRules);
+      setSubmittedRules(undefined);
+    },
+  });
   const locked = Boolean(disabled || action.busy);
   const replacementReady =
     draft.writeMode !== "replace" || (metadata !== undefined && confirmed);
@@ -300,13 +355,18 @@ function CaptureToolsForm({
   }, [draft.capacityMiB, draft.reserveMiB]);
   const expectedFingerprint =
     draft.writeMode === "replace" ? metadata?.fingerprint : undefined;
-  const startParams = useMemo(
+  const startParams = useMemo<CaptureStartParams | undefined>(
     () =>
-      target && sessionRefs.length && replacementReady && storageLimits
+      target &&
+      sessionRefs.length &&
+      replacementReady &&
+      storageLimits &&
+      (!redacted || (onRedactionPreview && redactionRulesReady(rules)))
         ? {
             targetRef: target.reference,
             sessionRefs,
-            mode: "raw" as const,
+            mode,
+            ...(redacted ? { redactionRules: redactionRuleParams(rules) } : {}),
             overflowPolicy,
             writeMode: draft.writeMode,
             storageLimits,
@@ -321,6 +381,10 @@ function CaptureToolsForm({
       expectedFingerprint,
       overflowPolicy,
       storageLimits,
+      mode,
+      redacted,
+      rules,
+      onRedactionPreview,
     ],
   );
   const recoverParams = useMemo(
@@ -439,6 +503,24 @@ function CaptureToolsForm({
                 busy={action.busy}
                 onChoose={pickFile && (() => void action.run(chooseTarget))}
               />
+              {onRedactionPreview && (
+                <label>
+                  <span>{labels.contentType}</span>
+                  <OptionsSelect<CaptureMode>
+                    label={labels.contentType}
+                    value={mode}
+                    disabled={locked}
+                    onValueChange={(value) => {
+                      setMode(value);
+                      setConfirmed(false);
+                    }}
+                    options={[
+                      { value: "raw", label: labels.raw },
+                      { value: "redacted", label: labels.redacted },
+                    ]}
+                  />
+                </label>
+              )}
               <label>
                 <span>{labels.writeMode}</span>
                 <OptionsSelect<CaptureWriteMode>
@@ -456,6 +538,11 @@ function CaptureToolsForm({
                   ]}
                 />
               </label>
+              {redactedAppend && (
+                <p className="text-muted-foreground">
+                  {labels.redactedAppendHint}
+                </p>
+              )}
 
               {draft.writeMode === "replace" && (
                 <>
@@ -484,6 +571,17 @@ function CaptureToolsForm({
                     {labels.confirmReplacement}
                   </label>
                 </>
+              )}
+              {redacted && onRedactionPreview && (
+                <CaptureRedactionFields
+                  rules={rules}
+                  onRulesChange={setRules}
+                  labels={labels.redaction}
+                  preview={onRedactionPreview}
+                  disabled={locked}
+                  rejectedRule={rejectedRule}
+                  formatError={labels.operationText.failure}
+                />
               )}
             </div>
           </fieldset>
@@ -636,6 +734,12 @@ function CaptureToolsForm({
               {report && (
                 <div aria-label={labels.recoveryPreview} className="space-y-2">
                   <dl className="workbench-capture-values">
+                    {report.mode === "redacted" && (
+                      <div>
+                        <dt>{labels.contentType}</dt>
+                        <dd>{labels.redacted}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt>{labels.verifiedPrefix}</dt>
                       <dd title={report.verifiedPrefix}>
@@ -771,10 +875,21 @@ function CaptureToolsForm({
                 void action.run(async (signal) => {
                   if (!startParams || !onStart || !canAct("capture.start"))
                     return;
-                  const operation = await onStart(startParams, signal);
+                  if (redacted) setSubmittedRules({ rules });
+                  const operation = await onStart(startParams, signal).catch(
+                    (reason: unknown) => {
+                      if (!signal.aborted && redacted)
+                        setSubmittedRules({
+                          rules,
+                          errorIndex: redactionRuleIndex(reason),
+                        });
+                      throw reason;
+                    },
+                  );
                   if (!signal.aborted) {
                     setResult(operation);
                     setConfirmed(false);
+                    if (redacted) setSubmittedRules({ rules, operation });
                   }
                 })
               }

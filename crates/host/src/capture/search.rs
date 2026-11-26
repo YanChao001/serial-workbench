@@ -115,6 +115,12 @@ impl ReplayArchive {
         bytes: Vec<u8>,
         direction: Option<Direction>,
     ) -> HostResult<ReplaySearch> {
+        if self.format == CaptureFormat::Redacted {
+            return Err(HostError::new(
+                "UNSUPPORTED_CAPABILITY",
+                "Raw byte search requires an original-byte recording",
+            ));
+        }
         Ok(ReplaySearch {
             reader: Arc::downgrade(self),
             needle: Arc::new(Needle::new(bytes)?),
@@ -193,6 +199,7 @@ impl ReplaySearch {
     ) -> HostResult<()> {
         let event = match &record.entry {
             CaptureEntry::Event(event) => event,
+            CaptureEntry::Redacted(_) => return Err(corrupt()),
             CaptureEntry::ReaderGap(_) => {
                 self.reset_source(SourceIdentity::entry(&record.entry), None);
                 self.advance_record();

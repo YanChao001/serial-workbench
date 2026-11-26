@@ -1039,12 +1039,11 @@ impl FileService {
 }
 fn manifest_id(path: &Path) -> HostResult<Id> {
     let value: serde_json::Value = crate::capture::format::read_json(&path.join("manifest.json"))?;
-    if value.get("formatVersion").and_then(|v| v.as_str()) != Some("0.1") {
-        return Err(HostError::new(
-            "FUTURE_FORMAT",
-            "Capture format is unsupported",
-        ));
-    }
+    crate::capture::format::CaptureFormat::from_version(
+        value
+            .get("formatVersion")
+            .and_then(|version| version.as_str()),
+    )?;
     Id::try_from(
         value
             .get("captureId")

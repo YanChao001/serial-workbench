@@ -522,6 +522,48 @@ cargo test --locked -p serial-workbench-host --test capture_api_host raw_replay_
 
 2026-11-25 Windows 调试构建的基线为 1,005,067,271 字节、11,428 条记录。缺少原索引时，真实 IPC 文件登记、回放打开和搜索分别耗时 1.3 秒、27.4 秒和 89.2 秒。取消首轮搜索后，旧页请求返回 `NOT_FOUND`。重搜逐页前进，在第 244 页命中末记录。按命中字节范围单步读出原文，核对 reader 代次、暂停状态与原始内容。耗时是单次本机观测。
 
+### 日志脱敏（LOG-07／SEC-02）
+
+规则预览用真实 Host、客户端和独立 profile 复验。
+
+```sh
+cargo test --locked -p serial-workbench-host --test capture_api_host redaction_preview_ -- --test-threads=1
+```
+
+Windows 本机通过。用合成密钥和号码检查 Unicode、CRLF、字面替换及替换计数。错误表达式定位到规则，诊断正文与结构化错误均省略输入。超预算返回稳定错误。SQLite 主库与 WAL 中均没有样例密钥。预览认证沿用 Host 的请求连接。
+
+写盘专项用真实 Virtual Echo 分三次发送，切开 UTF-8 字符和同一敏感字段。Windows 本机走通开始、停止、固定引用、尾部、回放、CSV 导出和恢复。比对两个方向的原始字节与事件位置，读取所得均为变换后的文字。逐个检查卷、索引与清单，确认样例秘密及原始分块的 Base64 未写入。检查 SQLite 主库和 WAL 的规则样例，确认历史保持规则私密。缺规则的录制请求失败且目标目录未生成。另一个客户端经拒绝、授权读取和撤回再次拒绝，授权绑定原录制目标。
+
+```sh
+cargo test --locked -p serial-workbench-host --test capture_api_host redacted_recording_ -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib capture:: -- --test-threads=1
+```
+
+本机分块用例覆盖从行内启动、换配置、非法 UTF-8、超长以及停止时残行，并检查两种格式互相拒绝。写盘专项还从状态、校验报告、尾部和回放核对脱敏模式。
+
+录制工具接入内容类型、规则编辑和 Host 样例预览。规则与样例留在本次工具窗内存，开始录制只提交规则。定向测试覆盖编辑样例后丢弃晚到结果、定位错误规则、使用共享「追加」入口和回放仅有缺口时保留脱敏视图。无头 Chromium 使用 Host 夹具，在 410×460 中文深色和 1240×760 英文浅色分别复跑两次，核对字段对齐、同规则提示、实际追加参数及录制确认回执。关闭工具窗时，未保存确认显示「录制设置」，处理后焦点回到原入口。代表性截图已核对。桌面和独立设备继续用同一候选的实际 Host 验收。 [宽窄草稿](./ui-design.md#脱敏录制草稿)
+
+独立 Node 读盘的合成 0.3 夹具覆盖双卷、录制时钟、索引、规则摘要和略过记录。负例核对混入原始事件、脱敏结果内携带原始字段、额外文件及规则摘要不一致。0.1／0.2 的原始卷回归继续通过。真实 Host 交叉用例在录制前依据输入建立预期文字、方向、源代次、原始字节范围和规则。Host 停止并结算后，Node 直接扫描卷、清单和索引，验证规则摘要、逐帧与逐卷摘要、索引偏移、时钟顺序和两向变换结果。现场目录和结果随测试临时目录回收。Windows 本机通过，四目标 Rust 工作流已接入该用例。 [独立读盘脚本](../scripts/test-capture-container-independent.mjs)
+
+实际替换用例先通过 Host 生成原始录制，核对错误指纹使目标保持原样。候选录制期间复查旧卷，完成后逐字节核对旧卷归档，并从新引用读回两个方向的边界略过和脱敏文字。Windows 本机通过。
+
+大记录用例通过真实 Host 录制逾 4 KiB 的脱敏行。尾部查询在 1 KiB 预算内返回有摘要的记录引用。获授权的观察者逐页读取，每页上限 1 KiB，拼接后比对长度、SHA-256、原始字节范围和脱敏文字。撤权后继续使用同一引用读取会被拒绝。Windows 本机通过。
+
+源撤权用例先写入一条已授权的完整脱敏行，再将下一条接收行拆分。测试在末块入队前撤回本会话的读取权限。Host 以 `PERMISSION_DENIED` 结算。扫描卷只读到前一条已授权的 RX 文字，拼接中的接收行未进入卷，各文件均无合成原文。Windows 本机通过。
+
+脱敏续录用例在 Windows 本机通过。连续追加保留首条新行及旧卷，向后移动源游标和篡改行末会被拒绝。缺少续录位置的旧 0.3 卷可以验证和读取，追加失败时原清单保持原样。真实 Host 用例以 Virtual Echo 检查暂停期间的精确事件缺口、重新识别行边界、原卷逐字节保留及同一录制 ID。改用原始模式或其他规则时，Host 拒绝追加，保留原清单和原卷。原始录制的续录缺口回归同时通过。
+
+```sh
+export SWB_TEST_CAPTURE_NODE_BIN="$(node -p 'process.execPath')"
+cargo test --locked -p serial-workbench-host --test capture_api_host redacted_host_archive_passes_independent_readback -- --ignored --exact --test-threads=1
+cargo test --locked -p serial-workbench-host --test capture_api_host redacted_replacement_verifies_old_fingerprint_and_archives_exact_prior_capture -- --exact --test-threads=1
+cargo test --locked -p serial-workbench-host --lib redacted_capture_revokes_before_rx_suffix_and_preserves_only_authorized_receive_text -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib redacted_contiguous_append_uses_saved_cursor_and_keeps_the_first_complete_line -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib redacted_host_append_preserves_pause_gap_and_rejects_another_policy -- --test-threads=1
+```
+
+溢出缺口、慢盘恢复和目标撤权由录制服务专项用例覆盖。真实 Raw 连接的回放用例确认脱敏卷拒绝字节搜索，此后仍可从原位置读取完整脱敏记录。实际桌面、四平台门禁和发行实装需在候选上复验。
+
 ### 独立录制格式
 
 ```sh
