@@ -218,11 +218,19 @@ test("macOS input preflight measures OS delivery without building a workbench", 
   );
 });
 
-test("Wayland hotkeys run in a separate manual desktop preflight", () => {
+test("Wayland hotkeys run in a targeted preflight or in the same selected full candidate", () => {
   const wayland = job("wayland-global-send-preflight");
   assert.match(
+    ci,
+    /wayland_e2e:\n\s+description: .*\n\s+type: boolean\n\s+default: false/,
+  );
+  assert.match(
     wayland,
-    /if: inputs\.native_preflight && !inputs\.runtime_preflight && \(inputs\.native_preflight_target == 'wayland-global-send' \|\| inputs\.native_preflight_target == 'linux-desktop'\)/,
+    /if: \$\{\{ !inputs\.runtime_preflight && \(inputs\.native_preflight && \(inputs\.native_preflight_target == 'wayland-global-send' \|\| inputs\.native_preflight_target == 'linux-desktop'\) \|\| !inputs\.native_preflight && inputs\.wayland_e2e\) \}\}/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /CI_WAYLAND_E2E: \$\{\{ inputs\.wayland_e2e \}\}/,
   );
   assert.match(wayland, /runs-on: ubuntu-26\.04/);
   assert.match(wayland, /bash scripts\/ci-linux-deps\.sh wayland/);

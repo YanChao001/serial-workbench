@@ -25,6 +25,19 @@ test("a complete milestone passes and only an explicitly disabled desktop job ma
   assert.deepEqual(qualityGateFailures(needs, { desktopE2E: false }), []);
 });
 
+test("a milestone with Wayland selected requires its own successful job", () => {
+  const needs = results();
+  const job = "wayland-global-send-preflight";
+  assert.equal(qualityGateFailures(needs, { waylandE2E: true }).length, 1);
+  for (const result of ["skipped", "failure", "cancelled", "timed_out"]) {
+    needs[job] = { result };
+    assert.equal(qualityGateFailures(needs, { waylandE2E: true }).length, 1);
+  }
+  needs[job] = { result: "success" };
+  assert.deepEqual(qualityGateFailures(needs, { waylandE2E: true }), []);
+  assert.throws(() => qualityGateFailures(needs, { waylandE2E: "true" }));
+});
+
 test("every required job rejects failure, cancellation, unexpected skip and absence", () => {
   for (const job of Object.keys(results())) {
     for (const result of ["failure", "cancelled", "timed_out", "skipped"]) {
@@ -74,6 +87,14 @@ test("the CLI accepts boolean strings and fails on malformed input or failed nee
       },
     );
   assert.equal(run({ CI_DESKTOP_E2E: "true" }).status, 0);
+  assert.equal(
+    run({ CI_DESKTOP_E2E: "true", CI_WAYLAND_E2E: "true" }).status,
+    1,
+  );
+  assert.equal(
+    run({ CI_DESKTOP_E2E: "true", CI_WAYLAND_E2E: "invalid" }).status,
+    1,
+  );
   const needs = results();
   needs["desktop-e2e"].result = "skipped";
   assert.equal(

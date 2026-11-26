@@ -13,6 +13,10 @@ on:
         description: 完整检查时在同一个 Windows 桌面作业补跑签名图表
         type: boolean
         default: false
+      wayland_e2e:
+        description: 完整检查时并行执行 KDE Wayland v1 和 v2 热键专项
+        type: boolean
+        default: false
       native_preflight:
         description: 仅执行所选目标的原生全场景预检，不作为里程碑验收
         type: boolean
@@ -680,8 +684,8 @@ jobs:
           if-no-files-found: ignore
 
   wayland-global-send-preflight:
-    if: inputs.native_preflight && !inputs.runtime_preflight && (inputs.native_preflight_target == 'wayland-global-send' || inputs.native_preflight_target == 'linux-desktop')
-    name: KDE Wayland 全局发送预检
+    if: ${{ !inputs.runtime_preflight && (inputs.native_preflight && (inputs.native_preflight_target == 'wayland-global-send' || inputs.native_preflight_target == 'linux-desktop') || !inputs.native_preflight && inputs.wayland_e2e) }}
+    name: KDE Wayland 全局发送
     runs-on: ubuntu-26.04
     timeout-minutes: 35
     steps:
@@ -787,6 +791,7 @@ jobs:
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
           CI_DESKTOP_E2E: ${{ inputs.desktop_e2e }}
+          CI_WAYLAND_E2E: ${{ inputs.wayland_e2e }}
         run: node scripts/ci-quality-gate.mjs
       - name: 确认原生预检结果
         if: inputs.native_preflight
