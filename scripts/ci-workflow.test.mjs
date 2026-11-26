@@ -222,8 +222,14 @@ test("Wayland hotkeys run in a separate manual desktop preflight", () => {
   );
   assert.match(wayland, /runs-on: ubuntu-26\.04/);
   assert.match(wayland, /bash scripts\/ci-linux-deps\.sh wayland/);
-  assert.match(wayland, /pnpm e2e:build\n/);
+  assert.equal([...wayland.matchAll(/pnpm e2e:build\n/g)].length, 1);
   assert.match(wayland, /bash e2e\/run-wayland\.sh/);
+  assert.match(wayland, /sha256sum --check/);
+  assert.match(wayland, /bash e2e\/run-wayland\.sh --portal-v1/);
+  assert.match(
+    wayland,
+    /path: \|\n\s+artifacts\/e2e\/wayland\n\s+artifacts\/e2e\/wayland-v1/,
+  );
   assert.match(wayland, /保留 Wayland 原生证据\n {8}if: always\(\)/);
   assert.match(
     job("native-preflight"),

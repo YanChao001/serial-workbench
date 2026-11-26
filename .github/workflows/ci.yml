@@ -705,16 +705,35 @@ jobs:
           key: e2e-wayland-x86_64-unknown-linux-gnu
           cache-on-failure: true
       - name: 构建测试专用桌面应用
+        id: wayland-app
         run: pnpm e2e:build
-      - name: 验证系统分配、系统改键与跨应用发送
+      - name: 验证 v2 系统分配、系统改键与跨应用发送
         timeout-minutes: 5
         run: bash e2e/run-wayland.sh
+      - name: 验证 v1 手动设置、跨应用发送和释放
+        if: ${{ !cancelled() && steps.wayland-app.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          portal_dir="$RUNNER_TEMP/wayland-portal-v1"
+          mkdir -p "$portal_dir"
+          archive="$portal_dir/xdg-desktop-portal-1.20.4.tar.xz"
+          curl --fail --location --silent --show-error --max-time 45 --output "$archive" \
+            https://github.com/flatpak/xdg-desktop-portal/releases/download/1.20.4/xdg-desktop-portal-1.20.4.tar.xz
+          printf '%s  %s\n' 9528eb3b060b88ac82f294fbdc6af5f4d3adfa42575f2cd816cab3d3e0a7a68c "$archive" | sha256sum --check
+          tar -xJf "$archive" -C "$portal_dir"
+          meson setup "$portal_dir/build" "$portal_dir/xdg-desktop-portal-1.20.4" \
+            --prefix=/usr --wrap-mode=nodownload -Dtests=disabled -Ddocumentation=disabled \
+            -Dman-pages=disabled -Dflatpak-interfaces=disabled
+          meson compile -C "$portal_dir/build" xdg-desktop-portal
+          bash e2e/run-wayland.sh --portal-v1 "$portal_dir/build/src/xdg-desktop-portal"
       - name: 保留 Wayland 原生证据
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wayland-global-send
-          path: artifacts/e2e/wayland
+          path: |
+            artifacts/e2e/wayland
+            artifacts/e2e/wayland-v1
           if-no-files-found: ignore
 
   desktop-e2e:

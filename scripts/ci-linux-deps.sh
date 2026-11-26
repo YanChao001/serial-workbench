@@ -45,7 +45,9 @@ install_linux_dependencies() {
         systemsettings plasma-desktop plasma-workspace
         qml6-module-org-kde-kcmutils qml6-module-org-kde-kquickcontrols
         qml6-module-qt5compat-graphicaleffects
-        gir1.2-gtk-3.0 python3-gi python3-pyatspi)
+        gir1.2-gtk-3.0 python3-gi python3-pyatspi
+        meson ninja-build gettext bubblewrap libfuse3-dev libjson-glib-dev
+        libgstreamer-plugins-base1.0-dev libpipewire-0.3-dev)
       ;;
     *) echo "Usage: bash scripts/ci-linux-deps.sh rust|native|wayland" >&2; return 2 ;;
   esac
