@@ -40,7 +40,7 @@ install_linux_dependencies() {
       packages+=(xvfb xauth dbus-x11 openbox xdotool x11-utils gdb libc6-dbg fonts-noto-cjk gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav)
       ;;
     wayland)
-      packages+=(xvfb xauth xdotool dbus at-spi2-core libglib2.0-bin wayland-utils
+      packages+=(xvfb xauth xdotool x11-xserver-utils dbus at-spi2-core libglib2.0-bin wayland-utils
         kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde qt6-wayland
         systemsettings plasma-desktop plasma-workspace
         qml6-module-org-kde-kcmutils qml6-module-org-kde-kquickcontrols

@@ -30,18 +30,27 @@ const keyPath = join(artifactDir, "peer-keys.jsonl");
 const scenario = process.env.SWB_E2E_WAYLAND_SCENARIO;
 const hotkey = "F9";
 const replacement = "F10";
+const keycodes = JSON.parse(process.env.SWB_E2E_WAYLAND_KEYCODES);
 
 async function inject(...args) {
   return (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
 }
 
-async function withHotkey(key, held = async () => {}) {
+async function withKeys(keys, held = async () => {}) {
+  const codes = keys.map((key) => {
+    assert.match(keycodes[key], /^\d+$/, `No X11 keycode for ${key}`);
+    return keycodes[key];
+  });
   try {
-    await inject("keydown", "Control_L", "Shift_L", key);
+    await inject("keydown", ...codes);
     await held();
   } finally {
-    await inject("keyup", key, "Shift_L", "Control_L");
+    await inject("keyup", ...codes.reverse());
   }
+}
+
+function withHotkey(key, held) {
+  return withKeys(["Control_L", "Shift_L", key], held);
 }
 
 async function kdeComponent() {
@@ -170,7 +179,10 @@ async function settleConsent(receipt, payload) {
     receipt.documentBefore = await browser.execute(
       () => performance.timeOrigin,
     );
-    await browser.refresh();
+    await browser.execute(() => {
+      // Ask the current WebView to reload after this script response has returned.
+      window.setTimeout(() => window.location.reload(), 100);
+    });
     receipt.dismissed = await kdeControl("consent", "Cancel", "wait-closed");
     await ready();
     receipt.documentAfter = await browser.execute(() => performance.timeOrigin);
@@ -249,13 +261,18 @@ async function checkSystemSettings(receipt, draft, bytes) {
   assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
 
   await startRecordingNewKey();
-  await inject("key", "alt+F4");
+  await withKeys(["Alt_L", "F4"]);
   receipt.conflict = await kdeControl("conflict", "Cancel");
   assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
 
   await kdeControl(
     "settings",
     `Default shortcut ${receipt.binding} is enabled.`,
+  );
+  receipt.defaultDisabled = await kdeControl(
+    "settings",
+    `Default shortcut ${receipt.binding} is disabled.`,
+    "observe",
   );
   await startRecordingNewKey();
   await withHotkey(replacement);
@@ -413,7 +430,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     try {
       assert.deepEqual(readFocus(), receipt.focusBefore);
       // 一项由 KWin 自身处理的快捷键证明合成输入经过了桌面的全局过滤器。
-      await inject("key", "alt+F4");
+      await withKeys(["Alt_L", "F4"]);
       await browser.waitUntil(() => peer.exitCode === 0, {
         timeout: 3000,
         timeoutMsg:

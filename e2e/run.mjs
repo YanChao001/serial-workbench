@@ -105,7 +105,7 @@ try {
     (process.platform !== "linux" ||
       process.env.GDK_BACKEND !== "wayland" ||
       !isAbsolute(process.env.SWB_E2E_WAYLAND_ARTIFACTS ?? "") ||
-      !["approve", "cancel", "reload"].includes(
+      !["approve", "cancel", "deny", "reload"].includes(
         process.env.SWB_E2E_WAYLAND_SCENARIO,
       ) ||
       !/^\d+$/.test(process.env.SWB_E2E_KWIN_WINDOW ?? ""))

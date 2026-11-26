@@ -68,6 +68,19 @@ xdotool windowfocus --sync "$SWB_E2E_KWIN_WINDOW"
 [[ $(xdotool getwindowfocus) == "$SWB_E2E_KWIN_WINDOW" ]]
 timeout 15 wayland-info > "$evidence/wayland-info.txt"
 
+# Resolving function-key symbols in xdotool injected Mod1 in this nested server.
+# Use the current Xvfb map's unmodified keycodes for every test chord.
+xmodmap -pk > "$evidence/input-keymap.txt"
+declare -A keycodes
+mapping=()
+for key in Control_L Shift_L Alt_L F4 F8 F9 F10; do
+  code=$(awk -v symbol="($key)" '$3 == symbol { print $1; exit }' "$evidence/input-keymap.txt")
+  [[ $code =~ ^[1-9][0-9]*$ ]]
+  keycodes[$key]=$code
+  mapping+=("\"$key\":\"$code\"")
+done
+export SWB_E2E_WAYLAND_KEYCODES="{$(IFS=,; printf '%s' "${mapping[*]}")}"
+
 dbus-update-activation-environment DISPLAY XAUTHORITY WAYLAND_DISPLAY \
   XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_CURRENT_DESKTOP \
   XDG_SESSION_DESKTOP XDG_SESSION_TYPE XDG_MENU_PREFIX KDE_FULL_SESSION KDE_SESSION_VERSION \
@@ -131,8 +144,8 @@ if [[ $SWB_E2E_WAYLAND_SCENARIO == key-control ]]; then
   done
   grep -Fq '"active": true' "$focus"
   [[ $(xdotool getwindowfocus) == "$SWB_E2E_KWIN_WINDOW" ]]
-  xdotool keydown Control_L Shift_L F9
-  xdotool keyup F9 Shift_L Control_L
+  xdotool keydown "${keycodes[Control_L]}" "${keycodes[Shift_L]}" "${keycodes[F9]}"
+  xdotool keyup "${keycodes[F9]}" "${keycodes[Shift_L]}" "${keycodes[Control_L]}"
   peer_status=0
   wait "$peer" || peer_status=$?
   printf 'comparison_chord=Ctrl+Shift+F9 peer_status=%s\n' "$peer_status" | tee -a "$evidence/environment.txt"
