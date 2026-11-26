@@ -268,12 +268,11 @@ function checkNoTransmit(page) {
   );
 }
 
-async function assertNoTransmit(read, key = hotkey) {
+async function recordNoTransmit(receipt, name, read, key = hotkey) {
   await withHotkey(key);
   await delay(650);
-  const page = await read();
-  checkNoTransmit(page);
-  return page;
+  receipt[name] = await read();
+  checkNoTransmit(receipt[name]);
 }
 
 async function recordPress(receipt, name, read, bytes, key = hotkey) {
@@ -309,7 +308,9 @@ async function checkWorkbenchTarget(receipt, bytes) {
   await editGlobalSend();
   try {
     assert.equal(await (await globalShortcutKey()).getText(), receipt.binding);
-    receipt.shortcutHelpRaw = await assertNoTransmit(
+    await recordNoTransmit(
+      receipt,
+      "shortcutHelpRaw",
       await globalSendRawReader(),
     );
   } finally {
@@ -319,7 +320,9 @@ async function checkWorkbenchTarget(receipt, bytes) {
   await navigate("/settings");
   try {
     await $("#settings-language").waitForDisplayed();
-    receipt.settingsPageRaw = await assertNoTransmit(
+    await recordNoTransmit(
+      receipt,
+      "settingsPageRaw",
       await globalSendRawReader(),
     );
   } finally {
@@ -421,7 +424,9 @@ async function checkPortalReplacement(receipt, read, readFocus, bytes) {
     });
     await exitEditor();
     assert.deepEqual(readFocus(), receipt.focusBefore);
-    receipt.afterReplacementRaw = await assertNoTransmit(
+    await recordNoTransmit(
+      receipt,
+      "afterReplacementRaw",
       await globalSendRawReader(),
     );
 
@@ -636,7 +641,7 @@ async function checkSystemSettings(receipt, draft, bytes) {
     "observe",
   );
   assert.equal(receipt.settingsFocus.active, true);
-  receipt.oldKeyRaw = await assertNoTransmit(readChanged);
+  await recordNoTransmit(receipt, "oldKeyRaw", readChanged);
   await recordPress(receipt, "newKeyRaw", readChanged, bytes, replacement);
   receipt.settingsFocusAfter = await kdeControl(
     "settings",
@@ -652,7 +657,9 @@ async function checkSystemSettings(receipt, draft, bytes) {
     async () => (await (await globalShortcutKey()).getText()) === "Off",
   );
   await exitEditor();
-  receipt.revokedKeyRaw = await assertNoTransmit(
+  await recordNoTransmit(
+    receipt,
+    "revokedKeyRaw",
     await globalSendRawReader(),
     replacement,
   );
@@ -762,7 +769,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     assert.equal(await inject("getwindowfocus"), outerWindow);
 
     if (!expectsBinding) {
-      receipt.raw = await assertNoTransmit(read);
+      await recordNoTransmit(receipt, "raw", read);
       receipt.unboundKey = await peerInput(hotkey);
       receipt.focusAfter = readFocus();
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
@@ -801,7 +808,11 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       // 保留绑定，撤下可写草稿后再用同一个系统热键核对 Host 的源尾。
       await draft.setValue("");
       await $("button[aria-label='Send']").waitForEnabled({ reverse: true });
-      receipt.emptyDraft = await assertNoTransmit(await globalSendRawReader());
+      await recordNoTransmit(
+        receipt,
+        "emptyDraft",
+        await globalSendRawReader(),
+      );
       receipt.focusAfter = readFocus();
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
     } catch (error) {
