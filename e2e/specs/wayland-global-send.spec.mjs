@@ -21,6 +21,7 @@ import {
 import { spawnOwned, stopOwned } from "../process.mjs";
 import {
   captureGlobalSendKey,
+  checkTrayHiddenGlobalSend,
   closeShortcutHelp,
   disableGlobalSend,
   editGlobalSend,
@@ -788,6 +789,13 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
 
     if (scenario === "replace") {
       await checkPortalReplacement(receipt, read, readFocus, bytes);
+      await checkTrayHiddenGlobalSend(receipt, async () => {
+        assert.deepEqual(readFocus(), receipt.focusBefore);
+        await withHotkey(hotkey);
+        const focus = readFocus();
+        assert.deepEqual(focus, receipt.focusBefore);
+        return focus;
+      });
       return;
     }
 
