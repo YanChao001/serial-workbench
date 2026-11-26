@@ -136,6 +136,22 @@ pnpm test:ui e2e/browser/ansi-interactions.spec.ts e2e/browser/ansi-screen.spec.
 
 本机无头 Chromium 的 24 项用例通过，包含 420×640 的录制尾部和 1240×760 的录制回放。覆盖生产界面和宿主动作的测试接线。四目标候选、实际 WebView 外链和剪贴板及正式安装另按适用环境复验。 [桌面边界](./testing.md#桌面边界)
 
+### 无头批次与退出契约（AUTO-11／AUTO-17）
+
+使用真实 CLI 和独立 Host 检查附着、离线与多步骤执行。附着用已有 Host，对照设备列表、Virtual Echo 打开及最终发送回执。重放相同请求上下文及请求 ID，核对同一操作。检查拒绝授权、Host 目标不匹配和目录空闲时的纯附着行为。批次期限用长任务区分接纳与终态，并按原上下文恢复查询。Unix 用例向批次自己的 CLI 子进程发送终止信号，核对取消回执和后续真实终态。
+
+离线第一次运行针对已被 Host 占用的 profile，确认拒绝且原 Host 继续运行。关闭原测试 Host 后，使用已核准的 profile 运行同套 Host 可执行文件。检查真实终态、实际独立进程退出及 profile 仍可访问。
+
+```sh
+cargo build --locked -p serial-workbench-cli -p serial-workbench-host --bins
+cargo test --locked -p serial-workbench-cli --test commands headless_ -- --test-threads=1
+cargo test --locked -p serial-workbench-cli --test commands headless_offline_ -- --ignored --test-threads=1
+```
+
+离线用例的 `SWB_TEST_HEADLESS_HOST_BIN` 指向同次构建的独立 Host 可执行文件。现场串口、四目标门禁和正式离线包按各自环境验收。
+
+组合验收使用真实 CLI 在同一批次开始录制搜索、执行控制查询并继续第二页。核对 64 和 6 个命中及原始字节边界，再用第二个批次请求原游标，确认该游标仍归属第一条 Raw 通道。将 `SWB_TEST_CLI_BIN` 指向同源 CLI，运行 `cargo test --locked -p serial-workbench-host --test capture_api_host cli_batch_replay_search_ -- --ignored --test-threads=1`。
+
 ### 终端参考包验收
 
 「串口监听」通过公开 SDK 提供所选串口的只读收发视图。以同一候选的桌面、Host、CLI 和 MCP 在独立 profile 验收，真实窗口遵守[桌面边界](./testing.md#桌面边界)。收据记录包摘要、Host、会话代次和 Virtual 输入的字节范围及摘要。

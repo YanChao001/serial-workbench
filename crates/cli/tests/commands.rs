@@ -770,3 +770,402 @@ async fn host_stop_rejects_unauthenticated_higher_discovery_while_old_lock_is_li
     assert_eq!(error["error"]["code"], "HOST_STOP_TIMEOUT");
     assert_ne!(error["stopped"], true);
 }
+
+fn headless_invoke(action: &str, target: Value, params: Value, request_id: &str) -> Value {
+    json!({
+        "kind": "invoke", "actionId": action, "target": target,
+        "params": params, "requestId": request_id,
+    })
+}
+
+fn headless_list() -> Value {
+    json!({"kind":"query","actionId":"device.list","target":{"kind":"host"},"params":{}})
+}
+
+fn headless_report(output: &Output, exit: i32) -> Value {
+    assert_eq!(
+        output.status.code(),
+        Some(exit),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        output.stdout.iter().filter(|&&byte| byte == b'\n').count(),
+        1
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["schemaVersion"], 1);
+    assert_eq!(report["ok"], exit == 0);
+    if exit != 0 {
+        let code = report["error"]["code"].as_str().unwrap();
+        assert!(String::from_utf8_lossy(&output.stderr).contains(code));
+    }
+    report
+}
+
+#[tokio::test]
+async fn headless_attach_runs_terminal_steps_and_reuses_original_request_context() {
+    let f = Fixture::new().await;
+    f.grant_device_access().await;
+    let open_request = uuid::Uuid::new_v4().to_string();
+    let write_request = uuid::Uuid::new_v4().to_string();
+    let batch = f.file("headless.json", json!({
+        "schemaVersion": 1,
+        "steps": [
+            headless_list(),
+            headless_invoke("device.open", json!({"hostId":f.host_id,"kind":"device","id":"virtual:echo"}),
+                json!({"configuration":SerialConfiguration::default()}), &open_request),
+            headless_invoke("session.tx", json!({"openedBy":1}),
+                json!({"bytesBase64":"YWJj","writeWaitMs":"1000"}), &write_request),
+        ]
+    }));
+    let saved = f.directory.path().join("headless-context.json");
+    let args = [
+        "run",
+        "--mode",
+        "attach",
+        "--batch-json",
+        batch.to_str().unwrap(),
+        "--timeout-ms",
+        "10000",
+    ];
+    let first = f
+        .cli(&[args.as_slice(), &["--context-out", saved.to_str().unwrap()]].concat())
+        .await;
+    let first = headless_report(&first, 0);
+    assert_eq!(first["mode"], "attach");
+    assert_eq!(first["steps"][0]["result"]["kind"], "devices");
+    assert_eq!(first["steps"][1]["operation"]["state"], "succeeded");
+    assert_eq!(first["steps"][2]["operation"]["state"], "succeeded");
+    assert_eq!(
+        first["steps"][2]["operation"]["result"]["value"]["bytesBase64"],
+        "YWJj"
+    );
+    assert_eq!(
+        first["steps"][2]["operation"]["result"]["value"]["outcome"],
+        "accepted"
+    );
+
+    let repeated = f
+        .cli(
+            &[
+                args.as_slice(),
+                &["--request-context-json", saved.to_str().unwrap()],
+            ]
+            .concat(),
+        )
+        .await;
+    let repeated = headless_report(&repeated, 0);
+    for step in [1, 2] {
+        assert_eq!(
+            first["steps"][step]["operationId"],
+            repeated["steps"][step]["operationId"]
+        );
+    }
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn headless_attach_does_not_start_a_host_or_guess_a_target() {
+    let root = std::env::temp_dir().canonicalize().unwrap();
+    let directory = tempfile::tempdir_in(root).unwrap();
+    let batch = directory.path().join("batch.json");
+    std::fs::write(
+        &batch,
+        json!({"schemaVersion":1,"steps":[headless_list()]}).to_string(),
+    )
+    .unwrap();
+    let profile = directory.path().join("unused-profile");
+    let mut cli = Command::new(env!("CARGO_BIN_EXE_serial-workbench-cli"));
+    #[cfg(windows)]
+    cli.creation_flags(0x08000000);
+    let output = cli
+        .args([
+            "run",
+            "--mode",
+            "attach",
+            "--timeout-ms",
+            "1000",
+            "--batch-json",
+        ])
+        .arg(&batch)
+        .arg("--profile")
+        .arg(&profile)
+        .kill_on_drop(true)
+        .output()
+        .await
+        .unwrap();
+    let report = headless_report(&output, 5);
+    assert_eq!(report["steps"], json!([]));
+    assert!(!profile.exists());
+
+    let f = Fixture::new().await;
+    let ambiguous = f.file(
+        "ambiguous.json",
+        json!({
+            "schemaVersion":1, "steps":[headless_list(),
+                {"kind":"query","actionId":"device.list",
+                 "target":{"hostId":"other-host","kind":"host","id":"other-host"},"params":{}}]
+        }),
+    );
+    let output = f
+        .cli(&[
+            "run",
+            "--mode",
+            "attach",
+            "--timeout-ms",
+            "10000",
+            "--batch-json",
+            ambiguous.to_str().unwrap(),
+        ])
+        .await;
+    let report = headless_report(&output, 4);
+    assert_eq!(report["error"]["code"], "HOST_ID_MISMATCH");
+    assert_eq!(report["steps"], json!([]));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn headless_denial_stops_the_batch_and_preserves_the_saved_context() {
+    let f = Fixture::new().await;
+    let path = f.file("denied-batch.json", json!({
+        "schemaVersion": 1,
+        "steps": [
+            headless_invoke("device.open", json!({"hostId":f.host_id,"kind":"device","id":"virtual:echo"}),
+                json!({"configuration":SerialConfiguration::default()}), &uuid::Uuid::new_v4().to_string()),
+            headless_list(),
+        ],
+    }));
+    let context = f.directory.path().join("denied-context.json");
+    let output = f
+        .cli(&[
+            "run",
+            "--mode",
+            "attach",
+            "--timeout-ms",
+            "10000",
+            "--batch-json",
+            path.to_str().unwrap(),
+            "--context-out",
+            context.to_str().unwrap(),
+        ])
+        .await;
+    let report = headless_report(&output, 3);
+    assert_eq!(report["error"]["code"], "PERMISSION_DENIED");
+    assert_eq!(report["steps"].as_array().unwrap().len(), 1);
+    assert_eq!(report["steps"][0]["state"], "rejected");
+    assert!(context.is_file());
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("requestContext"));
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn headless_deadline_keeps_the_operation_recoverable_and_stops_later_steps() {
+    let f = Fixture::new().await;
+    f.grant_device_access().await;
+    let opened = f
+        .call(
+            "device.open",
+            json!({"hostId":f.host_id,"kind":"device","id":"virtual:echo"}),
+            json!({"configuration":SerialConfiguration::default()}),
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .await;
+    let opened = f.settled(opened).await;
+    let session = &operation(&opened)["result"]["value"];
+    let target = json!({"hostId":f.host_id,"kind":"session","id":session["sessionId"],
+        "sessionId":session["sessionId"],"sessionEpoch":session["sessionEpoch"]});
+    let request = uuid::Uuid::new_v4().to_string();
+    let path = f.file("deadline-batch.json", json!({
+        "schemaVersion": 1,
+        "steps": [headless_invoke("session.break", target, json!({"durationMs":"5000"}), &request), headless_list()],
+    }));
+    let context = f.directory.path().join("deadline-context.json");
+    let output = f
+        .cli(&[
+            "run",
+            "--mode",
+            "attach",
+            "--timeout-ms",
+            "2000",
+            "--batch-json",
+            path.to_str().unwrap(),
+            "--context-out",
+            context.to_str().unwrap(),
+        ])
+        .await;
+    let report = headless_report(&output, 5);
+    assert_eq!(report["error"]["code"], "BATCH_DEADLINE_EXCEEDED");
+    assert_eq!(report["steps"].as_array().unwrap().len(), 1);
+    let step = &report["steps"][0];
+    assert_eq!(step["state"], "accepted");
+    assert_eq!(step["requestId"], request);
+    assert!(report.get("cancellation").is_none());
+
+    let recovered = f
+        .json(&[
+            "operation",
+            "get",
+            "--request-id",
+            &request,
+            "--request-context-json",
+            context.to_str().unwrap(),
+        ])
+        .await;
+    let id = operation(&recovered)["operationId"].as_str().unwrap();
+    assert_eq!(step["operationId"], id);
+    assert!(matches!(
+        operation(&recovered)["state"].as_str(),
+        Some("queued" | "running")
+    ));
+    f.json(&["operation", "cancel", id, "--json"]).await;
+    let terminal = f.settled(recovered).await;
+    assert_eq!(operation(&terminal)["state"], "cancelled");
+    f.finish().await;
+}
+
+#[tokio::test]
+#[ignore = "Requires SWB_TEST_HEADLESS_HOST_BIN pointing to the same build's Host executable"]
+async fn headless_offline_owns_and_stops_the_adjacent_host_without_stopping_another_instance() {
+    let host = std::env::var_os("SWB_TEST_HEADLESS_HOST_BIN").expect("set Host executable");
+    let mut f = Fixture::new().await;
+    f.grant_device_access().await;
+    let batch = f.file("offline-batch.json", json!({
+        "schemaVersion":1, "steps": [headless_list(),
+            headless_invoke("device.open", json!({"hostId":f.host_id,"kind":"device","id":"virtual:echo"}),
+                json!({"configuration":SerialConfiguration::default()}), &uuid::Uuid::new_v4().to_string())],
+    }));
+    let saved = f.directory.path().join("offline-context.json");
+    let start = || {
+        let mut cli = Command::new(env!("CARGO_BIN_EXE_serial-workbench-cli"));
+        #[cfg(windows)]
+        cli.creation_flags(0x08000000);
+        cli.args([
+            "run",
+            "--mode",
+            "offline",
+            "--timeout-ms",
+            "10000",
+            "--batch-json",
+        ])
+        .arg(&batch)
+        .arg("--profile")
+        .arg(f.directory.path())
+        .arg("--context-out")
+        .arg(&saved)
+        .env("SWB_DEV_EXPECTED_HOST_EXECUTABLE", &host)
+        .kill_on_drop(true);
+        cli
+    };
+    let refused = headless_report(&start().output().await.unwrap(), 5);
+    assert_eq!(refused["error"]["code"], "HOST_BUSY");
+    assert!(!saved.exists());
+    assert!(serial_workbench_ipc::profile_has_running_host(f.directory.path()).unwrap());
+
+    let _ = f.stop.take().unwrap().send(());
+    f.running.take().unwrap().await.unwrap().unwrap();
+    let run = tokio::time::timeout(Duration::from_secs(20), start().output())
+        .await
+        .unwrap()
+        .unwrap();
+    let report = headless_report(&run, 0);
+    assert_eq!(report["mode"], "offline");
+    assert_eq!(report["offlineHostExit"], "graceful");
+    assert_eq!(report["steps"][1]["operation"]["state"], "succeeded");
+    assert!(!serial_workbench_ipc::profile_has_running_host(f.directory.path()).unwrap());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn headless_signal_cancels_only_the_admitted_step_and_keeps_terminal_queryable() {
+    let f = Fixture::new().await;
+    f.grant_device_access().await;
+    let opened = f
+        .call(
+            "device.open",
+            json!({"hostId":f.host_id,"kind":"device","id":"virtual:echo"}),
+            json!({"configuration":SerialConfiguration::default()}),
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .await;
+    let opened = f.settled(opened).await;
+    let session = &operation(&opened)["result"]["value"];
+    let target = json!({"hostId":f.host_id,"kind":"session","id":session["sessionId"],
+        "sessionId":session["sessionId"],"sessionEpoch":session["sessionEpoch"]});
+    let request = uuid::Uuid::new_v4().to_string();
+    let path = f.file("interrupt-batch.json", json!({
+        "schemaVersion": 1,
+        "steps": [headless_invoke("session.break", target, json!({"durationMs":"10000"}), &request), headless_list()],
+    }));
+    let context = f.directory.path().join("interrupt-context.json");
+    let mut cli = Command::new(env!("CARGO_BIN_EXE_serial-workbench-cli"));
+    let child = cli
+        .args([
+            "run",
+            "--mode",
+            "attach",
+            "--timeout-ms",
+            "15000",
+            "--batch-json",
+        ])
+        .arg(&path)
+        .arg("--profile")
+        .arg(f.directory.path())
+        .arg("--context-out")
+        .arg(&context)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let pid = child.id().unwrap();
+    let accepted = tokio::time::timeout(Duration::from_secs(6), async {
+        loop {
+            if context.is_file() {
+                let result = f
+                    .cli(&[
+                        "operation",
+                        "get",
+                        "--request-id",
+                        &request,
+                        "--request-context-json",
+                        context.to_str().unwrap(),
+                    ])
+                    .await;
+                if result.status.success() {
+                    let value: Value = serde_json::from_slice(&result.stdout).unwrap();
+                    if operation(&value)["state"] == "running" {
+                        break value;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(75)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // Give the batch client one poll to record the authenticated admission on its own connection.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let sent = Command::new("/bin/kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()
+        .await
+        .unwrap();
+    assert!(sent.success());
+    let output = tokio::time::timeout(Duration::from_secs(8), collect_child(child))
+        .await
+        .unwrap()
+        .unwrap();
+    let report = headless_report(&output, 130);
+    assert_eq!(report["error"]["code"], "BATCH_CANCELLED");
+    assert_eq!(report["steps"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        report["steps"][0]["operationId"],
+        operation(&accepted)["operationId"]
+    );
+    assert_eq!(report["cancellation"]["ok"], true);
+    let settled = f.settled(accepted).await;
+    assert_eq!(operation(&settled)["state"], "cancelled");
+    f.finish().await;
+}

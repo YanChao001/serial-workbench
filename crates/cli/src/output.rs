@@ -22,6 +22,10 @@ pub fn exit_code(error: &HostError) -> u8 {
         | "RESULT_EXPIRED"
         | "LAN_PEER_CONFLICT"
         | "LAN_HOST_ID_MISMATCH" => 4,
+        "BATCH_DEADLINE_EXCEEDED" => 5,
+        "BATCH_PARTIAL" => 6,
+        "BATCH_UNCONFIRMED" => 7,
+        "BATCH_CANCELLED" => 130,
         "HOST_BUSY"
         | "STORAGE_UNAVAILABLE"
         | "HOST_UNAVAILABLE"

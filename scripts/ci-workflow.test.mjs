@@ -242,6 +242,30 @@ test("all native Rust targets run the real redacted archive readback", () => {
   );
 });
 
+test("all native Rust targets exercise CLI-owned Host and batched replay", () => {
+  const step = job("rust")
+    .split("- name: 验证离线 CLI 自有 Host 和录制分页\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.doesNotMatch(step, /\bif:/);
+  assert.match(
+    step,
+    /SWB_TEST_HEADLESS_HOST_BIN="[^"\n]*\/serial-workbench-host\$suffix"/,
+  );
+  assert.match(
+    step,
+    /SWB_TEST_CLI_BIN="[^"\n]*\/serial-workbench-cli\$suffix"/,
+  );
+  assert.match(
+    step,
+    /cargo test --locked -p serial-workbench-cli --test commands headless_offline_ -- --ignored/,
+  );
+  assert.match(
+    step,
+    /cargo test --locked -p serial-workbench-host --test capture_api_host cli_batch_replay_search_ -- --ignored/,
+  );
+});
+
 test("Linux verified backend checks are required and use an independent fixed runtime", () => {
   const backend = job("linux-node-backend");
   assert.match(backend, /runs-on: ubuntu-22\.04/);

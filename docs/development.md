@@ -118,6 +118,39 @@ serial-workbench-cli --profile <绝对目录> revoke --params-json revocations.j
 serial-workbench-cli --profile <绝对目录> host stop
 ```
 
+### 无头批次（AUTO-11／AUTO-17）
+
+在脚本或 CI 中用 `run` 执行版本化 JSON 批次。附着模式使用所选 profile 的已运行 Host。离线模式要求显式指定本机 profile，由 CLI 启动同套 Host，验证其进程身份并在批次结束后关闭该进程。若 profile 被运行中的 Host 占用，离线执行返回冲突。两种模式都用原 CLI 身份和当前授权。附着批次结束不影响独立 Host，已接纳任务继续按原执行模式结算。
+
+最小的 `batch.json` 示例查询设备列表。
+
+```json
+{
+  "schemaVersion": 1,
+  "steps": [
+    {
+      "kind": "query",
+      "actionId": "device.list",
+      "target": { "kind": "host" },
+      "params": {}
+    }
+  ]
+}
+```
+
+```sh
+serial-workbench-cli --profile <已有Host目录> run --mode attach --timeout-ms 10000 --batch-json batch.json
+serial-workbench-cli --profile <独立或已停止的本机目录> run --mode offline --timeout-ms 15000 --batch-json batch.json
+```
+
+每个批次包含 1 到 64 步。目标可用 `{"kind":"host"}` 指向经认证的当前 Host，也可使用完整 Host RPC Target。`{"openedBy":0}` 使用第 0 步返回的会话 ID 和代次。写入步骤为 `invoke`，须提供唯一的 `requestId`、动作、目标和参数，可选原调用支持的 `expectedRevision`、`leaseId`、`executionMode`。写入批次用 `--context-out new-context.json` 保存新上下文，复验同一批次用 `--request-context-json saved-context.json`。原上下文和请求 ID 是恢复查询依据，同一 Host 代次内可重试原参数。离线 Host 每次启动使用新的代次，重启后用旧上下文查询原操作。挂起的共享 Host 通过专用 `host stop` 命令管理。
+
+同一批次中的录制搜索开始、后续页和停止共用本次 Raw 通道。普通控制查询可以穿插执行。批次退出释放通道，下一批次需要重新开始搜索。
+
+执行期限以毫秒计，范围 1 到 1,800,000，覆盖附着或启动及所有步骤。按 Ctrl+C 请求取消。超时停止等待并保留已观察的回执。Ctrl+C 对已经确认接纳的当前操作提交一次取消请求，报告分别保留取消接纳与原操作状态。离线 Host 正常停止和进程确认分别报告，可能晚于执行期限。
+
+stdout 仅写一行 JSON。报告给出 `schemaVersion`、`mode`、`ok`、步骤编号和状态，以及适用的请求 ID、操作 ID、响应或错误。stderr 输出诊断。沿用 CLI 的 0–5 退出分类，6 表示部分结果，7 表示结果未知或中断，130 表示操作或批次已收到了取消。参数或定义校验失败使用既有 CLI 错误信封。超时或取消后可用报告中的操作 ID，或原请求 ID 和上下文文件执行 `operation get`。请求上下文留在指定文件。
+
 ## 工作区操作
 
 编辑器可以从当前布局或空白工作区开始；选择视图只切换配置表单。保存提交视图、设备绑定与连接预设；另存为不复制发送草稿或运行连接。删除保留原件，默认工作区不可删除。加载配置不打开端口，关闭标签也不等于断开设备。
