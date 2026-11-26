@@ -3,7 +3,14 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createConnection } from "node:net";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -28,7 +35,7 @@ const cli = resolve(cliPath);
 const mcp = resolve(mcpPath);
 const output = resolve(outputPath);
 await mkdir(output);
-const temporary = resolve(tmpdir());
+const temporary = await realpath(tmpdir());
 const root = await mkdtemp(join(temporary, "swb-lan-route-"));
 const profiles = { caller: join(root, "caller"), owner: join(root, "owner") };
 const evidence = {
