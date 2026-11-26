@@ -266,6 +266,27 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await expect(row.getByText("Ctrl+Alt+F8", { exact: true })).toBeVisible();
   await page.evaluate(() => window.globalSendProbe.changeSystemBinding(null));
   await expect(row.getByText("Off", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(enabled).toBe(false);
+  const unboundRevision = await revision();
+  await press(unboundRevision);
+  expect(await writes()).toEqual(["QVQ=", "T0s=", "TkVX"]);
+
+  await page.evaluate(() =>
+    window.globalSendProbe.changeSystemBinding("Ctrl+Alt+F9"),
+  );
+  await expect.poll(enabled).toBe(true);
+  await expect.poll(revision).toBeGreaterThan(unboundRevision);
+  await press(unboundRevision);
+  expect(await writes()).toEqual(["QVQ=", "T0s=", "TkVX"]);
+  await press(await revision());
+  await expect.poll(writes).toEqual(["QVQ=", "T0s=", "TkVX", "TkVX"]);
+
+  await page.keyboard.press("F1");
+  await dialog.getByRole("searchbox").fill("global send");
+  await expect(row.getByText("Ctrl+Alt+F9", { exact: true })).toBeVisible();
+  await page.evaluate(() => window.globalSendProbe.changeSystemBinding(null));
+  await expect(row.getByText("Off", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 420, height: 620 });
   await change.click();

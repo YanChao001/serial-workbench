@@ -154,6 +154,7 @@ mod desktop {
         backend: Backend,
         events: Channel<GlobalSendEvent>,
         revision: u32,
+        bound: bool,
         enabled: bool,
         pressed: bool,
     }
@@ -299,6 +300,7 @@ mod desktop {
             backend: Backend::Native(key),
             events,
             revision: 0,
+            bound: true,
             enabled: false,
             pressed: false,
         });
@@ -341,7 +343,7 @@ mod desktop {
             && active.revision < revision
         {
             active.revision = revision;
-            active.enabled = enabled;
+            active.enabled = enabled && active.bound;
         }
     }
 
@@ -472,7 +474,11 @@ mod desktop {
             if dispatch.documents[owner] != document {
                 return Err(portal_cancelled());
             }
-            if let Some(active) = &dispatch.active {
+            if let Some(active) = dispatch
+                .active
+                .as_ref()
+                .filter(|active| active.bound || binding.is_none())
+            {
                 if active.owner != owner {
                     return Err(NativeError::new(
                         ErrorCode::Conflict,
@@ -498,15 +504,11 @@ mod desktop {
                 id: id.clone(),
                 cancel: Some(cancel),
             });
-            if binding.is_none() {
-                dispatch.active.take()
-            } else {
-                None
-            }
+            dispatch.active.take()
         };
         let result = async {
+            close_portal(removed).await;
             let Some(binding) = binding else {
-                close_portal(removed).await;
                 return Ok(GlobalSendBinding::default());
             };
             let mut portal = tokio::select! {
@@ -549,6 +551,7 @@ mod desktop {
                         }),
                         events,
                         revision: 0,
+                        bound: true,
                         enabled: false,
                         pressed: false,
                     });
@@ -601,7 +604,8 @@ mod desktop {
                 .active
                 .as_ref()
                 .filter(|active| {
-                    active.owner == owner
+                    active.bound
+                        && active.owner == owner
                         && active.document == dispatch.documents[owner]
                         && active.id == id
                 })
@@ -640,16 +644,17 @@ mod desktop {
         mut portal: super::portal::Portal,
         session: zbus::zvariant::OwnedObjectPath,
         mut stopped: oneshot::Receiver<()>,
-        mut current_trigger: String,
+        initial_trigger: String,
     ) {
         use super::portal::Signal;
+        let mut current_trigger = Some(initial_trigger);
         loop {
             tokio::select! {
                 biased;
                 _ = &mut stopped => break,
                 result = portal.next(&session) => match result {
                     Signal::Pressed(pressed) => dispatch_press(&app, pressed, |active| active.id == id),
-                    Signal::Binding(Some(trigger)) => {
+                    Signal::Binding(trigger) => {
                         if trigger == current_trigger {
                             continue;
                         }
@@ -657,12 +662,13 @@ mod desktop {
                         let state = app.state::<Mutex<Dispatch>>();
                         let mut dispatch = state.lock().unwrap();
                         if let Some(active) = dispatch.active.as_mut().filter(|active| active.id == id) {
+                            active.bound = trigger.is_some();
                             active.pressed = false;
                             active.enabled = false;
-                            let _ = active.events.send(GlobalSendEvent::Binding { trigger: Some(trigger) });
+                            let _ = active.events.send(GlobalSendEvent::Binding { trigger });
                         }
                     }
-                    Signal::Binding(None) | Signal::Closed => {
+                    Signal::Closed => {
                         let state = app.state::<Mutex<Dispatch>>();
                         let mut dispatch = state.lock().unwrap();
                         if dispatch.active.as_ref().is_some_and(|active| active.id == id)

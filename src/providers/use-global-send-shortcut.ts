@@ -22,17 +22,18 @@ export function useGlobalSendShortcut(suspended: boolean) {
     registration?: string;
     revision: number;
     suspended: boolean;
+    bound: boolean;
     target?: () => void;
-  }>({ revision: 0, suspended });
+  }>({ revision: 0, suspended, bound: false });
   const publishTarget = useCallback(() => {
     const current = state.current;
-    const { registration, target, suspended } = current;
+    const { registration, target, suspended, bound } = current;
     const revision = ++current.revision;
     if (registration) {
       void setGlobalSendTarget(
         registration,
         revision,
-        !!target && !suspended,
+        bound && !!target && !suspended,
       ).catch((error: unknown) => {
         if (
           current.registration === registration &&
@@ -71,12 +72,13 @@ export function useGlobalSendShortcut(suspended: boolean) {
       let liveTrigger: string | null | undefined;
       let canConfigure = false;
       function publishBinding(trigger: string | null | undefined) {
-        const active = next && trigger !== null;
-        state.current.registration = active ? registration : undefined;
+        const active = trigger === null ? undefined : next;
+        state.current.registration = next ? registration : undefined;
+        state.current.bound = active !== undefined;
         setBinding(
           active
             ? {
-                requested: next,
+                requested: active,
                 system: trigger ? { trigger, canConfigure } : undefined,
               }
             : undefined,
@@ -95,6 +97,7 @@ export function useGlobalSendShortcut(suspended: boolean) {
               publishTarget();
             }
           } else if (
+            current.bound &&
             !current.suspended &&
             current.registration === registration &&
             current.revision === event.revision
