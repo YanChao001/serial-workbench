@@ -6,13 +6,22 @@
 
 工具版本读取 [package.json](../package.json) 的 engines/packageManager、[.nvmrc](../.nvmrc) 和 [rust-toolchain.toml](../rust-toolchain.toml)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2；macOS 需要 Xcode Command Line Tools；Linux 需要编译工具与 WebKitGTK 开发库，具体安装见 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)。
 
-首次安装和启动命令见[项目首页](../README.md#从源码运行)。使用 `pnpm run doctor`，不要误调 pnpm 自带的 doctor；未装依赖时可用 `node scripts/doctor.mjs`。缓存由 [pnpm-workspace.yaml](../pnpm-workspace.yaml) 管理；保留编译缓存，不为格式检查放开测试 profile 的权限。
+首次安装和启动命令见[项目首页](../README.md#从源码运行)。`pnpm run doctor` 只读取环境。依赖尚未安装时可直接运行 `node scripts/doctor.mjs`，再按报告补齐工具。pnpm 的工作区与补丁配置见 [pnpm-workspace.yaml](../pnpm-workspace.yaml)，Rust 构建目录由 [.cargo/config.toml](../.cargo/config.toml) 指定。
 
-浏览器生产预览使用 `pnpm build:web` 后运行 `pnpm exec vite preview --outDir dist-web`。TSX/CSS 由 Vite 热更新；Rust、capability 和平台配置变化后重新构建并重启原生进程。
+| 场景               | 命令或入口                                                         | 资源                                               |
+| ------------------ | ------------------------------------------------------------------ | -------------------------------------------------- |
+| 界面开发预览       | `pnpm dev`                                                         | Vite 热更新，可预览界面与本地设置                  |
+| 桌面开发与本机设备 | `pnpm app:dev`                                                     | Vite 开发页面、同源 Host/CLI，配对页面使用 `dist/` |
+| 浏览器静态构建预览 | `pnpm build:web` 后运行 `pnpm exec vite preview --outDir dist-web` | `dist-web/`，用于网页预览和无头浏览器验收          |
+| 桌面配对浏览器     | 桌面[「设置 → 浏览器访问」](#浏览器访问)                           | 由 Host 提供同一构建的工作台资源并执行授权         |
+
+TSX/CSS 由 Vite 热更新。Rust、capability 和平台配置变化后重新构建并重启相应原生进程。需要刷新开发 Host 提供的配对页面时先运行 `pnpm build`。
 
 React Provider 的组件模块只导出组件，Context、工厂和 Hook 放在相邻模块，避免实现编辑时触发 Fast Refresh 不兼容并使整个页面重载。草稿 Provider 的回归使用当前安装的 Vite React runtime 检查实际导出兼容性，见 [react-refresh.test.mjs](../scripts/react-refresh.test.mjs)。
 
-`pnpm app:dev` 在 `dist/index.html` 缺失时先构建配对浏览器资源，再构建同源 Host/CLI 并从 `.cache/dev-runtime/` 的不可变副本启动，避免 Windows 锁住 Cargo 输出。关闭窗口不会退出 Host。`DEV_RUNTIME_MISMATCH` 表示旧实例与当前副本不符，使用相同 profile 运行 `pnpm host:stop` 后再启动；它会断开会话，不强杀进程、不启动缺席的 Host，未能核验实例锁仍报错。Vite 热更新不更新后台程序。
+`pnpm app:dev` 在 `dist/index.html` 缺失时先构建配对浏览器资源，再构建同源 Host/CLI 并从 `.cache/dev-runtime/` 的不可变副本启动，避免 Windows 锁住 Cargo 输出。关闭窗口不会退出 Host。`DEV_RUNTIME_MISMATCH` 表示旧实例的可执行文件与当前副本不同。确认可结束该实例的会话后，沿用同一 `SWB_PROFILE` 运行 `pnpm host:stop --json`，或用 `pnpm host:stop --profile "<实际绝对目录>" --json` 明确指定。收到 `stopped: true` 后重新启动。`alreadyStopped: true` 表示原 profile 已无正在运行的实例。若 `PROTOCOL_UNSUPPORTED` 使当前 CLI 无法附着，使用与运行实例兼容的原版本入口正常退出，再用同一 profile 启动当前构建。Vite 热更新不更新后台程序。
+
+启动报 `resource path ../dist doesn't exist` 时，先从仓库根运行 `pnpm build`，确认 `dist/index.html` 已生成，再用 `pnpm app:dev` 启动。`pnpm build:web` 输出到 `dist-web/`，供静态预览与浏览器专项使用。
 
 准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
@@ -58,7 +67,7 @@ CLI 管理用同一 profile 的本机用户控制身份。`lan status` 查看身
 
 ### 浏览器访问
 
-桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发启动复用已有 `dist/`，需要刷新配对浏览器页面时执行 `pnpm build`。
+桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发配对资源的准备与刷新见[环境与启动](#环境与启动)。
 
 ### 本机 HTTP 控制
 
@@ -278,8 +287,15 @@ Windows portable 包含程序、组件和许可证，需要 WebView2，数据写
 | 图标或安装器仍旧                                    | 核对源 SVG、生成资源、实际 exe/快捷方式和系统图标缓存，重新构建                                                                                                                                     |
 | 保存/恢复失败                                       | 区分 Host CAS 与 ClientState，重读冲突，损坏/未来格式保留原件，不编辑版本号强行覆盖                                                                                                                 |
 
-清理先预览 `pnpm clean:temporary --dry-run`。temporary 清理临时报告、前端输出、默认 Rust 缓存和旧便携备份，保留正式版本归档与依赖；outputs 清理生成内容并保留识别出的 Cargo 缓存；artifacts 清整个分发目录；clean 默认还清默认 Rust 输出；all 再删除根依赖。精确路径见 [clean-lib.mjs](../scripts/clean-lib.mjs)，自定义 target 自行管理，重装依赖使用冻结锁文件。
+日常优先清理已确认闲置、可重建的具体目录。使用下表的清理命令前，给同一命令追加 `--dry-run` 预览实际路径。运行中的 Host、仍要复查的验收证据和正常使用的编译缓存需要保留。
 
-日常根据预览选择具体的闲置子目录。需要重建默认 Rust 缓存时，才执行会清除它的清理模式。本地编译受磁盘 I/O 限制时，在主工作区复用依赖和默认 target。日常迭代先做相关无头检查或 `cargo check`，需要链接的验证按[测试指南](./testing.md#rust-与生成)顺序执行。清理优先处理已确认闲置的独立 target、旧工作树归档中的重复编译副本和可重建的临时产物。保留正在使用的 Host、编译缓存和验收证据。根据预览核对实际路径，删除后查验目录与可用空间，额外 worktree 随[合入与清理](./conventions.md#合入与清理)收尾。
+| 命令                            | 处理范围                                                          | 需留意                                                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm clean:outputs`            | 前端、测试、安装暂存，以及 `artifacts/` 和 `.cache/` 里的生成内容 | 保留默认 Cargo 缓存，安装暂存 `release/bundle/` 仍列入清理。在 `artifacts/` 和 `.cache/` 中识别并保留带 Cargo 标记的目录。 |
+| `pnpm clean:artifacts`          | 整个 `artifacts/`                                                 | 含版本归档和临时验收产物。                                                                                                 |
+| `pnpm clean:temporary`          | 临时报告、前端输出、默认 Rust target、工具缓存和旧便携包备份      | 保留正式版本归档和已安装依赖。后续 Rust 构建会重建默认 target。                                                            |
+| `pnpm clean` / `pnpm clean:all` | 默认构建输出与整个 `artifacts/`。all 还清根 `node_modules/`       | 重装依赖使用冻结锁文件。                                                                                                   |
+
+例如运行 `pnpm clean:outputs --dry-run` 后，先核对 `.cache/dev-runtime/`、验收收据和版本归档。预览含需保留的文件时，直接选定可重建的闲置子目录处理，或先把需保留的证据留存到清理范围外。准确范围见 [clean-lib.mjs](../scripts/clean-lib.mjs)。自定义 target 先确认归属和占用。磁盘活跃时间长期接近 100% 时，在主工作区复用依赖和默认 target，顺序执行共享 target 的检查；日常先选相关无头检查或 `cargo check`。需要链接时按[测试指南](./testing.md#rust-与生成)准备资源。清理后核对目录与可用空间，额外 worktree 随[合入与清理](./conventions.md#合入与清理)收尾。
 
 带 `-Force` 的检查与删除、修改、服务启停分开调用。遇到 blocked by policy，检查是否混用操作并核验实际结果，记录仍失败的命令和错误。

@@ -2,6 +2,8 @@
 
 工作区私有包，采用 Apache-2.0。`@serial-workbench/plugin-sdk/node` 提供当前 Node 后台的纯类型入口；使用 `import type`，构建后的正式包不需要加载 SDK 运行时代码。公共参数、结果和任务意图复用 [Rust 生成契约](../contracts/src/generated/types.ts)。
 
+从仓库根运行 `pnpm plugin-sdk:fixture` 可编译参考入口。要验证安装、调用和退出，继续走[签名运行时与 SDK 验收](../../docs/acceptance.md#签名运行时与-sdk)。查 manifest 版本、声明、文件结果及可信安装边界时，使用 [Node 扩展契约](../../docs/contracts/node-extension-v0.md)。
+
 后台模块必须导出 `register(context)`，返回可异步执行的清理函数。处理器 ID、目标和权限先在正式 manifest 中声明，worker 文件随签名包提交；安装不会运行代码。下面假定 manifest 声明了相应动作、查询，包内含有 `dist/worker.mjs`。
 
 ```ts

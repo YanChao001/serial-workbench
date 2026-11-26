@@ -1,6 +1,6 @@
 # Node 扩展合同 v0
 
-可信 Node 插件的正式包、后台、Web UI 与授权契约。v0 是设计与实现的共同边界，不表示每个入口已交付；[路线与进度](../plan.md)记录阶段与证据，M3 以参考场景冻结 v1。运行时来源、目标与固定启动位置见[runtime 分发基线](./runtime-distribution.md)，作者接口见 [Node SDK](../../packages/plugin-sdk/README.md)。
+可信 Node 插件的正式包、后台、Web UI 与授权契约。M3 主线已冻结 Host RPC 1.0，签名扩展清单继续使用 `0.1` 兼容值。各能力的主线交付及专项证据见[路线与进度](../plan.md)。运行时来源、目标与固定启动位置见[runtime 分发基线](./runtime-distribution.md)，作者接口见 [Node SDK](../../packages/plugin-sdk/README.md)。
 
 ## 1. 协议与类型来源
 

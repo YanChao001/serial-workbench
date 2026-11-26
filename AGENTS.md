@@ -8,4 +8,4 @@
 - 明确异步晚结果、授权和资源的归属；操作接纳、停止等待和真实终态分别处理。保存保持原子、revision 冲突及未来格式保护。维护中英、焦点与无障碍，`src/styles/shadcn.css` 保持上游原文。
 - 从根目录用 pnpm。首次 `pnpm install --frozen-lockfile`，无依赖诊断用 `node scripts/doctor.mjs`。共享 target 的 Cargo/生成顺序运行，桌面 Rust 检查先准备 dist，保留编译缓存。
 - 按[测试指南](./docs/testing.md)选择相关检查；日常 UI 用无头 `pnpm test:ui`。真实窗口、测试 exe 与截图只在独立环境或用户安排的前台时段运行。带 `-Force` 的检查与修改、删除、启停分开；遇策略拦截核对实际结果，记录仍失败的命令与错误。
-- 按[贡献流程](./CONTRIBUTING.md)交付，同一里程碑集中提交，中文提交/PR，短期分支线性 squash 合入 main。说明实际检查和相关未测范围。
+- 开工、切换任务及建立额外分支或 worktree 时，读[主工作区与单任务](./docs/conventions.md#主工作区与单任务)。在主工作区用一个短期分支完成当前任务。按[贡献流程](./CONTRIBUTING.md)和[合入与清理](./docs/conventions.md#合入与清理)交付，说明实测与待验范围。

@@ -2,20 +2,20 @@
 
 从仓库根运行。按[测试指南](./testing.md)准备环境，按[需求矩阵](./requirements.md#附件验收方案与功能映射)选择适用场景。当前结果见[路线](./plan.md)与[需求账本](./feature-status.json)。
 
-| 要验证的能力                            | 入口                                                                                    |
-| --------------------------------------- | --------------------------------------------------------------------------------------- |
-| 真实桌面、浏览器配对、双 Host 和接管    | [原生桌面](#原生桌面) · [配对浏览器与 LAN](#配对浏览器与-lan)                           |
-| 本机 HTTP 控制、版本拒绝和重启恢复      | [本机 HTTP 控制](#本机-http-控制)                                                       |
-| 固定 Node、签名包后台、Raw/派生流和 SDK | [签名运行时与 SDK](#签名运行时与-sdk)                                                   |
-| 签名终端、图表和自动化                  | [终端](#终端参考包验收) · [图表](#图表参考包后台采样) · [自动化](#自动化参考包后台应答) |
-| 六个 Host 软件场景、T06 与录制校验      | [Host 软件验收](#host-软件验收) · [独立录制格式](#独立录制格式)                         |
-| v1 冻结、安装升级和实机发行             | [M3 契约冻结](#m3-契约冻结) · [安装与发行验收](#安装与发行验收)                         |
+| 要验证的能力                            | 入口                                                                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 真实桌面、浏览器配对、双 Host 和接管    | [原生桌面](#原生桌面) · [配对浏览器与 LAN](#配对浏览器与-lan) · [真实配对工作台专项](#真实配对工作台专项) |
+| 本机 HTTP 控制、版本拒绝和重启恢复      | [本机 HTTP 控制](#本机-http-控制)                                                                         |
+| 固定 Node、签名包后台、Raw/派生流和 SDK | [签名运行时与 SDK](#签名运行时与-sdk)                                                                     |
+| 签名终端、图表和自动化                  | [终端](#终端参考包验收) · [图表](#图表参考包后台采样) · [自动化](#自动化参考包后台应答)                   |
+| 六个 Host 软件场景、T06 与录制校验      | [Host 软件验收](#host-软件验收) · [独立录制格式](#独立录制格式)                                           |
+| v1 冻结、安装升级和实机发行             | [M3 契约冻结](#m3-契约冻结) · [安装与发行验收](#安装与发行验收)                                           |
+
+记录候选提交、平台、运行环境、执行的命令、实际测试数及对应证据。用例未触发、跳过，或要求的收据缺失时，对应场景仍待验。原生交互、真实配对、模拟设备、物理线路和发行实装分别按实际覆盖登记。
 
 ## 原生桌面
 
-先按[桌面边界](./testing.md#桌面边界)安排运行环境。
-
-先运行 `pnpm e2e:build`，再用 `pnpm test:e2e --interactive --skip-build` 执行 `e2e/specs/`。用构建收据核对桌面及相邻 Host、CLI、MCP 同源，使用独立 profile。工作台重启场景核对旧实例退出、新 epoch、显式重新附着、订阅和未发草稿。 [运行器](../e2e/run.mjs)
+按[桌面边界](./testing.md#桌面边界)安排运行环境，再运行 `pnpm e2e:build`，再用 `pnpm test:e2e --interactive --skip-build` 执行 `e2e/specs/`。用构建收据核对桌面及相邻 Host、CLI、MCP 同源，使用独立 profile。工作台重启场景核对旧实例退出、新 epoch、显式重新附着、订阅和未发草稿。 [运行器](../e2e/run.mjs)
 
 Windows 测试应用在初始化 WebView 前加入自己的 Job，runner 通过独立 profile 收据核对 PID 并按持有的进程句柄停止应用。应用退出关闭 Job 并回收子进程。启动失败或回收未知时保留现场。 [进程管理](../e2e/process.mjs)
 
@@ -65,7 +65,35 @@ pnpm exec esbuild packages/plugin-sdk/examples/reference-chart/view.ts --bundle 
 
 已运行的 Host 用 `cargo test --locked -p serial-workbench-host --test browser_pairing` 验证本机配对、只读授权、撤销和接管。撤销后确认两个浏览器连接关闭，再在同一串口会话核对桌面发送的终态。接管用实际 WebSocket 发起，核对浏览器不能自行批准，拒绝及断开后原写入权保留，批准后只有所选 MCP 失去当前串口写入权。桌面设置的无头用例为 `pnpm test:ui e2e/browser/browser-access.spec.ts --workers=1`，验证配对与停用、窄窗口和焦点，以及明确显示端口和客户端后传递当前确认编号。正式桌面验收从实际设置页生成配对码，用该候选安装资源打开浏览器，再从真实桌面窗口确认浏览器发起的接管。
 
-Windows 托管原生作业复用同一 E2E 构建，准备 Chromium headless shell 后运行 `pnpm test:e2e --interactive --skip-build --browser-takeover`。本机只在独立环境或约定的前台时段运行。原生设置页选「查看和操作」并生成配对码，无头 Chromium 使用该入口及实际资源加入。原生确认后检查浏览器收到终态、所选 MCP 失去写入权及另一客户端仍可发送。关闭浏览器访问后核对连接退出和原会话的真实回显。`artifacts/e2e/browser-takeover-*` 保留同源构建收据、原生确认截图、权限与会话结果及日志，截图隐藏配对码。
+Windows 托管原生作业复用同一 E2E 构建，准备 Chromium headless shell 后运行 `pnpm test:e2e --interactive --skip-build --browser-takeover`。本机只在独立环境或约定的前台时段运行。原生设置页选「查看与操作」并生成配对码，无头 Chromium 使用该入口及实际资源加入。原生确认后检查浏览器收到终态、所选 MCP 失去写入权及另一客户端仍可发送。关闭浏览器访问后核对连接退出和原会话的真实回显。`artifacts/e2e/browser-takeover-*` 保留同源构建收据、原生确认截图、权限与会话结果及日志，截图隐藏配对码。
+
+### 真实配对工作台专项
+
+在独立环境从仓库根运行 `pnpm exec playwright install --only-shell chromium` 和 `pnpm build:web`。这些用例用 `dist-web/` 启动隔离 Host，再从无头 Chromium 实际配对。按所验场景把表中的输出变量指向新的绝对目录。字符映射还需按[签名运行时与 SDK](#签名运行时与-sdk)准备固定 Node，并设置 `SWB_NODE_RUNTIME_TEST_ROOT`。
+
+| 场景                             | 输出变量                             | 通过时的非空收据                              |
+| -------------------------------- | ------------------------------------ | --------------------------------------------- |
+| [文件交接](#文件拖放发送io-18)   | `SWB_TEST_BROWSER_TRANSFER_OUTPUT`   | `browser-transfer-receipt.json`               |
+| [实验包交换](#复现实验包sess-09) | `SWB_TEST_EXPERIMENT_BROWSER_OUTPUT` | `host-receipt.json`                           |
+| [字符重映射](#字符重映射line-10) | `SWB_TEST_MAPPED_CAPTURE_OUTPUT`     | `host-receipt.json` 和 `browser-receipt.json` |
+| [按住连发](#一键与热键发送io-08) | `SWB_TEST_HOLD_SEND_OUTPUT`          | `host-receipt.json` 和 `browser-receipt.json` |
+
+例如在 PowerShell 中为按住连发指定唯一的本机输出目录。
+
+```powershell
+$env:SWB_TEST_HOLD_SEND_OUTPUT = Join-Path ([System.IO.Path]::GetTempPath()) ("serial-workbench-hold-" + [guid]::NewGuid())
+```
+
+选择对应命令，顺序运行需要复验的场景。
+
+```sh
+cargo test --locked -p serial-workbench-host --test browser_pairing browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation -- --test-threads=1
+cargo test --locked -p serial-workbench-host --test capture_api_host experiment_browser::paired_browsers_exchange_experiment_between_two_hosts -- --ignored --exact --test-threads=1
+cargo test --locked -p serial-workbench-host --test capture_api_host mapped_capture_browser::paired_browser_maps_signed_tcp_bytes_and_keeps_raw_recording_and_receipts -- --ignored --exact --test-threads=1
+cargo test --locked -p serial-workbench-host --test capture_api_host hold_send_browser::paired_browser_held_send_settles_two_writes_and_stops_on_release -- --ignored --exact --test-threads=1
+```
+
+确认每条命令命中一个用例、通过且有对应收据。实验包场景另保留浏览器生成的 `browser-receipt.json`，用于复查实际操作。文件交接在缺少输出变量时仍可完成 Host 交接断言，实际 Chromium 场景以浏览器收据为准。保留脱敏日志、收据和必要截图。CI 中的目录布局及收据检查见[里程碑工作流](../.github/workflows/ci.yml)。
 
 ### 双 Host
 
@@ -416,7 +444,7 @@ recorded_send_2                   recorded_send_2
 
 在可写实时会话输入 `AT`，单击「发送」或在草稿内用当前平台的主修饰键加 Enter，核对恰好一次调用。短按「按住连发」不写入，按住 350 ms 后核对首笔。上一笔未终态时等待，确认完整写入后至少间隔 180 ms，第二笔使用同一目标、修订和字节。用鼠标、Space 或 Enter 复验。把指针移出按钮再松开，以及失焦、隐藏、撤权、断线、换代、修改草稿或部分写入，均停止后续提交。保留已提交操作的回执。
 
-运行 `pnpm test src/features/workbench/send-panel.test.tsx` 和 `pnpm test:ui e2e/browser/hold-send.spec.ts --workers=1`。宽窄窗核对草稿与双按钮顶边和高度一致，键盘焦点可达，松手后仍保留原稿。配对浏览器的入口限当前页面。真实配对流程在 `pnpm build:web` 后运行 `cargo test --locked -j 1 -p serial-workbench-host --test capture_api_host paired_browser_held_send_settles_two_writes_and_stops_on_release -- --ignored --test-threads=1`，设置独立输出目录 `SWB_TEST_HOLD_SEND_OUTPUT`。核对两条浏览器请求、独立 Raw TX 回执，以及 Virtual Echo 的实际回显。桌面全局热键按各平台的注册、冲突、目标和写入授权专项验收。
+运行 `pnpm test src/features/workbench/send-panel.test.tsx` 和 `pnpm test:ui e2e/browser/hold-send.spec.ts --workers=1`。宽窄窗核对草稿与双按钮顶边和高度一致，键盘焦点可达，松手后仍保留原稿。配对浏览器的入口限当前页面。实际浏览器配对使用[按住连发专项](#真实配对工作台专项)。核对两条浏览器请求、独立 Raw TX 回执，以及 Virtual Echo 的实际回显。桌面全局热键按各平台的注册、冲突、目标和写入授权专项验收。
 
 ### 定时与循环发送（IO-09）
 
@@ -1018,7 +1046,7 @@ COM15  终态                       COM14  已接纳 [停止]
 
 交接软测以真实配对连接和 Virtual Echo 比较范围对应的原始字节，分别触发接纳前关页、撤销、断开重连，以及接纳后停止和回执重查。检查第二个连接无法复用临时引用，失败和重启回收磁盘，用户确认前设备保持静默。
 
-Host 分块交接运行 `cargo test --locked -p serial-workbench-host --lib --test browser_pairing browser_file -- --test-threads=1`，核对磁盘上的封存字节、SHA-256、错序、写失败、闲置回收、连接隔离、撤权后重新授权与撤销配对。封存 `00 FF 24 7B` 后选择偏移 1、长度 2，使用 Virtual Echo 的独立 Raw 读端核对恰好收到 `FF 24`。发起连接取得接纳回执后断开，从同一配对身份的另一个连接以原请求号查询同一操作。修改选区后复用请求号应拒绝，另起请求也无法再使用已转移或已丢弃的封存文件。完整配对回归另外覆盖只读权限、连接来源与通道边界。配对 Chromium 复验先运行 `pnpm build:web`，将 `SWB_TEST_BROWSER_TRANSFER_OUTPUT` 指向验收产物目录，再执行上述 `browser_pairing` 专项。测试由隔离 Host 服务 `dist-web`，经真实配对进入 Virtual Echo，在 420×610 和 1240×820 检查文件选取、拖放命中、长文件名、完整选区预览及硬盘文件交接前的静默。确认后核对同一调用信封、2 B 写入回执和独立 Raw 读端的 `FE 23`，保存宽窄截图和脱敏回执。物理串口、三平台系统拖放和正式发行继续专项验收。
+Host 分块交接运行 `cargo test --locked -p serial-workbench-host --lib --test browser_pairing browser_file -- --test-threads=1`，核对磁盘上的封存字节、SHA-256、错序、写失败、闲置回收、连接隔离、撤权后重新授权与撤销配对。封存 `00 FF 24 7B` 后选择偏移 1、长度 2，使用 Virtual Echo 的独立 Raw 读端核对恰好收到 `FF 24`。发起连接取得接纳回执后断开，从同一配对身份的另一个连接以原请求号查询同一操作。修改选区后复用请求号应拒绝，另起请求也无法再使用已转移或已丢弃的封存文件。完整配对回归另外覆盖只读权限、连接来源与通道边界。需要真实配对 Chromium 时，按[文件交接专项](#真实配对工作台专项)准备前端、设置输出变量和收集收据。测试由隔离 Host 服务 `dist-web`，经真实配对进入 Virtual Echo，在 420×610 和 1240×820 检查文件选取、拖放命中、长文件名、完整选区预览及硬盘文件交接前的静默。确认后核对同一调用信封、2 B 写入回执和独立 Raw 读端的 `FE 23`，保存宽窄截图和脱敏回执。物理串口、三平台系统拖放和正式发行继续专项验收。
 
 #### 命令槽文件导入
 
@@ -1045,7 +1073,7 @@ Host 分块交接运行 `cargo test --locked -p serial-workbench-host --lib --te
 
 Host 软件验收应核对一致修订、篡改与未来版本、源访问受限、解析器已禁用、录制缺失或摘要不符、空工作区、仅只读检查和导入后设备重新绑定。注入命令正文、USB 序列号、路径及错误详情作为样本，核对它们没有进入导出的 JSON。工作台验收另核对宽窄布局、稳定错误、键盘操作、保存取消、修改冲突和跨 Host 提示。
 
-跨 Host 软件验收先运行 `pnpm build:web`，将 `SWB_TEST_EXPERIMENT_BROWSER_OUTPUT` 指向新的绝对证据目录，然后运行 `cargo test --locked -p serial-workbench-host --test capture_api_host experiment_browser::paired_browsers_exchange_experiment_between_two_hosts -- --ignored --exact --test-threads=1`。场景启动两个隔离 Host 和无头 Chromium。源端封存 Virtual Echo 录制，从配对浏览器下载脱敏包。目标端检查解析器缺失和异机录制，确认前保持工作区，确认后按修订保存。设备库只列出目标工作区 Host 上可供重新绑定的设备，用户确认后保留原线路配置并使用新设备身份。查看浏览器动作收据、Host 修订及截图。实体串口、不同机器与正式安装另按相应环境复验。
+跨 Host 软件验收用[实验包交换专项](#真实配对工作台专项)。场景启动两个隔离 Host 和无头 Chromium。源端封存 Virtual Echo 录制，从配对浏览器下载脱敏包。目标端检查解析器缺失和异机录制，确认前保持工作区，确认后按修订保存。设备库只列出目标工作区 Host 上可供重新绑定的设备，用户确认后保留原线路配置并使用新设备身份。查看浏览器动作收据、Host 修订及截图。实体串口、不同机器与正式安装另按相应环境复验。
 
 ### 会话模板（SESS-03）
 

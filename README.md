@@ -15,9 +15,9 @@ pnpm run doctor
 pnpm app:dev
 ```
 
-`pnpm dev` 仅启动界面预览，不会连接本机串口。Host 源码变更后若提示版本不符，先在同一 profile 下运行 `pnpm host:stop`，再运行 `pnpm app:dev`。停止 Host 会断开其会话，设置与草稿保留。
+`pnpm app:dev` 启动可操作本机设备的桌面开发环境。仅查看界面可运行 `pnpm dev`，此入口不附着本机 Host。[配对浏览器](./docs/development.md#浏览器访问)从桌面设置进入，由 Host 提供生产资源。遇到缺少 `dist`、环境缺项或 Host 版本不一致，按[启动与排障](./docs/development.md#环境与启动)处理。
 
-`pnpm app:build` 构建安装包；Windows 支持 `pnpm app:portable`。输出位置、签名及更新前提见[构建与发布](./docs/development.md#构建与发布)。
+`pnpm app:build` 构建安装包。Windows 还可用 `pnpm app:portable` 构建便携包。输出位置、运行时依赖、签名及更新前提见[构建与发布](./docs/development.md#构建与发布)。
 
 ## 许可与安全
 
