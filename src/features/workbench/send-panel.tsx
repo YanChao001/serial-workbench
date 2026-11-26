@@ -329,6 +329,10 @@ export function SendPanel({
         ? "unknown"
         : undefined);
   const partialOrUnknown = outcome === "partial" || outcome === "unknown";
+  const receiptReason =
+    error === undefined && errorCode
+      ? formatError?.({ code: errorCode })
+      : undefined;
   const receiptFault =
     !busy &&
     receipt &&
@@ -337,9 +341,8 @@ export function SendPanel({
     receipt.state !== "cancel_requested" &&
     outcome &&
     (partialOrUnknown || outcome === "rejected")
-      ? errorCode && formatError && !(txReceipt && partialOrUnknown)
-        ? formatError({ code: errorCode })
-        : `${labels.send}: ${workbenchStatus(outcome, labels)}`
+      ? ((txReceipt && partialOrUnknown ? undefined : receiptReason) ??
+        `${labels.send}: ${workbenchStatus(outcome, labels)}`)
       : undefined;
   const noticeMessage = error ?? receiptFault;
   const noticeEventKey = error
@@ -1057,7 +1060,7 @@ export function SendPanel({
                 module: "serial",
                 level:
                   error === undefined && partialOrUnknown ? "warning" : "error",
-                message: noticeMessage,
+                message: receiptReason ?? noticeMessage,
                 code: errorCode,
                 context: deviceName,
               }
