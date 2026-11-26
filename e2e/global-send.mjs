@@ -95,7 +95,7 @@ export async function globalSendRawReader() {
     sessionEpoch: session.sessionEpoch,
   };
   const read = async (startEventSeq) => {
-    const result = await query(
+    const page = await query(
       "host_raw_request",
       "stream.read",
       "stream.read",
@@ -108,10 +108,11 @@ export async function globalSendRawReader() {
         maxBytes: "262144",
       },
     );
-    assert.equal(result.kind, "stream_read");
-    assert.equal(result.value.hasMore, false, "Unexpected extra Raw history");
+    // 专用 stream.read 方法的结果直接返回页。action.query 才使用 kind/value。
+    assert.ok(Array.isArray(page.events), "Expected a Raw stream page");
+    assert.equal(page.hasMore, false, "Unexpected extra Raw history");
     assert.ok(
-      result.value.events.every(
+      page.events.every(
         (event) =>
           event.hostId === attachment.hostId &&
           event.instanceEpoch === attachment.instanceEpoch &&
@@ -119,7 +120,7 @@ export async function globalSendRawReader() {
           event.sessionEpoch === session.sessionEpoch,
       ),
     );
-    return result.value;
+    return page;
   };
   const before = await query(
     "host_raw_request",

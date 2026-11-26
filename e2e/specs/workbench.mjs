@@ -570,6 +570,7 @@ export function workbenchChecks() {
                 async () => (await command("foreground")).foreground,
               );
               assert.equal((await command("press")).foreground, true);
+              receipt.inputPostedWithPeerForeground = true;
               await browser.waitUntil(async () => {
                 const page = await read();
                 return (
