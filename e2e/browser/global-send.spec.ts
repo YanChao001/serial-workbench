@@ -27,6 +27,20 @@ test("desktop global send keeps the registered key on conflict and follows autho
     language: "en",
     sidebarCollapsed: true,
     manualSendReceipts: true,
+    replay: {
+      session: {
+        ...session("global-send-replay"),
+        deviceId: "explicit-replay-layout",
+        readOnly: true,
+      },
+      files: {},
+      page: {
+        records: [],
+        readerGeneration: "1",
+        nextRecord: "0",
+        atEnd: true,
+      },
+    },
     secondDevice: {
       deviceId: "peer-device",
       hostId: "workbench-gui-host",
@@ -179,6 +193,37 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await expect.poll(enabled).toBe(true);
   await expect.poll(revision).toBeGreaterThan(firstTarget);
 
+  const beforeEmptyDraft = await revision();
+  await draft.clear();
+  await expect.poll(enabled).toBe(false);
+  await press(beforeEmptyDraft);
+  await press(await revision());
+  expect(await writes()).toEqual(["QVQ="]);
+  await draft.fill("AT");
+  await expect.poll(enabled).toBe(true);
+
+  const beforeReplay = await revision();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  const activity = page.getByRole("dialog", { name: "Activity", exact: true });
+  await activity
+    .getByRole("button", {
+      name: "Locate fixture-attached-replay",
+      exact: true,
+    })
+    .click();
+  await expect(activity).toBeHidden();
+  await expect(
+    page.getByRole("region", { name: "Replay", exact: true }),
+  ).toBeVisible();
+  await draft.fill("READ ONLY REPLAY");
+  await expect.poll(enabled).toBe(false);
+  await press(beforeReplay);
+  await press(await revision());
+  expect(await writes()).toEqual(["QVQ="]);
+  await page.getByRole("tab", { name: "Virtual serial", exact: true }).click();
+  await expect(draft).toHaveValue("AT");
+  await expect.poll(enabled).toBe(true);
+
   await page
     .getByRole("combobox", { name: "Choose device", exact: true })
     .click();
@@ -319,6 +364,22 @@ test("desktop global send keeps the registered key on conflict and follows autho
   ).toBeInViewport();
   await dialog.getByRole("button", { name: "Disable" }).click();
   await expect(row.getByText("Off", { exact: true })).toBeVisible();
+
+  await change.click();
+  await capture.press("Control+Shift+F9");
+  await save.click();
+  await expect(row.getByText("Ctrl+Shift+F9", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(enabled).toBe(true);
+  const connectedRevision = await revision();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.failHost()),
+  ).toBeGreaterThan(0);
+  await expect.poll(enabled).toBe(false);
+  await expect.poll(revision).toBeGreaterThan(connectedRevision);
+  await press(connectedRevision);
+  await press(await revision());
+  expect(await writes()).toEqual(["QVQ=", "T0s=", "TkVX", "TkVX"]);
 });
 
 test("browser shortcuts do not expose system registration", async ({

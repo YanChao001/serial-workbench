@@ -121,4 +121,19 @@ test("holding sends only in the active workbench and preserves the draft layout"
   expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
     Array(4).fill("QVQ="),
   );
+
+  await page.evaluate(() => {
+    delete window.workbenchFixture.manualSendAcceptedBytes;
+  });
+  await hold.focus();
+  await page.keyboard.down("Space");
+  await page.clock.runFor(350);
+  await expect.poll(written).toBe(5);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.failHost()),
+  ).toBeGreaterThan(0);
+  await expect(single).toBeDisabled();
+  await page.clock.runFor(500);
+  expect(await written()).toBe(5);
+  await page.keyboard.up("Space");
 });
