@@ -18,7 +18,7 @@ import {
   serveSuiteHostRestarts,
 } from "./suite-host.mjs";
 import { Resvg } from "@resvg/resvg-js";
-import { parseE2EOptions } from "./run-options.mjs";
+import { parseE2EOptions, waylandLaunchScenarios } from "./run-options.mjs";
 import { checkNativeRequestDiagnostics } from "./native-log-evidence.mjs";
 import {
   prepareSignedReferenceEvidence,
@@ -105,9 +105,7 @@ try {
     (process.platform !== "linux" ||
       process.env.GDK_BACKEND !== "wayland" ||
       !isAbsolute(process.env.SWB_E2E_WAYLAND_ARTIFACTS ?? "") ||
-      !["approve", "cancel", "deny", "reload", "unavailable"].includes(
-        process.env.SWB_E2E_WAYLAND_SCENARIO,
-      ) ||
+      !waylandLaunchScenarios.includes(process.env.SWB_E2E_WAYLAND_SCENARIO) ||
       !/^\d+$/.test(process.env.SWB_E2E_KWIN_WINDOW ?? ""))
   )
     throw new Error(

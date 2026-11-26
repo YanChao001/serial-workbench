@@ -1,3 +1,12 @@
+export const waylandLaunchScenarios = [
+  "approve",
+  "cancel",
+  "deny",
+  "reload",
+  "replace",
+  "unavailable",
+];
+
 /** 原生窗口测试会主动激活窗口，必须在启动构建或进程前明确选择前台运行。 */
 export function parseE2EOptions(args) {
   const modes = {
