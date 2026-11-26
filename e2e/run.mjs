@@ -99,6 +99,16 @@ try {
   const chart = phases.includes("chart-automated");
   const browserTakeover = phases.includes("browser-takeover");
   const lan = phases.includes("lan-owner");
+  const wayland = phases.includes("wayland-global-send");
+  if (
+    wayland &&
+    (process.platform !== "linux" ||
+      process.env.GDK_BACKEND !== "wayland" ||
+      !/^\d+$/.test(process.env.SWB_E2E_KWIN_WINDOW ?? ""))
+  )
+    throw new Error(
+      "Run the isolated Wayland phase with bash e2e/run-wayland.sh.",
+    );
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&
@@ -342,7 +352,7 @@ try {
           {
             cwd: root,
             env,
-            ...(automated || chart || browserTakeover || lan
+            ...(automated || chart || browserTakeover || lan || wayland
               ? { logPath: join(phaseArtifacts, "webdriver.log") }
               : {}),
           },

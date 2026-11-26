@@ -49,7 +49,7 @@ const field = (name) =>
       name +
       "']//input",
   );
-const sendDraft = () =>
+export const sendDraft = () =>
   $("//textarea[@id=//label[normalize-space()='Send draft']/@for]");
 async function clickEnabled(selector) {
   const button = await $(selector);
@@ -263,12 +263,12 @@ function streamPayloadState(payload) {
 }
 
 const shortcutDialog = () => $("[role=dialog][data-state=open]");
-const globalShortcutKey = () =>
+export const globalShortcutKey = () =>
   $(
     "//li[.//button[@aria-label='Change shortcut for Global send shortcut']]//kbd",
   );
 
-async function editGlobalSend() {
+export async function editGlobalSend() {
   await browser.execute(() =>
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" })),
   );
@@ -281,7 +281,7 @@ async function editGlobalSend() {
   await $("#shortcut-capture").waitForDisplayed();
 }
 
-async function captureGlobalSendKey(key) {
+export async function captureGlobalSendKey(key) {
   await browser.execute(
     (name, mac) =>
       document.getElementById("shortcut-capture").dispatchEvent(
@@ -300,12 +300,12 @@ async function captureGlobalSendKey(key) {
   await clickEnabled("button=Save");
 }
 
-async function closeShortcutHelp() {
+export async function closeShortcutHelp() {
   await browser.keys(Key.Escape);
   await (await shortcutDialog()).waitForExist({ reverse: true });
 }
 
-async function disableGlobalSend() {
+export async function disableGlobalSend() {
   await editGlobalSend();
   await clickEnabled("button=Disable");
   await $("#shortcut-capture").waitForExist({ reverse: true });
@@ -313,7 +313,7 @@ async function disableGlobalSend() {
   await closeShortcutHelp();
 }
 
-function rawRxBytes({ events }) {
+export function rawRxBytes({ events }) {
   return Buffer.concat(
     events
       .filter(({ kind }) => kind === "rx")

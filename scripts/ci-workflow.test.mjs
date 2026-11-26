@@ -124,6 +124,7 @@ test("preflight shares the full native runner and retains successful source rece
       ...Object.keys(JSON.parse(runnerMap[1])),
       ...Object.keys(groups),
       "macos-input",
+      "wayland-global-send",
     ],
   );
   assert.match(preflight, /fail-fast: false/);
@@ -209,7 +210,28 @@ test("macOS input preflight measures OS delivery without building a workbench", 
   assert.doesNotMatch(input, /cargo|rustup|pnpm|e2e:build|test:e2e/);
   assert.match(
     job("quality-gate"),
-    /target == 'macos-input' && needs\.macos-input-preflight\.result \|\| needs\.native-preflight\.result/,
+    /target == 'macos-input' && needs\.macos-input-preflight\.result/,
+  );
+});
+
+test("Wayland hotkeys run in a separate manual desktop preflight", () => {
+  const wayland = job("wayland-global-send-preflight");
+  assert.match(
+    wayland,
+    /if: inputs\.native_preflight && !inputs\.runtime_preflight && inputs\.native_preflight_target == 'wayland-global-send'/,
+  );
+  assert.match(wayland, /runs-on: ubuntu-26\.04/);
+  assert.match(wayland, /bash scripts\/ci-linux-deps\.sh wayland/);
+  assert.match(wayland, /pnpm e2e:build\n/);
+  assert.match(wayland, /bash e2e\/run-wayland\.sh/);
+  assert.match(wayland, /保留 Wayland 原生证据\n {8}if: always\(\)/);
+  assert.match(
+    job("native-preflight"),
+    /inputs\.native_preflight_target != 'wayland-global-send'/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /target == 'wayland-global-send' && needs\.wayland-global-send-preflight\.result/,
   );
 });
 
@@ -220,7 +242,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   assert.match(
     job("quality-gate"),
-    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,\s*macos-input-preflight,?\s*\]/,
+    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,\s*macos-input-preflight,\s*wayland-global-send-preflight,?\s*\]/,
   );
   assert.match(
     job("quality-gate"),

@@ -5,6 +5,7 @@ export function parseE2EOptions(args) {
     "terminal-automated": ["terminal-automated"],
     "chart-automated": ["chart-automated"],
     "browser-takeover": ["browser-takeover"],
+    "wayland-global-send": ["wayland-global-send"],
     lan: ["lan-owner", "lan-caller"],
   };
   const specialized = Object.keys(modes).filter((mode) =>
@@ -23,7 +24,7 @@ export function parseE2EOptions(args) {
     )
   )
     throw new Error(
-      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime] [--terminal-manual | --terminal-automated | --chart-automated | --browser-takeover | --lan].",
+      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime] [--terminal-manual | --terminal-automated | --chart-automated | --browser-takeover | --wayland-global-send | --lan].",
     );
   if (!args.includes("--interactive"))
     throw new Error(

@@ -27,6 +27,7 @@ if (
     "terminal-automated",
     "chart-automated",
     "browser-takeover",
+    "wayland-global-send",
     "lan-owner",
     "lan-caller",
   ].includes(phase) ||
