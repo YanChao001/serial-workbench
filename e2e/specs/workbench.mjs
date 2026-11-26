@@ -79,7 +79,7 @@ export async function restartOwnedHost() {
   assert.equal(response.ok, true, response.error);
   return response;
 }
-async function saveDrafts() {
+export async function saveDrafts() {
   const button = await clickEnabled("button[aria-label='Save drafts']");
   await button.waitForEnabled({ reverse: true });
 }

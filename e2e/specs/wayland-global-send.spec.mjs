@@ -16,6 +16,7 @@ import {
   globalShortcutKey,
   openVirtual,
   rawRxBytes,
+  saveDrafts,
   sendDraft,
 } from "./workbench.mjs";
 
@@ -255,7 +256,11 @@ async function settleConsent(receipt, payload) {
     ) {
       await openVirtual();
     }
-    await (await sendDraft()).setValue(payload);
+    const restored = await sendDraft();
+    await browser.waitUntil(async () => {
+      receipt.restoredDraft = await restored.getValue();
+      return receipt.restoredDraft === payload;
+    });
     await editGlobalSend();
     return;
   }
@@ -416,6 +421,12 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     await openVirtual();
     const draft = await sendDraft();
     await draft.setValue(payload);
+    if (scenario === "reload") {
+      // Keep the production beforeunload guard enabled and reload saved work.
+      await saveDrafts();
+      receipt.savedDraft = await draft.getValue();
+      assert.equal(receipt.savedDraft, payload);
+    }
 
     await editGlobalSend();
     assert.equal(await (await globalShortcutKey()).getText(), "Off");
