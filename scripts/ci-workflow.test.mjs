@@ -200,7 +200,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   }
 });
 
-test("Windows gates real Chromium file transfer and experiment exchange with runner-local evidence", () => {
+test("Windows gates real Chromium file transfer, experiment exchange and mapped capture with runner-local evidence", () => {
   const rust = job("rust");
   const step = rust
     .split("id: paired-workbench-files\n")[1]
@@ -213,7 +213,19 @@ test("Windows gates real Chromium file transfer and experiment exchange with run
   assert.match(step, /文件交接收据缺失/);
   assert.match(step, /实验包交换测试进程失败/);
   assert.match(step, /实验包交换收据缺失/);
-  assert.doesNotMatch(step, /\b(?:cat|tee)\b.*(?:transfer|experiment)\.log/);
+  assert.match(step, /SWB_NODE_RUNTIME_TEST_ROOT=.*cygpath -am/);
+  assert.match(
+    step,
+    /paired_browser_maps_signed_tcp_bytes_and_keeps_raw_recording_and_receipts/,
+  );
+  assert.match(step, /字符映射录制测试进程失败/);
+  assert.match(step, /字符映射录制收据缺失/);
+  assert.match(step, /mapped-capture\/host-receipt\.json/);
+  assert.match(step, /mapped-capture\/browser-receipt\.json/);
+  assert.doesNotMatch(
+    step,
+    /\b(?:cat|tee)\b.*(?:transfer|experiment|mapped-capture)\.log/,
+  );
   assert.match(
     step,
     /SWB_TEST_BROWSER_TRANSFER_OUTPUT=.*\n\s+if ! cargo test .*--test browser_pairing \\\n\s+browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation/,
@@ -223,6 +235,65 @@ test("Windows gates real Chromium file transfer and experiment exchange with run
     /SWB_TEST_EXPERIMENT_BROWSER_OUTPUT=.*\n\s+if ! cargo test .*--test capture_api_host \\\n\s+paired_browsers_exchange_experiment_between_two_hosts \\\n\s+-- --ignored/,
   );
   assert.doesNotMatch(rust, /artifacts\/paired-workbench/);
+});
+
+test("all native Rust targets run the real redacted archive readback", () => {
+  const step = job("rust")
+    .split("- name: 独立读取真实脱敏录制卷\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.doesNotMatch(step, /\bif:/);
+  assert.match(step, /SWB_TEST_CAPTURE_NODE_BIN=.*process\.execPath/);
+  assert.match(
+    step,
+    /cargo test --locked -p serial-workbench-host --test capture_api_host/,
+  );
+  assert.match(
+    step,
+    /redacted_host_archive_passes_independent_readback -- --ignored --exact --test-threads=1/,
+  );
+});
+
+test("all native Rust targets exercise CLI-owned Host and batched replay", () => {
+  const step = job("rust")
+    .split("- name: 验证离线 CLI 自有 Host 和录制分页\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.doesNotMatch(step, /\bif:/);
+  assert.match(
+    step,
+    /SWB_TEST_HEADLESS_HOST_BIN="[^"\n]*\/serial-workbench-host\$suffix"/,
+  );
+  assert.match(
+    step,
+    /SWB_TEST_CLI_BIN="[^"\n]*\/serial-workbench-cli\$suffix"/,
+  );
+  assert.match(
+    step,
+    /cargo test --locked -p serial-workbench-cli --test commands headless_offline_ -- --ignored/,
+  );
+  assert.match(
+    step,
+    /cargo test --locked -p serial-workbench-host --test capture_api_host cli_batch_replay_search_ -- --ignored/,
+  );
+});
+
+test("all native Rust targets run LAN recovery with fresh isolated profiles", () => {
+  const step = job("rust")
+    .split("- name: 验证双栈 LAN 停用与恢复\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.doesNotMatch(step, /\bif:/);
+  assert.match(step, /mkdtempSync/);
+  assert.match(
+    step,
+    /node e2e\/lan-route\.mjs "\$binaries\/serial-workbench-host\$suffix"/,
+  );
+  assert.match(
+    step,
+    /"\$binaries\/serial-workbench-cli\$suffix" "\$binaries\/serial-workbench-mcp\$suffix"/,
+  );
+  assert.match(step, /"\$evidence\/run" --loopback-roles/);
 });
 
 test("Linux verified backend checks are required and use an independent fixed runtime", () => {

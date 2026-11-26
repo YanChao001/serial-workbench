@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.modbus.slave",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Modbus Slave",
   "description": "Serve Modbus requests on the selected session with an editable address model",
   "license": "Apache-2.0",

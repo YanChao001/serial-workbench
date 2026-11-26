@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { validateActionSpec } from "../../packages/contracts/src/generated/validators.mjs";
 import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
 import { builtinAutomation } from "./json-fixtures";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
@@ -429,4 +430,123 @@ test("closing the panel during cancellation authorization preserves the explicit
   await expect(reopened.getByRole("status")).toContainText(
     "Host confirmed that the task stopped.",
   );
+});
+
+test("auto-reply preview exposes the exact request, response, and delay before arming", async ({
+  page,
+}, info) => {
+  await seedWorkbenchFixture(page, { automation: { action, state: "held" } });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  const dialog = await openRuleMenu(page);
+  const example = dialog.getByRole("button", {
+    name: en["ruleTrigger.responseExample"],
+    exact: true,
+  });
+  await example.click();
+  const editor = dialog.getByRole("textbox", {
+    name: en["ruleTrigger.definition"],
+  });
+  const original = await editor.inputValue();
+  const arm = dialog.getByRole("button", { name: "Arm rule", exact: true });
+  const preview = dialog
+    .locator("dl")
+    .filter({ hasText: en["ruleTrigger.responseDelay"] });
+  await expect(preview).toContainText("50 49 4E 47");
+  await expect(preview).toContainText("50 4F 4E 47");
+  await expect(preview).toContainText("250 ms");
+  await expect(
+    dialog.getByText(en["ruleTrigger.hexBoundary"], { exact: true }),
+  ).toBeVisible();
+  await expect(example).toBeDisabled();
+  expect(await invocations(page)).toHaveLength(0);
+
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await preview.scrollIntoViewIfNeeded();
+  await dialog.screenshot({ path: info.outputPath("auto-response-wide.png") });
+  await page.setViewportSize({ width: 420, height: 460 });
+  await editor.fill(
+    original.replace('"responseDelayMs": 250', '"responseDelayMs": -1'),
+  );
+  await expect(arm).toBeDisabled();
+  await expect(preview).toHaveCount(0);
+  await expect(editor).toHaveAccessibleDescription(en["ruleTrigger.invalid"]);
+  expect(await invocations(page)).toHaveLength(0);
+
+  await editor.fill(
+    original.replace('"responseDelayMs": 250', '"responseDelayMs": 450'),
+  );
+  await expect(preview).toContainText("450 ms");
+  await preview.scrollIntoViewIfNeeded();
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await dialog.screenshot({
+    path: info.outputPath("auto-response-narrow.png"),
+  });
+  await arm.click();
+  await expect.poll(async () => (await invocations(page)).length).toBe(1);
+  const [call] = await invocations(page);
+  expect(call?.executionMode).toBe("independent");
+  expect(JSON.parse(String(call?.params.definition))).toMatchObject({
+    startAtBoundary: true,
+    condition: { kind: "hex", hex: "50 49 4E 47" },
+    effect: { kind: "send", bytesBase64: "UE9ORw==", responseDelayMs: 450 },
+  });
+  await expect(dialog.getByRole("status")).toContainText(
+    en["ruleTrigger.armed"],
+  );
+  await page.evaluate(() => window.workbenchFixture.emitRuleOperation(true));
+  await expect(dialog.getByRole("status")).toContainText(
+    en["ruleTrigger.matched"],
+  );
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+});
+
+test("Chinese short window keeps the auto-reply preview readable without a selected port", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 460 });
+  await seedWorkbenchFixture(page, {
+    language: "zh",
+    theme: "dark",
+    automation: { action, state: "ready" },
+  });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: zhCN["workbench.tools.more"], exact: true })
+    .press("ArrowDown");
+  await page
+    .getByRole("menuitem", { name: zhCN["ruleTrigger.title"], exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: zhCN["ruleTrigger.title"],
+    exact: true,
+  });
+  await dialog
+    .getByRole("button", {
+      name: zhCN["ruleTrigger.responseExample"],
+      exact: true,
+    })
+    .click();
+  const preview = dialog
+    .locator("dl")
+    .filter({ hasText: zhCN["ruleTrigger.responseDelay"] });
+  await expect(preview).toContainText("250 毫秒");
+  await expect(preview).toContainText("50 4F 4E 47");
+  await expect(dialog.getByText(zhCN["ruleTrigger.hexBoundary"])).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: zhCN["ruleTrigger.arm"], exact: true }),
+  ).toBeDisabled();
+  await preview.scrollIntoViewIfNeeded();
+  await dialog.screenshot({
+    path: info.outputPath("auto-response-narrow-zh.png"),
+  });
+  expect(await invocations(page)).toHaveLength(0);
 });

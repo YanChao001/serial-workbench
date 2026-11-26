@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ContractValidationError } from "@serial-workbench/contracts";
+import { useLocation } from "react-router-dom";
+import { statisticsPackage } from "@/features/plugins/analysis-report";
 import type { NodePackageSourceKey } from "@serial-workbench/contracts";
 import { NativePage } from "@/components/native-page";
 import { Button } from "@/components/ui/button";
@@ -87,7 +89,16 @@ function PluginManager({ connection }: { connection: HostConnection }) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const sourcesId = useId();
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const location = useLocation();
+  const [active, setActive] = useState<{ entry: string; id: string | null }>();
+  const activeId =
+    active?.entry === location.key
+      ? active.id
+      : new URLSearchParams(location.search).get("analysis") === "xy"
+        ? statisticsPackage
+        : active?.id;
+  const setActiveId = (id: string | null) =>
+    setActive({ entry: location.key, id });
   const [sourceChoice, setSourceChoice] = useState("local");
   const [sourceFormEpoch, setSourceFormEpoch] = useState(0);
   const sourceSelectId = useId();

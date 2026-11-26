@@ -297,10 +297,10 @@ impl StreamSource {
         bytes: Arc<[u8]>,
         message: Option<MessageFragment>,
     ) -> HostResult<()> {
-        if bytes.is_empty() {
+        if bytes.is_empty() && message.is_none() {
             return Ok(());
         }
-        let count = bytes.len().div_ceil(16384);
+        let count = bytes.len().div_ceil(16384).max(1);
         let metadata = meta_cost(&meta)?
             .checked_add(message.as_ref().map_or(0, |m| {
                 256 + m.message_type.capacity() + m.message_id.as_str().len()
@@ -315,16 +315,18 @@ impl StreamSource {
         let end = state.rx.checked_add(bytes.len() as u64).ok_or_else(limit)?;
         state.next.checked_add(count as u64).ok_or_else(limit)?;
         if let Some(message) = &message
-            && message
-                .fragment_offset
-                .get()
-                .checked_add(bytes.len() as u64)
-                .is_none_or(|end| end > message.message_length.get())
+            && ((bytes.is_empty() && message.message_length.get() != 0)
+                || message
+                    .fragment_offset
+                    .get()
+                    .checked_add(bytes.len() as u64)
+                    .is_none_or(|end| end > message.message_length.get()))
         {
             return Err(invalid());
         }
         let allocation = state.allocation(&self.0, bytes, cost)?;
-        for start in (0..allocation.bytes.len()).step_by(16384) {
+        for index in 0..count {
+            let start = index * 16384;
             let stop = (start + 16384).min(allocation.bytes.len());
             let mut fragment = message.clone();
             if let Some(fragment) = &mut fragment {

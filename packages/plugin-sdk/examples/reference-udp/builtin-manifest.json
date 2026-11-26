@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.builtin.udp",
+  "version": "0.1.0",
+  "displayName": "UDP Datagram Transport",
+  "description": "Open a UDP device session using unicast, IPv4 broadcast, or multicast.",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["device.modify"],
+        "targetKinds": ["device"]
+      }
+    ],
+    "executionPurposes": ["udp-transport"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [],
+    "queries": [],
+    "transports": [
+      {
+        "actionId": "swb.builtin.udp.transport",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "family": {
+              "type": "string",
+              "enum": ["ipv4", "ipv6"]
+            },
+            "mode": {
+              "type": "string",
+              "enum": ["unicast", "broadcast", "multicast"]
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "localAddress": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "localPort": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "multicastInterface": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["host", "port"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string"
+            },
+            "sessionEpoch": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "reused": {
+              "type": "boolean"
+            },
+            "recentError": {
+              "type": "object"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision", "reused"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["device"],
+        "executionLocation": "resource_host",
+        "permissions": ["device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      }
+    ],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

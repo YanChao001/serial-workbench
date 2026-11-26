@@ -1,0 +1,16 @@
+{
+  "id": "swb.builtin.udp",
+  "version": "0.1.0",
+  "archiveSha256": "80277ea6891909c233a26938933be8a3e1d4246579219f6891fe2d31d2b48ab1",
+  "compiledModuleSha256": "f701c2057046d8f59b040164bc6931422c98ef85e01909c92722d110021b2eff",
+  "manifestSha256": "5438b27c5ec00a5791260bf8c3033aebfd0070c8d5f2cba1f8b53e12a3472d6e",
+  "sourceApproval": {
+    "keyId": "built-in-udp-0.1.0",
+    "publicKey": [
+      86, 254, 228, 251, 246, 145, 43, 161, 170, 19, 78, 63, 100, 171, 246, 18,
+      203, 62, 226, 60, 121, 62, 87, 190, 26, 148, 159, 19, 130, 26, 89, 145
+    ],
+    "publicKeySha256": "26f688356793f67e50e2059d5b81b199d629547a9dbc82635abf827164a3f8e7",
+    "source": "swb.product"
+  }
+}

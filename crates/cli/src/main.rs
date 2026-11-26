@@ -1,8 +1,11 @@
 mod args;
+mod batch;
 mod output;
 
 use args::{Command, InvokeOptions};
-use serial_workbench_client::{ConnectOptions, HostClient, read_user_control_credential};
+use serial_workbench_client::{
+    ConnectOptions, HostClient, RawConnection, read_user_control_credential,
+};
 use serial_workbench_core::*;
 use serial_workbench_ipc::{DiscoveryRecord, startup_config};
 use std::{path::Path, process::ExitCode, time::Duration};
@@ -14,7 +17,12 @@ async fn main() -> ExitCode {
             println!("{}", args::HELP);
             return ExitCode::SUCCESS;
         }
-        Ok(Some(arguments)) => run(arguments).await,
+        Ok(Some(arguments)) => {
+            if let Command::Batch(options) = arguments.command {
+                return batch::run(arguments.profile, arguments.lan_route, *options).await;
+            }
+            run(arguments).await
+        }
         Err(error) => Err(error),
     };
     match result {
@@ -39,14 +47,7 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
     startup_config::init_stderr_logging(startup.log_filter())?;
     startup_config::log_startup_configuration(&startup.snapshot());
     let profile = startup.profile();
-    let mut options = ConnectOptions::new(
-        profile.to_path_buf(),
-        id("serial-workbench-cli"),
-        ClientKind::Cli,
-    );
-    options.expected_host_executable =
-        std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
-    options.lan_route = arguments.lan_route;
+    let mut options = host_options(profile, arguments.lan_route);
     if let Command::HostStop { request_id } = &arguments.command {
         return stop_existing_host(options, request_id.clone()).await;
     }
@@ -169,12 +170,41 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
                 .await?
         }
         Command::HostStop { .. } => unreachable!("Host stop precedes client bootstrap"),
+        Command::Batch(_) => unreachable!("Batch owns its invocation and output"),
     };
     encode_reply(reply)
 }
+fn host_options(profile: &Path, lan_route: Option<LanRoute>) -> ConnectOptions {
+    let mut options = ConnectOptions::new(
+        profile.to_path_buf(),
+        id("serial-workbench-cli"),
+        ClientKind::Cli,
+    );
+    options.expected_host_executable =
+        std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
+    options.lan_route = lan_route;
+    options
+}
+
 async fn send(client: &HostClient, request: RpcRequest) -> HostResult<RpcReply> {
+    send_with_raw(client, &mut None, request).await
+}
+
+async fn send_with_raw(
+    client: &HostClient,
+    raw: &mut Option<RawConnection>,
+    request: RpcRequest,
+) -> HostResult<RpcReply> {
     match request.required_channel()? {
-        RequestChannel::Raw => client.connect_raw().await?.request(request).await,
+        RequestChannel::Raw => {
+            if raw.is_none() {
+                *raw = Some(client.connect_raw().await?);
+            }
+            raw.as_ref()
+                .expect("attached Raw connection")
+                .request(request)
+                .await
+        }
         RequestChannel::Control | RequestChannel::Either => client.request(request).await,
     }
 }

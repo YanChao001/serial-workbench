@@ -22,6 +22,7 @@ import type {
   TerminalSettings,
   TerminalMode,
   TextEncoding,
+  TxSourceText,
 } from "@serial-workbench/contracts";
 import { TX_MAX_BYTES } from "@serial-workbench/contracts";
 import {
@@ -81,10 +82,18 @@ import { TextEncodingSelect } from "./text-encoding-select";
 import {
   createTextSendPreview,
   encodeTextSend,
+  encodeText,
   TextEncodingError,
   type TextSendPreview,
 } from "@/lib/text-encoding";
 import { useTextEncoding } from "@/hooks/use-text-encoding";
+import { bytesToBase64 } from "@/lib/base64";
+import type { SendSourceMetadata } from "@/providers/host-context";
+import {
+  characterRemapTransform,
+  remapCharacters,
+  type CharacterRemapRules,
+} from "./character-remap";
 const NO_LINE_ENDING: LineEnding = { kind: "none" };
 function sameReceiptIdentity(value: Operation, admitted: Operation): boolean {
   return (
@@ -126,7 +135,13 @@ export type SendPanelProps = {
   checksumDraftKey?: string;
   onDraftChange: (value: string) => void;
   labels: WorkbenchLabels;
-  onSend: (bytes: Uint8Array, signal?: AbortSignal) => Promise<Operation>;
+  onSend: (
+    bytes: Uint8Array,
+    signal?: AbortSignal,
+    source?: SendSourceMetadata,
+  ) => Promise<Operation>;
+  sendRemap?: CharacterRemapRules;
+  onClearSendRemap?: () => void;
   /** 最终发送字节的不可变快照，非法输入和卸载时为 null。 */
   onPreviewChange?: (preview: TextSendPreview | null) => void;
   permissionAllowed?: boolean;
@@ -139,6 +154,18 @@ export type SendPanelProps = {
   deviceName?: string;
   disconnectedReason?: string;
 };
+function SendMappingNotice({ clear }: { clear: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="workbench-compose-mapping">
+      <span role="status">{t("characterRemap.sendApplied")}</span>
+      <Button type="button" variant="ghost" size="sm" onClick={clear}>
+        {t("characterRemap.sendClear")}
+      </Button>
+    </div>
+  );
+}
+
 function CommandEndingNotice({
   ending,
   inherited,
@@ -191,6 +218,8 @@ export function SendPanel({
   onDraftChange,
   labels,
   onSend,
+  sendRemap,
+  onClearSendRemap,
   onPreviewChange,
   permissionAllowed,
   onSendFile,
@@ -275,22 +304,35 @@ export function SendPanel({
       (operation) =>
         admittedReceipt && sameReceiptIdentity(operation, admittedReceipt),
     ) ?? admittedReceipt;
+  const txReceipt =
+    receipt?.result?.kind === "tx" ? receipt.result.value : undefined;
+  const receiptStatus =
+    receipt &&
+    workbenchStatus(
+      receipt.state === "succeeded" &&
+        txReceipt &&
+        txReceipt.outcome !== "accepted"
+        ? txReceipt.outcome
+        : receipt.state,
+      labels,
+    );
   const error = currentSend?.error;
   const errorCode =
     error !== undefined
       ? currentSend?.errorCode
-      : (receipt?.error?.code ??
-        (receipt?.result?.kind === "tx"
-          ? receipt.result.value.backendError?.code
-          : undefined));
+      : (receipt?.error?.code ?? txReceipt?.backendError?.code);
   const outcome =
-    receipt?.result?.kind === "tx"
-      ? receipt.result.value.outcome
-      : receipt?.state === "failed"
-        ? "rejected"
-        : receipt?.state === "unknown"
-          ? "unknown"
-          : undefined;
+    txReceipt?.outcome ??
+    (receipt?.state === "failed"
+      ? "rejected"
+      : receipt?.state === "unknown"
+        ? "unknown"
+        : undefined);
+  const partialOrUnknown = outcome === "partial" || outcome === "unknown";
+  const receiptReason =
+    error === undefined && errorCode
+      ? formatError?.({ code: errorCode })
+      : undefined;
   const receiptFault =
     !busy &&
     receipt &&
@@ -298,10 +340,9 @@ export function SendPanel({
     receipt.state !== "running" &&
     receipt.state !== "cancel_requested" &&
     outcome &&
-    (outcome === "partial" || outcome === "unknown" || outcome === "rejected")
-      ? errorCode && formatError
-        ? formatError({ code: errorCode })
-        : `${labels.send}: ${workbenchStatus(outcome, labels)}`
+    (partialOrUnknown || outcome === "rejected")
+      ? ((txReceipt && partialOrUnknown ? undefined : receiptReason) ??
+        `${labels.send}: ${workbenchStatus(outcome, labels)}`)
       : undefined;
   const noticeMessage = error ?? receiptFault;
   const noticeEventKey = error
@@ -332,6 +373,7 @@ export function SendPanel({
     invalid: boolean;
     reason?: "unrepresentable" | "loading" | "hex" | "limit" | "checksum";
     checksumHex?: string;
+    source?: TxSourceText;
     hexIssue?: { field: "draft" | "ending"; start: number; end: number };
   }>(() => {
     let field: "draft" | "ending" = "ending";
@@ -350,7 +392,24 @@ export function SendPanel({
             }
           : { kind: endingKind };
       field = "draft";
-      let prepared = createTextSendPreview(draft, mode, suffix, encoding);
+      let text = draft;
+      let source: TxSourceText | undefined;
+      if (mode === "text" && sendRemap) {
+        if (draft.length > TX_MAX_BYTES)
+          return { invalid: true, reason: "limit" };
+        const original = encodeText(draft, "utf-8");
+        if (original.length > TX_MAX_BYTES)
+          return { invalid: true, reason: "limit" };
+        const mapped = remapCharacters(draft, sendRemap, TX_MAX_BYTES);
+        if (!mapped.ok) return { invalid: true, reason: "limit" };
+        text = mapped.text;
+        source = {
+          utf8Base64: bytesToBase64(original),
+          encoding,
+          mapping: { ...sendRemap, replacements: [...sendRemap.replacements] },
+        };
+      }
+      let prepared = createTextSendPreview(text, mode, suffix, encoding);
       let checksumHex: string | undefined;
       if (checksum.algorithm !== "none") {
         const bytes = prepared.readBytes();
@@ -369,6 +428,7 @@ export function SendPanel({
       return {
         prepared,
         checksumHex,
+        source,
         invalid: prepared.byteLength > TX_MAX_BYTES,
         reason: prepared.byteLength > TX_MAX_BYTES ? "limit" : undefined,
       };
@@ -390,6 +450,7 @@ export function SendPanel({
     encoding,
     encodingStatus,
     checksum,
+    sendRemap,
   ]);
   const hexIssue = preview.hexIssue;
   const hexPosition = hexIssue
@@ -478,7 +539,16 @@ export function SendPanel({
     const isCurrent = () =>
       !controller.signal.aborted && pending.current === controller;
     try {
-      const result = await onSend(prepared.readBytes(), controller.signal);
+      const sourceText = preview.source;
+      const bytes = prepared.readBytes();
+      const transforms = sourceText
+        ? [await characterRemapTransform(sourceText.mapping)]
+        : undefined;
+      if (!isCurrent()) return;
+      const result =
+        sourceText && transforms
+          ? await onSend(bytes, controller.signal, { sourceText, transforms })
+          : await onSend(bytes, controller.signal);
       if (isCurrent())
         setSendState({ scope: sessionScope, busy: false, receipt: result });
     } catch (reason) {
@@ -719,13 +789,13 @@ export function SendPanel({
               align="end"
             >
               <div role="status" aria-label={labels.receipt}>
-                <p>{workbenchStatus(receipt.state, labels)}</p>
+                <p>{receiptStatus}</p>
+                {receipt.state === "cancelled" && txReceipt && (
+                  <p>{workbenchStatus(txReceipt.outcome, labels)}</p>
+                )}
                 <p className="font-mono">{receiptId}</p>
-                {receipt.result?.kind === "tx" && (
-                  <TxReceiptFacts
-                    receipt={receipt.result.value}
-                    labels={labels}
-                  />
+                {txReceipt && (
+                  <TxReceiptFacts receipt={txReceipt} labels={labels} />
                 )}
               </div>
             </PopoverContent>
@@ -796,6 +866,8 @@ export function SendPanel({
       receiptOpen,
       receipt,
       receiptId,
+      receiptStatus,
+      txReceipt,
       labels,
       onOpenTransfer,
       transferLabel,
@@ -820,6 +892,14 @@ export function SendPanel({
       data-panel-id="send"
     >
       {toolbar}
+      {mode === "text" && sendRemap && onClearSendRemap && (
+        <SendMappingNotice
+          clear={() => {
+            draftInput.current?.focus({ preventScroll: true });
+            onClearSendRemap();
+          }}
+        />
+      )}
       {commandEnding && onClearCommandEnding && (
         <CommandEndingNotice
           ending={commandEnding}
@@ -829,9 +909,7 @@ export function SendPanel({
         />
       )}
       <span role="status" className="sr-only">
-        {receipt
-          ? `${labels.receipt}: ${workbenchStatus(receipt.state, labels)}`
-          : ""}
+        {receiptStatus ? `${labels.receipt}: ${receiptStatus}` : ""}
       </span>
       {draftCaption && (
         <span id={`${id}-draft-owner`} className="sr-only">
@@ -970,6 +1048,7 @@ export function SendPanel({
       </WorkbenchNotice>
       <WorkbenchNotice
         eventKey={noticeEventKey}
+        inline={receiptOpen && txReceipt !== undefined && error === undefined}
         noticeKey={
           error
             ? `send:${sessionScope}:${errorCode}:${error}`
@@ -980,11 +1059,8 @@ export function SendPanel({
             ? {
                 module: "serial",
                 level:
-                  error === undefined &&
-                  (outcome === "partial" || outcome === "unknown")
-                    ? "warning"
-                    : "error",
-                message: noticeMessage,
+                  error === undefined && partialOrUnknown ? "warning" : "error",
+                message: receiptReason ?? noticeMessage,
                 code: errorCode,
                 context: deviceName,
               }

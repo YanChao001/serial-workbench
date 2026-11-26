@@ -1237,6 +1237,10 @@ describe("Host raw reader owner", () => {
       await waitFor(() => expect(h.deliveries).toHaveLength(1));
       h.batch(0, "0", "1");
       await waitFor(() => expect(h.native.rawRequest).toHaveBeenCalledTimes(3));
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)
+          ?.sourceSubscriptionId,
+      ).toBe(h.deliveries[0]?.id);
       const original = vi.mocked(h.native.rawRequest).getMockImplementation()!;
       vi.mocked(h.native.rawRequest).mockResolvedValue(
         parseReply({
@@ -1262,6 +1266,10 @@ describe("Host raw reader owner", () => {
           },
         },
       });
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)
+          ?.sourceSubscriptionId,
+      ).toBeUndefined();
       await waitFor(() =>
         expect(
           h.workspace.getSnapshot().state.streams.get(h.session.sessionId)

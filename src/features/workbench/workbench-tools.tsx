@@ -11,10 +11,12 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import {
+  ContractValidationError,
   defaults,
   type SerialConfiguration,
 } from "@serial-workbench/contracts";
 import type {
+  CaptureRedactionPreviewParams,
   Operation,
   RecentList,
   WorkspaceDocument,
@@ -76,6 +78,8 @@ import { modbusSlaveAction } from "./modbus-slave-model";
 import { TestSuiteTool } from "./test-suite-tool";
 import { RuleTriggerTool } from "./rule-trigger-tool";
 import { ruleActionIds } from "./rule-trigger-model";
+import { loopbackAction, LoopbackTool } from "./loopback-tool";
+import { CharacterRemapTool } from "./character-remap-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
@@ -264,6 +268,25 @@ export function WorkbenchTools({
   }): Target => ({ hostId: ref.hostId, kind: ref.kind, id: ref.id });
   const watchHostActions = host.watchActions;
   const catalog = host.state.catalog;
+  const connection = host.connection;
+  const previewRedaction = useCallback(
+    async (params: CaptureRedactionPreviewParams, signal: AbortSignal) => {
+      if (!connection) throw new Error("HOST_UNAVAILABLE");
+      const result = await connection.client.query(
+        connection.buildQuery(
+          "capture.redactionPreview",
+          connection.hostTarget,
+          params,
+        ),
+        signal,
+      );
+      signal.throwIfAborted();
+      if (result.kind !== "capture_redaction_preview")
+        throw new ContractValidationError();
+      return result.value;
+    },
+    [connection],
+  );
   const watchActions = useCallback<HostContextValue["watchActions"]>(
     (inputs, listener) =>
       watchHostActions(inputs, (values) =>
@@ -311,6 +334,9 @@ export function WorkbenchTools({
       waitForOperation: host.waitForOperation,
       readFile: host.readFile,
     };
+  }
+  if (tool === "characterRemap" && context.characterRemap) {
+    return <CharacterRemapTool {...context.characterRemap} />;
   }
   if (tool === "broadcastSend" && context.broadcastMemory) {
     return (
@@ -667,6 +693,7 @@ export function WorkbenchTools({
     tool === "calendarSchedule" ||
     tool === "commandSequence" ||
     tool === "testSuite" ||
+    tool === "loopback" ||
     tool === "ruleTrigger"
   ) {
     const target = context.target;
@@ -700,6 +727,57 @@ export function WorkbenchTools({
       catalog.some(
         (spec) => spec.actionId === id && spec.targetKinds.includes("session"),
       );
+    if (tool === "loopback") {
+      const connection = host.connection;
+      const device = host.state.devices.find(
+        (item) => item.deviceId === session?.deviceId,
+      );
+      const transport = device?.fingerprint.transport;
+      const source =
+        transport === "virtual" && device?.deviceId === "virtual:echo"
+          ? "virtual_echo"
+          : transport === "serial"
+            ? "serial_loopback"
+            : undefined;
+      return (
+        <LoopbackTool
+          key={key}
+          operations={host.state.operations}
+          access={
+            access &&
+            connection &&
+            session &&
+            source &&
+            registered(loopbackAction)
+              ? {
+                  ...access,
+                  source,
+                  async prepare(params, signal) {
+                    const startEventSeq = await readSequenceCursor(
+                      connection,
+                      access.target,
+                      signal,
+                    );
+                    const input: HostInvocation = {
+                      actionId: loopbackAction,
+                      target: access.target,
+                      executionMode: "independent",
+                      params: {
+                        ...params,
+                        source,
+                        startEventSeq,
+                        sessionRevision: session.revision,
+                        configurationRevision: session.configurationRevision,
+                      },
+                    };
+                    return input;
+                  },
+                }
+              : undefined
+          }
+        />
+      );
+    }
     if (tool === "calendarSchedule") {
       const connection = host.connection;
       const actionId = calendarActionIds.find(registered);
@@ -983,6 +1061,13 @@ export function WorkbenchTools({
             : host.pickFile(role, signal)
         }
         readMetadata={host.fileMetadata}
+        onRedactionPreview={
+          catalog.some(
+            ({ actionId }) => actionId === "capture.redactionPreview",
+          )
+            ? previewRedaction
+            : undefined
+        }
         onStart={(params, signal) =>
           context
             .trackCapture(

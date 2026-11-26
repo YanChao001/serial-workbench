@@ -10,6 +10,7 @@ import { AppShell } from "@/layouts/app-shell";
 import { I18nProvider } from "@/providers/i18n";
 import { SettingsProvider } from "@/providers/settings";
 import { HostProvider } from "@/providers/host";
+import { XyCaptureProvider } from "@/providers/xy-capture-context";
 import { ClientDraftsProvider } from "@/providers/client-drafts";
 import { CommandsProvider } from "@/providers/commands";
 import { CommandPalette } from "@/components/command-palette";
@@ -85,9 +86,11 @@ export default function App() {
                           <Routes>
                             <Route
                               element={
-                                <RecoveryGate>
-                                  <AppShell />
-                                </RecoveryGate>
+                                <XyCaptureProvider>
+                                  <RecoveryGate>
+                                    <AppShell />
+                                  </RecoveryGate>
+                                </XyCaptureProvider>
                               }
                             >
                               {APP_ROUTES.map(

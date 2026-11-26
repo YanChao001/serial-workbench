@@ -71,7 +71,13 @@ Windows 托管原生作业复用同一 E2E 构建，准备 Chromium headless she
 
 LAN 进程验收使用同源且相邻的 Host、CLI 和 MCP 程序，运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录>`。脚本启动两份独立 Host，在 B 打开 Virtual Echo 并共享。A 的实际 CLI 验证授权前拒绝、跨进程读写 B 的会话与原操作回执，实际 MCP 验证 B 对命名客户端的独立归属。撤销 A 的 CLI 路由权后 MCP 仍可读取，A 解除配对后确认原 MCP 路由失效，B 本地会话仍可读。收据和命令日志用于软件验收。跨机网卡、USB 设备和控制租约恢复各按相应场景验收。
 
-同机双栈角色模拟运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录> --loopback-roles`。runner 直接启动并持有同一对 Host，给两份独立 profile 各开一个 Virtual Echo。双方在 IPv4 和 IPv6 回环地址轮流作发起端与会话所属端，逐次核对配对身份、Host 和会话代次、CLI 写入终态以及本地与远端读回的 Raw 来源、游标和字节。每轮确认监听端口释放，最后核对两个自有进程正常退出。原始事件、程序摘要及进程日志随收据保存。此项记录同机软件模拟范围，两台 Windows 物理机的双栈角色互换及 USB 串口继续按 M6 实机验收。
+同机双栈角色模拟运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录> --loopback-roles`。runner 直接启动并持有同一对 Host，给两份独立 profile 各开一个 Virtual Echo。双方在 IPv4 和 IPv6 回环地址轮流作发起端与会话所属端，逐次核对配对身份、Host 和会话代次、CLI 写入终态以及本地与远端读回的 Raw 来源、游标和字节。每轮停用监听并确认端口释放、客户端收到连接不可用，再从原监听地址重新连接。核对同一配对 actor、Host 实例、会话代次、旧 TX 回执及原 Raw 游标，恢复后仅比较显式发起的新写入，并确认两个自有进程正常退出。四目标原生 Rust 作业复用该脚本。原始事件、程序摘要及进程日志保留在本机证据目录或运行器临时目录。
+
+### IPv6 链路本地地址（NET-09）
+
+在本机监听和远端路由输入中，IPv6 端点使用方括号和端口。链路本地地址须包含这台机器使用的数字接口索引，例如 `[fe80::1%12]:8022`。在接收端填写监听网卡的索引，在发起端填写通往对端的本地网卡索引，两台机器的索引可以不同。先核对缺失或为零的索引被拒绝，再使用各机实测索引检查端点和配对指纹。普通 IPv6 回环、ULA 和 IPv4 继续沿用现有格式。 [IPv6 区域索引](https://datatracker.ietf.org/doc/html/rfc4007#section-11) · [Rust 套接字地址](https://doc.rust-lang.org/std/net/struct.SocketAddrV6.html)
+
+在两台独立机器上互换角色，检查纯 IPv6 环境中的实际串口和链路本地地址。断开链路后核对未确认写入及旧会话的实际状态。链路恢复后显式打开同一配对路由，校验当前 Host 与会话代次，再从已知游标恢复观察。通过 TCP 和 RFC 2217 连接的 IPv6 收发分别保留对端和 Raw 证据。同机回环、作用域解析和独立 IPv6 套接字用例提供软件证据。两台 Windows 实机、USB 串口及安装验证继续按 M6 执行。
 
 活动跟随核对两个 Host 所见的活动编号和操作者一致。A 只能订阅获准会话的活动，B 收回共享后终止订阅。工作台按所选客户端定位共享会话和配置面板。
 
@@ -124,6 +130,20 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 桌面 Rust 用例先运行 `pnpm build` 准备 dist。真实窗口使用[同源原生构建](#原生桌面)。
 
+### 字符重映射（LINE-10）
+
+在工作区菜单打开「字符重映射」。先接收含 CR、LF、CRLF 和 BS 的文本，再在发送区准备不同的文本草稿。分别改变接收和发送规则，切换方向时核对配置与输入保持各自归属。对照映射前后的转义文本，核对自定义替换、大小写、退格和错误定位。使用无设备的内置示例核对相同逻辑。二进制报文留在 Raw 和 HEX，预览选择最近可用的连续文本样本，报文边界和缺口两侧不拼接。
+
+运行 `pnpm test src/features/workbench/character-remap.test.ts` 和 `pnpm test:ui e2e/browser/character-remap.spec.ts --workers=1`。无头测试分别检查宽窗英文与窄窗中文。按键移除规则后核对焦点，关闭时核对确认和返回菜单。预览前后比较原始 RX、发送草稿和 Host 写入计数。开启已订阅的静默会话，在第一批字节到来前应用 RX 规则。验证分块 CRLF 和退格、冻结期间收到新字节、恢复显示、返回同一原始 HEX 范围，以及 128 KiB 报文的尾部定位直接打开第 2 页。持住 Raw 重授权回执时核对映射内容立即移除。释放回执后撤销的旧规则仍停用。
+
+在可写会话的文本发送区应用 TX 规则。确认应用时写入数仍为零。核对发送区原稿、最终字节数和点击发送后的请求，核对 HEX 模式暂时绕过规则、返回文本恢复、清除时焦点回到原稿。独立 Host 软件验收运行 `cargo test --locked -j 1 -p serial-workbench-host --test operation_visibility_host`，对照操作回执和受授权的 `operation.input`，复验原稿与最终字节不同、规则摘要校验及撤权。
+
+本机软件整链路先运行 `pnpm build:web`，使用已验证的固定 Node 资源根 `SWB_NODE_RUNTIME_TEST_ROOT`、无头 Chromium 和独立输出目录 `SWB_TEST_MAPPED_CAPTURE_OUTPUT`。运行 `cargo test --locked -j 1 -p serial-workbench-host --test capture_api_host paired_browser_maps_signed_tcp_bytes_and_keeps_raw_recording_and_receipts -- --ignored --test-threads=1`。配对浏览器在首方签名 TCP 窗口连接独立回环对端。核对界面映射、原始 HEX、对端字节、独立 Raw 查询、授权的原稿规则、录制封存和正式回放。CI 的日志、截图和两份验证收据留在运行器临时目录。
+
+异常写入用同一已验证固定 Node 运行时。先运行 `pnpm plugin-sdk:fixture`，再运行 `cargo test --locked -j 1 -p serial-workbench-host --test client_parity native_node_dynamic_transport_preserves_mapped_tx_on_partial_and_unknown_writes -- --ignored --test-threads=1`。签名 TCP 夹具为映射的 CRLF 只递送第一个字节，为下一条消息递送完整字节后丢弃写入确认。逐项核对实际对端字节、Host 结算、原稿、Raw 意图、封存录制和同请求号重读。发送详情回归覆盖非零 TX 偏移、超出 JavaScript 安全整数的偏移，以及部分接纳、结果未知和后端未接纳字节各自的文案。
+
+再通过应用规则的入口启动独立串口对端完成实机验收。比较 RX 映射显示和同段原始录制，核对缺口、分片、撤权及视图切换。比较发送前预览、独立对端实际收到的字节、Raw TX、写入回执和受授权的原稿及变换记录。分别复验空结果、不可编码、超限、取消、部分写入和场景切换，协议字节与 HEX 发送继续按其原有入口发送。
+
 ### 不可信终端序列（SEC-08）
 
 实时与历史记录都沿用工作台的 ANSI 和 HEX 入口。夹具使用合成字节，在正常窗口和窄窗口核对显示、滚动范围、可见焦点与原始内容。实时 OSC 8 只在用户主动激活后通过宿主 HTTP(S) 策略。相同记录出现在录制标签和回放时保留文字与颜色，终端链接列表和链接激活动作都关闭。查看录制的 HEX 或原始字节时，控制指令仍可按数据读取。
@@ -135,6 +155,22 @@ pnpm test:ui e2e/browser/ansi-interactions.spec.ts e2e/browser/ansi-screen.spec.
 ```
 
 本机无头 Chromium 的 24 项用例通过，包含 420×640 的录制尾部和 1240×760 的录制回放。覆盖生产界面和宿主动作的测试接线。四目标候选、实际 WebView 外链和剪贴板及正式安装另按适用环境复验。 [桌面边界](./testing.md#桌面边界)
+
+### 无头批次与退出契约（AUTO-11／AUTO-17）
+
+使用真实 CLI 和独立 Host 检查附着、离线与多步骤执行。附着用已有 Host，对照设备列表、Virtual Echo 打开及最终发送回执。重放相同请求上下文及请求 ID，核对同一操作。检查拒绝授权、Host 目标不匹配和目录空闲时的纯附着行为。批次期限用长任务区分接纳与终态，并按原上下文恢复查询。Unix 用例向批次自己的 CLI 子进程发送终止信号，核对取消回执和后续真实终态。
+
+离线第一次运行针对已被 Host 占用的 profile，确认拒绝且原 Host 继续运行。关闭原测试 Host 后，使用已核准的 profile 运行同套 Host 可执行文件。检查真实终态、实际独立进程退出及 profile 仍可访问。
+
+```sh
+cargo build --locked -p serial-workbench-cli -p serial-workbench-host --bins
+cargo test --locked -p serial-workbench-cli --test commands headless_ -- --test-threads=1
+cargo test --locked -p serial-workbench-cli --test commands headless_offline_ -- --ignored --test-threads=1
+```
+
+离线用例的 `SWB_TEST_HEADLESS_HOST_BIN` 指向同次构建的独立 Host 可执行文件。现场串口、四目标门禁和正式离线包按各自环境验收。
+
+组合验收使用真实 CLI 在同一批次开始录制搜索、执行控制查询并继续第二页。核对 64 和 6 个命中及原始字节边界，再用第二个批次请求原游标，确认该游标仍归属第一条 Raw 通道。将 `SWB_TEST_CLI_BIN` 指向同源 CLI，运行 `cargo test --locked -p serial-workbench-host --test capture_api_host cli_batch_replay_search_ -- --ignored --test-threads=1`。
 
 ### 终端参考包验收
 
@@ -255,6 +291,14 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 用 `node --test scripts/command-sequence.test.mjs` 核对循环顺序、匹配与超时分支、无写入拒绝、未确认写入和取消。签名后台用例 `native_automation_uses_exact_responses_and_keeps_capture_running` 还直接调用当前序列动作，核对两次匹配应答的源区间、实际 TX 终态，以及超时补救后停止后续步骤。独立对端分别提供匹配、超时、错误及分段应答，将发送日志与每次 TX 回执和源字节范围对照。在工作区菜单打开「命令序列」，载入示例或打开已有 UTF-8 JSON。检查目标会话、展开的发送字节、延时和匹配或超时分支，另存时核对版本与内容。点击运行后核对当前 Raw 游标、独立任务和回执中的接收区间。关闭并重开面板后，可以从原任务继续观察或停止。`pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/repeat-send.spec.ts --workers 1` 覆盖文件、预览、显式启动、最新游标、拒权和实际取消。取消选文件或导入错误保留编辑中的定义。桌面保存等待真实写盘回执，浏览器按钮只发起下载。任务状态查询失败后可重查或请求停止，错误 Raw 作用域在提交前被拒绝。
 
 首方 `swb.builtin.automation` 0.1.1 在同一包登记 `swb.builtin.automation.sequence` 和原有定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对 0.1.1 归档和组件描述。Windows 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式安装继续专项验收。
+
+### 自动应答（PROTO-14）
+
+在「规则触发」载入自动应答示例。当前会话确实位于帧边界时，保留 `startAtBoundary: true`。规则使用 `{ "kind": "hex", "hex": "50 49 4E 47" }` 匹配完整请求，并通过 `effect` 的 `bytesBase64` 指定应答。`responseDelayMs` 接受 0–10,000 的整数毫秒，省略时为 0。预览核对请求 `50 49 4E 47`、应答 `50 4F 4E 47` 和 250 毫秒延时。正则或字段条件也可使用相同的延时发送效果。
+
+武装后先发一个等长的不匹配帧，再把匹配请求分成两段注入。核对单次武装仅回复一次，保存匹配原始字节范围和应答写入回执。等待延时期间的手工发送可以完成，实际应答以同一事务租约完整发送。另在等待中取消、造成原始缺口或改变线路配置，核对零应答且无残留租约。新一次武装使用新游标。
+
+用产品固定 Node 运行 `node --test scripts/rule-condition.test.mjs scripts/rule-trigger.test.mjs scripts/product-automation.test.mjs`，核对对齐、限值、取消和重新验权。运行 `pnpm test:ui e2e/browser/rule-trigger.spec.ts --workers=1` 检查宽窄界面、定义错误和提交参数。隔离 Host 的签名包首启与重启测试使用独立虚拟对端，核对真实 RX/TX 及并发手工发送的顺序。物理串口和正式发行另行验收。 [宽窄草稿](./ui-design.md#自动应答草稿proto-14)
 
 ### 规则触发（AUTO-07）
 
@@ -431,11 +475,11 @@ recorded_send_2                   recorded_send_2
 
 ### 专业跨源 XY 与李萨如（VIZ-06）
 
-通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间严格递增的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。
+通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间非递减的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。
 
-共享时钟使用同一 `clockId` 并省略 `anchors`。两个时钟分别读到同一同步事件时，传入 `{ "xMonoNs": "18000000000000000000", "yMonoNs": "100" }` 作为一对锚点。第二次同步事件定义漂移斜率。以上述锚点及 `{ "xMonoNs": "18000000000000000003", "yMonoNs": "102" }` 为例，Y 的一个纳秒对应 X 的 1.5 纳秒。Y 的 `100`、`101` 分别取值 `0`、`6` 时，X 时间 `18000000000000000001` 的插值为 `4`，权重为 `2/3`。报告保留两端时间和数组索引。连续图形按 `breakBefore` 断线。缺值、无精确匹配、区段断开或超过 Y 两端时核对报告原因。
+共享时钟使用同一 `clockId` 并省略 `anchors`。两个时钟分别读到同一同步事件时，传入 `{ "xMonoNs": "18000000000000000000", "yMonoNs": "100" }` 作为一对锚点。第二次同步事件定义漂移斜率。以上述锚点及 `{ "xMonoNs": "18000000000000000003", "yMonoNs": "102" }` 为例，Y 的一个纳秒对应 X 的 1.5 纳秒。Y 的 `100`、`101` 分别取值 `0`、`6` 时，X 时间 `18000000000000000001` 的插值为 `4`，权重为 `2/3`。报告保留两端时间和数组索引。连续图形按 `breakBefore` 断线。缺值、无精确匹配、区段断开、多个同刻 Y 候选或超过 Y 两端时核对报告原因。
 
-运行 `node --test scripts/reference-statistics.test.mjs`，核对高位时间、比例、间隙、范围外和取消。使用相位差四分之一周期的正弦、余弦样本，比对两路时钟校准后的李萨如单位圆。四目标 CI 的 `native_node_dynamic_statistics_reads_windows_from_signed_package` 在相同签名安装上用真实 Host 验证插值报告。在工作台「插件」页展开已经启用且获得执行信任的统计窗口与 XY 包，打开「跨源 XY」。载入李萨如示例并对齐通道，核对 33 个配对点、两个时钟、同步锚点、比率和散点切换。用样本序号选择第二点，核对两条原始 Y 记录和权重。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional XY" --workers=1`，覆盖完整插件入口、结果摘要、键盘定位和非法 JSON 的焦点。独立设备和发行继续专项验收。
+运行 `node --test scripts/reference-statistics.test.mjs`，核对高位时间、比例、间隙、范围外和取消。使用相位差四分之一周期的正弦、余弦样本，比对两路时钟校准后的李萨如单位圆。四目标 CI 的 `native_node_dynamic_statistics_reads_windows_from_signed_package` 在相同签名安装上用真实 Host 验证插值报告。在工作台「插件」页展开已经启用且获得执行信任的统计窗口与 XY 包，打开「跨源 XY」。载入李萨如示例并对齐通道，核对 33 个配对点、两个时钟、同步锚点、比率和散点切换。用样本序号选择第二点，核对两条原始 Y 记录和权重。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional XY" --workers=1`，覆盖完整插件入口、结果摘要、键盘定位和非法 JSON 的焦点。在实时分帧或只读回放的「字段曲线」绘制当前范围，选择字段后分别「暂存为 X 轴」和「暂存为 Y 轴」。打开跨源 XY，载入暂存通道，核对原始十进制值、帧末接收时间和缺口。相同采集时钟可直接对齐，独立时钟先录入锚点。在结果中选点，核对暂存帧号、事件、字节范围和回放录制序号。撤回回放权限后，核对已载入的 JSON 与来源定位清除，重新授权时旧暂存不会恢复。实时与回放入口分别在 `framing-tool.spec.ts` 和 `replay-layout.spec.ts` 复验。独立设备和发行继续专项验收。
 
 ## 签名主题
 
@@ -514,6 +558,48 @@ cargo test --locked -p serial-workbench-host --test capture_api_host raw_replay_
 
 2026-11-25 Windows 调试构建的基线为 1,005,067,271 字节、11,428 条记录。缺少原索引时，真实 IPC 文件登记、回放打开和搜索分别耗时 1.3 秒、27.4 秒和 89.2 秒。取消首轮搜索后，旧页请求返回 `NOT_FOUND`。重搜逐页前进，在第 244 页命中末记录。按命中字节范围单步读出原文，核对 reader 代次、暂停状态与原始内容。耗时是单次本机观测。
 
+### 日志脱敏（LOG-07／SEC-02）
+
+规则预览用真实 Host、客户端和独立 profile 复验。
+
+```sh
+cargo test --locked -p serial-workbench-host --test capture_api_host redaction_preview_ -- --test-threads=1
+```
+
+Windows 本机通过。用合成密钥和号码检查 Unicode、CRLF、字面替换及替换计数。错误表达式定位到规则，诊断正文与结构化错误均省略输入。超预算返回稳定错误。SQLite 主库与 WAL 中均没有样例密钥。预览认证沿用 Host 的请求连接。
+
+写盘专项用真实 Virtual Echo 分三次发送，切开 UTF-8 字符和同一敏感字段。Windows 本机走通开始、停止、固定引用、尾部、回放、CSV 导出和恢复。比对两个方向的原始字节与事件位置，读取所得均为变换后的文字。逐个检查卷、索引与清单，确认样例秘密及原始分块的 Base64 未写入。检查 SQLite 主库和 WAL 的规则样例，确认历史保持规则私密。缺规则的录制请求失败且目标目录未生成。另一个客户端经拒绝、授权读取和撤回再次拒绝，授权绑定原录制目标。
+
+```sh
+cargo test --locked -p serial-workbench-host --test capture_api_host redacted_recording_ -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib capture:: -- --test-threads=1
+```
+
+本机分块用例覆盖从行内启动、换配置、非法 UTF-8、超长以及停止时残行，并检查两种格式互相拒绝。写盘专项还从状态、校验报告、尾部和回放核对脱敏模式。
+
+录制工具接入内容类型、规则编辑和 Host 样例预览。规则与样例留在本次工具窗内存，开始录制只提交规则。定向测试覆盖编辑样例后丢弃晚到结果、定位错误规则、使用共享「追加」入口和回放仅有缺口时保留脱敏视图。无头 Chromium 使用 Host 夹具，在 410×460 中文深色和 1240×760 英文浅色分别复跑两次，核对字段对齐、同规则提示、实际追加参数及录制确认回执。关闭工具窗时，未保存确认显示「录制设置」，处理后焦点回到原入口。代表性截图已核对。桌面和独立设备继续用同一候选的实际 Host 验收。 [宽窄草稿](./ui-design.md#脱敏录制草稿)
+
+独立 Node 读盘的合成 0.3 夹具覆盖双卷、录制时钟、索引、规则摘要和略过记录。负例核对混入原始事件、脱敏结果内携带原始字段、额外文件及规则摘要不一致。0.1／0.2 的原始卷回归继续通过。真实 Host 交叉用例在录制前依据输入建立预期文字、方向、源代次、原始字节范围和规则。Host 停止并结算后，Node 直接扫描卷、清单和索引，验证规则摘要、逐帧与逐卷摘要、索引偏移、时钟顺序和两向变换结果。现场目录和结果随测试临时目录回收。Windows 本机通过，四目标 Rust 工作流已接入该用例。 [独立读盘脚本](../scripts/test-capture-container-independent.mjs)
+
+实际替换用例先通过 Host 生成原始录制，核对错误指纹使目标保持原样。候选录制期间复查旧卷，完成后逐字节核对旧卷归档，并从新引用读回两个方向的边界略过和脱敏文字。Windows 本机通过。
+
+大记录用例通过真实 Host 录制逾 4 KiB 的脱敏行。尾部查询在 1 KiB 预算内返回有摘要的记录引用。获授权的观察者逐页读取，每页上限 1 KiB，拼接后比对长度、SHA-256、原始字节范围和脱敏文字。撤权后继续使用同一引用读取会被拒绝。Windows 本机通过。
+
+源撤权用例先写入一条已授权的完整脱敏行，再将下一条接收行拆分。测试在末块入队前撤回本会话的读取权限。Host 以 `PERMISSION_DENIED` 结算。扫描卷只读到前一条已授权的 RX 文字，拼接中的接收行未进入卷，各文件均无合成原文。Windows 本机通过。
+
+脱敏续录用例在 Windows 本机通过。连续追加保留首条新行及旧卷，向后移动源游标和篡改行末会被拒绝。缺少续录位置的旧 0.3 卷可以验证和读取，追加失败时原清单保持原样。真实 Host 用例以 Virtual Echo 检查暂停期间的精确事件缺口、重新识别行边界、原卷逐字节保留及同一录制 ID。改用原始模式或其他规则时，Host 拒绝追加，保留原清单和原卷。原始录制的续录缺口回归同时通过。
+
+```sh
+export SWB_TEST_CAPTURE_NODE_BIN="$(node -p 'process.execPath')"
+cargo test --locked -p serial-workbench-host --test capture_api_host redacted_host_archive_passes_independent_readback -- --ignored --exact --test-threads=1
+cargo test --locked -p serial-workbench-host --test capture_api_host redacted_replacement_verifies_old_fingerprint_and_archives_exact_prior_capture -- --exact --test-threads=1
+cargo test --locked -p serial-workbench-host --lib redacted_capture_revokes_before_rx_suffix_and_preserves_only_authorized_receive_text -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib redacted_contiguous_append_uses_saved_cursor_and_keeps_the_first_complete_line -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib redacted_host_append_preserves_pause_gap_and_rejects_another_policy -- --test-threads=1
+```
+
+溢出缺口、慢盘恢复和目标撤权由录制服务专项用例覆盖。真实 Raw 连接的回放用例确认脱敏卷拒绝字节搜索，此后仍可从原位置读取完整脱敏记录。实际桌面、四平台门禁和发行实装需在候选上复验。
+
 ### 独立录制格式
 
 ```sh
@@ -546,6 +632,8 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 用例安装实际签名参考包，通过标准 Host IPC 对批准的插件设备执行打开、写入和关闭。独立本机 TCP 对端核对实际二进制字节，Raw 核对 Host 实例、会话代次和来源。未经授权的打开不能到达对端，撤销用户读取授权终止其 Raw 交付。显式关闭、重新打开的新会话代次和停用后的实际对端断开分别核对。故障用例单独签名测试包装，实际写入后在返回线路回执前退出所属 Node 进程。TCP 对端核对已到达的字节和关闭，Host 核对派发区间仍为 `unknown`、卸下设备目录条目并拒绝过期操作。四目标 CI 的原生运行时检查运行主动连接、侦听与进程退出三种用例。桌面参数输入、跨机适配和发行候选证据沿用各阶段的专项。
 
+在同一原生传输测试集合中，`native_node_dynamic_transport_keeps_message_boundaries_in_raw_and_recording` 安装仅用于验收的签名消息插件。独立 UDP 回环对端发送 UTF-8 文本、零字节数据报和跨 16 KiB 的二进制消息。核对会话语义、原 Raw 字节、消息标识、偏移和录制读取。空消息有事件而不推进字节水位，部分写入结算为未知，输入结束更新实际会话状态。运行 `node --test scripts/node-message-transport.test.mjs` 核对私有线路上的等待、空消息、EOF、超限、未声明类型及传统字节流回执。WebSocket 与 UDP 产品提供方仍各自按协议验收。
+
 桌面参数入口运行 `pnpm test:ui e2e/browser/plugin-transport.spec.ts`，检查显式提交、失败保留输入和成功清理草稿登记。Host 参数校验和实际 TCP 对端继续通过签名传输用例检查。
 
 TCP 参考包兼容原有的端口参数。添加 `role` 选择 `client` 或 `server`，可用 `host` 指定目标地址或要侦听的本机 IP。默认 `127.0.0.1`。侦听用例先核对未授权的请求未占用端口、无对端写入的回执无接纳或未知区间，再由独立对端核对双向二进制字节、Raw 会话代次、重开和停用。运行 `node --test scripts/reference-transport.test.mjs` 复验端口占用、取消打开和读取、不会接纳第二位对端以及先交付半关闭前已收到的字节。
@@ -559,6 +647,36 @@ pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 ```
 
 重建包时以 esbuild 针对 Node 26 打包 `reference-transport/builtin.ts`，使用 `sign_builtin_tcp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。收到验签结果后登记归档、入口、清单摘要与来源公钥。正式发行与跨设备收发继续按 T11 和 T14 验收。
+
+#### UDP（NET-02）
+
+首方 `swb.builtin.udp` 0.1.0 随 Host 登记。从工作台选择「UDP 数据报」，按[连接草稿](./ui-design.md#udp-连接草稿)选择地址族、模式、目标地址与端口。单播的本机地址和端口可留空，由系统绑定。IPv4 广播使用明确输入的限域广播地址，或选择本机接口 IP 后输入该网段的定向广播地址。组播用通配地址在目标端口入组，可填写独立本机端口。IPv4 组播接口填写本机 IPv4 地址，IPv6 填写数字接口索引。链路本地 IPv6 单播地址附 `%索引`。
+
+```sh
+node --test scripts/udp-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
+```
+
+独立 UDP 对端核对 IPv4、IPv6 单播收发和错误来源过滤、IPv4 定向回环广播及组播的显式接口。Windows 在回环接口 1 验证 IPv6 组播，其他平台在支持组播的隔离接口上设置 `SWB_UDP_IPV6_MULTICAST_INDEX` 后复验。通过实际签名 Host 分别打开 IPv4 和 IPv6 单播，核对拒绝未授权打开、对端实收、空数据报的事件水位、20,001 字节数据报的同 ID 分片、会话换代和关闭后端口回收。打开表示本机套接字就绪。写入成功表示本机套接字接纳单个数据报，对端收据单独核对。
+
+重建归档运行 `pnpm plugin-sdk:fixture`，将 `.cache/plugin-sdk/examples/reference-udp/builtin.js` 交给 `sign_builtin_udp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。核对公钥、归档、编译入口与清单摘要，验证首次登记及同一 profile 重启。双机上复验实际网卡的限域及定向广播、IPv4 和 IPv6 组播、独立端口和选错接口时的反馈，然后记录适用平台与发行套件证据。
+
+#### WebSocket 设备（NET-03、CONN-12）
+
+工作台选「WebSocket 设备」打开[连接窗](./ui-design.md#websocket-设备连接草稿)。主动连接使用 `ws://` 或 `wss://` URL，侦听指定本机 IP、端口及握手路径。回环场景可以用独立浏览器作为对端，在连接窗填该页面的 HTTP 来源。每个侦听会话接纳一个对端。主机的配对页面继续通过原配对控制通道工作。发送类型可选二进制或 UTF-8 文本。
+
+```sh
+pnpm plugin-sdk:fixture
+node --test scripts/websocket-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+```
+
+独立套接字验证消息分片、空消息、128 KiB 上限、错误路径和浏览器来源、取消握手、正常与异常断连以及再次绑定。独立 Chromium 用浏览器原生 WebSocket 和设备侦听互发文本及二进制。签名 Host 的双角色用例用独立 Rust WebSocket 对端，核对未授权打开被拒、实际线上的发送类型、Raw 数据与同消息标识、旧会话终态和端口回收。先准备固定 Node，再按签名启动用例核对首启、重启及准确归档。WSS 可用本机专用测试证书验证，默认信任配置拒绝未授权证书，仅将测试证书设为一轮隔离 Node 进程的额外信任根后验证文本交换。
+
+首方 `swb.builtin.websocket` 归档由 `sign_builtin_websocket <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>` 生成，编译入口位于 `.cache/plugin-sdk/examples/reference-websocket/builtin.js`。归档内的 `third-party/ws.LICENSE` 对照锁定依赖随产品分发。独立设备与网络上的运行、客户证书及正式发行按相应专项继续验收。
 
 #### RFC 2217（NET-06）
 
@@ -661,6 +779,14 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 运行 `pnpm exec vitest run src/features/workbench/session-comparison-model.test.ts`。使用相同帧长读取两段只读录制，以原始事件和字节界限核对数据。位置模式保留已知缺失帧的序号，前缀和多字段模式分别用插入帧、重复键、无法解码的键及乱序设备地址核对配对。字节差检查零基半开区间，字段差检查同字段的原值和解码值。右侧相对耗时减左侧相对耗时，跨时钟、采集缺口或非单调时间返回未知。夹具校对高位纳秒、跨接收块来源及两侧边界。打开两份只读回放，各读取需要对照的页，在字段图表输入已知帧起点和帧长。把第一份用作基准、第二份用作对照，再从回放工具栏打开「会话对比」。切换对齐键后重新计算，展开结果行核对原始 HEX、事件和录制序号，以及右侧相对时间减左侧相对时间。运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts --grep "two recordings compare" --workers=1`，模拟 Host 对照两份样本并验证访问撤销后收回原始内容。通过当前有内容读取权限的会话调用字段包动作 `swb.reference.fields.compareSessions`。每侧传入有序的 `position` 和 `bytesBase64`，可提供精确纳秒和连续片段编号。首次读取核对全窗摘要，使用零基 `detail.rowIndex` 选择明细，分别用 `byteOffset` 和 `fieldOffset` 分页。运行 `node --test scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对契约、签名包一致性及分页金样。原生固定 Node 用例 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对未授权拒绝、授权后读回原始差异与精确时差。对 0.1.0 和 0.2.0 分别核对启用、停用、卸载和重复启动后身份保持。
 
+### 双会话对比（DISP-17）
+
+在同一个工作台打开两个不同的串口会话，在「工作台菜单」选择「双会话对比」。检查会话名称和接收记录，宽窗并排，窄窗上下排列。两端的记录区均可独立聚焦和滚动。选择一条记录可逐页查看其完整 HEX 及半开字节范围。打开、滚动和查看字节期间核对既有读流持续运行且无新增发送。
+
+分别选择按时间、事件号和 RX 字节偏移。时间定位需要同一单调源时钟和对侧连续记录，落在容差内时显示实际差值。事件号定位只使用对侧同号记录，偏移定位检查对侧实际包含字节的半开区间。对侧缺失时留在原位置，显示无可定位记录。关闭联动时保留当前滚动位置。撤销某一会话的读取后，原字节和所选详情从该侧消失，另一侧仍可查看。
+
+用 `pnpm exec vitest run src/features/workbench/live-session-comparison-model.test.ts` 核对 64 位坐标、时钟与缺口，用 `pnpm test:ui e2e/browser/live-session-comparison.spec.ts --workers=1` 核对真实界面中的滚动、两侧位置、授权和焦点。实机使用两个不同数据源，分别注入长短不同的字节串及接收缺口，对照两侧 Host Raw 坐标和工具位置。 [宽窄草稿](./ui-design.md#双会话拆屏草稿disp-17)
+
 ### 帧字段定义与报文构造（PROTO-02、PROTO-05、PROTO-07、PROTO-19）
 
 在分帧结果选择一帧，然后选择 JSON 或 YAML，填写版本为字符串 `"1"` 的定义。`byteLength` 是整帧字节数。每个字段用 `id`、`kind`、`byteOffset` 和宽度或校验算法描述。字节偏移位于帧内，结果显示折算后的半开原始字节范围和实际 HEX。十进制比例 `scale` 与偏移 `bias` 使用字符串，枚举 `labels` 以原始整数为键，可选 `unit`。整数和位域使用指定端序与符号位。校验字段以 `coverageStart` 和 `coverageEnd` 选定计算区间。
@@ -672,6 +798,16 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 随包签名字段包提供 `swb.reference.fields.decode` 和 `swb.reference.fields.encode`。两者接收 `definition` 文本，`definitionFormat` 可指定为 `yaml`，缺省为 `json`。解码接收 `bytesBase64`，构造接收字符串映射 `values`，可用 `baseBytesBase64` 保留未定义位。对定义错误核对返回的 `path` 和 `position`，对字节或工程值错误核对 `path`。两个动作均沿用目标会话的读取授权。
 
 运行 `node --test scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对位宽、浮点、严格 UTF-8、独立物理位、64 位精确往返、校验依赖、定义错误、取消及归档来源。使用 `pnpm test:ui e2e/browser/framing-tool.spec.ts` 核对分帧结果上的字段值、原始字节绝对偏移、数值构造及 YAML 行列。用同一原生启动用例对照两个独立包的重启登记、会话授权、真实操作终态和文件结果。
+
+### 帧模板（IO-14）
+
+从工作台「协议分帧」展开「帧模板」，以线上顺序查看帧头、长度、序号、负载、校验和帧尾。模板可调整无符号字段宽度和端序，给序号和负载命名，选择 HEX 或 UTF-8 负载，以及指定长度和校验覆盖范围。整帧上限为 4,096 字节。可从「模板 JSON」读取或应用版本为字符串 `"1"` 的定义。无效或未来版本应保留当前定义和待修正文本。
+
+默认模板输入序号 `258` 和负载 `10 20 30`，预览 `AA 55 03 02 01 10 20 30 03 0D`。长度 `03` 来自 `[5, 8)`，序号为小端的 `02 01`，XOR 校验 `03` 来自 `[3, 8)`。用同一定义反解，核对命名变量与 6 段原字节范围。替换校验为 `04`，应定位校验错误。改用多字节 UTF-8 时按编码后字节计算长度。整个工具可离线使用，预览、反解和应用定义都保持零发送请求。
+
+随包字段包 0.4.0 的 `swb.reference.fields.frameTemplate` 接收 `template` JSON 字符串。`mode` 为 `assemble` 时传 `values` 字符串映射，为 `decode` 时传 `bytesBase64`。用有读取权限的会话核对 `verified` 报告、精确帧字节及每段覆盖范围，损坏数据返回 `invalid` 及路径。没有相应权限时应拒绝执行。使用隔离原生 Host 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启和重启。迁移可用 `known_predecessor_upgrades_and_preserves_the_profile_decision` 核对原启用、停用或卸载选择。
+
+定向脚本测试使用 `node --test scripts/frame-template.test.mjs scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs`。界面用 `pnpm test:ui e2e/browser/framing-tool.spec.ts`，在窄短窗和宽窗核对共享尺寸、对齐、结果表独立滚动、修改后清除过期预览，以及错误字段与原字节定位。 [宽窄草稿](./ui-design.md#帧模板草稿io-14)
 
 ### CRC 识别与验证（PROTO-03）
 
@@ -746,6 +882,10 @@ FC01/02 的独立响应保留装有位值和填充的 `bitBytes`，FC03/04 响�
 本面板使用动作返回的 TX 事件和配对 RX 首尾事件绘制共同时间轴。核对各次发送的起点和应答时限，拆帧应分别显示首末接收偏移、分块跨度、源时钟、精度以及原始字节范围。相同请求与源时钟的首发成功样本至少两次时显示最近八次的耗时极差。该值来自 Host 观测。设备定时、串行线路采样、其他协议时序和正式安装包继续专项验收。
 
 运行 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "Modbus master timeline"`，核对实际工作台入口、错误请求不会发送、精确会话调用、超时与重发分行、共用轴和经摘要检查的结果文件。隔离 Host 另核对首发有确证 TX、分块 RX 首尾引用与重发的真实原始范围。`native_node_bundled_protocol_registers_on_first_start_and_restart` 核对随包登记、重启不改 revision、缺少会话写权限时拒绝及授权后 Virtual Echo 会话的实际 TX 终态。组件清单按 Host 记录包 ID、版本与归档摘要。
+
+#### 首方主站与从站的归档升级
+
+Modbus 主站和从站分别从 0.1.0 升到 0.1.1。通过 `pnpm plugin-sdk:fixture` 重建两份入口，用 `sign_reference_modbus` 和 `sign_reference_modbus_slave` 各自签名，并执行 `node --test scripts/product-modbus.test.mjs` 核对编译产物、清单及归档摘要。原签名包作为已知前驱，`node_packages::product::tests::known_predecessor_upgrades_and_preserves_the_profile_decision` 覆盖已启用、已停用与已卸载三种配置及再次启动不重复安装。隔离原生启动用例核对新版归档在两个 Host 实例代次的实际激活，并执行主站 TX 和从站分块请求应答。实体线路和正式安装包仍按各专项验收。
 
 ### Modbus 寄存器与监视（PROTO-10、PROTO-20）
 
@@ -920,6 +1060,14 @@ Host 软件验收应核对一致修订、篡改与未来版本、源访问受限
 在工作台选择串口、PTY 或虚拟串口，从工作区菜单打开「会话模板」。STM32 调试和 AT 模组示例使用 115200 / 8N1，Modbus RTU 从站示例使用 19200 / 8E1。按设备文档核对线路参数后选择「按模板打开」。检查 Host 收到明确的配置，超时及重连间隔按原设备配置传入。打开已有会话时，切到线路参数不同的模板，核对仍显示原配置并要求先关闭。分别查看固件日志、载入 AT 示例，以及载入 Modbus 从站模型。只有显式发送、模拟请求或启动从站才执行对应操作。用 `pnpm test:ui e2e/browser/session-templates.spec.ts --workers 1` 核对两种从站动作可见性、参数和接线。
 
 若从站动作缺失，从模板进入「管理插件」，用可信签名包启用或安装 Modbus Slave（`swb.reference.modbus.slave`），在工作台重新打开模板。检查目录已有从站动作，打开端口后以独立主站对照实际帧。STM32 接合适电平的串口设备读取启动日志，AT 模组按其实际设置核对命令回显、最终结果和异步通知。离线发行按同一签名候选分别复验首次启动和插件恢复。
+
+### 环回自检（DIAG-01／LINE-15）
+
+打开 Virtual Echo 会话，从工作区菜单进入「环回自检」。检查端口和虚拟来源、帧数、每帧字节数、种子、等待时间和发送总量。启动前核对没有测试 TX，运行后按源会话和实际任务检查每帧 TX 回执、RX 字节范围、误码位与比较位、吞吐和往返延迟。回环标记包含种子、序号和本次运行标识。吞吐使用首帧发送意图至最后一帧完整返回的 Host 单调时钟区间。误码率以通过标记核验的实际比较负载位数为分母。写入量只累计完整确认的帧，查询各帧的操作回执可见部分或未知写入。
+
+- **软件。** 运行 `node --test scripts/loopback-test.test.mjs scripts/product-automation.test.mjs`，核对拆段、位翻转、标记错误、缺字节、超时、缺口、配置变化、部分写和取消。运行 `pnpm test:ui e2e/browser/loopback-tool.spec.ts --workers=1` 检查中英文宽窄窗、预览、接线确认与停止后的真实终态。原生签名集合中的 `native_node_bundled_tcp_opens_both_roles_and_sends_exact_bytes` 同时运行 Virtual Echo，自检四帧、256 个确认发送字节和 1,536 个比较位，并检查权限、来源和会话 revision 拒绝。
+- **实体 TX/RX。** 在独立设备上按端口的电平与引脚定义短接该端口 TX/RX。记下设备、线路配置、精确候选和实际接线，打开对应端口后确认接线再运行。记录同种子多帧的接收范围、误码、吞吐、往返延迟与测试期间的真实回执。移除短接后重新发起，核对超时和缺字节提示。停止测试时以任务终态和最后一笔实际写入回执确认结束。虚拟回环和无头实体端口夹具的结果各保留其来源。
+- **发行。** 用精确发行候选离线安装，核对首方自动化的签名摘要、首次启动及重启后的动作登记、0.1.6 升级前驱与既有启用意图。分别保存已验的虚拟与实体结果。
 
 ### 故障向导（DIAG-02）
 

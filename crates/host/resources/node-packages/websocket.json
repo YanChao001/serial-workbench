@@ -1,0 +1,16 @@
+{
+  "id": "swb.builtin.websocket",
+  "version": "0.1.0",
+  "archiveSha256": "1b113c271aba3b702e13c62462cd93cab0334c6d6114724d4e9b4c11e6b6b488",
+  "compiledModuleSha256": "0f890d05dbc9740778a8408235a061eccc4bfa8d20eaa35a308eb541bf810935",
+  "manifestSha256": "bab7b0f5e7b66d7f5aa820f68a01dfd41fd6184a1154f2f44883365936e115fc",
+  "sourceApproval": {
+    "keyId": "built-in-websocket-0.1.0",
+    "publicKey": [
+      208, 245, 144, 89, 230, 177, 126, 33, 31, 56, 188, 179, 182, 144, 75, 51,
+      64, 159, 182, 67, 159, 29, 211, 174, 224, 186, 199, 148, 226, 249, 56, 208
+    ],
+    "publicKeySha256": "0ca2af2c346a70d310dc77096cbf12ba7dc6aea88f4e50db7a0d8cefb58f823f",
+    "source": "swb.product"
+  }
+}

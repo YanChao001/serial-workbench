@@ -27,6 +27,10 @@ enum TransportScenario {
     Server,
     Rfc2217,
     OwnerExit,
+    MappedFaults,
+    Messages,
+    BundledUdp,
+    BundledWebsocket,
 }
 
 const EXIT_DURING_WRITE: &str = r#"
@@ -78,13 +82,48 @@ async fn native_node_dynamic_transport_owner_exit_preserves_unknown_tx() {
 
 #[tokio::test]
 #[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_preserves_mapped_tx_on_partial_and_unknown_writes() {
+    signed_transport(TransportScenario::MappedFaults).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
 async fn native_node_dynamic_transport_rfc2217_requires_confirmed_serial_settings() {
     signed_transport(TransportScenario::Rfc2217).await;
 }
 
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_keeps_message_boundaries_in_raw_and_recording() {
+    signed_transport(TransportScenario::Messages).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_opens_bundled_udp_and_preserves_datagrams() {
+    signed_transport(TransportScenario::BundledUdp).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_opens_bundled_websocket_and_preserves_frames() {
+    signed_transport(TransportScenario::BundledWebsocket).await;
+}
+
 async fn signed_transport(scenario: TransportScenario) {
     let rfc2217 = scenario == TransportScenario::Rfc2217;
-    let (package_id, provider_id, example) = if rfc2217 {
+    let bundled_udp = scenario == TransportScenario::BundledUdp;
+    let bundled_websocket = scenario == TransportScenario::BundledWebsocket;
+    let bundled = bundled_udp || bundled_websocket;
+    let (package_id, provider_id, example) = if bundled_udp {
+        ("swb.builtin.udp", "swb.builtin.udp.transport", "")
+    } else if bundled_websocket {
+        (
+            "swb.builtin.websocket",
+            "swb.builtin.websocket.transport",
+            "",
+        )
+    } else if rfc2217 {
         (
             "reference.rfc2217",
             "reference.rfc2217.transport",
@@ -94,13 +133,21 @@ async fn signed_transport(scenario: TransportScenario) {
         (PACKAGE, PROVIDER, "reference-transport")
     };
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let program = std::fs::read(
-        package_root
-            .join(".cache/plugin-sdk/examples")
-            .join(example)
-            .join("main.js"),
-    )
-    .expect("Compile the public SDK transport fixture");
+    let program = if bundled {
+        None
+    } else if scenario == TransportScenario::Messages {
+        Some(include_bytes!("message_provider.mjs").to_vec())
+    } else {
+        Some(
+            std::fs::read(
+                package_root
+                    .join(".cache/plugin-sdk/examples")
+                    .join(example)
+                    .join("main.js"),
+            )
+            .expect("Compile the public SDK transport fixture"),
+        )
+    };
     let profile = support::Profile::isolated("host-node-transport-public-");
     let runtime = tokio::task::spawn_blocking(|| {
         let root = std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT")
@@ -115,6 +162,16 @@ async fn signed_transport(scenario: TransportScenario) {
     .await
     .unwrap();
     let path = profile.path().to_path_buf();
+    if bundled {
+        let provision = HostServer::bind(&path).await.unwrap();
+        let config = serial_workbench_ipc::startup_config::resolve(Some(path.clone())).unwrap();
+        Host::with_startup_config(provision.store(), provision.auth(), config.snapshot())
+            .await
+            .unwrap()
+            .shutdown()
+            .await
+            .unwrap();
+    }
     let mut server = HostServer::bind(&path).await.unwrap();
     let auth = server.auth();
     let credential = read_user_control_credential(&path).unwrap();
@@ -141,7 +198,8 @@ async fn signed_transport(scenario: TransportScenario) {
 
     // 断言失败仍由外层等 Host 收回自有的 Node 和套接字。
     let checked = tokio::spawn(async move {
-        let mut admin_options = ConnectOptions::new(path.clone(), operator_id, ClientKind::Desktop);
+        let mut admin_options =
+            ConnectOptions::new(path.clone(), operator_id.clone(), ClientKind::Desktop);
         admin_options.user_control_credential = Some(credential);
         let admin = HostClient::connect(admin_options).await.unwrap();
         let manager = HostClient::connect(ConnectOptions::new(
@@ -151,13 +209,19 @@ async fn signed_transport(scenario: TransportScenario) {
         ))
         .await
         .unwrap();
-        let client = HostClient::connect(ConnectOptions::new(
-            path.clone(),
-            id("transport-driver"),
-            ClientKind::Cli,
-        ))
-        .await
-        .unwrap();
+        let (client_name, client_kind) = if matches!(
+            scenario,
+            TransportScenario::Messages | TransportScenario::MappedFaults
+        ) {
+            // The desktop action uses the same file-selection client with a non-control context.
+            (operator_id, ClientKind::Desktop)
+        } else {
+            (id("transport-driver"), ClientKind::Cli)
+        };
+        let client =
+            HostClient::connect(ConnectOptions::new(path.clone(), client_name, client_kind))
+                .await
+                .unwrap();
         let host_id = client.attachment().host_id.clone();
         let host_target = Target {
             host_id: host_id.clone(),
@@ -173,71 +237,76 @@ async fn signed_transport(scenario: TransportScenario) {
             &host_target,
             &["plugins.manage", "content.read", "metadata.read"],
         );
-        let enabled = install_signed_provider(
-            &admin,
-            &manager,
-            &host_target,
-            &path,
-            program,
-            scenario,
-            package_id,
-        )
-        .await;
-        let RpcResult::Query(QueryResult::NodePackageRuntime(runtime_status)) = success(
-            manager
-                .request(RpcRequest::Query(query(
+        let enabled = if let Some(program) = program {
+            Some(
+                install_signed_provider(
+                    &admin,
                     &manager,
-                    "node.packages.runtime",
                     &host_target,
-                    json!({"id": package_id}),
-                )))
-                .await
-                .unwrap(),
-        ) else {
-            panic!("Expected the signed provider runtime status");
+                    &path,
+                    program,
+                    scenario,
+                    package_id,
+                )
+                .await,
+            )
+        } else {
+            None
         };
-        assert_eq!(
-            runtime_status.phase,
-            NodePackageRuntimePhase::Active,
-            "{runtime_status:?}"
-        );
+        let runtime_status = timeout(Duration::from_secs(25), async {
+            loop {
+                let QueryResult::NodePackageRuntime(status) = query_result(success(
+                    manager
+                        .request(RpcRequest::Query(query(
+                            &manager,
+                            "node.packages.runtime",
+                            &host_target,
+                            json!({"id": package_id}),
+                        )))
+                        .await
+                        .unwrap(),
+                )) else {
+                    panic!("Expected the signed provider runtime status");
+                };
+                assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                if status.phase == NodePackageRuntimePhase::Active {
+                    break status;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("Signed transport registration");
         grant(&auth, &operator, &client, &host_target, &["metadata.read"]);
-        // Wait for a new directory scan after the package has actually activated.
-        success(
-            client
-                .request(RpcRequest::Query(query(
-                    &client,
-                    "device.refresh",
-                    &host_target,
-                    json!({}),
-                )))
-                .await
-                .unwrap(),
-        );
-        let RpcResult::Query(QueryResult::Devices(devices)) = success(
-            client
-                .request(RpcRequest::Query(query(
-                    &client,
-                    "device.list",
-                    &host_target,
-                    json!({}),
-                )))
-                .await
-                .unwrap(),
-        ) else {
-            panic!("Expected the product device directory");
-        };
-        let providers = devices
-            .devices
-            .into_iter()
-            .filter(|device| {
-                device.fingerprint.transport == DeviceTransportKind::Plugin
-                    && device.system_name == provider_id
-            })
-            .collect::<Vec<_>>();
-        let [provider] = providers.as_slice() else {
-            panic!("Expected exactly one signed provider: {providers:?}");
-        };
+        // Active describes the package; the device becomes observable through discovery.
+        let provider = timeout(WAIT, async {
+            loop {
+                let QueryResult::Devices(devices) = query_result(success(
+                    client
+                        .request(RpcRequest::Query(query(
+                            &client,
+                            "device.refresh",
+                            &host_target,
+                            json!({}),
+                        )))
+                        .await
+                        .unwrap(),
+                )) else {
+                    panic!("Expected the refreshed product device directory");
+                };
+                let mut providers = devices.devices.into_iter().filter(|device| {
+                    device.fingerprint.transport == DeviceTransportKind::Plugin
+                        && device.system_name == provider_id
+                });
+                if let Some(provider) = providers.next() {
+                    assert!(providers.next().is_none(), "Duplicate signed provider");
+                    break provider;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("Signed provider {provider_id} was not discovered"));
         assert_eq!(provider.host_id, host_id);
         assert_eq!(provider.driver.as_deref(), Some(package_id));
         assert_eq!(provider.capabilities.semantics, TransportSemantics::Stream);
@@ -246,6 +315,38 @@ async fn signed_transport(scenario: TransportScenario) {
             id: provider.device_id.clone(),
             ..host_target.clone()
         };
+        if bundled {
+            let descriptor: Value = serde_json::from_str(if bundled_udp {
+                include_str!("../../resources/node-packages/udp.json")
+            } else {
+                include_str!("../../resources/node-packages/websocket.json")
+            })
+            .unwrap();
+            assert_eq!(
+                runtime_status.archive_sha256.as_ref().unwrap().as_str(),
+                descriptor["archiveSha256"].as_str().unwrap()
+            );
+            if bundled_udp {
+                check_bundled_udp(&client, &auth, &operator, &host_target, &device).await;
+            } else {
+                check_bundled_websocket(&client, &auth, &operator, &host_target, &device).await;
+            }
+            return;
+        }
+        let enabled = enabled.expect("The reference transport was installed");
+        if scenario == TransportScenario::Messages {
+            check_messages(
+                &admin,
+                &client,
+                &auth,
+                &operator,
+                &host_target,
+                &device,
+                &path,
+            )
+            .await;
+            return;
+        }
         let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let endpoint = reserved.local_addr().unwrap();
         let (listener, transport_params) = if scenario == TransportScenario::Server {
@@ -411,6 +512,41 @@ async fn signed_transport(scenario: TransportScenario) {
         } else {
             connect_peer(listener.as_ref(), endpoint).await
         };
+        if scenario == TransportScenario::MappedFaults {
+            let probe = b"probe";
+            let settled = completed(&client, &host_target, tx_call(&client, &first, probe)).await;
+            let Some(ActionResult::Tx(prefix)) = settled.result else {
+                panic!("Expected offset probe");
+            };
+            let mut observed = [0; 5];
+            timeout(WAIT, peer.read_exact(&mut observed))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(&observed, probe);
+            let recording = start_test_recording(
+                &admin,
+                &client,
+                &auth,
+                &operator,
+                &host_target,
+                &first,
+                &path.join("mapped-fault-recording"),
+            )
+            .await;
+            verify_mapped_faults(
+                &client,
+                &host_target,
+                &first,
+                &raw,
+                &mut peer,
+                recording,
+                prefix.byte_end.get(),
+            )
+            .await;
+            raw.close().await.unwrap();
+            return;
+        }
         if scenario == TransportScenario::OwnerExit {
             verify_owner_exit(&client, &manager, &host_target, &device, &first, &mut peer).await;
             assert!(path.join(OWNER_EXIT_MARKER).is_file());
@@ -831,6 +967,712 @@ fn denied(reply: RpcReply) {
     );
 }
 
+async fn check_bundled_websocket(
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    device: &Target,
+) {
+    use futures_util::{SinkExt, StreamExt};
+    use std::net::Ipv6Addr;
+    use tokio_tungstenite::{
+        accept_async, client_async,
+        tungstenite::{Message, client::IntoClientRequest, http::HeaderValue},
+    };
+
+    let mut prior_epoch = None;
+    for listening in [false, true] {
+        let listener = if listening {
+            TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap()
+        } else {
+            TcpListener::bind((Ipv6Addr::LOCALHOST, 0)).await.unwrap()
+        };
+        let address = listener.local_addr().unwrap();
+        let url = format!("ws://{address}/device");
+        let transport = if listening {
+            json!({"role":"server","port":address.port(),"path":"/device","browserOrigin":"http://127.0.0.1:5173"})
+        } else {
+            json!({"role":"client","url":url,"sendType":"text"})
+        };
+        let params =
+            json!({"configuration":SerialConfiguration::default(),"transportParams":transport});
+        if !listening {
+            denied(
+                client
+                    .request(RpcRequest::Invoke(call(
+                        client,
+                        "device.open",
+                        device,
+                        params.clone(),
+                    )))
+                    .await
+                    .unwrap(),
+            );
+            grant(auth, operator, client, device, &["device.modify"]);
+        }
+        let remote = if listening {
+            drop(listener);
+            None
+        } else {
+            Some(tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                accept_async(socket).await.unwrap()
+            }))
+        };
+        let session = open_session(client, host, device, params).await;
+        assert!(session.session_epoch > prior_epoch);
+        prior_epoch = session.session_epoch;
+        let mut peer = if let Some(remote) = remote {
+            timeout(WAIT, remote).await.unwrap().unwrap()
+        } else {
+            let mut request = url.into_client_request().unwrap();
+            request
+                .headers_mut()
+                .insert("origin", HeaderValue::from_static("http://127.0.0.1:5173"));
+            let stream = TcpStream::connect(address).await.unwrap();
+            timeout(WAIT, client_async(request, stream))
+                .await
+                .unwrap()
+                .unwrap()
+                .0
+        };
+
+        grant(
+            auth,
+            operator,
+            client,
+            &session,
+            &["metadata.read", "content.read", "device.modify"],
+        );
+        let snapshot = || async {
+            let QueryResult::Session(snapshot) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        client,
+                        "session.get",
+                        &session,
+                        json!({}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected the WebSocket session");
+            };
+            snapshot
+        };
+        assert_eq!(
+            snapshot().await.capabilities.semantics,
+            TransportSemantics::Message
+        );
+        let raw = client.connect_raw().await.unwrap();
+        let tx = completed(client, host, tx_call(client, &session, b"probe")).await;
+        assert!(matches!(
+            tx.result,
+            Some(ActionResult::Tx(TxReceipt {
+                outcome: TxOutcome::Accepted,
+                ..
+            }))
+        ));
+        let wire = timeout(WAIT, peer.next()).await.unwrap().unwrap().unwrap();
+        if listening {
+            assert_eq!(wire, Message::Binary(b"probe".as_slice().into()));
+        } else {
+            assert_eq!(wire, Message::Text("probe".into()));
+        }
+
+        let text = "device \u{6d4b}\u{8bd5}";
+        let binary = vec![0xa7; 20_001];
+        peer.send(Message::Text(text.into())).await.unwrap();
+        peer.send(Message::Text("".into())).await.unwrap();
+        peer.send(Message::Binary(binary.clone().into()))
+            .await
+            .unwrap();
+        let chunks = timeout(WAIT, async {
+            loop {
+                let QueryResult::StreamRead(page) = query_result(success(
+                    raw.request(RpcRequest::Query(query(
+                        client,
+                        "stream.read",
+                        &session,
+                        json!({
+                            "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                            "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+                        }),
+                    )))
+                    .await
+                    .unwrap(),
+                )) else {
+                    panic!("Expected WebSocket Raw events");
+                };
+                let chunks = page
+                    .events
+                    .into_iter()
+                    .filter_map(|event| match event.payload {
+                        RawPayload::Rx(rx) => Some(rx),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                if chunks.len() >= 4 {
+                    break chunks;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let [short, empty, first, last] = chunks.as_slice() else {
+            panic!("Expected text, empty text and two binary fragments");
+        };
+        let decode = |rx: &RxPayload| STANDARD.decode(rx.bytes_base64.as_str()).unwrap();
+        let message = |rx: &RxPayload| rx.message.clone().expect("WebSocket message metadata");
+        assert_eq!(decode(short), text.as_bytes());
+        assert_eq!(message(short).message_type, "text");
+        assert_eq!(message(empty).message_type, "text");
+        assert_eq!(message(empty).message_length.get(), 0);
+        assert_eq!(empty.byte_start, empty.byte_end);
+        assert_eq!(message(first).message_type, "binary");
+        assert_eq!(message(first).message_id, message(last).message_id);
+        assert_eq!(message(last).fragment_offset.get(), 16384);
+        assert_eq!(message(last).message_length.get(), binary.len() as u64);
+        assert_eq!([decode(first), decode(last)].concat(), binary);
+
+        peer.close(None).await.unwrap();
+        assert!(matches!(
+            timeout(WAIT, peer.next()).await.unwrap(),
+            Some(Ok(Message::Close(_)))
+        ));
+        timeout(WAIT, async {
+            while snapshot().await.state != SessionState::Disconnected {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        raw.close().await.unwrap();
+        if listening {
+            let reclaimed = TcpListener::bind(address).await.unwrap();
+            drop(reclaimed);
+        }
+        eprintln!(
+            "bundled_websocket listening={listening} raw_messages=3 empty_events=1 binary_bytes={} peer_closed=true",
+            binary.len()
+        );
+    }
+}
+
+async fn check_bundled_udp(
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    device: &Target,
+) {
+    use tokio::net::UdpSocket;
+
+    let mut prior_epoch = None;
+    for (family, address) in [("ipv4", "127.0.0.1"), ("ipv6", "::1")] {
+        let peer = bind_udp_test_peer((address, 0)).await;
+        let port = peer.local_addr().unwrap().port();
+        let params = json!({
+            "configuration": SerialConfiguration::default(),
+            "transportParams": {
+                "family": family, "mode": "unicast", "host": address,
+                "port": port, "localAddress": address,
+            },
+        });
+        if prior_epoch.is_none() {
+            denied(
+                client
+                    .request(RpcRequest::Invoke(call(
+                        client,
+                        "device.open",
+                        device,
+                        params.clone(),
+                    )))
+                    .await
+                    .unwrap(),
+            );
+            grant(auth, operator, client, device, &["device.modify"]);
+        }
+        let session = open_session(client, host, device, params).await;
+        assert!(session.session_epoch > prior_epoch);
+        prior_epoch = session.session_epoch;
+        grant(
+            auth,
+            operator,
+            client,
+            &session,
+            &["metadata.read", "content.read", "device.modify"],
+        );
+        let raw = client.connect_raw().await.unwrap();
+        let QueryResult::Session(snapshot) = query_result(success(
+            client
+                .request(RpcRequest::Query(query(
+                    client,
+                    "session.get",
+                    &session,
+                    json!({}),
+                )))
+                .await
+                .unwrap(),
+        )) else {
+            panic!("Expected the UDP session");
+        };
+        assert_eq!(snapshot.capabilities.semantics, TransportSemantics::Message);
+        let sample = [0, 255, 13, 10];
+        let sent = completed(client, host, tx_call(client, &session, &sample)).await;
+        assert!(matches!(
+            sent.result,
+            Some(ActionResult::Tx(TxReceipt {
+                outcome: TxOutcome::Accepted,
+                ..
+            }))
+        ));
+        let mut packet = [0; 16];
+        let (length, sender) = timeout(WAIT, peer.recv_from(&mut packet))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&packet[..length], &sample);
+        assert_eq!(sender.ip().to_string(), address);
+
+        let payload = vec![0x81; 20_001];
+        assert_eq!(peer.send_to(&[], sender).await.unwrap(), 0);
+        assert_eq!(peer.send_to(&payload, sender).await.unwrap(), payload.len());
+        let fragments =
+            timeout(WAIT, async {
+                loop {
+                    let QueryResult::StreamRead(page) = query_result(success(
+                    raw.request(RpcRequest::Query(query(client, "stream.read", &session, json!({
+                        "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                        "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+                    }))))
+                    .await
+                    .unwrap(),
+                )) else {
+                    panic!("Expected UDP Raw events");
+                };
+                    let fragments: Vec<_> = page
+                        .events
+                        .into_iter()
+                        .filter_map(|event| match event.payload {
+                            RawPayload::Rx(rx) => Some(rx),
+                            _ => None,
+                        })
+                        .collect();
+                    if fragments.len() >= 3 {
+                        break fragments;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+        let [empty, first, last] = fragments.as_slice() else {
+            panic!("Expected the empty datagram and two fragments");
+        };
+        let message = |rx: &RxPayload| rx.message.clone().expect("Datagram metadata");
+        assert_eq!(message(empty).message_length.get(), 0);
+        assert_eq!(empty.byte_start, empty.byte_end);
+        assert_eq!(message(empty).message_type, "datagram");
+        assert_ne!(message(empty).message_id, message(first).message_id);
+        assert_eq!(message(first).message_id, message(last).message_id);
+        assert_eq!(message(last).fragment_offset.get(), 16384);
+        assert_eq!(message(last).message_length.get(), payload.len() as u64);
+        let received = [first, last]
+            .into_iter()
+            .flat_map(|rx| STANDARD.decode(rx.bytes_base64.as_str()).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(received, payload);
+        raw.close().await.unwrap();
+        completed(
+            client,
+            host,
+            call(client, "session.close", &session, json!({})),
+        )
+        .await;
+        let reclaimed = UdpSocket::bind(sender).await.unwrap();
+        drop(reclaimed);
+        eprintln!(
+            "bundled_udp family={family} sent_bytes={length} datagram_bytes={} empty_events=1 raw_fragments=2 port_rebound=true",
+            payload.len()
+        );
+    }
+}
+
+async fn bind_udp_test_peer(address: impl tokio::net::ToSocketAddrs) -> tokio::net::UdpSocket {
+    let peer = tokio::net::UdpSocket::bind(address).await.unwrap();
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::fd::AsRawFd;
+
+        // Darwin's default send buffer is smaller than the 20,001-byte test datagram.
+        let capacity: libc::c_int = 32 * 1024;
+        // SAFETY: the live socket borrows a correctly sized integer for this synchronous call.
+        let result = unsafe {
+            libc::setsockopt(
+                peer.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_SNDBUF,
+                std::ptr::from_ref(&capacity).cast(),
+                std::mem::size_of_val(&capacity) as libc::socklen_t,
+            )
+        };
+        assert_eq!(result, 0, "{}", std::io::Error::last_os_error());
+    }
+    peer
+}
+
+fn capture_target(host: &Target, reference: &ObjectRef) -> Target {
+    Target {
+        kind: reference.kind.clone(),
+        id: reference.id.clone(),
+        ..host.clone()
+    }
+}
+
+async fn start_test_recording(
+    admin: &HostClient,
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    session: &Target,
+    path: &Path,
+) -> (Box<OperationResult>, ObjectRef) {
+    let registered = completed(
+        admin,
+        host,
+        call(
+            admin,
+            "file.register",
+            host,
+            json!({
+                "path": path, "purpose": "capture_target",
+            }),
+        ),
+    )
+    .await;
+    let Some(ActionResult::FileMetadata(archive)) = registered.result else {
+        panic!("Expected archive reference");
+    };
+    let destination = capture_target(host, &archive.file_ref);
+    grant(
+        auth,
+        operator,
+        client,
+        &destination,
+        &["workspace.modify", "content.read", "metadata.read"],
+    );
+    let mut record = call(
+        client,
+        "capture.start",
+        &destination,
+        json!({
+            "sessionRefs": [session], "targetRef": archive.file_ref, "overflowPolicy": "stop",
+        }),
+    );
+    record.execution_mode = Some(ExecutionMode::Independent);
+    let RpcResult::Operation(owner) =
+        success(client.request(RpcRequest::Invoke(record)).await.unwrap())
+    else {
+        panic!("Expected capture operation");
+    };
+    let owner_id = owner.operation.operation_id.clone();
+    let live = timeout(WAIT, async {
+        loop {
+            let RpcResult::Operation(observed) = success(
+                client
+                    .request(RpcRequest::OperationGet(query(
+                        client,
+                        "operation.get",
+                        host,
+                        json!({"operationId":owner_id}),
+                    )))
+                    .await
+                    .unwrap(),
+            ) else {
+                panic!("Expected capture status");
+            };
+            if let Some(ActionResult::Reference(result)) = observed.operation.result {
+                break result.result_ref;
+            }
+            assert!(
+                !observed.operation.state.is_terminal(),
+                "{:?}",
+                observed.operation.error
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    (owner, live)
+}
+
+async fn seal_test_recording(
+    client: &HostClient,
+    raw: &serial_workbench_client::RawConnection,
+    host: &Target,
+    owner: Box<OperationResult>,
+    live: &ObjectRef,
+    minimum: u64,
+) -> CaptureTailResult {
+    timeout(WAIT, async {
+        loop {
+            let QueryResult::CaptureStatus(progress) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        client,
+                        "capture.status",
+                        &capture_target(host, live),
+                        json!({"captureRef":live}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected live capture");
+            };
+            if progress.summary.watermarks.written.get() >= minimum {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    completed(
+        client,
+        host,
+        call(
+            client,
+            "capture.stop",
+            &capture_target(host, live),
+            json!({"captureRef":live}),
+        ),
+    )
+    .await;
+    let finished = wait_for_terminal(client, host, RpcResult::Operation(owner)).await;
+    assert_eq!(finished.state, OperationState::Succeeded, "{finished:?}");
+    let Some(ActionResult::CaptureStatus(status)) = finished.result else {
+        panic!("Expected finished recording reference");
+    };
+    assert!(status.summary.container_complete && status.summary.source_continuous);
+    let QueryResult::CaptureTail(capture) = query_result(success(
+        raw.request(RpcRequest::Query(query(
+            client,
+            "capture.tail",
+            &capture_target(host, &status.capture_ref),
+            json!({"captureRef":status.capture_ref,"maxRecords":"30","maxBytes":"65536"}),
+        )))
+        .await
+        .unwrap(),
+    )) else {
+        panic!("Expected recorded instances");
+    };
+    capture
+}
+
+async fn check_messages(
+    admin: &HostClient,
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    device: &Target,
+    path: &Path,
+) {
+    assert_eq!(admin.attachment().client_id, client.attachment().client_id);
+    let peer = bind_udp_test_peer((Ipv4Addr::LOCALHOST, 0)).await;
+    grant(auth, operator, client, device, &["device.modify"]);
+    let session = open_session(
+        client,
+        host,
+        device,
+        json!({
+            "configuration": SerialConfiguration::default(),
+            "transportParams": {"port": peer.local_addr().unwrap().port()},
+        }),
+    )
+    .await;
+    grant(
+        auth,
+        operator,
+        client,
+        &session,
+        &["metadata.read", "content.read", "device.modify"],
+    );
+    let QueryResult::Session(snapshot) = query_result(success(
+        client
+            .request(RpcRequest::Query(query(
+                client,
+                "session.get",
+                &session,
+                json!({}),
+            )))
+            .await
+            .unwrap(),
+    )) else {
+        panic!("Expected negotiated message session");
+    };
+    assert_eq!(snapshot.capabilities.semantics, TransportSemantics::Message);
+    let (owner, live) = start_test_recording(
+        admin,
+        client,
+        auth,
+        operator,
+        host,
+        &session,
+        &path.join("message-recording"),
+    )
+    .await;
+
+    let sent = completed(client, host, tx_call(client, &session, b"probe")).await;
+    assert!(matches!(
+        sent.result,
+        Some(ActionResult::Tx(TxReceipt {
+            outcome: TxOutcome::Accepted,
+            ..
+        }))
+    ));
+    let mut packet = [0; 16];
+    let (length, address) = timeout(WAIT, peer.recv_from(&mut packet))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&packet[..length], b"probe");
+    let text = "T测试".as_bytes();
+    let binary = vec![0xa5; 20_001];
+    for bytes in [text, &[][..], &binary] {
+        assert_eq!(peer.send_to(bytes, address).await.unwrap(), bytes.len());
+    }
+    let raw = client.connect_raw().await.unwrap();
+    let read_params = json!({
+        "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+        "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+    });
+    let chunks = timeout(WAIT, async {
+        loop {
+            let QueryResult::StreamRead(read) = query_result(success(
+                raw.request(RpcRequest::Query(query(
+                    client,
+                    "stream.read",
+                    &session,
+                    read_params.clone(),
+                )))
+                .await
+                .unwrap(),
+            )) else {
+                panic!("Expected Raw read");
+            };
+            let chunks = read
+                .events
+                .into_iter()
+                .filter_map(|event| match event.payload {
+                    RawPayload::Rx(chunk) => Some(chunk),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if chunks.len() >= 4 {
+                break chunks;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(chunks.len(), 4, "Idle reads must not create RX events");
+    let [short, zero, head, tail] = chunks.as_slice() else {
+        unreachable!()
+    };
+    let decode = |chunk: &RxPayload| STANDARD.decode(chunk.bytes_base64.as_str()).unwrap();
+    assert_eq!(decode(short), text);
+    assert!(decode(zero).is_empty());
+    assert_eq!(zero.byte_start, zero.byte_end);
+    let second = tail.message.as_ref().unwrap();
+    let first = head.message.as_ref().unwrap();
+    assert_eq!(short.message.as_ref().unwrap().message_type, "text");
+    let empty = zero.message.as_ref().unwrap();
+    assert_eq!(empty.message_type, "datagram");
+    assert_eq!(empty.message_length.get(), 0);
+    assert_eq!(head.byte_start, zero.byte_end);
+    assert_eq!(first.message_id, second.message_id);
+    assert_ne!(first.message_id, empty.message_id);
+    assert_eq!(first.message_type, "binary");
+    assert_eq!(second.message_type, "binary");
+    assert_eq!(first.fragment_offset.get(), 0);
+    assert_eq!(second.fragment_offset.get(), 16384);
+    assert_eq!(first.message_length.get(), 20_001);
+    assert_eq!(first.message_length, second.message_length);
+    assert_eq!([decode(head), decode(tail)].concat(), binary);
+    assert_eq!(head.byte_end, tail.byte_start);
+
+    let ambiguous = wait_for_terminal(
+        client,
+        host,
+        success(
+            client
+                .request(RpcRequest::Invoke(tx_call(client, &session, b"partial")))
+                .await
+                .unwrap(),
+        ),
+    )
+    .await;
+    let Some(ActionResult::Tx(receipt)) = ambiguous.result else {
+        panic!("Expected unknown write evidence");
+    };
+    assert_eq!(receipt.outcome, TxOutcome::Unknown);
+    assert_eq!(
+        receipt.unknown_ranges,
+        vec![ByteRange {
+            start: 0.into(),
+            end: 7.into()
+        }]
+    );
+
+    let capture = seal_test_recording(client, &raw, host, owner, &live, 8).await;
+    for expected in [short, zero] {
+        assert!(capture.records.iter().any(|record| matches!(record, ReplayRecord::Inline { record }
+            if matches!(&record.entry, CaptureEntry::Event(event) if matches!(&event.payload, RawPayload::Rx(rx) if rx == expected)))),
+            "Recorded message is missing its original metadata");
+    }
+    let session_state = || async {
+        let QueryResult::Session(current) = query_result(success(
+            client
+                .request(RpcRequest::Query(query(
+                    client,
+                    "session.get",
+                    &session,
+                    json!({}),
+                )))
+                .await
+                .unwrap(),
+        )) else {
+            panic!("Expected session state");
+        };
+        current.state
+    };
+    assert_eq!(session_state().await, SessionState::Open);
+    peer.send_to(&[0xfa, 0xce], address).await.unwrap();
+    timeout(WAIT, async {
+        loop {
+            if session_state().await == SessionState::Disconnected {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    raw.close().await.unwrap();
+    eprintln!(
+        "node_message fixture=udp text_bytes={} empty_events=1 binary_bytes={} fragments=2 recorded_metadata=true partial_write_unknown=true eof_disconnected=true",
+        text.len(),
+        binary.len()
+    );
+}
 fn grant(
     auth: &AuthService,
     operator: &AuthenticatedActor,
@@ -1040,6 +1882,191 @@ async fn peer_eof(peer: &mut TcpStream) {
     );
 }
 
+async fn verify_mapped_faults(
+    client: &HostClient,
+    host: &Target,
+    session: &Target,
+    raw: &serial_workbench_client::RawConnection,
+    peer: &mut TcpStream,
+    recording: (Box<OperationResult>, ObjectRef),
+    mut source_offset: u64,
+) {
+    let (owner, live) = recording;
+    let mapping = CharacterRemapRules {
+        newline: CharacterRemapNewline::Crlf,
+        backspace: CharacterRemapBackspace::Keep,
+        letter_case: CharacterRemapCase::Upper,
+        replacements: vec![],
+    };
+    let digest = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&mapping).unwrap())
+    );
+    let mut receipts = Vec::new();
+    for (original, mapped, on_wire, outcome) in [
+        (
+            "\n",
+            b"\r\n".as_slice(),
+            b"\r".as_slice(),
+            TxOutcome::Partial,
+        ),
+        (
+            "q\n",
+            b"Q\r\n".as_slice(),
+            b"Q\r\n".as_slice(),
+            TxOutcome::Unknown,
+        ),
+    ] {
+        let params = json!({
+            "bytesBase64":STANDARD.encode(mapped), "writeWaitMs":"1000",
+            "sourceText":{"utf8Base64":STANDARD.encode(original),"encoding":"utf-8","mapping":mapping},
+            "transforms":[{"id":CHARACTER_REMAP_TRANSFORM_ID, "version":CHARACTER_REMAP_TRANSFORM_VERSION,
+                "configurationDigest":digest}],
+        });
+        let request = call(client, "session.tx", session, params.clone());
+        let accepted = success(
+            client
+                .request(RpcRequest::Invoke(request.clone()))
+                .await
+                .unwrap(),
+        );
+        let settled = wait_for_terminal(client, host, accepted).await;
+        let Some(ActionResult::Tx(receipt)) = settled.result else {
+            panic!("Mapped TX must retain its receipt");
+        };
+        assert_eq!(receipt.operation_id, settled.operation_id);
+        assert_eq!(receipt.outcome, outcome);
+        assert_eq!(receipt.byte_start.get(), source_offset);
+        source_offset += mapped.len() as u64;
+        assert_eq!(receipt.byte_end.get(), source_offset);
+        assert_eq!(
+            STANDARD.decode(receipt.bytes_base64.as_str()).unwrap(),
+            mapped
+        );
+        if outcome == TxOutcome::Partial {
+            assert_eq!(settled.state, OperationState::Succeeded);
+            assert_eq!(
+                receipt.accepted_ranges,
+                vec![ByteRange {
+                    start: 0.into(),
+                    end: 1.into()
+                }]
+            );
+            assert!(receipt.unknown_ranges.is_empty());
+            assert_eq!(
+                receipt.backend_error.as_ref().unwrap().code,
+                "PARTIAL_WRITE"
+            );
+        } else {
+            assert_eq!(settled.state, OperationState::Unknown);
+            assert!(receipt.accepted_ranges.is_empty());
+            assert_eq!(
+                receipt.unknown_ranges,
+                vec![ByteRange {
+                    start: 0.into(),
+                    end: (mapped.len() as u64).into()
+                }]
+            );
+        }
+
+        let mut received = vec![0; on_wire.len()];
+        timeout(WAIT, peer.read_exact(&mut received))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received, on_wire);
+        let duplicate = success(client.request(RpcRequest::Invoke(request)).await.unwrap());
+        let RpcResult::Operation(duplicate) = duplicate else {
+            panic!("Expected same-request receipt");
+        };
+        assert_eq!(duplicate.operation.operation_id, settled.operation_id);
+        let input = query(
+            client,
+            "operation.input",
+            host,
+            json!({"operationId":settled.operation_id}),
+        );
+        let QueryResult::OperationInput(OperationInput::Tx(input)) = query_result(success(
+            raw.request(RpcRequest::Query(input)).await.unwrap(),
+        )) else {
+            panic!("Expected the retained mapped request");
+        };
+        assert_eq!(serde_json::to_value(input).unwrap(), params);
+        receipts.push(receipt);
+    }
+    let mut extra = [0];
+    assert!(
+        timeout(Duration::from_millis(120), peer.read(&mut extra))
+            .await
+            .is_err()
+    );
+    let QueryResult::StreamRead(page) = query_result(success(
+        raw.request(RpcRequest::Query(query(
+            client,
+            "stream.read",
+            session,
+            json!({
+                "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+            }),
+        )))
+        .await
+        .unwrap(),
+    )) else {
+        panic!("Expected Raw events");
+    };
+    let raw_writes = page
+        .events
+        .into_iter()
+        .filter(|event| match &event.payload {
+            RawPayload::Tx(receipt) => receipts
+                .iter()
+                .any(|entry| entry.operation_id == receipt.operation_id),
+            RawPayload::TxIntent(intent) => receipts
+                .iter()
+                .any(|entry| entry.operation_id == intent.operation_id),
+            _ => false,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(raw_writes.len(), 4);
+    for receipt in &receipts {
+        assert!(raw_writes.iter().any(
+            |event| matches!(&event.payload, RawPayload::Tx(result) if result.as_ref() == receipt)
+        ));
+        assert!(raw_writes.iter().any(|event| matches!(&event.payload, RawPayload::TxIntent(intent)
+            if intent.operation_id == receipt.operation_id && intent.bytes_base64 == receipt.bytes_base64
+               && intent.byte_start == receipt.byte_start && intent.byte_end == receipt.byte_end)));
+    }
+    let capture =
+        seal_test_recording(client, raw, host, owner, &live, raw_writes.len() as u64).await;
+    let archived = capture
+        .records
+        .into_iter()
+        .filter_map(|record| match record {
+            ReplayRecord::Inline { record } => match record.entry {
+                CaptureEntry::Event(event)
+                    if matches!(event.payload, RawPayload::Tx(_) | RawPayload::TxIntent(_)) =>
+                {
+                    Some(*event)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(archived, raw_writes);
+    completed(
+        client,
+        host,
+        call(client, "session.close", session, json!({})),
+    )
+    .await;
+    peer_eof(peer).await;
+    eprintln!(
+        "mapped_faults partial_peer_hex=0D unknown_peer_hex=510D0A source_ranges=5..7,7..10 raw_and_archive_exact=true same_request_reused=true"
+    );
+}
+
 async fn verify_owner_exit(
     client: &HostClient,
     manager: &HostClient,
@@ -1151,11 +2178,8 @@ async fn install_signed_provider(
     );
     approve.expected_revision = Some(0.into());
     completed(admin, host, approve).await;
-    let (entry, wrapped) = match scenario {
-        TransportScenario::Normal | TransportScenario::Server | TransportScenario::Rfc2217 => {
-            (program, None)
-        }
-        TransportScenario::OwnerExit => (
+    let (entry, wrapped) = if scenario == TransportScenario::OwnerExit {
+        (
             EXIT_DURING_WRITE
                 .replace(
                     "__SWB_TEST_OWNER_EXIT_MARKER__",
@@ -1163,7 +2187,14 @@ async fn install_signed_provider(
                 )
                 .into_bytes(),
             Some(program),
-        ),
+        )
+    } else if scenario == TransportScenario::MappedFaults {
+        (
+            include_bytes!("mapped_faults_provider.mjs").to_vec(),
+            Some(program),
+        )
+    } else {
+        (program, None)
     };
     let mut payload = BTreeMap::from([
         (

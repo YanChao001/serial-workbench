@@ -1,4 +1,12 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import { HostRequestError } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,6 +14,8 @@ import type { Target } from "@serial-workbench/contracts";
 import { useHost } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { useUnsavedWork } from "@/providers/unsaved-work";
+import { capturedXyInput, type CapturedXyPair } from "@/lib/xy-capture";
+import { useXyCapture } from "@/providers/xy-capture-context";
 import { PluginError } from "./plugin-error";
 import {
   alignXyAction,
@@ -63,6 +73,12 @@ function XyAnalysis({
 }) {
   const { t } = useI18n();
   const host = useHost();
+  const capture = useXyCapture();
+  const axes = capture?.axes;
+  const captured = axes?.x && axes.y ? { x: axes.x, y: axes.y } : undefined;
+  const [loaded, setLoaded] = useState<CapturedXyPair>();
+  const sourceCurrent =
+    !loaded || (loaded.x === axes?.x && loaded.y === axes?.y);
   const id = useId();
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -70,32 +86,40 @@ function XyAnalysis({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<unknown>(null);
   const [invalid, setInvalid] = useState(false);
-  const [report, setReport] = useState<XyReport>();
+  const [report, setReport] = useState<{
+    result: XyReport;
+    captured?: CapturedXyPair;
+  }>();
   const [example, setExample] = useState(false);
   useEffect(() => () => pending.current?.abort(), []);
 
-  function discard() {
+  const discard = useCallback(() => {
     const owner = pending.current;
     pending.current = null;
     owner?.abort();
     setBusy(false);
     setInput("");
+    setLoaded(undefined);
     setInvalid(false);
     setProblem(null);
     setReport(undefined);
     setExample(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!sourceCurrent) discard();
+  }, [discard, sourceCurrent]);
 
   useUnsavedWork({
     id,
     label: t("plugins.xy.title"),
-    dirty: Boolean(input.trim()) && !example,
+    dirty: sourceCurrent && Boolean(input.trim()) && !example,
     discard,
   });
 
   async function analyze(event: FormEvent) {
     event.preventDefault();
-    if (pending.current) return;
+    if (pending.current || !sourceCurrent) return;
     const params = parseXyInput(input);
     if (!params) {
       setInvalid(true);
@@ -109,6 +133,13 @@ function XyAnalysis({
     setProblem(null);
     setReport(undefined);
     try {
+      if (loaded && !(await capture?.verify(loaded, owner.signal)))
+        throw new HostRequestError({
+          code: "PERMISSION_DENIED",
+          message: "The staged XY source is no longer available",
+          retryable: false,
+        });
+      if (owner.signal.aborted) return;
       const result = await runXyAnalysis(
         host,
         target,
@@ -116,7 +147,13 @@ function XyAnalysis({
         params,
         owner.signal,
       );
-      if (!owner.signal.aborted) setReport(result);
+      if (owner.signal.aborted) return;
+      const source = loaded && capturedXyInput(loaded);
+      const unchanged =
+        source &&
+        JSON.stringify(params.x) === JSON.stringify(source.x) &&
+        JSON.stringify(params.y) === JSON.stringify(source.y);
+      setReport({ result, captured: unchanged ? loaded : undefined });
     } catch (reason) {
       if (!owner.signal.aborted) setProblem(reason);
     } finally {
@@ -150,7 +187,7 @@ function XyAnalysis({
           aria-describedby={
             id + "-help" + (invalid ? " " + id + "-invalid" : "")
           }
-          value={input}
+          value={sourceCurrent ? input : ""}
           disabled={busy}
           onChange={(event) => {
             setInput(event.target.value);
@@ -166,7 +203,11 @@ function XyAnalysis({
           </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm" disabled={busy || !input.trim()}>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={busy || !sourceCurrent || !input.trim()}
+          >
             {t("plugins.xy.run")}
           </Button>
           <Button
@@ -176,6 +217,7 @@ function XyAnalysis({
             disabled={busy || (Boolean(input.trim()) && !example)}
             onClick={() => {
               setInput(lissajousExample());
+              setLoaded(undefined);
               setExample(true);
               setInvalid(false);
               setProblem(null);
@@ -184,15 +226,45 @@ function XyAnalysis({
           >
             {t("plugins.xy.example")}
           </Button>
+          {captured ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy || (Boolean(input.trim()) && !example)}
+              onClick={() => {
+                setInput(JSON.stringify(capturedXyInput(captured), null, 2));
+                setLoaded(captured);
+                setExample(false);
+                setInvalid(false);
+                setProblem(null);
+                setReport(undefined);
+              }}
+            >
+              {t("plugins.xy.loadCaptured")}
+            </Button>
+          ) : null}
           {busy ? (
             <p role="status" className="text-muted-foreground">
               {t("plugins.xy.running")}
             </p>
           ) : null}
         </div>
+        {captured ? (
+          <p className="text-muted-foreground">
+            {t("plugins.xy.capturedNote")}
+          </p>
+        ) : null}
+        {sourceCurrent && loaded && loaded.x.clockKey !== loaded.y.clockKey ? (
+          <p className="text-muted-foreground">
+            {t("plugins.xy.capturedAnchors")}
+          </p>
+        ) : null}
       </form>
       <PluginError error={problem} message="plugins.xy.failed" />
-      {report ? <XyAnalysisResult report={report} /> : null}
+      {sourceCurrent && report ? (
+        <XyAnalysisResult report={report.result} captured={report.captured} />
+      ) : null}
     </section>
   );
 }

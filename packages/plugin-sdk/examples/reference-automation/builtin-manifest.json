@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.automation",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "displayName": "Serial Automation",
   "description": "Schedule sends, run command sequences, and trigger scoped actions",
   "license": "Apache-2.0",
@@ -609,6 +609,309 @@
             }
           },
           "required": ["outcome", "runs", "skipped"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench",
+          "panelId": "activity"
+        }
+      },
+      {
+        "actionId": "swb.builtin.automation.loopback",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": ["virtual_echo", "serial_loopback"]
+            },
+            "wired": {
+              "type": "boolean"
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "frameBytes": {
+              "type": "integer",
+              "minimum": 24,
+              "maximum": 256
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 5000
+            },
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "configurationRevision": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            },
+            "sessionRevision": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          "required": [
+            "source",
+            "seed",
+            "frameBytes",
+            "count",
+            "timeoutMs",
+            "startEventSeq",
+            "configurationRevision",
+            "sessionRevision"
+          ],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "duration_limit",
+                "marker_mismatch",
+                "missing_bytes",
+                "response_timeout",
+                "unexpected_bytes",
+                "source_changed",
+                "transmit_unconfirmed",
+                "timing_unavailable"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "enum": ["virtual_echo", "serial_loopback"]
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            "runTag": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16}$"
+            },
+            "frameBytes": {
+              "type": "integer",
+              "minimum": 24,
+              "maximum": 256
+            },
+            "requestedFrames": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            },
+            "sentBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "comparedFrames": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 16
+            },
+            "comparedBits": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30720
+            },
+            "bitErrors": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 30720
+            },
+            "bitErrorRate": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "throughputBytesPerSecond": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "latencyNs": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "min": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "max": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "mean": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["min", "max", "mean"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "frames": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16
+                  },
+                  "operationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "compared",
+                      "marker_mismatch",
+                      "missing_bytes",
+                      "response_timeout",
+                      "unexpected_bytes",
+                      "source_changed",
+                      "transmit_unconfirmed",
+                      "timing_unavailable"
+                    ]
+                  },
+                  "receivedBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 256
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "hostId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "sessionId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "sessionEpoch": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,19}$"
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": ["rx"]
+                      },
+                      "eventStart": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,19}$"
+                      },
+                      "eventEnd": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,19}$"
+                      },
+                      "byteStart": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]{0,19})$"
+                      },
+                      "byteEnd": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]{0,19})$"
+                      }
+                    },
+                    "required": [
+                      "hostId",
+                      "sessionId",
+                      "sessionEpoch",
+                      "direction",
+                      "eventStart",
+                      "eventEnd",
+                      "byteStart",
+                      "byteEnd"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "latencyNs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 5000000000
+                  },
+                  "bitErrors": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1920
+                  },
+                  "comparedBits": {
+                    "type": "integer",
+                    "minimum": 64,
+                    "maximum": 1920
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "operationId",
+                  "outcome",
+                  "receivedBytes"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "outcome",
+            "source",
+            "seed",
+            "runTag",
+            "frameBytes",
+            "requestedFrames",
+            "sentBytes",
+            "comparedFrames",
+            "comparedBits",
+            "bitErrors",
+            "bitErrorRate",
+            "throughputBytesPerSecond",
+            "latencyNs",
+            "frames"
+          ],
           "additionalProperties": false
         },
         "targetKinds": ["session"],

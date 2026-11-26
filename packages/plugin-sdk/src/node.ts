@@ -177,9 +177,32 @@ export interface TransportConnection {
   close(): void | Promise<void>;
 }
 
+export interface TransportMessage {
+  readonly bytes: Uint8Array;
+  readonly messageType: "binary" | "text" | "datagram";
+}
+
+export interface TransportMessageConnection extends Omit<
+  TransportConnection,
+  "read" | "lineControls"
+> {
+  /** 返回完整消息。undefined 表示本次没有消息，null 表示输入已结束。 */
+  readMessage(
+    options: TransportReadOptions,
+  ):
+    | TransportMessage
+    | undefined
+    | null
+    | Promise<TransportMessage | undefined | null>;
+  /** 接纳整条消息时返回输入长度，未接纳时返回零，无法确认时抛错。 */
+  write(options: TransportWriteOptions): number | Promise<number>;
+}
+
+type OpenTransport = TransportConnection | TransportMessageConnection;
+
 export type TransportOpenHandler = (
   options: TransportOpenOptions,
-) => TransportConnection | Promise<TransportConnection>;
+) => OpenTransport | Promise<OpenTransport>;
 
 export interface NodeTransports {
   register(actionId: Call["actionId"], open: TransportOpenHandler): void;

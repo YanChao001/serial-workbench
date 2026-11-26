@@ -24,6 +24,12 @@ import type {
   Cancellation,
   CancellationResult,
   CaptureRecord,
+  CaptureRedactedRecord,
+  CaptureRedactedResult,
+  CaptureRedactionOmission,
+  CaptureRedactionPreviewParams,
+  CaptureRedactionPreviewResult,
+  CaptureRedactionRule,
   CaptureStartParams,
   CaptureStatusResult,
   CaptureStopParams,
@@ -35,6 +41,7 @@ import type {
   CatalogListParams,
   CatalogListResult,
   Certainty,
+  CharacterRemapRules,
   ChildCall,
   ClientAutostartParams,
   ClientCapability,
@@ -310,6 +317,7 @@ import type {
   TxOutcome,
   TxParams,
   TxReceipt,
+  TxSourceText,
   U64,
   VerificationReport,
   VerifiedNodePackageSource,
@@ -385,6 +393,24 @@ export declare function validateCancellationResult(
 export declare function validateCaptureRecord(
   value: unknown,
 ): value is CaptureRecord;
+export declare function validateCaptureRedactedRecord(
+  value: unknown,
+): value is CaptureRedactedRecord;
+export declare function validateCaptureRedactedResult(
+  value: unknown,
+): value is CaptureRedactedResult;
+export declare function validateCaptureRedactionOmission(
+  value: unknown,
+): value is CaptureRedactionOmission;
+export declare function validateCaptureRedactionPreviewParams(
+  value: unknown,
+): value is CaptureRedactionPreviewParams;
+export declare function validateCaptureRedactionPreviewResult(
+  value: unknown,
+): value is CaptureRedactionPreviewResult;
+export declare function validateCaptureRedactionRule(
+  value: unknown,
+): value is CaptureRedactionRule;
 export declare function validateCaptureStartParams(
   value: unknown,
 ): value is CaptureStartParams;
@@ -416,6 +442,9 @@ export declare function validateCatalogListResult(
   value: unknown,
 ): value is CatalogListResult;
 export declare function validateCertainty(value: unknown): value is Certainty;
+export declare function validateCharacterRemapRules(
+  value: unknown,
+): value is CharacterRemapRules;
 export declare function validateChildCall(value: unknown): value is ChildCall;
 export declare function validateClientAutostartParams(
   value: unknown,
@@ -1121,6 +1150,9 @@ export declare function validateTxIntent(value: unknown): value is TxIntent;
 export declare function validateTxOutcome(value: unknown): value is TxOutcome;
 export declare function validateTxParams(value: unknown): value is TxParams;
 export declare function validateTxReceipt(value: unknown): value is TxReceipt;
+export declare function validateTxSourceText(
+  value: unknown,
+): value is TxSourceText;
 export declare function validateU64(value: unknown): value is U64;
 export declare function validateVerificationReport(
   value: unknown,

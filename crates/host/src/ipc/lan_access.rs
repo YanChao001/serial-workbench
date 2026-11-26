@@ -8,6 +8,7 @@ use crate::{
 };
 use serial_workbench_core::{
     HostError, HostResult, LanAccessParams, LanAccessResult, LanListenerState,
+    parse_lan_socket_address,
 };
 use std::{future::pending, io, net::SocketAddr, sync::Arc};
 use tokio::{
@@ -92,12 +93,7 @@ impl LanAccess {
         match params {
             LanAccessParams::Status {} => {}
             LanAccessParams::Enable { address } => {
-                let requested: SocketAddr = address.parse().map_err(|_| {
-                    HostError::new(
-                        "INVALID_ARGUMENT",
-                        "Enter a numeric IPv4 or IPv6 listen address and port",
-                    )
-                })?;
+                let requested = parse_lan_socket_address(&address)?;
                 if self
                     .listener
                     .as_ref()

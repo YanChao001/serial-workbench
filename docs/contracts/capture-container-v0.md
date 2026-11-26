@@ -1,6 +1,6 @@
-# Capture 容器 0.1 与 0.2
+# Capture 容器 0.1、0.2 与脱敏格式 0.3
 
-本文定义原始录制和只读回放的容器、验证与恢复格式；任务语义见[流与操作](./stream-and-operations-v0.md#录制验证与回放)，独立 reader 验证入口见[测试](../acceptance.md#独立录制格式)。
+本文定义原始及脱敏录制和只读回放的容器、验证与恢复格式；任务语义见[流与操作](./stream-and-operations-v0.md#录制验证与回放)，独立 reader 验证入口见[测试](../acceptance.md#独立录制格式)。
 
 ## 目录与记录
 
@@ -20,7 +20,7 @@ verify 在首个缺失/损坏记录停止，不跨越坏卷。恢复校验 verif
 
 默认 create_new。append 仅接受同格式/来源/配置且整个已有前缀验证通过的容器，从新卷继续。Host 根据每个源的已录末序号与新订阅位置记录 `capture_paused` ReaderGap，保留停止期间未录入的真实事件范围；无法确定旧源位置时，在修改原容器前拒绝追加。replace 要求 expectedFingerprint；候选同步验证后先归档旧目标，再以不覆盖方式发布候选。失败保留归档和候选证据。
 
-默认容量 1 GiB，保留磁盘余量 128 MiB。达到限制、慢盘导致订阅溢出或写盘失败只停止该 capture。raw 为默认；M1 接到 redacted 返回 UNSUPPORTED_CAPABILITY。
+默认容量 1 GiB，保留磁盘余量 128 MiB。达到限制、慢盘导致订阅溢出或写盘失败只停止该 capture。raw 为默认。脱敏录制使用 `capture.start` 的 `mode: "redacted"` 和有序 `redactionRules`，支持创建、同源追加及按指纹替换。脱敏追加要求已有归档结算完整，来源身份、代次、配置及有序规则摘要一致。每次录制均由操作者提供规则。规则正文只留在本次执行内存，操作去重保留原请求摘要，历史输入省略规则。
 
 ## 文件引用与回放
 
@@ -37,6 +37,24 @@ verify 在首个缺失/损坏记录停止，不跨越坏卷。恢复校验 verif
 回放回复中的 `records` 使用 `inline` 或 `reference` 项。普通记录在 `inline.record` 中原样提供；无法放入当前有界回复的记录返回 `reference`，包含 `recordRef`、`recordOrdinal`、`jsonBytes` 与公开记录 JSON 的 `jsonSha256`。0.2 的引用正文取卷中对应的 `CaptureRecord`，卷内计时字段由 reader 消费。引用类型为 `capture_record`，固定 revision 为 1，并继承原源的读取授权，不自动增加 grant。
 
 统一 `file.read` 按 offset 分块读取引用，每次最多返回 64 KiB 解码后的字节，正文经 raw 连接发送。客户端按 offset 拼接后核对原 JSON 长度与 SHA-256，再解析为同一个 `CaptureRecord`；源 host/session/epoch、时钟、序号和最终 TX 区间保持不变。容器的 1 MiB 记录上限不会扩大 IPC 的 1 MiB 帧上限，也不会通过截断记录满足帧限制。每次分块读取都重新检查当前原源授权。
+
+## 脱敏卷格式
+
+格式 0.3 使用 `SWBR03\n` 和 0.2 的录制时钟帧。清单的 `mode` 为 `redacted`，`redactionDigest` 记录版本化规则定义的摘要。卷仅接纳 `redacted` 记录及原有 reader 缺口。每条变换记录保留来源身份、左闭右开的原始事件范围、收到末块的时间及可用的原始方向与字节范围。文字记录保存替换后的内容及替换次数。略过记录保存原因。TX 文本表示尝试发送的内容，最终发送结果仍从操作回执获取。
+
+规则摘要取紧凑 UTF-8 JSON 数组的 SHA-256。数组首项是字符串 `"utf8-lines-1"`，第二项是有序规则数组，每条依次序列化 `pattern` 与 `replacement`。独立读盘可用录制前的合成规则核对摘要。
+
+可续录的 0.3 清单包含可选 `redactionResume` 数组，顺序与 `streams` 一致。每项的 `eventPosition` 是该源已处理的最后事件序号。`rx` 和 `tx` 各可保存一条已变换完整行的 `byteEnd` 与 `configurationRevision`。序号、字节位置和配置修订均用十进制字符串。校验检查游标覆盖已写出的源事件，并用各方向的文字记录及后续缺口核对已保存的行末。已验证的旧 0.3 清单和恢复副本可以读取和回放，缺少可信续录位置时拒绝原地追加。失败或恢复清单省略该字段。
+
+脱敏卷在录制状态、校验报告、尾部和回放结果中返回 `mode: "redacted"`。空页及只含缺口的页也保留该字段。原始卷沿用省略 `mode` 的响应，客户端按原始模式读取。
+
+按同源同方向的连续字节拼接 LF 与 CRLF。起始字节非零、配置或偏移改变、源缺口后，下一段先略过至换行。单行暂存上限 8 KiB。超长、无效 UTF-8 或含控制字符的行以及结束时残行保留略过记录。等待授权复核失败后丢弃剩余暂存。变换失败终止录制。记录校验、恢复和文本导出继续核对原有指纹及权限。
+
+## 脱敏规则预览
+
+`capture.redactionPreview` 是 Host 级查询，要求当前 `metadata.read`。请求携带 `rules` 与请求者提供的 `sample`，结果为替换后的 `text` 和十进制 `replacements`。查询不读取设备、抓取录制或创建 Operation。每个 Host 同时计算一份预览，等待方取消时计算仍持有名额至结束。
+
+规则数量为 1–16，表达式上限为 256 个 UTF-8 字节，替换值上限为 128 个 UTF-8 字节并按字面使用。支持普通 Rust 正则表达式，匹配必须消耗文字。样例上限为 8 KiB、64 行。按逻辑行顺序处理并保留 LF 或 CRLF。单行替换上限为 1,024 次，完整输出上限为 32 KiB。表达式错误用 `INVALID_ARGUMENT` 和从 1 开始的 `details.ruleIndex` 定位。预算耗尽返回 `LIMIT_EXCEEDED`，反馈不携带样例或表达式原文。
 
 ## 无会话尾部查询
 

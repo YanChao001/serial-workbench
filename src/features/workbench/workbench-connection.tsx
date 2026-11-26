@@ -27,9 +27,11 @@ import {
   RotateCw,
   ScrollText,
   PanelsTopLeft,
+  Columns2,
   LoaderCircle,
   X,
   Cable,
+  CaseSensitive,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { useI18n } from "@/providers/i18n";
@@ -37,6 +39,14 @@ import {
   builtinRfc2217PackageId,
   builtinRfc2217ProviderId,
 } from "../../../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint";
+import {
+  builtinUdpPackageId,
+  builtinUdpProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-udp/endpoint";
+import {
+  builtinWebsocketPackageId,
+  builtinWebsocketProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-websocket/endpoint";
 import {
   Select,
   SelectContent,
@@ -126,6 +136,16 @@ export function WorkbenchConnection({
   const lan = useContext(LanWorkbenchContext);
   const { t } = useI18n();
   function deviceName(device: DeviceDescriptor | undefined) {
+    if (
+      device?.systemName === builtinWebsocketProviderId &&
+      device.driver === builtinWebsocketPackageId
+    )
+      return t("websocketConnection.title");
+    if (
+      device?.systemName === builtinUdpProviderId &&
+      device.driver === builtinUdpPackageId
+    )
+      return t("udpConnection.title");
     return device?.systemName === builtinRfc2217ProviderId &&
       device.driver === builtinRfc2217PackageId
       ? t("rfc2217Connection.title")
@@ -426,6 +446,14 @@ export function WorkbenchConnection({
                   {toolLabels.framing}
                 </DropdownMenuItem>
               ) : null}
+              {toolLabels?.liveComparison && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("liveComparison")}
+                >
+                  <Columns2 aria-hidden="true" />
+                  {toolLabels.liveComparison}
+                </DropdownMenuItem>
+              )}
               {toolLabels?.repeatSend && (
                 <DropdownMenuItem
                   onSelect={() => selectToolFromMenu("repeatSend")}
@@ -463,6 +491,21 @@ export function WorkbenchConnection({
                   onSelect={() => selectToolFromMenu("testSuite")}
                 >
                   {toolLabels.testSuite}
+                </DropdownMenuItem>
+              )}
+              {toolLabels?.characterRemap && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("characterRemap")}
+                >
+                  <CaseSensitive aria-hidden="true" />
+                  {toolLabels.characterRemap}
+                </DropdownMenuItem>
+              )}
+              {toolLabels?.loopback && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("loopback")}
+                >
+                  {toolLabels.loopback}
                 </DropdownMenuItem>
               )}
               {toolLabels?.ruleTrigger ? (

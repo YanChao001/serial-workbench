@@ -33,6 +33,7 @@ import type {
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import { bytesToBase64 } from "@/lib/base64";
+import type { SendSourceMetadata } from "./host-context";
 import {
   hasPendingBrowserFile,
   recoverBrowserFile,
@@ -1771,6 +1772,7 @@ export function createHostWorkspace(
     signal?: AbortSignal,
     writeWaitMs?: string,
     expectedRevision?: string,
+    source?: SendSourceMetadata,
   ) {
     const session = sessionById(target.id);
     if (
@@ -1792,6 +1794,10 @@ export function createHostWorkspace(
         params: {
           bytesBase64: bytesToBase64(bytes),
           writeWaitMs: writeWaitMs ?? session.configuration.writeWaitMs,
+          ...(source && {
+            sourceText: source.sourceText,
+            transforms: source.transforms,
+          }),
         },
         executionMode: "interactive",
         expectedRevision,

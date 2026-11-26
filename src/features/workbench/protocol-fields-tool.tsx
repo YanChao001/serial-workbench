@@ -8,6 +8,7 @@ import type { ProtocolDefinitionFileAccess } from "./protocol-definition-file";
 import type { ChartSourceSelection } from "./stream-chart-selection";
 
 const ProtocolFieldPreview = lazy(() => import("./protocol-field-preview"));
+const FrameTemplateTool = lazy(() => import("./frame-template-tool"));
 const CrcRecognitionTool = lazy(() => import("./crc-recognition-tool"));
 const ModbusFrameTool = lazy(() => import("./modbus-frame-tool"));
 const ModbusServerTool = lazy(() => import("./modbus-server-tool"));
@@ -43,6 +44,7 @@ export function ProtocolFieldsTool({
         sourceSelection={sourceSelection}
         onRevealSource={onRevealSource}
       />
+      <FrameTemplateTool />
       <CrcRecognitionTool />
       <ModbusFrameTool />
       {modbusTimeline ? <ModbusTimelineTool access={modbusTimeline} /> : null}

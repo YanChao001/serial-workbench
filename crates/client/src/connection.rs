@@ -187,6 +187,11 @@ impl HostClient {
             self.raw.discovery.instance_epoch,
         )
     }
+    /// Process identity of the authenticated local endpoint, including a local LAN relay.
+    pub fn local_process_id(&self) -> u32 {
+        self.raw.discovery.pid
+    }
+
     /// Keep a handle to the same authenticated Windows Host until program replacement.
     #[cfg(windows)]
     pub async fn observe_local_host_process(&self) -> HostResult<local::LocalHostProcess> {

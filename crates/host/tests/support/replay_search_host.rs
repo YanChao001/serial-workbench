@@ -499,3 +499,124 @@ async fn raw_replay_search_near_default_capture_capacity() {
     );
     f.finish().await;
 }
+
+#[tokio::test]
+#[ignore = "Requires SWB_TEST_CLI_BIN pointing to the same build's CLI executable"]
+async fn cli_batch_replay_search_uses_one_raw_connection_without_leaking_its_cursor() {
+    let cli = std::env::var_os("SWB_TEST_CLI_BIN").expect("set the CLI executable");
+    let f = Fixture::new().await;
+    let path = f.dir.path().join("batch-replay.swbc");
+    let bytes = Bytes::try_from(STANDARD.encode([0x41; 70]).as_str()).unwrap();
+    recording(&path, 10, [(bytes, 70)]);
+    let registered = f
+        .action(
+            &f.control,
+            "file.register",
+            f.host(),
+            json!({"path":path.to_str().unwrap(),"purpose":"capture_source"}),
+        )
+        .await;
+    let Some(ActionResult::FileMetadata(file)) = registered.result else {
+        panic!("expected registered recording: {:?}", registered.error);
+    };
+    let client_id = id("serial-workbench-cli");
+    let client = HostClient::connect(ConnectOptions::new(
+        f.dir.path().into(),
+        client_id.clone(),
+        ClientKind::Cli,
+    ))
+    .await
+    .unwrap();
+    f.auth
+        .authorize(
+            &f.operator,
+            AuthorizeParams {
+                client_id,
+                permissions: vec!["content.read".into()],
+                targets: vec![f.reference_target(&file.file_ref)],
+                expires_at: None,
+            },
+        )
+        .unwrap();
+    let opened = f
+        .action(
+            &client,
+            "replay.open",
+            f.reference_target(&file.file_ref),
+            json!({"captureRef":file.file_ref,"mode":"fastest"}),
+        )
+        .await;
+    let Some(ActionResult::Opened(open)) = opened.result else {
+        panic!("expected replay session: {:?}", opened.error);
+    };
+    let mut target = f.target("session", open.session_id.as_str());
+    target.session_id = Some(open.session_id.clone());
+    target.session_epoch = Some(open.session_epoch);
+    let replay_query = |command| {
+        json!({
+            "kind":"query", "actionId":"replay.search", "target":target,
+            "params":{"sessionId":open.session_id,"sessionEpoch":open.session_epoch,"command":command},
+        })
+    };
+    let search_id = uuid::Uuid::new_v4().to_string();
+    let first = replay_query(
+        json!({"kind":"start","searchId":search_id,"direction":"rx","bytesBase64":"QQ=="}),
+    );
+    let next = replay_query(json!({"kind":"next","searchId":search_id,"page":"2"}));
+    let device_list =
+        json!({"kind":"query","actionId":"device.list","target":{"kind":"host"},"params":{}});
+    let batch_file = f.dir.path().join("replay-batch.json");
+    let run = |steps: Vec<Value>| {
+        std::fs::write(
+            &batch_file,
+            serde_json::to_vec(&json!({"schemaVersion":1,"steps":steps})).unwrap(),
+        )
+        .unwrap();
+        let mut command = tokio::process::Command::new(&cli);
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        command
+            .args([
+                "run",
+                "--mode",
+                "attach",
+                "--timeout-ms",
+                "10000",
+                "--batch-json",
+            ])
+            .arg(&batch_file)
+            .arg("--profile")
+            .arg(f.dir.path())
+            .kill_on_drop(true);
+        async move {
+            tokio::time::timeout(Duration::from_secs(15), command.output())
+                .await
+                .unwrap()
+                .unwrap()
+        }
+    };
+
+    let output = run(vec![first, device_list, next.clone()]).await;
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(
+        output.status.success(),
+        "CLI report error: {}",
+        report["error"]
+    );
+    assert_eq!(report["steps"][1]["result"]["kind"], "devices");
+    let page = |index: usize| &report["steps"][index]["result"]["value"];
+    assert_eq!(page(0)["page"], "1");
+    assert_eq!(page(0)["result"]["hits"].as_array().unwrap().len(), 64);
+    assert_eq!(page(0)["result"]["hits"][0]["byteStart"], "10");
+    assert_eq!(page(2)["page"], "2");
+    assert_eq!(page(2)["result"]["hits"].as_array().unwrap().len(), 6);
+    assert_eq!(page(2)["result"]["hits"][5]["byteEnd"], "80");
+    assert_eq!(page(2)["result"]["complete"], true);
+
+    let output = run(vec![next]).await;
+    assert_eq!(output.status.code(), Some(2));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["error"]["code"], "NOT_FOUND");
+    drop(client);
+    f.finish().await;
+}

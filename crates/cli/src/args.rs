@@ -10,6 +10,8 @@ pub const HELP: &str = "Usage: serial-workbench-cli <command> [--profile <direct
 
 Commands:
   catalog
+  run --mode attach|offline --batch-json <file> --timeout-ms <ms>
+    [--context-out <new-file> | --request-context-json <file>]
   context --out <file>
   query <actionId> --target-json <file> --params-json <file>
   invoke <actionId> --target-json <file> --params-json <file> --request-id <uuid> --request-context-json <file>
@@ -47,6 +49,7 @@ pub struct Args {
 }
 pub enum Command {
     Catalog,
+    Batch(Box<crate::batch::Options>),
     Context {
         out: PathBuf,
     },
@@ -132,6 +135,10 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
                     "--expected-revision",
                     "--lease-id",
                     "--execution-mode",
+                    "--mode",
+                    "--batch-json",
+                    "--timeout-ms",
+                    "--context-out",
                 ]
                 .contains(&key)
                 {
@@ -172,6 +179,39 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
         .collect::<Vec<_>>()
         .as_slice()
     {
+        ["run"] => {
+            allowed(
+                &options,
+                &[
+                    "--mode",
+                    "--batch-json",
+                    "--timeout-ms",
+                    "--context-out",
+                    "--request-context-json",
+                ],
+            )?;
+            let mode = crate::batch::Mode::parse(&required_text(&mut options, "--mode")?)?;
+            if mode == crate::batch::Mode::Offline && (profile.is_none() || lan_route.is_some()) {
+                return Err(invalid(
+                    "Offline runs require an explicit local --profile and no LAN route",
+                ));
+            }
+            let timeout = required_text(&mut options, "--timeout-ms")?
+                .parse::<u64>()
+                .ok()
+                .filter(|ms| (1..=1_800_000).contains(ms))
+                .ok_or_else(|| invalid("--timeout-ms must be between 1 and 1800000"))?;
+            let batch = file(&mut options, "--batch-json")?;
+            let output = options.remove("--context-out").map(PathBuf::from);
+            let saved = if options.contains_key("--request-context-json") {
+                Some(file(&mut options, "--request-context-json")?)
+            } else {
+                None
+            };
+            Command::Batch(Box::new(crate::batch::Options::new(
+                mode, timeout, batch, output, saved,
+            )?))
+        }
         ["catalog"] => {
             allowed(&options, &[])?;
             Command::Catalog

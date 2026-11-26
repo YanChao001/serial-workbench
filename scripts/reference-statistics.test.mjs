@@ -367,11 +367,11 @@ test("XY enforces clock evidence, source order, bounded input, and cancellation"
       run({
         ...input,
         x: seriesForXY("x", "first", [
-          [1, 0],
+          [2, 0],
           [1, 1],
         ]),
       }),
-    /strictly increasing/,
+    /must not go backwards/,
   );
   assert.throws(
     () => run({ ...input, x: seriesForXY("x", "first", [[1, "1e999"]]) }),
@@ -613,4 +613,41 @@ test("large and constant histogram domains, sparse input, and window budgets are
     () => run(input, AbortSignal.abort("cancelled")),
     (error) => error === "cancelled",
   );
+});
+
+test("XY preserves simultaneous X points and refuses to choose or interpolate across simultaneous Y values", () => {
+  const run = workbenchXY();
+  const request = {
+    x: seriesForXY("x", "shared", [
+      [1, 4],
+      [1, 5],
+      [2, 6],
+      [3, 7],
+      [4, 8],
+      [5, 9],
+    ]),
+    y: seriesForXY("y", "shared", [
+      [1, 10],
+      [3, 20],
+      [3, 30],
+      [5, 40],
+    ]),
+    method: "linear",
+    maxGapNs: "10",
+  };
+  const { pairs } = run(request);
+  assert.deepEqual(
+    pairs.map(({ y }) => y.reason ?? y.status),
+    [
+      "exact",
+      "exact",
+      "ambiguous_y_time",
+      "ambiguous_y_time",
+      "ambiguous_y_time",
+      "exact",
+    ],
+  );
+  assert.deepEqual(pairs[3].y.before, { index: 1, monoNs: "3", value: "20" });
+  assert.deepEqual(pairs[3].y.after, { index: 2, monoNs: "3", value: "30" });
+  assert.equal(pairs[5].breakBefore, true);
 });

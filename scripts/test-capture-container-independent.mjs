@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const MAGIC = new Map([
   ["0.1", Buffer.from("SWBR01\n")],
   ["0.2", Buffer.from("SWBR02\n")],
+  ["0.3", Buffer.from("SWBR03\n")],
 ]);
 const MAX_RECORD = 1024 * 1024;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -23,6 +24,89 @@ function u64(value, label) {
   const integer = BigInt(value);
   requireThat(integer <= 18446744073709551615n, `${label} exceeds U64`);
   return integer;
+}
+function closedObject(value, required, optional, label) {
+  requireThat(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      required.every((key) => Object.hasOwn(value, key)) &&
+      Object.keys(value).every(
+        (key) => required.includes(key) || optional.includes(key),
+      ),
+    `Unexpected ${label} fields`,
+  );
+}
+function directionalByteRange(range) {
+  closedObject(range, ["direction", "start", "end"], [], "redacted byte range");
+  requireThat(
+    ["rx", "tx"].includes(range.direction) &&
+      u64(range.end, "redacted byte end") >
+        u64(range.start, "redacted byte start"),
+    "Invalid redacted byte range",
+  );
+}
+
+function redactedFacts(recordOrdinal, value) {
+  closedObject(
+    value,
+    [
+      "hostId",
+      "instanceEpoch",
+      "sessionId",
+      "sessionEpoch",
+      "eventStart",
+      "eventEnd",
+      "timestamp",
+      "result",
+    ],
+    ["byteRange"],
+    "redacted record",
+  );
+  const start = u64(value.eventStart, "redacted eventStart");
+  requireThat(
+    start > 0n && u64(value.eventEnd, "redacted eventEnd") > start,
+    "Invalid redacted event range",
+  );
+  requireThat(
+    typeof value.timestamp === "string" &&
+      Number.isFinite(Date.parse(value.timestamp)),
+    "Invalid redacted timestamp",
+  );
+  const range = value.byteRange;
+  if (Object.hasOwn(value, "byteRange")) directionalByteRange(range);
+  const result = value.result;
+  if (result?.kind === "text") {
+    closedObject(
+      result,
+      ["kind", "text", "replacements"],
+      [],
+      "redacted text result",
+    );
+    requireThat(
+      range &&
+        typeof result.text === "string" &&
+        Buffer.byteLength(result.text) <= 32768 &&
+        !/\p{Cc}/u.test(result.text.replaceAll("\t", "")) &&
+        u64(result.replacements, "redacted replacements") <= 1024n,
+      "Invalid redacted text result",
+    );
+    return {
+      recordOrdinal,
+      kind: "text",
+      textSha256: hash(result.text),
+      replacements: result.replacements,
+    };
+  }
+  closedObject(result, ["kind", "reason"], [], "redacted omission");
+  requireThat(
+    result.kind === "omitted" &&
+      ["boundary", "invalid_text", "line_too_long", "incomplete"].includes(
+        result.reason,
+      ),
+    "Invalid redacted omission",
+  );
+  return { recordOrdinal, kind: "omitted", reason: result.reason };
 }
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -79,29 +163,96 @@ const blockKey = (source, payload) =>
     payload.byteEnd,
   ]);
 
+function checkRedactionResume(manifest, bounds) {
+  if (!Object.hasOwn(manifest, "redactionResume")) return;
+  const positions = manifest.redactionResume;
+  requireThat(
+    manifest.mode === "redacted" &&
+      Array.isArray(positions) &&
+      positions.length === manifest.streams.length,
+    "Invalid redacted resume source count",
+  );
+  for (const [index, position] of positions.entries()) {
+    closedObject(
+      position,
+      ["eventPosition"],
+      ["rx", "tx"],
+      "redacted resume position",
+    );
+    const known = bounds.get(sourceKey(manifest.streams[index]));
+    requireThat(
+      u64(position.eventPosition, "redacted resume eventPosition") >=
+        (known?.position ?? 0n),
+      "Redacted resume cursor precedes a verified record",
+    );
+    for (const direction of ["rx", "tx"]) {
+      if (!Object.hasOwn(position, direction)) continue;
+      const line = position[direction];
+      closedObject(
+        line,
+        ["byteEnd", "configurationRevision"],
+        [],
+        "redacted resume line end",
+      );
+      u64(line.configurationRevision, "redacted resume configurationRevision");
+      requireThat(
+        u64(line.byteEnd, "redacted resume byteEnd") === known?.[direction],
+        "Redacted resume line end differs from the last transformed line",
+      );
+    }
+  }
+}
+
 export function readFixtureContainer(fixtureDirectory) {
   const capture = join(fixtureDirectory, "capture");
   const expected = json(
     regular(join(fixtureDirectory, "expected.json")),
     "pre-write expected oracle",
   );
+  const liveRedacted = expected.fixtureVersion === "virtual-echo-redacted-1";
   requireThat(
-    expected.fixtureVersion === "1" &&
-      Array.isArray(expected.records) &&
-      expected.records.length > 0,
+    Array.isArray(expected.records) &&
+      expected.records.length > 0 &&
+      (expected.fixtureVersion === "1" ||
+        (liveRedacted &&
+          expected.mode === "redacted" &&
+          Array.isArray(expected.rules) &&
+          expected.rules.length > 0)),
     "Missing fixed input expected oracle",
   );
   const manifest = json(regular(join(capture, "manifest.json")), "manifest");
   const index = json(regular(join(capture, "index.json")), "index");
   const magic = MAGIC.get(manifest.formatVersion);
-  const timed = manifest.formatVersion === "0.2";
+  const redacted = manifest.formatVersion === "0.3";
+  const timed = manifest.formatVersion === "0.2" || redacted;
   requireThat(
     magic && index.formatVersion === manifest.formatVersion,
     "Future/unsupported capture format",
   );
   requireThat(
-    manifest.mode === "raw" && manifest.state === "complete",
-    "Expected a complete raw fixed fixture",
+    manifest.mode === (redacted ? "redacted" : "raw") &&
+      manifest.mode === (expected.mode ?? "raw") &&
+      manifest.state === "complete",
+    "Expected a complete fixed fixture of the stated mode",
+  );
+  const expectedPolicy = liveRedacted
+    ? hash(
+        JSON.stringify([
+          "utf8-lines-1",
+          expected.rules.map(({ pattern, replacement }) => ({
+            pattern,
+            replacement,
+          })),
+        ]),
+      )
+    : expected.redactionDigest;
+  requireThat(
+    redacted
+      ? typeof manifest.redactionDigest === "string" &&
+          /^[0-9a-f]{64}$/.test(manifest.redactionDigest) &&
+          manifest.redactionDigest === expectedPolicy
+      : !Object.hasOwn(manifest, "redactionDigest"),
+    "Redaction policy digest differs from the fixture mode or input oracle",
   );
   requireThat(
     Array.isArray(manifest.volumes) &&
@@ -110,7 +261,12 @@ export function readFixtureContainer(fixtureDirectory) {
   );
   requireThat(Array.isArray(index.records), "Missing index records");
   requireThat(
-    isDeepStrictEqual(manifest.streams, expected.streams),
+    liveRedacted
+      ? isDeepStrictEqual(
+          manifest.streams.map(sourceKey),
+          expected.streams.map(sourceKey),
+        )
+      : isDeepStrictEqual(manifest.streams, expected.streams),
     "Manifest sources differ from expected input oracle",
   );
   const sources = new Set(manifest.streams.map(sourceKey));
@@ -212,13 +368,22 @@ export function readFixtureContainer(fixtureDirectory) {
       sha256: digest,
     });
   }
-  const actualNames = readdirSync(capture)
-    .filter((name) => /^volume-[0-9]+\.swbr$/.test(name))
-    .sort();
+  const files = readdirSync(capture).sort();
+  const actualNames = files.filter((name) =>
+    /^volume-[0-9]+\.swbr$/.test(name),
+  );
   requireThat(
     isDeepStrictEqual(actualNames, [...names].sort()),
     "Unexpected or missing unindexed volume file",
   );
+  if (redacted)
+    requireThat(
+      isDeepStrictEqual(
+        files,
+        ["manifest.json", "index.json", ...names].sort(),
+      ),
+      "Unexpected file in a redacted capture",
+    );
   requireThat(
     isDeepStrictEqual(index.records, locations),
     "Index offset/length/record locations differ from complete volume scan",
@@ -227,19 +392,21 @@ export function readFixtureContainer(fixtureDirectory) {
     records.length === expected.records.length,
     "Record count differs from expected input oracle (silent omission or duplication)",
   );
-  requireThat(
-    isDeepStrictEqual(records, expected.records),
-    "Complete record contents differ from expected pre-write input oracle",
-  );
-  requireThat(
-    isDeepStrictEqual(recordJsonSha256, expected.recordJsonSha256),
-    "Raw record JSON hashes differ from expected input oracle",
-  );
-  if (timed)
+  if (!liveRedacted) {
     requireThat(
-      isDeepStrictEqual(recordedMonoNs, expected.recordedMonoNs),
-      "Recorder timeline differs from expected input oracle",
+      isDeepStrictEqual(records, expected.records),
+      "Complete record contents differ from expected pre-write input oracle",
     );
+    requireThat(
+      isDeepStrictEqual(recordJsonSha256, expected.recordJsonSha256),
+      "Raw record JSON hashes differ from expected input oracle",
+    );
+    if (timed)
+      requireThat(
+        isDeepStrictEqual(recordedMonoNs, expected.recordedMonoNs),
+        "Recorder timeline differs from expected input oracle",
+      );
+  }
   for (const name of ["written", "flushed", "synced", "verified"])
     requireThat(
       u64(manifest.watermarks[name], `watermark ${name}`) ===
@@ -248,14 +415,23 @@ export function readFixtureContainer(fixtureDirectory) {
     );
   const rawPayloads = [],
     finalReceipts = [],
+    redactedRecords = [],
     pending = new Set(),
     settled = new Set(),
     sequences = new Map();
+  const redactionBounds = new Map();
   let continuous = true;
   for (const record of records) {
     const entry = record.entry;
+    if (redacted) {
+      closedObject(record, ["recordOrdinal", "entry"], [], "record frame");
+      closedObject(entry, ["kind", "value"], [], "record entry");
+    }
     requireThat(
-      ["event", "tx_settlement", "reader_gap"].includes(entry.kind),
+      (redacted
+        ? ["redacted", "reader_gap"]
+        : ["event", "tx_settlement", "reader_gap"]
+      ).includes(entry.kind),
       "Unexpected capture entry kind",
     );
     const value = entry.value;
@@ -266,8 +442,72 @@ export function readFixtureContainer(fixtureDirectory) {
       sources.has(sourceKey(source)),
       "Record source is not declared in manifest",
     );
+    if (redacted && entry.kind === "redacted") {
+      const facts = redactedFacts(record.recordOrdinal, value);
+      redactedRecords.push(facts);
+      const key = sourceKey(source);
+      const known = redactionBounds.get(key) ?? { position: 0n };
+      const end = u64(value.eventEnd, "redacted eventEnd") - 1n;
+      if (end > known.position) known.position = end;
+      if (value.byteRange) {
+        known[value.byteRange.direction] =
+          facts.kind === "text"
+            ? u64(value.byteRange.end, "redacted line end")
+            : undefined;
+      }
+      redactionBounds.set(key, known);
+      if (facts.kind === "omitted") continuous = false;
+      continue;
+    }
     if (entry.kind === "reader_gap") {
       continuous = false;
+      if (redacted) {
+        closedObject(
+          value,
+          [
+            "hostId",
+            "instanceEpoch",
+            "sessionId",
+            "sessionEpoch",
+            "reason",
+            "missingEventRange",
+          ],
+          ["missingByteRanges"],
+          "redacted gap",
+        );
+        closedObject(
+          value.missingEventRange,
+          ["start", "end"],
+          [],
+          "redacted gap range",
+        );
+        requireThat(
+          u64(value.missingEventRange.end, "redacted gap end") >
+            u64(value.missingEventRange.start, "redacted gap start"),
+          "Invalid redacted gap range",
+        );
+        requireThat(
+          [
+            "reader_overflow",
+            "capture_overflow",
+            "capture_paused",
+            "network_loss",
+          ].includes(value.reason),
+          "Invalid redacted gap reason",
+        );
+        if (Object.hasOwn(value, "missingByteRanges")) {
+          requireThat(
+            Array.isArray(value.missingByteRanges),
+            "Invalid redacted gap byte ranges",
+          );
+          value.missingByteRanges.forEach(directionalByteRange);
+        }
+        const key = sourceKey(source);
+        const end = u64(value.missingEventRange.end, "redacted gap end") - 1n;
+        const previous = redactionBounds.get(key)?.position ?? 0n;
+        redactionBounds.set(key, { position: previous > end ? previous : end });
+        continue;
+      }
       sequences.set(
         sourceKey(source),
         u64(value.missingEventRange.end, "reader gap end") - 1n,
@@ -341,10 +581,32 @@ export function readFixtureContainer(fixtureDirectory) {
     }
   }
   requireThat(pending.size === 0, "Fixed input TX intents lack final receipts");
+  checkRedactionResume(manifest, redactionBounds);
   requireThat(
     manifest.sourceContinuous === continuous,
     "Source continuity flag mismatch",
   );
+  if (liveRedacted) {
+    const lines = records.map(({ entry }) => {
+      requireThat(
+        entry.kind === "redacted" && entry.value.result.kind === "text",
+        "Virtual Echo generated an unexpected gap or omission",
+      );
+      return {
+        ...entry.value.byteRange,
+        text: entry.value.result.text,
+        replacements: entry.value.result.replacements,
+      };
+    });
+    const byDirection = (a, b) => a.direction.localeCompare(b.direction, "en");
+    requireThat(
+      isDeepStrictEqual(
+        lines.sort(byDirection),
+        [...expected.records].sort(byDirection),
+      ),
+      "Transformed lines differ from the Virtual Echo input oracle",
+    );
+  }
   requireThat(
     isDeepStrictEqual(rawPayloads, expected.rawPayloads),
     "Raw payload bytes/hashes differ from expected oracle",
@@ -361,6 +623,13 @@ export function readFixtureContainer(fixtureDirectory) {
     volumes,
     recordJsonSha256,
     ...(timed ? { recordedMonoNs } : {}),
+    ...(redacted
+      ? {
+          mode: manifest.mode,
+          redactionDigest: manifest.redactionDigest,
+          redactedRecords,
+        }
+      : {}),
     rawPayloads,
     finalReceipts,
   };

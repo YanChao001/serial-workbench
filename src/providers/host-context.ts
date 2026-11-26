@@ -47,12 +47,17 @@ import type {
   SessionSnapshot,
   SessionMetrics,
   SessionInputs,
+  TxParams,
   SerialConfiguration,
   WorkspaceDocument,
   WorkspaceDocumentResult,
   WorkspaceListResult,
   Target,
 } from "@serial-workbench/contracts";
+
+export type SendSourceMetadata = Required<
+  Pick<TxParams, "sourceText" | "transforms">
+>;
 
 export type HostInvocation = Pick<
   Call,
@@ -61,6 +66,7 @@ export type HostInvocation = Pick<
   Required<Pick<Call, "executionMode">>;
 
 export type HostStreamView = {
+  sourceSubscriptionId?: string;
   items: readonly import("@/lib/receive-history").HistoryStreamItem[];
   sourceItems?: readonly import("@serial-workbench/contracts").StreamItem[];
   error: Error | null;
@@ -269,6 +275,7 @@ export type HostContextValue = {
     signal?: AbortSignal,
     writeWaitMs?: string,
     expectedRevision?: string,
+    source?: SendSourceMetadata,
   ): Promise<Operation>;
   takeover?(
     target: Target,

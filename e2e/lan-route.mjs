@@ -3,7 +3,14 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createConnection } from "node:net";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -28,7 +35,7 @@ const cli = resolve(cliPath);
 const mcp = resolve(mcpPath);
 const output = resolve(outputPath);
 await mkdir(output);
-const temporary = resolve(tmpdir());
+const temporary = await realpath(tmpdir());
 const root = await mkdtemp(join(temporary, "swb-lan-route-"));
 const profiles = { caller: join(root, "caller"), owner: join(root, "owner") };
 const evidence = {
@@ -39,7 +46,7 @@ const failures = [];
 const ownedHosts = {};
 let assistant;
 
-async function run(role, args, expectedError) {
+async function run(role, args, expectedError, expectedExit = 3) {
   let response;
   try {
     response = await promisify(execFile)(
@@ -64,7 +71,7 @@ async function run(role, args, expectedError) {
     stderr,
   });
   if (expectedError) {
-    assert.equal(code, 3, stderr);
+    assert.equal(code, expectedExit, stderr);
     assert.equal(value?.error?.code, expectedError, stderr);
   } else {
     assert.equal(code, undefined, stderr);
@@ -357,6 +364,26 @@ async function verifyLoopbackRoles() {
     });
   }
 
+  for (const [caller, owner] of directions) {
+    const peer = ["--lan-peer", hosts[owner].peer.hostId];
+    for (const missing of ["[fe80::1]:8022", "[fe80::1%0]:8022"]) {
+      await run(owner, ["lan", "enable", missing], "LAN_SCOPE_REQUIRED", 2);
+      await run(
+        caller,
+        [
+          "context",
+          "--out",
+          join(root, "unexpected-unscoped-context.json"),
+          ...peer,
+          "--lan-address",
+          missing,
+        ],
+        "LAN_SCOPE_REQUIRED",
+        2,
+      );
+    }
+  }
+
   for (const [family, bind] of [
     ["IPv4", "127.0.0.1:0"],
     ["IPv6", "[::1]:0"],
@@ -367,75 +394,128 @@ async function verifyLoopbackRoles() {
         .listener;
       assert.ok(address.startsWith(bind.slice(0, -1)), address);
       const route = ["--lan-peer", peer.hostId, "--lan-address", address];
-      const context = join(root, family + "-" + caller + "-context.json");
-      const routed = await run(caller, ["context", "--out", context, ...route]);
-      assert.equal(routed.hostId, peer.hostId);
-      assert.equal(routed.instanceEpoch, hosts[owner].attachment.instanceEpoch);
-      assert.notEqual(routed.actorId, hosts[caller].attachment.actorId);
-      const previous = evidence.cases.find((entry) => entry.caller === caller);
-      if (previous) assert.equal(routed.actorId, previous.actorId);
+      const attach = async (phase) => {
+        const context = join(
+          root,
+          [family, caller, phase, "context.json"].join("-"),
+        );
+        const routed = await run(caller, [
+          "context",
+          "--out",
+          context,
+          ...route,
+        ]);
+        assert.equal(routed.hostId, peer.hostId);
+        assert.equal(
+          routed.instanceEpoch,
+          hosts[owner].attachment.instanceEpoch,
+        );
+        assert.notEqual(routed.actorId, hosts[caller].attachment.actorId);
+        return { routed, context };
+      };
+      const stopListener = async () => {
+        assert.equal(
+          (await run(owner, ["lan", "disable"])).result.listener.kind,
+          "disabled",
+        );
+        await checkListenerClosed(address);
+      };
+      const transfer = async ({ context, routed }, read, phase) => {
+        const bytes = Buffer.concat([
+          Buffer.from([family, caller, phase].join(":")),
+          Buffer.from([0, 13, 10, 255]),
+        ]);
+        const bytesBase64 = bytes.toString("base64");
+        const operation = await invoke(
+          caller,
+          "session.tx",
+          session,
+          { bytesBase64, writeWaitMs: "1000" },
+          context,
+          randomUUID(),
+          route,
+        );
+        const terminal = await settled(caller, operation.operationId, route);
+        assert.equal(terminal.actorId, routed.actorId);
+        assert.equal(terminal.executionHostId, peer.hostId);
+        assert.deepEqual(terminal.target, session);
+        assert.equal(terminal.result.kind, "tx");
+        const receipt = terminal.result.value;
+        assert.equal(receipt.outcome, "accepted");
+        assert.equal(receipt.operationId, operation.operationId);
+        assert.equal(receipt.sessionId, session.sessionId);
+        assert.equal(receipt.sessionEpoch, session.sessionEpoch);
+        assert.equal(receipt.bytesBase64, bytesBase64);
+        assert.deepEqual(receipt.unknownRanges, []);
+        const raw = await verifyRawTransfer({
+          caller,
+          owner,
+          session,
+          route,
+          instanceEpoch: routed.instanceEpoch,
+          read,
+          receipt,
+          bytes,
+        });
+        return { receipt, ...raw };
+      };
 
-      const initial = await query(
+      const initial = await attach("initial");
+      const previous = evidence.cases.find((entry) => entry.caller === caller);
+      if (previous) assert.equal(initial.routed.actorId, previous.actorId);
+      const atTail = await query(
         owner,
         "stream.read",
         session,
         rawPage(session),
       );
-      assert.equal(initial.hasMore, false);
-      const read = rawPage(session, initial.nextEventSeq);
-      const bytes = Buffer.concat([
-        Buffer.from(family + ":" + caller),
-        Buffer.from([0, 13, 10, 255]),
-      ]);
-      const bytesBase64 = bytes.toString("base64");
-      const operation = await invoke(
-        caller,
-        "session.tx",
-        session,
-        { bytesBase64, writeWaitMs: "1000" },
-        context,
-        randomUUID(),
-        route,
+      assert.equal(atTail.hasMore, false);
+      const first = await transfer(
+        initial,
+        rawPage(session, atTail.nextEventSeq),
+        "initial",
       );
-      const terminal = await settled(caller, operation.operationId, route);
-      assert.equal(terminal.actorId, routed.actorId);
-      assert.equal(terminal.executionHostId, peer.hostId);
-      assert.deepEqual(terminal.target, session);
-      assert.equal(terminal.result.kind, "tx");
-      const receipt = terminal.result.value;
-      assert.equal(receipt.outcome, "accepted");
-      assert.equal(receipt.operationId, operation.operationId);
-      assert.equal(receipt.sessionId, session.sessionId);
-      assert.equal(receipt.sessionEpoch, session.sessionEpoch);
-      assert.equal(receipt.bytesBase64, bytesBase64);
-      assert.deepEqual(receipt.unknownRanges, []);
 
-      const { rawSource, rawPagination } = await verifyRawTransfer({
+      await stopListener();
+      await run(
         caller,
-        owner,
-        session,
-        route,
-        instanceEpoch: routed.instanceEpoch,
-        read,
-        receipt,
-        bytes,
-      });
-      assert.equal(
-        (await run(owner, ["lan", "disable"])).result.listener.kind,
-        "disabled",
+        ["context", "--out", join(root, "stopped-context.json"), ...route],
+        "LAN_CONNECTION_UNAVAILABLE",
+        5,
       );
-      await checkListenerClosed(address);
+      const reopened = (await run(owner, ["lan", "enable", address])).result
+        .listener;
+      assert.deepEqual(reopened, { kind: "listening", address });
+      const restored = await attach("restored");
+      assert.equal(restored.routed.actorId, initial.routed.actorId);
+      const retained = await settled(caller, first.receipt.operationId, route);
+      assert.deepEqual(retained.result.value, first.receipt);
+      const continuation = rawPage(session, first.rawPagination.nextEventSeq);
+      assert.deepEqual(
+        await query(caller, "stream.read", session, continuation, route),
+        {
+          events: [],
+          nextEventSeq: continuation.startEventSeq,
+          hasMore: false,
+        },
+      );
+      const recovery = await transfer(restored, continuation, "restored");
+      await stopListener();
       evidence.cases.push({
         family,
         caller,
         owner,
         address,
-        actorId: routed.actorId,
-        receipt,
-        rawSource,
-        rawPagination,
+        actorId: initial.routed.actorId,
+        ...first,
         remoteMatchesLocal: true,
         listenerClosed: true,
+        recovery: {
+          ...recovery,
+          sameActor: true,
+          sameSession: true,
+          noUnexpectedWrites: true,
+        },
       });
     }
   }

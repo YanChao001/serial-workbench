@@ -158,12 +158,14 @@ export function createSessionReaders(
     const owned = () => !disposed && readers.get(session.sessionId) === entry;
     const current = () =>
       owned() && !closed && !checkingTerminal && !controller.signal.aborted;
-    let view: HostStreamView = resume?.view ?? {
-      items: [],
-      error: null,
-      trimmed: false,
-      receiveIdleMs: DEFAULT_RECEIVE_IDLE_MS,
-    };
+    let view: HostStreamView = resume
+      ? { ...resume.view, sourceSubscriptionId: undefined }
+      : {
+          items: [],
+          error: null,
+          trimmed: false,
+          receiveIdleMs: DEFAULT_RECEIVE_IDLE_MS,
+        };
     let resumeCursor = resume?.cursor;
     let recoveries = resume?.recoveries ?? 0;
     let authorized = false;
@@ -171,6 +173,11 @@ export function createSessionReaders(
       if (!owned()) return;
       onUpdate(session.sessionId, view);
       for (const notify of notifications) notify();
+    };
+    const endSourceAccess = () => {
+      if (!view.sourceSubscriptionId) return;
+      view = { ...view, sourceSubscriptionId: undefined };
+      publish();
     };
     const fail = (error: unknown) => {
       if (!current()) return;
@@ -184,6 +191,7 @@ export function createSessionReaders(
       ) {
         // 用户成功授权时旧初始读可能仍在途；只重新验权一次，不累积授权次数。
         // 已有游标按已处理位置接续，未获得过游标的旧读从新授权的当前位置开始。
+        endSourceAccess();
         controller.abort();
         startReader(session, notifications, {
           view,
@@ -219,12 +227,14 @@ export function createSessionReaders(
       view = {
         ...view,
         error: error instanceof Error ? error : new Error(String(error)),
+        sourceSubscriptionId: undefined,
       };
       publish();
       controller.abort();
     };
     const confirmClosedTerminal = (error: unknown) => {
       if (!current() || terminalChecked) return;
+      endSourceAccess();
       terminalChecked = true;
       checkingTerminal = true;
       const confirmation = new AbortController();
@@ -493,6 +503,12 @@ export function createSessionReaders(
       controller.signal.addEventListener("abort", channel.unsubscribe, {
         once: true,
       });
+      view = {
+        ...view,
+        sourceItems: view.sourceItems ?? history.sourceItems(),
+        sourceSubscriptionId: channel.subscriptionId,
+      };
+      publish();
       await credit();
       if (current()) recoveries = 0;
     })().catch(failRemoteRequest);

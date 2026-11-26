@@ -171,6 +171,7 @@ pub enum BuiltinAction {
     CaptureStop,
     CaptureStatus,
     CaptureTail,
+    CaptureRedactionPreview,
     CaptureVerify,
     CaptureRecover,
     CaptureExport,
@@ -241,7 +242,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 114] = [
+    pub const ALL: [Self; 115] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::ExperimentExport,
@@ -288,6 +289,7 @@ impl BuiltinAction {
         Self::CaptureStop,
         Self::CaptureStatus,
         Self::CaptureTail,
+        Self::CaptureRedactionPreview,
         Self::CaptureVerify,
         Self::CaptureRecover,
         Self::CaptureExport,
@@ -380,6 +382,7 @@ impl BuiltinAction {
             Self::CaptureStop => "capture.stop",
             Self::CaptureStatus => "capture.status",
             Self::CaptureTail => "capture.tail",
+            Self::CaptureRedactionPreview => "capture.redactionPreview",
             Self::CaptureVerify => "capture.verify",
             Self::CaptureRecover => "capture.recover",
             Self::CaptureExport => "capture.export",
@@ -503,6 +506,7 @@ impl BuiltinAction {
                 | Self::CaptureStop
                 | Self::CaptureStatus
                 | Self::CaptureTail
+                | Self::CaptureRedactionPreview
                 | Self::CaptureVerify
                 | Self::CaptureRecover
                 | Self::CaptureExport
@@ -543,7 +547,11 @@ impl BuiltinAction {
             || (self.is_capture_api()
                 && !matches!(
                     self,
-                    Self::CaptureStatus | Self::CaptureTail | Self::ReplayRead | Self::ReplaySearch
+                    Self::CaptureStatus
+                        | Self::CaptureTail
+                        | Self::CaptureRedactionPreview
+                        | Self::ReplayRead
+                        | Self::ReplaySearch
                 ))
             || matches!(
                 self,
@@ -837,7 +845,7 @@ impl BuiltinAction {
             meta.permissions = match self {
                 Self::CaptureStart => vec!["workspace.modify", "content.read", "metadata.read"],
                 Self::CaptureStop => vec!["workspace.modify", "metadata.read"],
-                Self::CaptureStatus => vec!["metadata.read"],
+                Self::CaptureStatus | Self::CaptureRedactionPreview => vec!["metadata.read"],
                 Self::CaptureRecover | Self::CaptureExport => {
                     vec!["content.read", "workspace.modify"]
                 }
@@ -942,6 +950,10 @@ impl BuiltinAction {
             Self::CaptureTail => {
                 ActionSpec::of_with_dialect::<CaptureTailParams, CaptureTailResult>(meta, dialect)
             }
+            Self::CaptureRedactionPreview => ActionSpec::of_with_dialect::<
+                CaptureRedactionPreviewParams,
+                CaptureRedactionPreviewResult,
+            >(meta, dialect),
             Self::CaptureVerify => ActionSpec::of_with_dialect::<
                 CaptureVerifyParams,
                 VerificationReport,

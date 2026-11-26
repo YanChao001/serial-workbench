@@ -333,7 +333,7 @@ export type ActionResult = ActionResult_Serialize | ActionResult_Deserialize;
 export type ActionResult_Deserialize =
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
-  | { kind: "capture_verification"; value: VerificationReport }
+  | { kind: "capture_verification"; value: VerificationReport_Deserialize }
   | { kind: "replay_position"; value: ReplayReadResult_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
   | {
@@ -367,7 +367,7 @@ export type ActionResult_Deserialize =
 export type ActionResult_Serialize =
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
-  | { kind: "capture_verification"; value: VerificationReport }
+  | { kind: "capture_verification"; value: VerificationReport_Serialize }
   | { kind: "replay_position"; value: ReplayReadResult_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
   | { kind: "node_package_installed"; value: NodePackageChangeResult_Serialize }
@@ -719,11 +719,13 @@ export type CaptureEntry = CaptureEntry_Serialize | CaptureEntry_Deserialize;
 
 export type CaptureEntry_Deserialize =
   | { kind: "event"; value: RawEvent_Deserialize }
+  | { kind: "redacted"; value: CaptureRedactedRecord_Deserialize }
   | { kind: "tx_settlement"; value: CaptureTxSettlement_Deserialize }
   | { kind: "reader_gap"; value: ReaderGap_Deserialize };
 
 export type CaptureEntry_Serialize =
   | { kind: "event"; value: RawEvent_Serialize }
+  | { kind: "redacted"; value: CaptureRedactedRecord_Serialize }
   | { kind: "tx_settlement"; value: CaptureTxSettlement_Serialize }
   | { kind: "reader_gap"; value: ReaderGap_Serialize };
 
@@ -747,6 +749,50 @@ export type CaptureRecord_Serialize = {
   entry: CaptureEntry_Serialize;
 };
 
+export type CaptureRedactedRecord =
+  CaptureRedactedRecord_Serialize | CaptureRedactedRecord_Deserialize;
+
+export type CaptureRedactedRecord_Deserialize = {
+  hostId: Id;
+  instanceEpoch: U64;
+  sessionId: Id;
+  sessionEpoch: U64;
+  eventStart: U64;
+  eventEnd: U64;
+  timestamp: Timestamp;
+  byteRange?: DirectionalRange;
+  result: CaptureRedactedResult;
+};
+
+export type CaptureRedactedRecord_Serialize = {
+  hostId: Id;
+  instanceEpoch: U64;
+  sessionId: Id;
+  sessionEpoch: U64;
+  eventStart: U64;
+  eventEnd: U64;
+  timestamp: Timestamp;
+  byteRange?: DirectionalRange;
+  result: CaptureRedactedResult;
+};
+
+export type CaptureRedactedResult =
+  | { kind: "text"; text: string; replacements: U64 }
+  | { kind: "omitted"; reason: CaptureRedactionOmission };
+
+export type CaptureRedactionOmission =
+  "boundary" | "invalid_text" | "line_too_long" | "incomplete";
+
+export type CaptureRedactionPreviewResult = {
+  text: string;
+  replacements: U64;
+};
+
+export type CaptureRedactionRule = {
+  pattern: string;
+  replacement: string;
+};
+
 export type CaptureStartParams =
   CaptureStartParams_Serialize | CaptureStartParams_Deserialize;
 
@@ -754,6 +800,7 @@ export type CaptureStartParams_Deserialize = {
   sessionRefs: Target_Deserialize[];
   targetRef: ObjectRef_Deserialize;
   mode?: CaptureMode;
+  redactionRules?: CaptureRedactionRule[];
   overflowPolicy: OverflowPolicy;
   writeMode?: CaptureWriteMode;
   expectedFingerprint?: Digest;
@@ -764,6 +811,7 @@ export type CaptureStartParams_Serialize = {
   sessionRefs: Target_Serialize[];
   targetRef: ObjectRef_Serialize;
   mode: CaptureMode;
+  redactionRules?: CaptureRedactionRule[];
   overflowPolicy: OverflowPolicy;
   writeMode: CaptureWriteMode;
   expectedFingerprint?: Digest;
@@ -797,6 +845,7 @@ export type CaptureSummary =
   CaptureSummary_Serialize | CaptureSummary_Deserialize;
 
 export type CaptureSummary_Deserialize = {
+  mode?: CaptureMode;
   captureId: Id;
   state: CaptureState;
   watermarks: CaptureWatermarks;
@@ -806,6 +855,7 @@ export type CaptureSummary_Deserialize = {
 };
 
 export type CaptureSummary_Serialize = {
+  mode?: CaptureMode;
   captureId: Id;
   state: CaptureState;
   watermarks: CaptureWatermarks;
@@ -818,6 +868,7 @@ export type CaptureTailResult =
   CaptureTailResult_Serialize | CaptureTailResult_Deserialize;
 
 export type CaptureTailResult_Deserialize = {
+  mode?: CaptureMode;
   captureRef: ObjectRef_Deserialize;
   sourceFingerprint: Digest;
   state: CaptureState;
@@ -829,6 +880,7 @@ export type CaptureTailResult_Deserialize = {
 };
 
 export type CaptureTailResult_Serialize = {
+  mode?: CaptureMode;
   captureRef: ObjectRef_Serialize;
   sourceFingerprint: Digest;
   state: CaptureState;
@@ -887,6 +939,24 @@ export type CatalogListResult_Serialize = {
 };
 
 export type Certainty = "confirmed" | "uncertain";
+
+export type CharacterRemapBackspace = "keep" | "remove" | "apply";
+
+export type CharacterRemapCase = "keep" | "lower" | "upper";
+
+export type CharacterRemapNewline = "keep" | "cr" | "lf" | "crlf";
+
+export type CharacterRemapReplacement = {
+  source: string;
+  replacement: string;
+};
+
+export type CharacterRemapRules = {
+  newline: CharacterRemapNewline;
+  backspace: CharacterRemapBackspace;
+  letterCase: CharacterRemapCase;
+  replacements: CharacterRemapReplacement[];
+};
 
 export type ChildCall = ChildCall_Serialize | ChildCall_Deserialize;
 
@@ -4271,6 +4341,7 @@ export type QueryResult_Deserialize =
   | { kind: "node_package_sources"; value: NodeSourceListResult_Deserialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
+  | { kind: "capture_redaction_preview"; value: CaptureRedactionPreviewResult }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
   | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Deserialize }
@@ -4325,6 +4396,7 @@ export type QueryResult_Serialize =
   | { kind: "node_package_sources"; value: NodeSourceListResult_Serialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
+  | { kind: "capture_redaction_preview"; value: CaptureRedactionPreviewResult }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
   | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Serialize }
@@ -4581,6 +4653,7 @@ export type ReplayReadResult =
   ReplayReadResult_Serialize | ReplayReadResult_Deserialize;
 
 export type ReplayReadResult_Deserialize = {
+  mode?: CaptureMode;
   records: ReplayRecord_Deserialize[];
   readerGeneration: U64;
   nextRecord: U64;
@@ -4589,6 +4662,7 @@ export type ReplayReadResult_Deserialize = {
 };
 
 export type ReplayReadResult_Serialize = {
+  mode?: CaptureMode;
   records: ReplayRecord_Serialize[];
   readerGeneration: U64;
   nextRecord: U64;
@@ -5325,6 +5399,7 @@ export type TxParams_Deserialize = {
   queueWaitMs?: DurationMs;
   dispatchWindow?: TxDispatchWindow;
   sourceInputRef?: ObjectRef_Deserialize;
+  sourceText?: TxSourceText_Deserialize;
   transforms?: TransformReference[];
 };
 
@@ -5334,6 +5409,7 @@ export type TxParams_Serialize = {
   queueWaitMs?: DurationMs;
   dispatchWindow?: TxDispatchWindow;
   sourceInputRef?: ObjectRef_Serialize;
+  sourceText?: TxSourceText_Serialize;
   transforms?: TransformReference[];
 };
 
@@ -5365,6 +5441,20 @@ export type TxReceipt_Serialize = {
   unknownRanges: ByteRange[];
   peerAcknowledged: false;
   backendError?: HostError_Serialize;
+};
+
+export type TxSourceText = TxSourceText_Serialize | TxSourceText_Deserialize;
+
+export type TxSourceText_Deserialize = {
+  utf8Base64: Bytes;
+  encoding: TextEncoding;
+  mapping: CharacterRemapRules;
+};
+
+export type TxSourceText_Serialize = {
+  utf8Base64: Bytes;
+  encoding: TextEncoding;
+  mapping: CharacterRemapRules;
 };
 
 export type U64 = string;
@@ -5399,7 +5489,23 @@ export type UpdateStatus = {
   date: string | null;
 };
 
-export type VerificationReport = {
+export type VerificationReport =
+  VerificationReport_Serialize | VerificationReport_Deserialize;
+
+export type VerificationReport_Deserialize = {
+  mode?: CaptureMode;
+  verificationId: Id;
+  sourceFingerprint: Digest;
+  verifiedPrefix: U64;
+  volumeResults: CaptureVolumeResult[];
+  recoverable: boolean;
+  containerComplete: boolean;
+  sourceContinuous: boolean;
+  unsettledOperations: Id[];
+};
+
+export type VerificationReport_Serialize = {
+  mode?: CaptureMode;
   verificationId: Id;
   sourceFingerprint: Digest;
   verifiedPrefix: U64;

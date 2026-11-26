@@ -6777,6 +6777,70 @@
       }
     },
     {
+      "name": "tx-source-text-unknown-field",
+      "schema": "TxSourceText",
+      "value": {
+        "encoding": "utf-8",
+        "mapping": {
+          "backspace": "keep",
+          "letterCase": "upper",
+          "newline": "crlf",
+          "replacements": [
+            {
+              "replacement": "B",
+              "source": "a"
+            }
+          ]
+        },
+        "unknown": true,
+        "utf8Base64": "YQo="
+      }
+    },
+    {
+      "name": "tx-source-text-missing-encoding",
+      "schema": "TxSourceText",
+      "value": {
+        "mapping": {
+          "backspace": "keep",
+          "letterCase": "upper",
+          "newline": "crlf",
+          "replacements": [
+            {
+              "replacement": "B",
+              "source": "a"
+            }
+          ]
+        },
+        "utf8Base64": "YQo="
+      }
+    },
+    {
+      "name": "tx-source-text-missing-mapping",
+      "schema": "TxSourceText",
+      "value": {
+        "encoding": "utf-8",
+        "utf8Base64": "YQo="
+      }
+    },
+    {
+      "name": "tx-source-text-missing-utf8Base64",
+      "schema": "TxSourceText",
+      "value": {
+        "encoding": "utf-8",
+        "mapping": {
+          "backspace": "keep",
+          "letterCase": "upper",
+          "newline": "crlf",
+          "replacements": [
+            {
+              "replacement": "B",
+              "source": "a"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "tx-limit-over-one",
       "schema": "TxParams",
       "value": {
@@ -14475,6 +14539,43 @@
             "version": "1"
           }
         ],
+        "writeWaitMs": "1"
+      }
+    },
+    {
+      "name": "tx-source-text",
+      "schema": "TxSourceText",
+      "value": {
+        "encoding": "utf-8",
+        "mapping": {
+          "backspace": "keep",
+          "letterCase": "upper",
+          "newline": "crlf",
+          "replacements": [
+            {
+              "replacement": "B",
+              "source": "a"
+            }
+          ]
+        },
+        "utf8Base64": "YQo="
+      }
+    },
+    {
+      "name": "tx-source-text-empty",
+      "schema": "TxParams",
+      "value": {
+        "bytesBase64": "DQo=",
+        "sourceText": {
+          "encoding": "utf-8",
+          "mapping": {
+            "backspace": "keep",
+            "letterCase": "keep",
+            "newline": "keep",
+            "replacements": []
+          },
+          "utf8Base64": ""
+        },
         "writeWaitMs": "1"
       }
     },

@@ -359,6 +359,7 @@ impl Database {
         };
         parent.child_high_watermark = call.child_key.get().into();
         parent.revision = parent.revision.checked_next()?;
+        let input = operations::durable_input(&call.action_id, input)?;
         transaction.execute("INSERT INTO operations(operation_id,actor_id,context_digest,request_id,digest,input_json,operation_json,dispatched,terminal) VALUES(?1,?2,?3,?4,?5,?6,?7,0,0)",params![child.operation_id.as_str(),actor.id().as_str(),context.as_str(),child.request_id.as_str(),digest.as_str(),std::str::from_utf8(&input).map_err(|_|unavailable())?,operations::encode(&child)?]).map_err(|_| unavailable())?;
         transaction
             .execute(

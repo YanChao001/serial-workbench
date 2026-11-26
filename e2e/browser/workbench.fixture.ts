@@ -21,6 +21,7 @@ import type {
   HostError,
   Query,
   Call,
+  CaptureRedactionPreviewResult,
   FileMetadata,
   FileReadResult,
   NodePackageInstallation,
@@ -97,8 +98,8 @@ export type WorkbenchFixture = {
   emitSharedActivity: (items: unknown[]) => number;
   lanSwitches: { generation: string | null; route: LanRoute | null }[];
   rawSubscriptions: string[];
-  emitRaw: (items: unknown[]) => number;
-  endRaw: (error: HostError) => number;
+  emitRaw: (items: unknown[], sessionId?: string) => number;
+  endRaw: (error: HostError, sessionId?: string) => number;
   unexpectedCommands: string[];
   hostQueries: string[];
   pluginIntents: LocalNodeIntent[];
@@ -108,8 +109,12 @@ export type WorkbenchFixture = {
   configureCheckDelayMs: number;
   configureAllowed: boolean;
   deniedReplayReads: string[];
+  deniedRawSessions: string[];
+  rawCursorGate?: Promise<void>;
+  releaseRawCursor?: () => void;
   sendHistoryReadable: boolean;
   manualSendRevision: string;
+  manualSendAcceptedBytes?: number;
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
@@ -142,7 +147,7 @@ export type WorkbenchFixture = {
   automationObserveFailures: number;
   finishAutomationCancellation: () => void;
   automationRuleReplyHeld: "preflight" | "admission" | "cancelCheck" | null;
-  emitRuleOperation: () => number;
+  emitRuleOperation: (markMatched?: boolean) => number;
   emitCalendarPeer: () => number;
   calendarCheckHeld: boolean;
   releaseCalendarCheck: () => void;
@@ -238,6 +243,7 @@ export async function seedWorkbenchFixture(
     observations,
     readOnly = false,
     captureTarget,
+    captureRedactionPreview,
     transferSource,
     fileMetadata,
     hostStart = "ready",
@@ -265,6 +271,7 @@ export async function seedWorkbenchFixture(
     automation,
     diagnosticLogs,
     experiment,
+    extraActions = [],
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -280,6 +287,7 @@ export async function seedWorkbenchFixture(
     manualSendReceipts?: boolean;
     readOnly?: boolean;
     captureTarget?: SelectedFileResource;
+    captureRedactionPreview?: CaptureRedactionPreviewResult;
     transferSource?: SelectedFileResource;
     fileMetadata?: FileMetadata;
     hostStart?: "ready" | "failed" | "pending";
@@ -316,6 +324,7 @@ export async function seedWorkbenchFixture(
       sequenceRetry?: boolean;
       sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
+    extraActions?: ActionSpec[];
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -553,6 +562,7 @@ export async function seedWorkbenchFixture(
           ...workbenchCatalog,
           ...(framing && !framing.initiallyUnavailable ? [framing.action] : []),
           ...(automation ? [automation.action] : []),
+          ...extraActions,
         ],
       },
     },
@@ -642,6 +652,7 @@ export async function seedWorkbenchFixture(
     windowGeometry: geometry,
     openedSession: {
       ...fixtureSession,
+      deviceId: device?.deviceId ?? fixtureSession.deviceId,
       readOnly,
       configuration: openedConfiguration ?? fixtureSession.configuration,
       capabilities: openedCapabilities ?? fixtureSession.capabilities,
@@ -655,6 +666,7 @@ export async function seedWorkbenchFixture(
       : undefined,
     observationProfile: observations ?? null,
     captureTarget: captureTarget ?? null,
+    captureRedactionPreview,
     transferSource,
     fileMetadata: fileMetadata ?? null,
     sentOperation: fixtureOperation,
@@ -698,6 +710,7 @@ export async function seedWorkbenchFixture(
       secondSession,
       observationProfile,
       captureTarget,
+      captureRedactionPreview,
       transferSource,
       fileMetadata,
       sentOperation,
@@ -908,6 +921,7 @@ export async function seedWorkbenchFixture(
         requestId: string;
         index: number;
         lifecycleIndex: number;
+        sessionId?: string;
         cursor: Cursor;
         sentBytes: bigint;
       }
@@ -1111,14 +1125,17 @@ export async function seedWorkbenchFixture(
         }
         return delivered;
       },
-      emitRaw(items) {
+      emitRaw(items, sessionId) {
         const bytes = items.reduce<bigint>(
           (total, item) =>
             total +
             BigInt(new TextEncoder().encode(JSON.stringify(item)).byteLength),
           0n,
         );
+        let delivered = 0;
         for (const [subscriptionId, entry] of rawChannels) {
+          if (sessionId && sessionId !== entry.sessionId) continue;
+          delivered++;
           entry.sentBytes += bytes;
           const previousCursor = entry.cursor;
           entry.cursor = {
@@ -1138,11 +1155,12 @@ export async function seedWorkbenchFixture(
             index: entry.index++,
           });
         }
-        return rawChannels.size;
+        return delivered;
       },
-      endRaw(error) {
+      endRaw(error, sessionId) {
         let delivered = 0;
         for (const [subscriptionId, entry] of [...rawChannels]) {
+          if (sessionId && sessionId !== entry.sessionId) continue;
           const callback = callbacks.get(entry.lifecycle);
           if (!callback) continue;
           delivered++;
@@ -1166,6 +1184,7 @@ export async function seedWorkbenchFixture(
       configureCheckDelayMs: 0,
       configureAllowed: true,
       deniedReplayReads: [],
+      deniedRawSessions: [],
       sendHistoryReadable: true,
       manualSendRevision: openedSession.revision,
       invocations: [],
@@ -1191,9 +1210,16 @@ export async function seedWorkbenchFixture(
       filePickerCalls: [],
       automationCursorPosition: "0",
       automationObserveFailures: 0,
-      emitRuleOperation() {
+      emitRuleOperation(markMatched = false) {
         if (!automationOperation?.actionId.endsWith(".rule"))
           throw new Error("Expected published rule");
+        if (markMatched && automationOperation.state === "running") {
+          automationOperation = {
+            ...automationOperation,
+            revision: String(BigInt(automationOperation.revision) + 1n),
+            progress: { completed: "1", total: "1", unit: "matches" },
+          };
+        }
         return broadcastOperation(automationOperation);
       },
       emitCalendarPeer() {
@@ -2018,6 +2044,7 @@ export async function seedWorkbenchFixture(
                 const sequence = call.actionId.endsWith(".sequence");
                 const rule = call.actionId.endsWith(".rule");
                 const calendar = call.actionId.endsWith(".calendar");
+                const loopback = call.actionId.endsWith(".loopback");
                 const waitingToArm =
                   calendar && automation.calendarInitiallyQueued;
                 const retry = sequence && automation.sequenceRetry;
@@ -2049,7 +2076,9 @@ export async function seedWorkbenchFixture(
                         ? ++calendarRuns === 1
                           ? "fixture-calendar"
                           : "fixture-calendar-" + calendarRuns
-                        : "fixture-repeat";
+                        : loopback
+                          ? "fixture-loopback"
+                          : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
@@ -2072,7 +2101,8 @@ export async function seedWorkbenchFixture(
                   progress: waitingToArm
                     ? undefined
                     : {
-                        completed: "1",
+                        completed:
+                          rule && automation.state === "held" ? "0" : "1",
                         total: String(count),
                         unit: calendar
                           ? "slots"
@@ -2080,7 +2110,9 @@ export async function seedWorkbenchFixture(
                             ? "matches"
                             : sequence
                               ? "steps"
-                              : "rounds",
+                              : loopback
+                                ? "frames"
+                                : "rounds",
                       },
                   result:
                     automation.state === "held"
@@ -2147,6 +2179,33 @@ export async function seedWorkbenchFixture(
                         ),
                       },
                 );
+                if (loopback) {
+                  const size = Number(call.params.frameBytes);
+                  automationFile = JSON.stringify({
+                    outcome: "completed",
+                    source: call.params.source,
+                    sentBytes: count * size,
+                    comparedBits: count * (size - 16) * 8,
+                    bitErrors: 0,
+                    bitErrorRate: 0,
+                    throughputBytesPerSecond: 12800,
+                    latencyNs: { min: 5000000, max: 5000000, mean: 5000000 },
+                    frames: [
+                      {
+                        sequence: 1,
+                        operationId: "loopback-tx-1",
+                        outcome: "compared",
+                        receivedBytes: size,
+                        source: {
+                          ...call.target,
+                          direction: "rx",
+                          byteStart: "10",
+                          byteEnd: String(10 + size),
+                        },
+                      },
+                    ],
+                  });
+                }
                 if (calendar) {
                   const schedule = call.params.schedule;
                   const at =
@@ -2535,6 +2594,7 @@ export async function seedWorkbenchFixture(
                   );
                   const start = String(end - length);
                   const limit = String(end);
+                  const accepted = fixture.manualSendAcceptedBytes ?? length;
                   const operation: Operation = {
                     ...sentOperation,
                     target,
@@ -2551,10 +2611,24 @@ export async function seedWorkbenchFixture(
                         bytesBase64,
                         byteStart: start,
                         byteEnd: limit,
-                        acceptedRanges: [{ start: "0", end: String(length) }],
+                        acceptedRanges: accepted
+                          ? [{ start: "0", end: String(accepted) }]
+                          : [],
                         unknownRanges: [],
-                        outcome: "accepted",
+                        outcome:
+                          accepted === length
+                            ? "accepted"
+                            : accepted === 0
+                              ? "rejected"
+                              : "partial",
                         peerAcknowledged: false,
+                        ...(accepted < length && {
+                          backendError: {
+                            code: "PARTIAL_WRITE",
+                            message: "The fixture backend accepted a prefix",
+                            retryable: false,
+                          },
+                        }),
                       },
                     },
                   };
@@ -3121,6 +3195,17 @@ export async function seedWorkbenchFixture(
               }
               if (refreshUnavailable && query.actionId === "catalog.list")
                 throw startupFailure;
+              if (
+                query.actionId === "capture.redactionPreview" &&
+                captureRedactionPreview
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "capture_redaction_preview",
+                    value: captureRedactionPreview,
+                  },
+                };
               if (query.actionId === "capture.tail") {
                 fixture.captureTailRequests.push({
                   transport: command === "host_raw_request" ? "raw" : "control",
@@ -3358,7 +3443,8 @@ export async function seedWorkbenchFixture(
                   },
                 };
               }
-              if (query.actionId === "stream.cursor")
+              if (query.actionId === "stream.cursor") {
+                if (fixture.rawCursorGate) await fixture.rawCursorGate;
                 return {
                   ok: true,
                   result: {
@@ -3368,8 +3454,9 @@ export async function seedWorkbenchFixture(
                       cursor: {
                         hostId: hostAttachment.attachment.hostId,
                         instanceEpoch: "1",
-                        scopeId: [".sequence", ".rule"].some((suffix) =>
-                          automation?.action.actionId.endsWith(suffix),
+                        scopeId: [".sequence", ".rule", ".loopback"].some(
+                          (suffix) =>
+                            automation?.action.actionId.endsWith(suffix),
                         )
                           ? (fixture.automationCursorScope ??
                             [
@@ -3383,6 +3470,7 @@ export async function seedWorkbenchFixture(
                     },
                   },
                 };
+              }
               if (query.actionId === "device.refresh")
                 return {
                   ok: true,
@@ -3586,6 +3674,14 @@ export async function seedWorkbenchFixture(
                 typeof lifecycle.id !== "number"
               )
                 throw new Error("Invalid raw subscription fixture request");
+              const sessionId = request.target.sessionId ?? request.target.id;
+              if (fixture.deniedRawSessions.includes(sessionId)) {
+                throw {
+                  code: "PERMISSION_DENIED",
+                  message: "Content access revoked",
+                  retryable: false,
+                };
+              }
               const subscriptionId = `workbench-gui-subscription-${nextSubscription++}`;
               rawChannels.set(subscriptionId, {
                 callback: channel.id,
@@ -3593,6 +3689,7 @@ export async function seedWorkbenchFixture(
                 requestId: request.requestId,
                 index: 0,
                 lifecycleIndex: 0,
+                sessionId,
                 cursor: {
                   hostId: after.hostId,
                   instanceEpoch: after.instanceEpoch,

@@ -4584,6 +4584,7 @@ dependencies = [
  "jsonschema",
  "libc",
  "referencing",
+ "regex",
  "ring",
  "rmcp",
  "rusqlite",

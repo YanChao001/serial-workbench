@@ -1,4 +1,5 @@
 import type { StreamHighlightRule } from "./stream-highlight";
+import type { CharacterRemapRules } from "./character-remap";
 import type { TestSuiteWorkspace } from "./test-suite-tool";
 import { TestSuiteSessionsContext } from "./test-suite-sessions";
 import {
@@ -50,6 +51,7 @@ import {
 } from "@/components/ui/popover";
 import { InfoIcon, LockKeyholeIcon } from "lucide-react";
 import type { WorkbenchLabels } from "./labels";
+import type { SendSourceMetadata } from "@/providers/host-context";
 import { WorkbenchDialog, WorkbenchPanels } from "./workbench-dialog";
 import { WorkbenchConnection } from "./workbench-connection";
 import { supportsSessionTemplates } from "./session-templates";
@@ -58,6 +60,8 @@ import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { TcpConnectionParameters } from "./tcp-connection-parameters";
+import { UdpConnectionParameters } from "./udp-connection-parameters";
+import { WebsocketConnectionParameters } from "./websocket-connection-parameters";
 import {
   rfc2217OpenDiagnostic,
   rfc2217OpenDiagnosticText,
@@ -76,6 +80,14 @@ import {
   builtinTcpPackageId,
   builtinTcpProviderId,
 } from "../../../packages/plugin-sdk/examples/reference-transport/tcp-endpoint";
+import {
+  builtinUdpPackageId,
+  builtinUdpProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-udp/endpoint";
+import {
+  builtinWebsocketPackageId,
+  builtinWebsocketProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-websocket/endpoint";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { CommandLibrarySource } from "./command-library";
@@ -131,6 +143,34 @@ import {
 import "./workbench.css";
 
 const ReplayComparisonDialog = lazy(() => import("./replay-comparison-dialog"));
+const LiveSessionComparison = lazy(() => import("./live-session-comparison"));
+
+const transportForms = [
+  {
+    provider: builtinTcpProviderId,
+    packageId: builtinTcpPackageId,
+    form: TcpConnectionParameters,
+    title: "tcpConnection.title",
+  },
+  {
+    provider: builtinRfc2217ProviderId,
+    packageId: builtinRfc2217PackageId,
+    form: Rfc2217ConnectionParameters,
+    title: "rfc2217Connection.title",
+  },
+  {
+    provider: builtinUdpProviderId,
+    packageId: builtinUdpPackageId,
+    form: UdpConnectionParameters,
+    title: "udpConnection.title",
+  },
+  {
+    provider: builtinWebsocketProviderId,
+    packageId: builtinWebsocketPackageId,
+    form: WebsocketConnectionParameters,
+    title: "websocketConnection.title",
+  },
+] as const;
 
 type TabNameSource = { sourceKey?: string; sessionKey?: string; name?: string };
 function sameActionInput(
@@ -185,12 +225,15 @@ export type WorkbenchTool =
   | "transfer"
   | "captureTools"
   | "framing"
+  | "liveComparison"
   | "repeatSend"
   | "broadcastSend"
   | "calendarSchedule"
   | "commandSequence"
   | "testSuite"
   | "ruleTrigger"
+  | "loopback"
+  | "characterRemap"
   | "diagnostics";
 type WorkbenchPanel =
   | WorkbenchTool
@@ -219,11 +262,14 @@ function activityPanel(
     case "transfer":
     case "captureTools":
     case "framing":
+    case "liveComparison":
     case "repeatSend":
     case "broadcastSend":
     case "calendarSchedule":
     case "commandSequence":
     case "ruleTrigger":
+    case "loopback":
+    case "characterRemap":
     case "diagnostics":
     case "capture":
     case "activity":
@@ -254,6 +300,15 @@ export type WorkbenchToolContext = {
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
+  characterRemap?: {
+    items: readonly import("@serial-workbench/contracts").StreamItem[];
+    receiveEncoding: TextEncoding | null;
+    sendText?: string;
+    appliedReceive?: CharacterRemapRules;
+    onApplyReceive?: (rules: CharacterRemapRules) => void;
+    appliedSend?: CharacterRemapRules;
+    onApplySend?: (rules: CharacterRemapRules) => void;
+  };
   sequenceRecording?: { revision: number; definition: string };
   testSuiteWorkspace?: TestSuiteWorkspace;
   onWriteWaitModeChange: (value: WriteWaitMode) => void;
@@ -321,6 +376,7 @@ export type WorkspaceLayoutProps = {
     | Exclude<
         WorkbenchTool,
         | "framing"
+        | "liveComparison"
         | "sessionTemplates"
         | "repeatSend"
         | "broadcastSend"
@@ -328,6 +384,8 @@ export type WorkspaceLayoutProps = {
         | "commandSequence"
         | "testSuite"
         | "ruleTrigger"
+        | "loopback"
+        | "characterRemap"
       >
     | "more"
     | "chooseDevice"
@@ -341,6 +399,7 @@ export type WorkspaceLayoutProps = {
   > & {
     saveCurrentLayoutHint?: string;
     framing?: string;
+    liveComparison?: string;
     sessionTemplates?: string;
     repeatSend?: string;
     broadcastSend?: string;
@@ -348,6 +407,9 @@ export type WorkspaceLayoutProps = {
     commandSequence?: string;
     testSuite?: string;
     ruleTrigger?: string;
+    loopback?: string;
+    characterRemap?: string;
+    mappedReceive?: string;
     manualRecording?: ManualRecordingLabels;
   };
   renderTool?: (
@@ -699,21 +761,16 @@ export function WorkspaceLayout({
             entry.fingerprint.transport === "plugin",
         )
       : undefined;
-  const tcpPrompt =
-    promptDevice?.systemName === builtinTcpProviderId &&
-    promptDevice.driver === builtinTcpPackageId;
-  const rfc2217Prompt =
-    promptDevice?.systemName === builtinRfc2217ProviderId &&
-    promptDevice.driver === builtinRfc2217PackageId;
+  const transportForm = transportForms.find(
+    ({ provider, packageId }) =>
+      promptDevice?.systemName === provider &&
+      promptDevice.driver === packageId,
+  );
   const promptFailure =
     openError && promptDevice && failure?.deviceId === promptDevice.deviceId
       ? failure
       : undefined;
-  const TransportParameters = rfc2217Prompt
-    ? Rfc2217ConnectionParameters
-    : tcpPrompt
-      ? TcpConnectionParameters
-      : PluginTransportParameters;
+  const TransportParameters = transportForm?.form ?? PluginTransportParameters;
   useEffect(() => {
     if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
   }, [promptDevice, transportPrompt]);
@@ -1006,6 +1063,10 @@ export function WorkspaceLayout({
         ? viewDraftKey(draftScopeKey, selectedTab.id)
         : "unconnected";
   const usesUnconnectedDraft = draftKey === "unconnected";
+  const controlledSendMode = usesUnconnectedDraft
+    ? unboundSendMode
+    : (viewModes[selected ?? "unconnected"]?.sendMode ??
+      selectedTab?.view?.sendMode);
   const hasUnboundDraft = tabs.some(
     (tab) => tab.id === localDraftTabId.current && !tab.view && !tab.sessionId,
   );
@@ -1107,6 +1168,37 @@ export function WorkspaceLayout({
       replayIds.add(active.sessionId);
   }
   const isReplay = !!sessionId && replayIds.has(sessionId);
+  const receiveRemapOwner =
+    state.status === "ready" &&
+    labelHost &&
+    selectedTab &&
+    session?.state === "open" &&
+    stream?.error === null &&
+    stream.sourceSubscriptionId &&
+    !isReplay &&
+    !isCapture
+      ? JSON.stringify([
+          captureOwnerScope,
+          labelHost,
+          selectedTab.id,
+          session.sessionId,
+          session.sessionEpoch,
+          stream.sourceSubscriptionId,
+        ])
+      : undefined;
+  const [appliedReceive, setAppliedReceive] = useState<{
+    owner: string;
+    rules: CharacterRemapRules;
+  }>();
+  useEffect(() => {
+    setAppliedReceive((current) =>
+      current?.owner === receiveRemapOwner ? current : undefined,
+    );
+  }, [receiveRemapOwner]);
+  const receiveRules =
+    appliedReceive && appliedReceive.owner === receiveRemapOwner
+      ? appliedReceive.rules
+      : undefined;
   const uniqueSessionIds = [
     ...new Set(
       tabs
@@ -1820,6 +1912,38 @@ export function WorkspaceLayout({
               nativeErrorCode(value.error) === "PERMISSION_DENIED"),
         )));
   const sendAllowed = !isReplay && !!target && mayAttempt("session.tx");
+  const draftSendMode =
+    draftStore.getCommand(draftKey)?.mode ??
+    controlledSendMode ??
+    terminalSettings?.sendMode ??
+    selectedTab?.view?.sendMode ??
+    "text";
+  const sendRemapOwner =
+    state.status === "ready" &&
+    draftsReady &&
+    selectedTab &&
+    !isCapture &&
+    sendAllowed &&
+    session?.state === "open" &&
+    !session.readOnly
+      ? JSON.stringify([
+          captureOwnerScope,
+          selectedTab.id,
+          target,
+          session.sessionEpoch,
+        ])
+      : undefined;
+  const [appliedSend, setAppliedSend] = useState<{
+    owner: string;
+    rules: CharacterRemapRules;
+  }>();
+  useEffect(() => {
+    setAppliedSend((current) =>
+      current?.owner === sendRemapOwner ? current : undefined,
+    );
+  }, [sendRemapOwner]);
+  const sendRules =
+    appliedSend?.owner === sendRemapOwner ? appliedSend?.rules : undefined;
   const historyHostId = host.connection?.attachment.hostId;
   const historyDestination =
     sendAllowed &&
@@ -1892,12 +2016,22 @@ export function WorkspaceLayout({
     signal?: AbortSignal,
     expectedRevision?: string,
     recordedWriteWaitMs?: string,
+    source?: SendSourceMetadata,
   ) {
     if (isCapture || !session || !target) throw new Error(labels.unavailable);
     const writeWaitMs =
       recordedWriteWaitMs ??
       sendWaitMs(session.configuration, bytes.length, writeWaitMode);
     // Host admission remains authoritative for the session epoch selected here.
+    if (source)
+      return host.send(
+        target,
+        bytes,
+        signal,
+        writeWaitMs,
+        expectedRevision,
+        source,
+      );
     if (expectedRevision === undefined)
       return host.send(target, bytes, signal, writeWaitMs);
     return host.send(target, bytes, signal, writeWaitMs, expectedRevision);
@@ -1906,6 +2040,7 @@ export function WorkspaceLayout({
     bytes: Uint8Array,
     signal?: AbortSignal,
     expectedRevision?: string,
+    source?: SendSourceMetadata,
   ) {
     if (!session) return submitBytes(bytes, signal, expectedRevision);
     const writeWaitMs = sendWaitMs(
@@ -1919,6 +2054,7 @@ export function WorkspaceLayout({
         signal,
         expectedRevision ?? (guardRevision ? session.revision : undefined),
         writeWaitMs,
+        source,
       ),
     );
   }
@@ -2401,6 +2537,11 @@ export function WorkspaceLayout({
         ) : (
           <StreamView
             allowTerminalLinks={!isReplay && !isCapture}
+            mappedReceive={
+              receiveRules && toolLabels?.mappedReceive
+                ? { rules: receiveRules, label: toolLabels.mappedReceive }
+                : undefined
+            }
             key={`${selected ?? "unconnected"}:${session?.sessionEpoch ?? ""}`}
             items={items}
             chartSourceItems={sourceItems}
@@ -2616,12 +2757,7 @@ export function WorkspaceLayout({
           </>
         }
         initialMode={selectedTab?.view?.sendMode}
-        mode={
-          usesUnconnectedDraft
-            ? unboundSendMode
-            : (viewModes[selected ?? "unconnected"]?.sendMode ??
-              selectedTab?.view?.sendMode)
-        }
+        mode={controlledSendMode}
         onSendModeChange={(mode) =>
           usesUnconnectedDraft
             ? setUnboundSendMode(mode)
@@ -2649,7 +2785,16 @@ export function WorkspaceLayout({
         draftKey={draftKey}
         labels={labels}
         operations={state.operations}
-        onSend={submitManualBytes}
+        sendRemap={sendRules}
+        onClearSendRemap={() => setAppliedSend(undefined)}
+        onSend={(bytes, signal, source) =>
+          submitManualBytes(
+            bytes,
+            signal,
+            source ? session?.revision : undefined,
+            source,
+          )
+        }
         onSendFile={
           onSendFile &&
           !disabled &&
@@ -2668,11 +2813,9 @@ export function WorkspaceLayout({
         open={!!promptDevice}
         scopeKey={transportScope}
         title={
-          rfc2217Prompt
-            ? t("rfc2217Connection.title")
-            : tcpPrompt
-              ? t("tcpConnection.title")
-              : labels.pluginTransportParameters
+          transportForm
+            ? t(transportForm.title)
+            : labels.pluginTransportParameters
         }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
@@ -2685,7 +2828,8 @@ export function WorkspaceLayout({
             labels={labels}
             opening={opening === promptDevice.deviceId}
             error={
-              rfc2217Prompt && promptFailure?.rfc2217
+              transportForm?.provider === builtinRfc2217ProviderId &&
+              promptFailure?.rfc2217
                 ? rfc2217OpenDiagnosticText(promptFailure.rfc2217, t)
                 : promptFailure?.message
             }
@@ -2849,6 +2993,18 @@ export function WorkspaceLayout({
               />
             )}
             {dialog === "logs" && <WorkbenchLogPanel />}
+            {dialog === "liveComparison" && (
+              <Suspense fallback={null}>
+                <LiveSessionComparison
+                  state={state}
+                  watchIds={uniqueSessionIds}
+                  selectedSession={sessionId}
+                  attachment={
+                    disabled ? undefined : host.connection?.attachment
+                  }
+                />
+              </Suspense>
+            )}
             {dialog === "sendHistory" &&
               !disabled &&
               historyHostId &&
@@ -2885,6 +3041,7 @@ export function WorkspaceLayout({
                 "activity",
                 "logs",
                 "sendHistory",
+                "liveComparison",
               ].includes(dialog) &&
               renderTool?.(dialog as WorkbenchTool, {
                 trackCapture,
@@ -2949,6 +3106,34 @@ export function WorkspaceLayout({
                   dialog === "calendarSchedule" ||
                   dialog === "broadcastSend"
                     ? (checkBytes ?? undefined)
+                    : undefined,
+                characterRemap:
+                  dialog === "characterRemap"
+                    ? {
+                        items:
+                          receiveRemapOwner || (isReplay && !stream?.error)
+                            ? (sourceItems ?? items)
+                            : [],
+                        receiveEncoding,
+                        appliedReceive: receiveRules,
+                        onApplyReceive: receiveRemapOwner
+                          ? (rules) =>
+                              setAppliedReceive({
+                                owner: receiveRemapOwner,
+                                rules,
+                              })
+                          : undefined,
+                        appliedSend: sendRules,
+                        onApplySend:
+                          sendRemapOwner && draftSendMode === "text"
+                            ? (rules) =>
+                                setAppliedSend({ owner: sendRemapOwner, rules })
+                            : undefined,
+                        sendText:
+                          draftsReady && draftSendMode === "text"
+                            ? draftStore.get(draftKey)
+                            : undefined,
+                      }
                     : undefined,
                 onWriteWaitModeChange: (mode) =>
                   rememberWaitMode(deviceId, mode),

@@ -404,6 +404,73 @@ async fn metadata_and_device_modify_do_not_grant_tx_input_or_receipt_and_revocat
     f.finish().await;
 }
 #[tokio::test]
+async fn mapped_tx_settles_device_bytes_and_keeps_source_behind_current_read_grant() {
+    use sha2::{Digest as _, Sha256};
+
+    let f = Fixture::new().await;
+    let session = f.open().await;
+    let mapping = json!({
+        "newline":"crlf", "backspace":"keep", "letterCase":"upper",
+        "replacements":[{"source":"a","replacement":"z"}]
+    });
+    let typed: CharacterRemapRules = serde_json::from_value(mapping.clone()).unwrap();
+    let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&typed).unwrap()));
+    let params = json!({
+        "bytesBase64":"WkINCkxJTkU=",
+        "writeWaitMs":"1000",
+        "sourceText":{"utf8Base64":"YWIKbGluZQ==","encoding":"utf-8","mapping":mapping},
+        "transforms":[{"id":CHARACTER_REMAP_TRANSFORM_ID,
+                       "version":CHARACTER_REMAP_TRANSFORM_VERSION,"configurationDigest":digest}]
+    });
+    for (pointer, value) in [
+        ("/sourceText/utf8Base64", json!("/w==")),
+        ("/sourceText/mapping/replacements/0/source", json!("ab")),
+        ("/transforms/0/version", json!("0")),
+        ("/transforms/0/configurationDigest", json!("a".repeat(64))),
+    ] {
+        let mut invalid = params.clone();
+        *invalid.pointer_mut(pointer).unwrap() = value;
+        let reply = f
+            .mcp
+            .request(RpcRequest::Invoke(f.call(
+                &f.mcp,
+                "session.tx",
+                session.clone(),
+                invalid,
+            )))
+            .await
+            .unwrap();
+        assert_eq!(error(reply).code, "INVALID_ARGUMENT", "{pointer}");
+    }
+    let accepted = f
+        .invoke(
+            &f.mcp,
+            f.call(&f.mcp, "session.tx", session.clone(), params.clone()),
+        )
+        .await;
+    let done = f.wait(&accepted).await;
+    assert_eq!(done.state, OperationState::Succeeded, "{:?}", done.error);
+    let Some(ActionResult::Tx(receipt)) = &done.result else {
+        panic!("TX receipt")
+    };
+    assert_eq!(receipt.bytes_base64.as_str(), "WkINCkxJTkU=");
+    assert_eq!(receipt.outcome, TxOutcome::Accepted);
+    assert_eq!(
+        error(f.input(&f.gui, &done).await).code,
+        "PERMISSION_DENIED"
+    );
+    f.grant(&f.gui, "content.read", session.clone());
+    let input = query_value(f.input(&f.gui, &done).await);
+    assert_eq!(input["value"], params);
+    f.revoke(&f.gui, "content.read", session);
+    assert_eq!(
+        error(f.input(&f.gui, &done).await).code,
+        "PERMISSION_DENIED"
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
 async fn typed_public_summary_exposes_target_time_and_progress_without_private_envelope() {
     let f = Fixture::new().await;
     let session = f.open().await;

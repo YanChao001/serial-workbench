@@ -213,6 +213,35 @@ jobs:
         # 保留全部测试程序的结果。后续步骤复用本次编译的三个伴随程序及 software_scenarios。
         run: cargo test --locked --workspace --no-fail-fast
 
+      - name: 独立读取真实脱敏录制卷
+        shell: bash
+        run: |
+          export SWB_TEST_CAPTURE_NODE_BIN="$(node -p 'process.execPath')"
+          cargo test --locked -p serial-workbench-host --test capture_api_host \
+            redacted_host_archive_passes_independent_readback -- --ignored --exact --test-threads=1
+
+      - name: 验证离线 CLI 自有 Host 和录制分页
+        shell: bash
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          export SWB_TEST_HEADLESS_HOST_BIN="$PWD/src-tauri/target/debug/serial-workbench-host$suffix"
+          export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
+          cargo test --locked -p serial-workbench-cli --test commands headless_offline_ -- --ignored --test-threads=1
+          cargo test --locked -p serial-workbench-host --test capture_api_host cli_batch_replay_search_ -- --ignored --test-threads=1
+
+      - name: 验证双栈 LAN 停用与恢复
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          binaries="$PWD/src-tauri/target/debug"
+          evidence="$(node -p 'require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(),"swb-lan-ci-"))')"
+          node e2e/lan-route.mjs "$binaries/serial-workbench-host$suffix" \
+            "$binaries/serial-workbench-cli$suffix" "$binaries/serial-workbench-mcp$suffix" \
+            "$evidence/run" --loopback-roles
+
       - name: 保留失败 Rust 场景现场
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -348,7 +377,7 @@ jobs:
               | tee artifacts/reference-chart/paired-browser.log
           fi
 
-      - name: 验证真实配对浏览器文件与实验包
+      - name: 验证真实配对浏览器文件、实验包与字符映射录制
         id: paired-workbench-files
         if: runner.os == 'Windows'
         shell: bash
@@ -377,6 +406,19 @@ jobs:
           fi
           if ! test -s "$output/experiment/host-receipt.json"; then
             echo "::error::真实配对浏览器实验包交换收据缺失。"
+            exit 1
+          fi
+
+          export SWB_NODE_RUNTIME_TEST_ROOT="$(cygpath -am "src-tauri/target/${{ matrix.target }}/release")"
+          export SWB_TEST_MAPPED_CAPTURE_OUTPUT="$output/mapped-capture"
+          if ! cargo test --locked -p serial-workbench-host --test capture_api_host \
+              paired_browser_maps_signed_tcp_bytes_and_keeps_raw_recording_and_receipts \
+              -- --ignored --test-threads=1 > "$output/mapped-capture.log" 2>&1; then
+            echo "::error::真实配对浏览器字符映射录制测试进程失败。"
+            exit 1
+          fi
+          if ! test -s "$output/mapped-capture/host-receipt.json" || ! test -s "$output/mapped-capture/browser-receipt.json"; then
+            echo "::error::真实配对浏览器字符映射录制收据缺失。"
             exit 1
           fi
 

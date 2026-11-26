@@ -117,7 +117,7 @@ impl CaptureWriter {
         } else {
             CaptureFormat::Legacy
         };
-        Self::create_at_format(guard, sources, limits, opener, format)
+        Self::create_at_format(guard, sources, limits, opener, format, None)
     }
 
     pub(crate) fn create_at_format(
@@ -126,13 +126,19 @@ impl CaptureWriter {
         limits: CaptureLimits,
         opener: VolumeOpener,
         format: CaptureFormat,
+        redaction_digest: Option<Digest>,
     ) -> HostResult<Self> {
+        if (format == CaptureFormat::Redacted) != redaction_digest.is_some() {
+            return Err(corrupt());
+        }
         guard.create_directory()?;
         let path = guard.checked_path();
         let manifest = Manifest {
             format_version: format.version().into(),
             capture_id: Id::try_from(format!("capture-{}", uuid::Uuid::new_v4()).as_str())?,
-            mode: CaptureMode::Raw,
+            mode: format.mode(),
+            redaction_digest,
+            redaction_resume: None,
             streams: sources,
             volumes: vec![],
             state: CaptureState::Recording,
@@ -196,7 +202,8 @@ impl CaptureWriter {
         limits: CaptureLimits,
         opener: VolumeOpener,
     ) -> HostResult<Self> {
-        Self::append_at_positions(guard, sources, limits, opener, None)
+        Self::append_at_positions(guard, sources, limits, opener, None, None)
+            .map(|(writer, _)| writer)
     }
     pub(crate) fn append_at_positions(
         guard: crate::files::references::PathGuard,
@@ -204,7 +211,8 @@ impl CaptureWriter {
         limits: CaptureLimits,
         opener: VolumeOpener,
         positions: Option<Vec<U64>>,
-    ) -> HostResult<Self> {
+        redaction_digest: Option<Digest>,
+    ) -> HostResult<(Self, Option<Vec<RedactionSourcePosition>>)> {
         let path = guard.checked_path();
         let scan = super::verify::verify_directory(path)?;
         if !scan.report.container_complete
@@ -217,32 +225,57 @@ impl CaptureWriter {
                 "Append requires a settled, completely verified capture",
             ));
         }
-        if scan.manifest.streams != sources || scan.manifest.mode != CaptureMode::Raw {
+        if scan.manifest.streams != sources || scan.manifest.redaction_digest != redaction_digest {
             return Err(HostError::new(
                 "CONFIGURATION_CONFLICT",
-                "Capture source or configuration differs",
+                "Capture source, configuration, mode or redaction rules differ",
             ));
         }
+        let missing_position = || {
+            HostError::new(
+                "CAPTURE_INCOMPLETE",
+                "Append requires a recorded source position",
+            )
+        };
+        let mut resume = if redaction_digest.is_some() {
+            if positions.is_none() {
+                return Err(missing_position());
+            }
+            Some(
+                scan.manifest
+                    .redaction_resume
+                    .clone()
+                    .ok_or_else(missing_position)?,
+            )
+        } else {
+            None
+        };
         // 先确定续接证据，再改写 settled manifest；未知旧位置不能猜成连续。
         let mut gaps = Vec::new();
         if let Some(positions) = positions {
             if positions.len() != sources.len() {
                 return Err(corrupt());
             }
-            for (source, position) in sources.iter().zip(positions) {
-                let previous = scan
-                    .source_sequences
-                    .get(&SourceIdentity::source(source))
-                    .ok_or_else(|| {
-                        HostError::new(
-                            "CAPTURE_INCOMPLETE",
-                            "Append requires a recorded source position",
-                        )
-                    })?;
-                if position.get() < *previous {
+            for (index, (source, position)) in sources.iter().zip(positions).enumerate() {
+                let checkpoint = resume
+                    .as_mut()
+                    .and_then(|positions| positions.get_mut(index));
+                let previous = match &checkpoint {
+                    Some(value) => value.event_position,
+                    None => U64::from(
+                        *scan
+                            .source_sequences
+                            .get(&SourceIdentity::source(source))
+                            .ok_or_else(missing_position)?,
+                    ),
+                };
+                if position < previous {
                     return Err(changed());
                 }
-                if position.get() > *previous {
+                if position > previous {
+                    if let Some(checkpoint) = checkpoint {
+                        *checkpoint = RedactionSourcePosition::without_line_ends(position);
+                    }
                     gaps.push(CaptureEntry::ReaderGap(Box::new(ReaderGap {
                         host_id: source.host_id.clone(),
                         instance_epoch: source.instance_epoch,
@@ -250,7 +283,7 @@ impl CaptureWriter {
                         session_epoch: source.session_epoch,
                         reason: ReaderGapReason::CapturePaused,
                         missing_event_range: ByteRange {
-                            start: U64::from(*previous).checked_next()?,
+                            start: previous.checked_next()?,
                             end: position.checked_next()?,
                         },
                         missing_byte_ranges: None,
@@ -260,6 +293,7 @@ impl CaptureWriter {
         }
         let mut manifest = scan.manifest;
         manifest.state = CaptureState::Recording;
+        manifest.redaction_resume = None;
         let total = manifest.volumes.iter().map(|v| v.length.get()).sum();
         let start = manifest.watermarks.written.get() + 1;
         let index_bytes = serde_json::to_vec(&scan.index)
@@ -295,7 +329,7 @@ impl CaptureWriter {
             writer.push_observed(gap, 0, None)?;
         }
         writer.checkpoint()?;
-        Ok(writer)
+        Ok((writer, resume))
     }
     pub fn replace(
         path: &Path,
@@ -318,6 +352,7 @@ impl CaptureWriter {
             limits,
             expected,
             opener,
+            None,
         )
     }
     pub(crate) fn replace_at(
@@ -326,6 +361,7 @@ impl CaptureWriter {
         limits: CaptureLimits,
         expected: &Digest,
         opener: VolumeOpener,
+        redaction_digest: Option<Digest>,
     ) -> HostResult<Self> {
         let path = guard.checked_path();
         let scan = super::verify::verify_directory(path)?;
@@ -336,7 +372,17 @@ impl CaptureWriter {
             ".capture-pending-{}",
             uuid::Uuid::new_v4()
         )))?;
-        let mut writer = Self::create_at(candidate, sources, limits, opener)?;
+        let mut writer = match redaction_digest {
+            Some(digest) => Self::create_at_format(
+                candidate,
+                sources,
+                limits,
+                opener,
+                CaptureFormat::Redacted,
+                Some(digest),
+            )?,
+            None => Self::create_at(candidate, sources, limits, opener)?,
+        };
         writer.replacement = Some((guard, expected.clone()));
         Ok(writer)
     }
@@ -403,6 +449,7 @@ impl CaptureWriter {
                 "Capture is no longer accepting records",
             ));
         }
+        self.format.validate_entry(&entry)?;
         validate_entry_source(&entry, &self.manifest.streams)?;
         let settlement = SettlementKey::entry(&entry);
         if settlement
@@ -417,8 +464,10 @@ impl CaptureWriter {
             entry,
         };
         let json = serde_json::to_vec(&record).map_err(|_| corrupt())?;
-        let recorded =
-            (self.format == CaptureFormat::RecorderClock).then(|| self.timeline.at(observed));
+        let recorded = self
+            .format
+            .uses_recorder_clock()
+            .then(|| self.timeline.at(observed));
         let time = recorded.map(u64::to_le_bytes);
         let time_bytes = time.as_ref().map_or(&[][..], |value| value.as_slice());
         if json.len() > MAX_RECORD {
@@ -490,9 +539,7 @@ impl CaptureWriter {
         if let Some(id) = settlement {
             self.settled.insert(id);
         }
-        if matches!(&record.entry, CaptureEntry::ReaderGap(_))
-            || matches!(&record.entry,CaptureEntry::Event(e) if matches!(e.payload,RawPayload::Gap(_)))
-        {
+        if breaks_continuity(&record.entry) {
             self.manifest.source_continuous = false;
         }
         if self.total.saturating_sub(self.checkpoint_bytes) >= 1024 * 1024
@@ -549,6 +596,7 @@ impl CaptureWriter {
     }
     pub fn summary(&self) -> CaptureSummary {
         CaptureSummary {
+            mode: self.manifest.mode,
             capture_id: self.manifest.capture_id.clone(),
             state: self.manifest.state,
             watermarks: self.manifest.watermarks.clone(),
@@ -567,23 +615,31 @@ impl CaptureWriter {
     }
     pub(crate) fn fail(mut self) -> CaptureSummary {
         self.manifest.state = CaptureState::Failed;
+        self.manifest.redaction_resume = None;
         self.last_verified = None;
         let _ = self.checkpoint();
         self.summary()
     }
     pub fn finish(mut self) -> HostResult<CaptureSummary> {
-        self.finish_in_place()
+        self.finish_in_place(None)
     }
-    pub(crate) fn finish_in_place(&mut self) -> HostResult<CaptureSummary> {
-        let result = self.finish_inner();
+    pub(crate) fn finish_in_place(
+        &mut self,
+        redaction_resume: Option<Vec<RedactionSourcePosition>>,
+    ) -> HostResult<CaptureSummary> {
+        let result = self.finish_inner(redaction_resume);
         if result.is_err() {
             self.manifest.state = CaptureState::Failed;
+            self.manifest.redaction_resume = None;
             self.last_verified = None;
             let _ = self.checkpoint();
         }
         result
     }
-    fn finish_inner(&mut self) -> HostResult<CaptureSummary> {
+    fn finish_inner(
+        &mut self,
+        redaction_resume: Option<Vec<RedactionSourcePosition>>,
+    ) -> HostResult<CaptureSummary> {
         if self.manifest.state == CaptureState::Failed {
             return Ok(self.summary());
         }
@@ -602,6 +658,7 @@ impl CaptureWriter {
         self.manifest.watermarks.verified = scan.report.verified_prefix;
         self.manifest.verified_prefix = scan.report.verified_prefix;
         self.manifest.state = CaptureState::Complete;
+        self.manifest.redaction_resume = redaction_resume;
         write_json_at(
             &self
                 ._guard

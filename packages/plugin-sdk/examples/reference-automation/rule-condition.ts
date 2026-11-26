@@ -1,4 +1,5 @@
 import { createContext, Script } from "node:vm";
+import { parseRuleRequestHex } from "./rule-response.ts";
 import {
   compileProtocolFields,
   ProtocolFieldError,
@@ -212,6 +213,19 @@ export function compileRuleCondition(definition: unknown): Condition {
     const condition = definition as Record<string, unknown>;
     if (condition.kind === "regex") return compileRegex(condition);
     if (condition.kind === "field") return compileField(condition);
+    if (condition.kind === "hex") {
+      if (Object.keys(condition).some((key) => key !== "kind" && key !== "hex"))
+        throw new Error("Invalid HEX request condition");
+      const request = parseRuleRequestHex(condition.hex);
+      return {
+        framing: { kind: "fixed", byteLength: request.length },
+        matches: (frame) =>
+          frame.length === request.length &&
+          request.every((byte, index) => byte === frame[index]),
+      };
+    }
   }
-  throw new Error("Rule requires a regex or protocol field condition");
+  throw new Error(
+    "Rule requires a regex, protocol field, or HEX request condition",
+  );
 }

@@ -33,9 +33,11 @@ const rx = {
 function fixture({
   old = false,
   gapOnEffect = false,
+  deniedOnEffect = false,
   cancelBeforeWrite = false,
   closedAfterMatch = false,
   beforeArm,
+  onWait,
   action,
 } = {}) {
   const requests = [];
@@ -51,6 +53,7 @@ function fixture({
   let time = 0;
   const handler = createRuleTrigger(
     async (ms, signal) => {
+      onWait?.(ms, { requests, readCursors, controller });
       time += ms;
       signal.throwIfAborted();
     },
@@ -77,6 +80,10 @@ function fixture({
           cancelBeforeWrite
         )
           controller.abort();
+        if (deniedOnEffect && startEventSeq === "21")
+          throw Object.assign(new Error("Access changed"), {
+            code: "PERMISSION_DENIED",
+          });
         if (gapOnEffect && startEventSeq === "21")
           return {
             events: [{ ...rx, kind: "configuration_boundary", eventSeq: "21" }],
@@ -313,4 +320,89 @@ test("equivalent rules in independent requests can only arm once per exact sessi
     ["0", "1"],
   );
   assert.equal((await fixture().run(effect)).outcome, "notification");
+});
+
+test("delayed response waits without taking a lease, then fences the source before and within the lease", async () => {
+  const { requests, readCursors, run } = fixture({
+    onWait(ms, { requests, readCursors }) {
+      assert.equal(ms, 275);
+      assert.equal(requests.length, 0);
+      assert.deepEqual(readCursors, ["20", "20"]);
+    },
+  });
+  const result = await run({
+    kind: "send",
+    bytesBase64: "UE9ORw==",
+    responseDelayMs: 275,
+  });
+  assert.equal(result.outcome, "written");
+  assert.deepEqual(readCursors, ["20", "20", "21", "21"]);
+  assert.deepEqual(
+    requests.map(({ actionId }) => actionId),
+    ["lease.acquire", "session.tx", "lease.release"],
+  );
+  assert.equal(requests[1].leaseId, "lease-1");
+});
+
+test("cancel or a changed source during the response delay cannot reserve or write to the port", async () => {
+  const cancelled = fixture({
+    onWait(_ms, { controller }) {
+      controller.abort();
+    },
+  });
+  const effect = {
+    kind: "send",
+    bytesBase64: "UE9ORw==",
+    responseDelayMs: 250,
+  };
+  await assert.rejects(cancelled.run(effect), { name: "AbortError" });
+  assert.deepEqual(cancelled.requests, []);
+
+  const changed = fixture({ gapOnEffect: true });
+  assert.deepEqual(await changed.run(effect), { outcome: "source_changed" });
+  assert.deepEqual(changed.requests, []);
+  const denied = fixture({ deniedOnEffect: true });
+  await assert.rejects(denied.run(effect), { code: "PERMISSION_DENIED" });
+  assert.deepEqual(denied.requests, []);
+});
+
+test("invalid response delays fail before observing or acting on the session", async () => {
+  for (const responseDelayMs of [-1, 2.5, "250", null, 10001]) {
+    const { requests, readCursors, run } = fixture();
+    await assert.rejects(
+      run({ kind: "send", bytesBase64: "UE9ORw==", responseDelayMs }),
+      /response delay/i,
+    );
+    assert.deepEqual(requests, []);
+    assert.deepEqual(readCursors, []);
+  }
+});
+
+test("equivalent HEX spelling cannot arm a second copy of the same request", async () => {
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const first = fixture({
+    beforeArm() {
+      entered.resolve();
+      return release.promise;
+    },
+  });
+  const effect = { kind: "notify", message: "One match" };
+  const pending = first.run(effect, {
+    condition: { kind: "hex", hex: "41 4c 41 52 4d 0a" },
+  });
+  try {
+    await entered.promise;
+    const second = fixture();
+    assert.deepEqual(
+      await second.run(effect, {
+        condition: { kind: "hex", hex: "414C41524D0A" },
+      }),
+      { outcome: "already_armed" },
+    );
+    assert.deepEqual(second.readCursors, []);
+  } finally {
+    release.resolve();
+  }
+  assert.equal((await pending).outcome, "notification");
 });

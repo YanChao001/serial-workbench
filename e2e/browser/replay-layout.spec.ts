@@ -7,6 +7,7 @@ import type { CaptureRecord, ReplayRecord } from "@serial-workbench/contracts";
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { session } from "../../src/features/workbench/test-fixtures";
 import { en } from "../../src/i18n/en";
+import { xyCaptureFixture } from "./xy-capture.fixture";
 import {
   seedWorkbenchFixture,
   type ReplayLayoutFixture,
@@ -162,9 +163,12 @@ test("replay chart traces a compacted and filtered field to both original captur
       },
     };
   }
+  const xyFixture = xyCaptureFixture();
   await seedWorkbenchFixture(page, {
     language: "en",
     hostStart: "pending",
+    plugin: xyFixture.plugin,
+    extraActions: [xyFixture.action],
     framing: {
       action,
       dependencies: [
@@ -416,6 +420,25 @@ test("replay chart traces a compacted and filtered field to both original captur
   expect(filteredRows?.at(-1)).toContain(
     '""event"":""54"",""start"":""193"",""end"":""194"",""hex"":""5A"",""record"":""42""',
   );
+  const stagedAxes = chart.getByRole("region", { name: "Cross-source XY" });
+  await stagedAxes.getByRole("button", { name: "Stage as X" }).click();
+  await expect(stagedAxes.getByText("X · voltage · 32 samples")).toBeVisible();
+  const xField = chart.getByRole("combobox", {
+    name: en["workbench.fieldChart.xField"],
+  });
+  await xField.click();
+  await page.getByRole("option", { name: "channel", exact: true }).click();
+  await stagedAxes.getByRole("button", { name: "Stage as Y" }).click();
+  await expect(stagedAxes.getByText("Y · channel · 32 samples")).toBeVisible();
+  await xField.click();
+  await page.getByRole("option", { name: "voltage (V)", exact: true }).click();
+  const openXy = stagedAxes.getByRole("button", {
+    name: "Open cross-source XY",
+  });
+  await expect(openXy).toBeEnabled();
+  await openXy.click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toBeVisible();
   const mdf4 = chart.getByRole("button", { name: "Export MDF4", exact: true });
   await page.evaluate(() => {
     window.workbenchFixture.chartArtifactSaveResult = false;
@@ -520,6 +543,40 @@ test("replay chart traces a compacted and filtered field to both original captur
     .toBe("00 20");
   await replay.getByRole("button", { name: "Read replay" }).click();
   await expect(replay.getByLabel("Selected source bytes")).toHaveCount(0);
+  await page.goto("./#/plugins?analysis=xy");
+  const analysis = page.getByRole("region", { name: "Cross-source XY" });
+  await analysis.getByRole("button", { name: "Load staged channels" }).click();
+  const input = JSON.parse(
+    await analysis
+      .getByRole("textbox", { name: "Analysis input (JSON)" })
+      .inputValue(),
+  );
+  expect(input.x.sourceId).toBe("voltage");
+  expect(input.y.sourceId).toBe("channel");
+  expect(input.x.clockId).toBe(input.y.clockId);
+  expect(input.anchors).toBeUndefined();
+  expect(input.x.samples).toHaveLength(32);
+  expect(input.x.samples[0]).toEqual({ monoNs: "51", value: "7.5" });
+  expect(input.x.samples.at(-1)).toEqual({
+    monoNs: "54",
+    value: "45",
+    gapBefore: true,
+  });
+
+  await page.evaluate(() => {
+    window.workbenchFixture.deniedReplayReads.push("chart-replay");
+  });
+  await expect(
+    analysis.getByRole("textbox", { name: "Analysis input (JSON)" }),
+  ).toHaveValue("");
+  const loadStaged = analysis.getByRole("button", {
+    name: "Load staged channels",
+  });
+  await expect(loadStaged).toHaveCount(0);
+  await page.evaluate(() => {
+    window.workbenchFixture.deniedReplayReads.length = 0;
+  });
+  await expect(loadStaged).toHaveCount(0);
 });
 
 async function rectangles(page: Page) {

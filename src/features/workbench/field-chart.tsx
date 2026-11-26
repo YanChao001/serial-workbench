@@ -28,6 +28,7 @@ import {
 import type { ChartSourceSelection } from "./stream-chart-selection";
 import { fieldChartCsv, type FieldChartMode } from "./field-chart-csv";
 import { FieldChartMdf4 } from "./field-chart-mdf4-button";
+import { FieldChartXyCapture } from "./field-chart-xy-capture";
 import { FieldXyPlot } from "./field-xy-plot";
 
 type Point = { index: number; value: number };
@@ -454,6 +455,13 @@ export function FieldChart({
                 replaySession={replaySession}
               />
             </div>
+            <FieldChartXyCapture
+              inspection={inspection}
+              entries={entries}
+              start={start}
+              field={channel}
+              replaySession={replaySession}
+            />
             <div aria-live="polite">
               {visibleCsvResult === "saved" ? (
                 <p className="text-muted-foreground">

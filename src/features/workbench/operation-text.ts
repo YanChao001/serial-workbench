@@ -59,6 +59,7 @@ export function operationText(
       "capture.recover": t("workbench.tools.recoverPrefix"),
       "capture.export": t("workbench.tools.exportText"),
       "replay.open": t("workbench.openReplay"),
+      "swb.builtin.automation.loopback": t("loopback.title"),
       "operation.cancel": t("workbench.cancel"),
     },
     states: {

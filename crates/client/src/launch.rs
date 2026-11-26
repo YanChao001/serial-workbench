@@ -33,6 +33,11 @@ fn host_executable(options: &ConnectOptions) -> HostResult<PathBuf> {
 }
 
 impl HostClient {
+    /// Validate a profile before an explicitly owned launch, without repairing its identity.
+    pub fn validate_start_profile(options: &ConnectOptions) -> HostResult<()> {
+        discovery::validate_start(options)
+    }
+
     /// Attach first, or start the adjacent Host after the existing OS instance lock proves idle.
     /// Readiness requires the normal authenticated attach. No business request is replayed.
     pub async fn connect_or_start(options: ConnectOptions) -> HostResult<Self> {
@@ -65,7 +70,7 @@ impl HostClient {
             let validate = options.clone();
             let preflight = timeout_at(
                 deadline,
-                tokio::task::spawn_blocking(move || discovery::validate_start(&validate)),
+                tokio::task::spawn_blocking(move || Self::validate_start_profile(&validate)),
             )
             .await
             .map_err(|_| waiting_for_host())?

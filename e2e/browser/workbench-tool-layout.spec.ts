@@ -94,6 +94,7 @@ for (const { width, height, language, theme, t } of [
         length: "0",
         mime: "application/octet-stream",
       },
+      captureRedactionPreview: { text: "token=[masked]\n", replacements: "1" },
       fileMetadata: {
         fileRef: reference,
         purpose: "capture_target",
@@ -176,11 +177,105 @@ for (const { width, height, language, theme, t } of [
     ).toBe(true);
     await writeMode.focus();
     await dialog.screenshot({ path: info.outputPath("capture-file.png") });
+    const contentType = dialog.getByRole("combobox", {
+      name: t["workbench.tools.captureContentType"],
+    });
+    await contentType.press("ArrowDown");
+    await page
+      .getByRole("option", {
+        name: t["workbench.captureRedacted"],
+        exact: true,
+      })
+      .click();
+    await expect(start).toBeDisabled();
+    await writeMode.press("ArrowDown");
+    await page
+      .getByRole("option", { name: t["workbench.tools.append"], exact: true })
+      .click();
+    const appendHint = dialog.getByText(
+      t["workbench.tools.captureRedactedAppendHint"],
+      { exact: true },
+    );
+    await expect(appendHint).toBeVisible();
+    await appendHint.scrollIntoViewIfNeeded();
+    await dialog.screenshot({ path: info.outputPath("capture-append.png") });
+    await expect(start).toBeDisabled();
+    const expression = dialog.getByRole("textbox", {
+      name: t["workbench.tools.redaction.pattern"],
+      exact: true,
+    });
+    await expression.fill("token=[^\\s]+");
+    await dialog
+      .getByRole("textbox", {
+        name: t["workbench.tools.redaction.replacement"],
+        exact: true,
+      })
+      .fill("token=[masked]");
+    expect((await expression.boundingBox())?.height).toBe(
+      (await contentType.boundingBox())?.height,
+    );
+    await dialog
+      .getByRole("tab", {
+        name: t["workbench.tools.redaction.preview"],
+        exact: true,
+      })
+      .click();
+    await dialog
+      .getByRole("button", { name: t["workbench.tools.redaction.run"] })
+      .click();
+    await expect(dialog.locator(".workbench-redaction-output")).toHaveText(
+      "token=[masked]",
+    );
+    expect(
+      await dialog
+        .locator(".workbench-redaction-layout")
+        .evaluate(
+          (node) =>
+            getComputedStyle(node).gridTemplateColumns.split(" ").length,
+        ),
+    ).toBe(width === 410 ? 1 : 2);
+    if (width > 410) {
+      const sample = dialog.locator(".workbench-redaction-sample textarea");
+      const output = dialog.locator(".workbench-redaction-output");
+      const [sampleBox, outputBox] = await Promise.all([
+        sample.boundingBox(),
+        output.boundingBox(),
+      ]);
+      if (!sampleBox || !outputBox)
+        throw new Error("Missing preview input or output");
+      expect(Math.abs(sampleBox.y - outputBox.y)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(sampleBox.width - outputBox.width)).toBeLessThanOrEqual(
+        0.5,
+      );
+    }
+    await expect(start).toBeInViewport();
+    await dialog.screenshot({ path: info.outputPath("capture-redaction.png") });
     await start.click();
     await expect(
       dialog.getByText(t["workbench.operation.succeeded"], { exact: true }),
     ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          window.workbenchFixture.invocations.find(
+            ({ actionId }) => actionId === "capture.start",
+          )?.params,
+      ),
+    ).toMatchObject({
+      mode: "redacted",
+      writeMode: "append",
+      redactionRules: [
+        { pattern: "token=[^\\s]+", replacement: "token=[masked]" },
+      ],
+    });
     await page.keyboard.press("Escape");
+    const unsaved = page.getByRole("dialog", { name: t["lifecycle.title"] });
+    await expect(
+      unsaved.getByText(t["workbench.tools.captureDraft"], { exact: true }),
+    ).toBeVisible();
+    await unsaved
+      .getByRole("button", { name: t["lifecycle.discard"], exact: true })
+      .click();
     await expect(opener).toBeFocused();
 
     await page.emulateMedia({ reducedMotion: "no-preference" });

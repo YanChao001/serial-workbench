@@ -18,7 +18,7 @@ function eventForSource(items: readonly StreamItem[], source: string) {
   return item && matchesRx(item, source) ? item.event : undefined;
 }
 
-function itemAtOffset(
+export function rxItemAtOffset(
   items: readonly StreamItem[],
   reference: RxEvent,
   offset: bigint,
@@ -56,8 +56,8 @@ export function sourceSelectionFromDisplay(
   const end = eventForSource(displayed, range.end.source);
   if (!start || !end) return;
   const first =
-    sources[itemAtOffset(sources, start, range.start.offset, false)];
-  const last = sources[itemAtOffset(sources, end, range.end.offset, true)];
+    sources[rxItemAtOffset(sources, start, range.start.offset, false)];
+  const last = sources[rxItemAtOffset(sources, end, range.end.offset, true)];
   if (first?.kind !== "source" || last?.kind !== "source") return;
   return {
     ...range,
@@ -74,8 +74,8 @@ export function chartSelectionRows(
   const start = eventForSource(sources, range.start.source);
   const end = eventForSource(sources, range.end.source);
   if (!start || !end) return;
-  const first = itemAtOffset(displayed, start, range.start.offset, false);
-  const last = itemAtOffset(displayed, end, range.end.offset, true);
+  const first = rxItemAtOffset(displayed, start, range.start.offset, false);
+  const last = rxItemAtOffset(displayed, end, range.end.offset, true);
   if (first >= 0 && last >= first) return { first, last };
 }
 

@@ -2858,6 +2858,8 @@ mod tests {
         let automation = NodePackageId::try_from("swb.builtin.automation").unwrap();
         let tcp = NodePackageId::try_from("swb.builtin.tcp").unwrap();
         let rfc2217 = NodePackageId::try_from("swb.builtin.rfc2217").unwrap();
+        let udp = NodePackageId::try_from("swb.builtin.udp").unwrap();
+        let websocket = NodePackageId::try_from("swb.builtin.websocket").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         let mut pending_calendar: Option<(Id, tokio::time::Instant, ContextToken)> = None;
@@ -2907,6 +2909,8 @@ mod tests {
                         catalog.status(&automation).unwrap(),
                         catalog.status(&tcp).unwrap(),
                         catalog.status(&rfc2217).unwrap(),
+                        catalog.status(&udp).unwrap(),
+                        catalog.status(&websocket).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2926,6 +2930,7 @@ mod tests {
                     (&framing, "swb.reference.framing.scan"),
                     (&fields, "swb.reference.fields.decode"),
                     (&fields, "swb.reference.fields.encode"),
+                    (&fields, "swb.reference.fields.frameTemplate"),
                     (&fields, "swb.reference.fields.identifyCrc"),
                     (&fields, "swb.reference.fields.modbus"),
                     (&fields, "swb.reference.fields.modbusServer"),
@@ -2942,6 +2947,7 @@ mod tests {
                     (&automation, "swb.builtin.automation.sequence"),
                     (&automation, "swb.builtin.automation.rule"),
                     (&automation, "swb.builtin.automation.calendar"),
+                    (&automation, "swb.builtin.automation.loopback"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -2961,6 +2967,8 @@ mod tests {
                         [
                             (&tcp, "swb.builtin.tcp.transport"),
                             (&rfc2217, "swb.builtin.rfc2217.transport"),
+                            (&udp, "swb.builtin.udp.transport"),
+                            (&websocket, "swb.builtin.websocket.transport"),
                         ]
                         .into_iter()
                         .all(|(package, contribution)| {
@@ -3019,7 +3027,7 @@ mod tests {
             assert!(registered.unwrap());
             assert!(
                 transports_registered.unwrap(),
-                "bundled TCP and RFC 2217 providers were not registered"
+                "bundled TCP, RFC 2217, UDP and WebSocket providers were not registered"
             );
             if let Some(execution) = execution {
                 pending_calendar = Some(execution.expect("bundled field actions on the real Host"));
@@ -3028,6 +3036,33 @@ mod tests {
             let installed =
                 crate::node_packages::NodePackageInstaller::read_snapshot(&store).unwrap();
             assert_eq!(installed.packages.len(), statuses.len());
+            let expected_bundles = [
+                (
+                    &modbus,
+                    "modbus",
+                    include_str!("../resources/node-packages/modbus.json"),
+                ),
+                (
+                    &slave,
+                    "modbus_slave",
+                    include_str!("../resources/node-packages/modbus-slave.json"),
+                ),
+                (
+                    &rfc2217,
+                    "rfc2217",
+                    include_str!("../resources/node-packages/rfc2217.json"),
+                ),
+                (
+                    &udp,
+                    "udp",
+                    include_str!("../resources/node-packages/udp.json"),
+                ),
+                (
+                    &websocket,
+                    "websocket",
+                    include_str!("../resources/node-packages/websocket.json"),
+                ),
+            ];
             for status in statuses {
                 let package = installed
                     .packages
@@ -3038,22 +3073,26 @@ mod tests {
                     status.archive_sha256.as_ref(),
                     Some(&package.archive_sha256)
                 );
-                if status.id == rfc2217 {
-                    let descriptor: serde_json::Value = serde_json::from_str(include_str!(
-                        "../resources/node-packages/rfc2217.json"
-                    ))
-                    .unwrap();
+                if let Some((_, name, descriptor)) =
+                    expected_bundles.iter().find(|(id, _, _)| *id == &status.id)
+                {
+                    let descriptor: serde_json::Value = serde_json::from_str(descriptor).unwrap();
                     assert_eq!(
                         package.archive_sha256.as_str(),
                         descriptor["archiveSha256"].as_str().unwrap()
+                    );
+                    assert_eq!(
+                        package.manifest.version.as_str(),
+                        descriptor["version"].as_str().unwrap()
                     );
                     assert_eq!(
                         package.verified_source.as_ref().unwrap().source.as_str(),
                         "swb.product"
                     );
                     eprintln!(
-                        "bundled_rfc2217 epoch={epoch} archive={} source=swb.product active=true",
-                        package.archive_sha256
+                        "bundled_{name} epoch={epoch} archive={} source=swb.product active=true version={}",
+                        package.archive_sha256,
+                        package.manifest.version.as_str()
                     );
                 }
             }
@@ -3107,14 +3146,16 @@ mod tests {
             async move {
                 let catalog = &host.inner.registry.runtime;
                 let mut updates = catalog.subscribe();
-                let package = NodePackageId::try_from("swb.builtin.tcp").unwrap();
+                let packages = ["swb.builtin.tcp", "swb.builtin.automation"].map(|id| NodePackageId::try_from(id).unwrap());
                 timeout(Duration::from_secs(30), async {
                     loop {
-                        let status = catalog.status(&package).unwrap();
-                        if status.phase == NodePackageRuntimePhase::Active {
-                            break;
+                        let mut active = true;
+                        for package in &packages {
+                            let status = catalog.status(package).unwrap();
+                            assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                            active &= status.phase == NodePackageRuntimePhase::Active;
                         }
-                        assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                        if active { break; }
                         updates.changed().await.unwrap();
                     }
                 })
@@ -3182,6 +3223,63 @@ mod tests {
                         .unwrap()
                     }
                 };
+
+                let echo_device = Target { id: id("virtual:echo"), ..device.clone() };
+                grant(&echo_device, vec!["device.modify".into()]);
+                let opened = host.invoke(&actor, call(&echo_device, "device.open", serde_json::json!({
+                    "configuration": SerialConfiguration::default(),
+                }))).await.unwrap();
+                let ActionResult::Opened(echo) = settled(opened).await else {
+                    panic!("Expected the native Host Virtual Echo session");
+                };
+                let echo = Target {
+                    kind: ResourceKind::try_from("session").unwrap(),
+                    id: echo.session_id.clone(),
+                    session_id: Some(echo.session_id),
+                    session_epoch: Some(echo.session_epoch),
+                    ..echo_device
+                };
+                let loopback_action = "swb.builtin.automation.loopback";
+                let snapshot = host.devices().snapshot(&echo).await.unwrap();
+                let params = serde_json::json!({
+                    "source": "virtual_echo", "seed": 123, "count": 4, "frameBytes": 64,
+                    "timeoutMs": 1000, "startEventSeq": "1",
+                    "sessionRevision": snapshot.revision,
+                    "configurationRevision": snapshot.configuration_revision,
+                });
+                grant(&echo, vec!["metadata.read".into(), "content.read".into()]);
+                let denied = host.invoke(&actor, call(&echo, loopback_action, params.clone())).await.unwrap_err();
+                assert_eq!(denied.code, "PERMISSION_DENIED");
+                grant(&echo, vec!["metadata.read".into(), "content.read".into(), "device.modify".into()]);
+                let mut mislabeled = params.clone();
+                mislabeled["source"] = serde_json::json!("serial_loopback");
+                mislabeled["wired"] = serde_json::json!(true);
+                let denied = host.invoke(&actor, call(&echo, loopback_action, mislabeled)).await.unwrap_err();
+                assert_eq!(denied.code, "LOOPBACK_TARGET_UNAVAILABLE");
+                let mut stale = params.clone();
+                stale["sessionRevision"] = serde_json::json!(snapshot.revision.checked_next().unwrap());
+                let denied = host.invoke(&actor, call(&echo, loopback_action, stale)).await.unwrap_err();
+                assert_eq!(denied.code, "REVISION_CONFLICT");
+                let measured = host.invoke(&actor, call(&echo, loopback_action, params)).await.unwrap();
+                let ActionResult::Reference(output) = settled(measured).await else {
+                    panic!("Expected the signed loopback measurement result");
+                };
+                let file = host.inner.files.read(FileReadParams {
+                    file_ref: output.result_ref, offset: 0.into(), max_bytes: 8192.into(),
+                }, &actor).unwrap();
+                assert!(file.at_end);
+                let report: serde_json::Value = serde_json::from_slice(&STANDARD.decode(file.bytes_base64.as_str()).unwrap()).unwrap();
+                assert_eq!(report["outcome"], "completed", "{report}");
+                assert_eq!(report["source"], "virtual_echo");
+                assert_eq!(report["sentBytes"], 256);
+                assert_eq!(report["comparedBits"], 1536);
+                assert_eq!(report["bitErrors"], 0);
+                assert_eq!(report["frames"].as_array().unwrap().len(), 4);
+                assert!(report["latencyNs"]["mean"].as_f64().unwrap() > 0.0);
+                assert!(report["throughputBytesPerSecond"].as_f64().unwrap() > 0.0);
+                let closing = host.invoke(&actor, call(&echo, "session.close", serde_json::json!({}))).await.unwrap();
+                settled(closing).await;
+                eprintln!("bundled_loopback source=virtual_echo frames=4 sent_bytes=256 compared_bits=1536 bit_errors=0 unauthorized_wrong_source_and_stale_rejected=true");
 
                 grant(&device, vec!["device.modify".into()]);
                 let mut previous_epoch = None;
@@ -3374,8 +3472,31 @@ mod tests {
             "alignment": {"kind":"ordinal"},
             "detail": {"rowIndex":0}
         });
+        let frame_template_action = "swb.reference.fields.frameTemplate";
+        let frame_template = serde_json::json!({
+            "version":"1",
+            "headerHex":"AA 55",
+            "length":{"width":1,"order":"big","coverage":"payload"},
+            "sequence":{"width":2,"order":"little","variable":"serial"},
+            "payload":{"variable":"data","format":"hex"},
+            "checksum":{"algorithm":"xor","order":"big","coverage":"sequence-payload"},
+            "tailHex":"0D",
+        })
+        .to_string();
+        let frame_assemble = serde_json::json!({
+            "mode":"assemble","template":&frame_template,"values":{"serial":"258","data":"10 20 30"},
+        });
+        let frame_decode = |bytes: &[u8]| {
+            serde_json::json!({
+                "mode":"decode","template":&frame_template,"bytesBase64":STANDARD.encode(bytes),
+            })
+        };
+        let frame = [0xaa, 0x55, 3, 2, 1, 0x10, 0x20, 0x30, 3, 0x0d];
+        let mut corrupt_frame = frame;
+        corrupt_frame[8] ^= 1;
         for (action, params) in [
             ("swb.reference.fields.decode", decode_params.clone()),
+            (frame_template_action, frame_assemble.clone()),
             ("swb.reference.fields.identifyCrc", crc_params.clone()),
             ("swb.reference.fields.modbus", modbus_params.clone()),
             ("swb.reference.fields.modbus", modbus_compare.clone()),
@@ -3508,6 +3629,13 @@ mod tests {
                 "encoded",
             ),
             ("swb.reference.fields.decode", decode_params, "decoded"),
+            (frame_template_action, frame_assemble, "verified"),
+            (frame_template_action, frame_decode(&frame), "verified"),
+            (
+                frame_template_action,
+                frame_decode(&corrupt_frame),
+                "invalid",
+            ),
             (
                 "swb.reference.fields.encode",
                 serde_json::json!({"definition":yaml,"definitionFormat":"yaml","values":{"reading":"33.5"}}),
@@ -3568,7 +3696,28 @@ mod tests {
                 serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap())
                     .unwrap();
             assert_eq!(report["status"], expected_status);
-            if action == "swb.reference.fields.compareSessions" {
+            if action == frame_template_action {
+                if expected_status == "verified" {
+                    assert_eq!(report["bytesBase64"], STANDARD.encode(frame));
+                    assert_eq!(
+                        report["values"],
+                        serde_json::json!({"serial":"258","data":"10 20 30"})
+                    );
+                    assert_eq!(
+                        report["parts"][3]["range"],
+                        serde_json::json!({"start":5,"end":8})
+                    );
+                    assert_eq!(
+                        report["parts"][4]["coverage"],
+                        serde_json::json!({"start":3,"end":8})
+                    );
+                } else {
+                    assert_eq!(
+                        report,
+                        serde_json::json!({"status":"invalid","path":"checksum"})
+                    );
+                }
+            } else if action == "swb.reference.fields.compareSessions" {
                 assert_eq!(report["rows"][0]["changedBytes"], 1);
                 assert_eq!(report["rows"][1]["elapsedDeltaNs"], "-6");
                 assert_eq!(
@@ -4070,6 +4219,85 @@ mod tests {
             if tx.outcome == TxOutcome::Accepted && tx.bytes_base64.as_str() == STANDARD.encode(b"ACK\n")));
         eprintln!(
             "bundled_rule duplicate_arm_rejected=true source_bytes=6 confirmed_write_ack=true"
+        );
+
+        let response_delay_ms = 1250;
+        peer.serving.store(true, Ordering::Release);
+        let previous_writes = peer.replies.lock().unwrap().len();
+        let cursor = host.inner.streams.current_cursor(&session).unwrap();
+        let definition = serde_json::json!({
+            "version": 1,
+            "startAtBoundary": true,
+            "observationMs": 10_000,
+            "condition": {"kind":"hex","hex":"50 49 4E 47"},
+            "effect": {"kind":"send","bytesBase64":STANDARD.encode(b"PONG"),"responseDelayMs":response_delay_ms},
+        });
+        let mut response = call(
+            &session,
+            "swb.builtin.automation.rule",
+            serde_json::json!({
+                "definition": definition.to_string(),
+                "startEventSeq": cursor.position.get().checked_add(1).unwrap().to_string(),
+            }),
+        );
+        response.execution_mode = Some(ExecutionMode::Independent);
+        let response = host.invoke(&actor, response).await.unwrap();
+        wait_armed(response.operation_id.clone(), "matches").await;
+        let observed_after = tokio::time::Instant::now();
+        // A non-matching fixed frame precedes a request split into two peer writes.
+        peer.incoming
+            .lock()
+            .unwrap()
+            .extend([b"SKIPPI".to_vec(), b"NG".to_vec()]);
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                let state = store.get(&actor, &response.operation_id).unwrap();
+                if state
+                    .progress
+                    .as_ref()
+                    .is_some_and(|p| p.unit == "matches" && p.completed.get() == 1)
+                {
+                    break;
+                }
+                assert!(!state.state.is_terminal(), "{state:?}");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let manual = host.invoke(&actor, call(
+            &session,
+            "session.tx",
+            serde_json::json!({"bytesBase64":STANDARD.encode(b"MANUAL"),"writeWaitMs":"1000"}),
+        )).await.unwrap();
+        assert!(
+            matches!(settled(manual).await, ActionResult::Tx(tx) if tx.outcome == TxOutcome::Accepted)
+        );
+        let reply = read_automation_report(settled(response).await);
+        assert_eq!(reply["outcome"], "written", "{reply}");
+        assert_eq!(
+            reply["source"]["sessionEpoch"],
+            session.session_epoch.as_ref().unwrap().to_string()
+        );
+        let start = reply["source"]["byteStart"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let end = reply["source"]["byteEnd"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        assert_eq!(end - start, 4);
+        assert!(observed_after.elapsed() >= Duration::from_millis(response_delay_ms));
+        assert_eq!(
+            &peer.replies.lock().unwrap()[previous_writes..],
+            &[b"MANUAL".to_vec(), b"PONG".to_vec()]
+        );
+        peer.serving.store(false, Ordering::Release);
+        eprintln!(
+            "bundled_auto_response delay_ms={response_delay_ms} fixed_request=PING peer_writes=MANUAL,PONG"
         );
 
         let calendar = "swb.builtin.automation.calendar";

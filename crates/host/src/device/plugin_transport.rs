@@ -107,9 +107,16 @@ impl PendingPluginTransport {
         }
         wire.queue(&Request::Start)?;
         match wire.receive_until(deadline, MAX_HELLO_BYTES) {
-            Ok(Response::Opened { line_controls }) if wire.output.is_empty() => {
+            Ok(Response::Opened {
+                line_controls,
+                semantics,
+            }) if wire.output.is_empty()
+                && (semantics != Some(TransportSemantics::Message) || line_controls.is_none()) =>
+            {
+                let semantics = semantics.unwrap_or(TransportSemantics::Stream);
                 Ok(Box::new(PluginTransport {
-                    lane: Arc::new(Mutex::new(Lane::new(wire))),
+                    lane: Arc::new(Mutex::new(Lane::new(wire, semantics))),
+                    semantics,
                     cleanup: self.cleanup,
                     output_lines: line_controls.unwrap_or_default(),
                 }))
@@ -190,6 +197,7 @@ enum Response {
     Opened {
         #[serde(rename = "lineControls")]
         line_controls: Option<OutputLines>,
+        semantics: Option<TransportSemantics>,
     },
     Line {
         id: u64,
@@ -200,6 +208,12 @@ enum Response {
         bytes: String,
         eof: bool,
     },
+    Message {
+        id: u64,
+        bytes: String,
+        #[serde(rename = "messageType")]
+        message_type: MessageType,
+    },
     Written {
         id: u64,
         accepted: usize,
@@ -209,6 +223,24 @@ enum Response {
         negotiation: Option<serde_json::Value>,
     },
     Closed,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MessageType {
+    Binary,
+    Text,
+    Datagram,
+}
+
+impl MessageType {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Binary => "binary",
+            Self::Text => "text",
+            Self::Datagram => "datagram",
+        }
+    }
 }
 
 #[derive(Default)]
@@ -347,7 +379,12 @@ struct ReadRequest {
     id: u64,
     limit: usize,
     deadline: Instant,
-    result: Option<HostResult<VecDeque<u8>>>,
+    result: Option<HostResult<BufferedRead>>,
+}
+
+struct BufferedRead {
+    bytes: VecDeque<u8>,
+    message: Option<MessageFragment>,
 }
 
 struct WriteRequest {
@@ -367,6 +404,7 @@ struct LineRequest {
 
 struct Lane {
     wire: Wire,
+    semantics: TransportSemantics,
     state: LaneState,
     next_id: u64,
     reading: Option<ReadRequest>,
@@ -375,9 +413,10 @@ struct Lane {
 }
 
 impl Lane {
-    fn new(wire: Wire) -> Self {
+    fn new(wire: Wire, semantics: TransportSemantics) -> Self {
         Self {
             wire,
+            semantics,
             state: LaneState::Open,
             next_id: 1,
             reading: None,
@@ -408,7 +447,11 @@ impl Lane {
 
     fn start_read(&mut self, limit: usize, wait: Duration) -> HostResult<()> {
         let id = self.next_id()?;
-        let limit = limit.min(MAX_READ_BYTES);
+        let limit = if self.semantics == TransportSemantics::Message {
+            TX_MAX_BYTES
+        } else {
+            limit.min(MAX_READ_BYTES)
+        };
         let wait_ms = wait_ms(wait)?;
         let deadline = deadline(wait + READ_REPLY_GRACE)?;
         self.wire.queue(&Request::Read {
@@ -500,6 +543,7 @@ impl Lane {
     fn handle_response(&mut self, response: Response) -> HostResult<()> {
         let operation_id = match &response {
             Response::Read { id, .. }
+            | Response::Message { id, .. }
             | Response::Written { id, .. }
             | Response::Line { id, .. }
             | Response::Error {
@@ -512,24 +556,13 @@ impl Lane {
             return Err(protocol_error());
         }
         match response {
-            Response::Read { id, bytes, eof } => {
-                let pending = self
-                    .reading
-                    .as_mut()
-                    .filter(|read| read.id == id && read.result.is_none())
-                    .ok_or_else(protocol_error)?;
-                if bytes.len() > pending.limit.div_ceil(3) * 4 {
-                    return Err(protocol_error());
-                }
-                let bytes = STANDARD.decode(bytes).map_err(|_| protocol_error())?;
-                if bytes.len() > pending.limit || (eof && !bytes.is_empty()) {
-                    return Err(protocol_error());
-                }
-                pending.result = Some(if eof {
-                    Err(disconnected())
-                } else {
-                    Ok(bytes.into())
-                });
+            Response::Read { id, bytes, eof } => self.settle_read(id, bytes, None, eof)?,
+            Response::Message {
+                id,
+                bytes,
+                message_type,
+            } => {
+                self.settle_read(id, bytes, Some(message_type), false)?;
             }
             Response::Written { id, accepted } => {
                 let pending = self
@@ -537,7 +570,11 @@ impl Lane {
                     .as_mut()
                     .filter(|write| write.id == id && write.result.is_none())
                     .ok_or_else(protocol_error)?;
-                if accepted > pending.bytes.len() {
+                if accepted > pending.bytes.len()
+                    || (self.semantics == TransportSemantics::Message
+                        && accepted != 0
+                        && accepted != pending.bytes.len())
+                {
                     return Err(protocol_error());
                 }
                 pending.result = Some(BackendWrite {
@@ -597,6 +634,49 @@ impl Lane {
         Ok(())
     }
 
+    fn settle_read(
+        &mut self,
+        id: u64,
+        bytes: String,
+        message_type: Option<MessageType>,
+        eof: bool,
+    ) -> HostResult<()> {
+        let pending = self
+            .reading
+            .as_mut()
+            .filter(|read| read.id == id && read.result.is_none())
+            .ok_or_else(protocol_error)?;
+        let message_mode = self.semantics == TransportSemantics::Message;
+        if bytes.len() > pending.limit.div_ceil(3) * 4
+            || (message_type.is_some() && !message_mode)
+            || (message_type.is_none() && message_mode && !bytes.is_empty())
+            || (eof && !bytes.is_empty())
+        {
+            return Err(protocol_error());
+        }
+        let bytes = STANDARD.decode(bytes).map_err(|_| protocol_error())?;
+        if bytes.len() > pending.limit
+            || (message_type == Some(MessageType::Text) && std::str::from_utf8(&bytes).is_err())
+        {
+            return Err(protocol_error());
+        }
+        let message = message_type.map(|kind| MessageFragment {
+            message_id: super::sessions::new_id(),
+            fragment_offset: 0.into(),
+            message_length: (bytes.len() as u64).into(),
+            message_type: kind.as_str().into(),
+        });
+        pending.result = Some(if eof {
+            Err(disconnected())
+        } else {
+            Ok(BufferedRead {
+                bytes: bytes.into(),
+                message,
+            })
+        });
+        Ok(())
+    }
+
     fn pending_line(&mut self, id: u64) -> Option<&mut LineRequest> {
         self.controlling
             .as_mut()
@@ -605,22 +685,25 @@ impl Lane {
 
     fn take_read(&mut self, limit: usize) -> Option<HostResult<ReadBlock>> {
         let result = self.reading.as_mut()?.result.as_mut()?;
-        let bytes = match result {
-            Ok(bytes) => bytes,
+        let buffer = match result {
+            Ok(buffer) => buffer,
             Err(error) => {
                 let error = error.clone();
                 self.reading = None;
                 return Some(Err(error));
             }
         };
-        let count = limit.min(bytes.len());
-        let block = bytes.drain(..count).collect::<Vec<_>>();
-        if bytes.is_empty() {
+        let count = limit.min(buffer.bytes.len());
+        let block = buffer.bytes.drain(..count).collect::<Vec<_>>();
+        let message = buffer.message.clone();
+        if buffer.bytes.is_empty() {
             self.reading = None;
+        } else if let Some(fragment) = &mut buffer.message {
+            fragment.fragment_offset = (fragment.fragment_offset.get() + count as u64).into();
         }
         Some(Ok(ReadBlock {
             bytes: block.into(),
-            message: None,
+            message,
         }))
     }
 
@@ -666,6 +749,7 @@ impl OutputLines {
 
 struct PluginTransport {
     lane: Arc<Mutex<Lane>>,
+    semantics: TransportSemantics,
     cleanup: Option<Arc<dyn BackendCleanup>>,
     output_lines: OutputLines,
 }
@@ -675,6 +759,7 @@ impl Transport for PluginTransport {
         TransportCapabilities {
             dtr: self.output_lines.dtr,
             rts: self.output_lines.rts,
+            semantics: self.semantics,
             ..capabilities()
         }
     }

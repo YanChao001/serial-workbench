@@ -1,8 +1,9 @@
-import type { OperationInput } from "@serial-workbench/contracts";
+import type { OperationInput, TxSourceText } from "@serial-workbench/contracts";
 import { useEffect, useRef, useState } from "react";
 import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
 import { nativeErrorCode } from "@/lib/native-error";
+import { useI18n } from "@/providers/i18n";
 import { decodeBytes } from "./stream-model";
 import type { WorkbenchLabels } from "./labels";
 import { operationLogModule } from "./operation-failure-notices";
@@ -11,6 +12,32 @@ export type OperationInputReader = (
   operationId: string,
   signal?: AbortSignal,
 ) => Promise<OperationInput>;
+function MappedSendSource({ source }: { source: TxSourceText }) {
+  const { t } = useI18n();
+  const original = new TextDecoder("utf-8", { ignoreBOM: true }).decode(
+    decodeBytes(source.utf8Base64),
+  );
+  return (
+    <>
+      <p>
+        {t("characterRemap.originalSend")} · {source.encoding}
+      </p>
+      <pre
+        className="workbench-input-body"
+        aria-label={t("characterRemap.originalSend")}
+      >
+        {JSON.stringify(original).slice(1, -1)}
+      </pre>
+      <details>
+        <summary>{t("characterRemap.sendRules")}</summary>
+        <pre className="workbench-input-body">
+          {JSON.stringify(source.mapping, null, 2)}
+        </pre>
+      </details>
+    </>
+  );
+}
+
 export function OperationInputView({
   operationId,
   actionId,
@@ -125,6 +152,9 @@ export function OperationInputView({
           <pre aria-label={labels.hex} className="workbench-input-body">
             {formatHex(bytes)}
           </pre>
+          {value?.kind === "tx" && value.value.sourceText && (
+            <MappedSendSource source={value.value.sourceText} />
+          )}
         </>
       ) : value ? (
         <pre className="workbench-input-body">

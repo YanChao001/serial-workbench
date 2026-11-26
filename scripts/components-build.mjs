@@ -14,6 +14,8 @@ import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.jso
 import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
 import rfc2217 from "../crates/host/resources/node-packages/rfc2217.json" with { type: "json" };
 import tcp from "../crates/host/resources/node-packages/tcp.json" with { type: "json" };
+import udp from "../crates/host/resources/node-packages/udp.json" with { type: "json" };
+import websocket from "../crates/host/resources/node-packages/websocket.json" with { type: "json" };
 import protocolFields from "../crates/host/resources/node-packages/protocol-fields.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import { fileSha256 } from "./artifact-lib.mjs";
@@ -119,6 +121,8 @@ export function inspectComponents(plan, outputDir) {
         automation,
         tcp,
         rfc2217,
+        udp,
+        websocket,
       ].map(({ id, version, archiveSha256 }) => ({
         id,
         version,

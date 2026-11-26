@@ -32,6 +32,125 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("uses the archive mode for gap-only pages and displays transformed text with original bounds", async () => {
+  const source = {
+    hostId: "host",
+    instanceEpoch: "2",
+    sessionId: "original",
+    sessionEpoch: "3",
+  };
+  const first: ReplayReadResult = {
+    mode: "redacted",
+    readerGeneration: "1",
+    nextRecord: "2",
+    atEnd: false,
+    playback: { rate: { kind: "fastest" }, paused: true, breakpointHit: false },
+    records: [
+      {
+        kind: "inline",
+        record: {
+          recordOrdinal: "1",
+          entry: {
+            kind: "reader_gap",
+            value: {
+              ...source,
+              reason: "capture_overflow",
+              missingEventRange: { start: "1", end: "2" },
+            },
+          },
+        },
+      },
+    ],
+  };
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce({
+      ...first,
+      atEnd: true,
+      nextRecord: "4",
+      records: [
+        {
+          kind: "inline",
+          record: {
+            recordOrdinal: "2",
+            entry: {
+              kind: "redacted",
+              value: {
+                ...source,
+                timestamp: "2026-11-25T03:00:00Z",
+                eventStart: "2",
+                eventEnd: "4",
+                byteRange: { direction: "tx", start: "10", end: "30" },
+                result: {
+                  kind: "text",
+                  text: "status=ready token=[hidden]",
+                  replacements: "1",
+                },
+              },
+            },
+          },
+        },
+        {
+          kind: "inline",
+          record: {
+            recordOrdinal: "3",
+            entry: {
+              kind: "redacted",
+              value: {
+                ...source,
+                timestamp: "2026-11-25T03:00:01Z",
+                eventStart: "4",
+                eventEnd: "5",
+                result: { kind: "omitted", reason: "incomplete" },
+              },
+            },
+          },
+        },
+      ],
+    } satisfies ReplayReadResult);
+  render(
+    <ReplayPanel
+      session={session()}
+      read={read}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+      disabled={false}
+      playbackSupported
+      search={{
+        run: vi.fn(),
+        t: searchLabels,
+        hostId: "host",
+        watchActions: allowSearch,
+      }}
+      labels={labels}
+    />,
+  );
+  const load = screen.getByRole("button", { name: labels.readReplay });
+  expect(
+    screen.getByRole("button", { name: "Search recording" }),
+  ).toBeVisible();
+  fireEvent.click(load);
+  const firstPage = await screen.findByRole("list", {
+    name: labels.captureRedacted,
+  });
+  expect(within(firstPage).getByText(labels.captureRedactedGap)).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Search recording" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: labels.replayFieldChart }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(load);
+  expect(await screen.findByText("status=ready token=[hidden]")).toBeVisible();
+  expect(
+    screen.getByText(`${labels.captureRedactionTxAttempt} [10, 30)`),
+  ).toBeVisible();
+  expect(
+    screen.getByText(labels.captureRedactionOmitted.incomplete),
+  ).toBeVisible();
+});
+
 it("keeps referenced records and exact TX settlement facts in an explicit detail panel", async () => {
   const read = vi.fn().mockResolvedValue({
     records: [

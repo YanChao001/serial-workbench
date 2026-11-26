@@ -21,12 +21,14 @@ enum StartupTransfer {
 async fn run() -> HostResult<()> {
     let mut profile: Option<PathBuf> = None;
     let mut transfer = StartupTransfer::None;
+    let mut owned_run = false;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--profile") if profile.is_none() => {
                 profile = Some(args.next().ok_or_else(invalid_args)?.into())
             }
+            Some("--owned-run-stdio") if !owned_run => owned_run = true,
             Some("--bootstrap-stdio") if matches!(transfer, StartupTransfer::None) => {
                 transfer = StartupTransfer::Bootstrap;
             }
@@ -49,8 +51,16 @@ async fn run() -> HostResult<()> {
         }
     }
     if !matches!(transfer, StartupTransfer::None) {
+        if owned_run {
+            return Err(invalid_args());
+        }
         serial_workbench_ipc::require_bootstrap_pipe()?;
     }
+    let stopped = if owned_run {
+        Some(watch_owned_run()?)
+    } else {
+        None
+    };
     let startup = startup_config::resolve(profile)?;
     startup_config::init_stderr_logging(startup.log_filter())?;
     startup_config::log_startup_configuration(&startup.snapshot());
@@ -88,9 +98,30 @@ async fn run() -> HostResult<()> {
         serial_workbench_ipc::write_bootstrap_capability(&encoded.map_err(|_| invalid_args())?)?;
     }
     host.serve_until(Arc::new(handler), async move {
-        let _ = tokio::signal::ctrl_c().await;
+        if let Some(stopped) = stopped {
+            tokio::select! {
+                _ = stopped => {},
+                _ = tokio::signal::ctrl_c() => {},
+            }
+        } else {
+            let _ = tokio::signal::ctrl_c().await;
+        }
     })
     .await
+}
+fn watch_owned_run() -> HostResult<tokio::sync::oneshot::Receiver<()>> {
+    use std::io::Read;
+    let (stopped, receiver) = tokio::sync::oneshot::channel();
+    // A private stdin pipe is the CLI's lifetime token. EOF also handles abrupt CLI exit.
+    // Use an ordinary thread so Ctrl+C does not leave a Tokio blocking worker on console stdin.
+    std::thread::Builder::new()
+        .name("owned-run-stdio".into())
+        .spawn(move || {
+            let _ = std::io::stdin().lock().read(&mut [0u8; 1]);
+            let _ = stopped.send(());
+        })
+        .map_err(|_| HostError::new("HOST_START_FAILED", "Cannot watch the CLI Host lifetime"))?;
+    Ok(receiver)
 }
 fn invalid_args() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid Host startup arguments")

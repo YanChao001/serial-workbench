@@ -19,6 +19,8 @@ import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.jso
 import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
 import rfc2217 from "../crates/host/resources/node-packages/rfc2217.json" with { type: "json" };
 import tcp from "../crates/host/resources/node-packages/tcp.json" with { type: "json" };
+import udp from "../crates/host/resources/node-packages/udp.json" with { type: "json" };
+import websocket from "../crates/host/resources/node-packages/websocket.json" with { type: "json" };
 import protocolFields from "../crates/host/resources/node-packages/protocol-fields.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import * as components from "./components-build.mjs";
@@ -243,6 +245,18 @@ test("components build first with one target and manifest hashes real bytes", as
       id: rfc2217.id,
       version: rfc2217.version,
       archiveSha256: rfc2217.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+    {
+      id: udp.id,
+      version: udp.version,
+      archiveSha256: udp.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+    {
+      id: websocket.id,
+      version: websocket.version,
+      archiveSha256: websocket.archiveSha256,
       hostComponent: "serial-workbench-host.exe",
     },
   ]);

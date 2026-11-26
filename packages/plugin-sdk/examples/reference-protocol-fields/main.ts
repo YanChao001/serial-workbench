@@ -9,6 +9,7 @@ import {
   ProtocolDefinitionError,
 } from "../reference-framing/protocol-field-document.ts";
 import { ProtocolFieldError } from "../reference-framing/protocol-fields.ts";
+import { compileFrameTemplate } from "./frame-template.ts";
 import { maxCrcSamples, recognizeCrc } from "./crc-recognition.ts";
 import { compareModbusExchange, modbusUnitRouting } from "./modbus-exchange.ts";
 import {
@@ -95,6 +96,34 @@ const encode = fieldAction(
     ).toString("base64"),
   }),
 );
+
+const frameTemplate = fieldAction(({ template, mode, values, bytesBase64 }) => {
+  if (typeof template !== "string" || template.length > maxDefinitionLength)
+    throw new ProtocolFieldError(
+      "template",
+      "Expected a bounded frame template",
+    );
+  let definition: unknown;
+  try {
+    definition = JSON.parse(template);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new ProtocolFieldError("template", "Invalid template JSON");
+  }
+  const codec = compileFrameTemplate(definition);
+  if (mode !== "assemble" && mode !== "decode")
+    throw new ProtocolFieldError("mode", "Expected assemble or decode");
+  const result =
+    mode === "assemble"
+      ? codec.assemble(values)
+      : codec.decode(decodeBytes(bytesBase64, "bytesBase64"));
+  return {
+    status: "verified",
+    bytesBase64: Buffer.from(result.bytes).toString("base64"),
+    values: result.values,
+    parts: result.parts,
+  };
+});
 
 const identifyCrc = fieldAction(({ samples, width, order }) => {
   if (
@@ -412,6 +441,7 @@ const compareSessions = fieldAction(
 export const register: NodeRegister = ({ parsers }) => {
   parsers.register("swb.reference.fields.decode", decode);
   parsers.register("swb.reference.fields.encode", encode);
+  parsers.register("swb.reference.fields.frameTemplate", frameTemplate);
   parsers.register("swb.reference.fields.identifyCrc", identifyCrc);
   parsers.register("swb.reference.fields.modbus", modbus);
   parsers.register("swb.reference.fields.modbusServer", modbusServer);

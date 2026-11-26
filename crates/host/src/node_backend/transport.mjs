@@ -209,6 +209,7 @@ export function createPluginTransportLane({
   let activated = false;
   let requestedStop = false;
   let connection;
+  let readMessage;
   let lineControls;
 
   function disconnect() {
@@ -234,7 +235,7 @@ export function createPluginTransportLane({
         !pluginTransportInteger(
           frame.maxBytes,
           1,
-          PLUGIN_TRANSPORT_MAX_READ,
+          readMessage ? PLUGIN_TRANSPORT_MAX_WRITE : PLUGIN_TRANSPORT_MAX_READ,
         )) ||
       (control &&
         ((frame.line !== "dtr" && frame.line !== "rts") ||
@@ -257,7 +258,27 @@ export function createPluginTransportLane({
         let reply;
         try {
           signal.throwIfAborted();
-          if (reading) {
+          if (reading && readMessage) {
+            const value = await readMessage({ maxBytes, waitMs, signal });
+            if (value === undefined || value === null) {
+              reply = { kind: "read", id, bytes: "", eof: value === null };
+            } else {
+              if (
+                !pluginTransportShape(value, ["bytes", "messageType"]) ||
+                !(value.bytes instanceof Uint8Array) ||
+                value.bytes.byteLength > maxBytes ||
+                !["binary", "text", "datagram"].includes(value.messageType)
+              ) {
+                throw new Error("Invalid plugin transport message");
+              }
+              reply = {
+                kind: "message",
+                id,
+                messageType: value.messageType,
+                bytes: Buffer.from(value.bytes).toString("base64"),
+              };
+            }
+          } else if (reading) {
             const value = await connection.read({ maxBytes, waitMs, signal });
             if (
               value !== null &&
@@ -296,7 +317,10 @@ export function createPluginTransportLane({
             }
           } else {
             const accepted = await connection.write({ bytes, waitMs, signal });
-            if (!pluginTransportInteger(accepted, 0, bytes.length)) {
+            if (
+              !pluginTransportInteger(accepted, 0, bytes.length) ||
+              (readMessage && accepted !== 0 && accepted !== bytes.length)
+            ) {
               throw new Error("Invalid plugin transport write result");
             }
             reply = { kind: "written", id, accepted };
@@ -352,16 +376,22 @@ export function createPluginTransportLane({
       providerReturned = true;
       if (
         !connection ||
-        typeof connection.read !== "function" ||
+        (typeof connection.read === "function") ===
+          (typeof connection.readMessage === "function") ||
         typeof connection.write !== "function" ||
         typeof connection.close !== "function"
       ) {
         throw new Error("Invalid plugin transport connection");
       }
       lifetime.signal.throwIfAborted();
+      readMessage =
+        typeof connection.readMessage === "function"
+          ? connection.readMessage.bind(connection)
+          : undefined;
       const offeredLines = connection.lineControls;
       if (offeredLines !== undefined) {
         if (
+          readMessage ||
           !offeredLines ||
           typeof offeredLines.dtr !== "boolean" ||
           typeof offeredLines.rts !== "boolean" ||
@@ -377,6 +407,7 @@ export function createPluginTransportLane({
       }
       const opened = sendPluginTransportFrame(socket, {
         kind: "opened",
+        semantics: readMessage ? "message" : undefined,
         lineControls: lineControls && {
           dtr: lineControls.dtr,
           rts: lineControls.rts,

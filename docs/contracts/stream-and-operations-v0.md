@@ -56,6 +56,8 @@ Host 重启核对持久接纳/dispatch/回执记录，把未完成任务标 inte
 
 `TransportSemantics=stream|message`。stream 后端读块只是采集块，不是协议帧/文本行；message 保留后端消息边界及类型。消息发生拆分时使用 `messageId,fragmentOffset,messageLength,messageType`，前三项分别 Id/U64/U64，messageType 为后端 schema 枚举；WebSocket 文本/二进制与 UDP 报文不能在传输中被混成无边界流。
 
+Node 消息连接的入站类型为 `binary`、`text`、`datagram`。单条消息有共同的 ID 和总字节数，分片偏移从零开始。零字节消息有独立 Raw 事件，`byteStart` 与 `byteEnd` 相等，消息长度和偏移均为零。等待内没有消息时没有 Raw 事件。会话写入继续遵守现有最少一字节的规则，单次写入对应一个出站消息，回执按完整接纳、未接纳或未知结算。
+
 `RawEvent={hostId,instanceEpoch,sessionId,sessionEpoch,eventSeq,configurationRevision,kind,time,payload}`。eventSeq 在 sessionEpoch 内从 `"1"` 连续递增；kind 的全部 v0 值为 `rx|tx_intent|tx|gap|configuration_boundary|lifecycle|control`。configurationRevision 指该事件采集/提交时最近完成的配置尝试 revision；即使结果不确定也推进，并在 boundary 中标明 uncertain。Session.configuration 保留最后完整确认的值，不把该对象冒充为不确定期间的实际配置。
 
 `time={clockId,sourceMonoNs,sourceWallTime?,receivedWallTime,precision}`；clockId 为源 Host 的 instanceEpoch 时钟域 Id，sourceMonoNs 为 U64，sourceWallTime/receivedWallTime 为 Timestamp。precision 含 `source: host_read|device|line_capture|sample_clock,resolutionNs: U64,syncMethod: string`；可选 `offsetEstimateNs` 为有符号十进制字符串、`offsetErrorNs,rttNs` 为 U64。源/接收墙钟仅用于展示，顺序由源 eventSeq 决定；A 转发 B 事件不替换其源时间，可在副本元数据追加本机接收时间。离线波形另带 `sampleClockId,sampleStart,sampleEnd,sampleRateHz`，sampleRateHz 为 schema 校验的正十进制字符串，不伪装成主机读块精度。
@@ -90,11 +92,13 @@ M1a Host 的源环预算为每会话 16 MiB、全 Host 128 MiB；reader 为每�
 
 ## 发送回执
 
-`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64,dispatchWindow: {earliestUnixMs: U64,latestUnixMs: U64}`。日历窗口为包含两端的 Unix 毫秒区间。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..131072（128 KiB），由 Rust `TX_MAX_BYTES` 统一约束 DTO、schema、源环接纳和生成的客户端常量；Host 验证后冻结最终字节及摘要。回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
+`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,sourceText: TxSourceText,transforms: [{id,version,configurationDigest}],queueWaitMs: U64,dispatchWindow: {earliestUnixMs: U64,latestUnixMs: U64}`。日历窗口为包含两端的 Unix 毫秒区间。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..131072（128 KiB），由 Rust `TX_MAX_BYTES` 统一约束 DTO、schema、源环接纳和生成的客户端常量；Host 验证后冻结最终字节及摘要。回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
+
+终端映射发送可附带 `sourceText={utf8Base64,encoding,mapping}`。原稿是 0..131072 字节的 UTF-8，`encoding` 是映射后文本用来编码设备字节的编码。规则 JSON 按 `newline,backspace,letterCase,replacements` 顺序编码，每个映射行按 `source,replacement` 顺序编码。带 `sourceText` 时使用唯一变换引用 `terminal.character-remap`，版本为 `1`，配置摘要为上述紧凑 JSON 的 SHA-256 小写十六进制。规则最多 16 条，源为唯一的非 CR、LF、BS 单个 Unicode 标量，替换值最多 32 个 UTF-16 代码单元。Host 在接纳前校验 UTF-8、规则和摘要。原稿、规则和最终字节随操作输入一并保存，经 Raw 通道的 `operation.input` 按当前作用域读取。设备写入和 TX 录制使用已提交的最终字节与实际结算。
 
 手动发送作为一次 Host 操作参与队列仲裁，客户端不拆成多次独立调用；128 KiB 的单条 TX 意图和最终回执分别适配默认 256 KiB Raw 批次，分页读取保留完整字节。源环、reader 和发送队列仍按既有预算接纳；更大内容使用文件传输。GUI 按编码和行尾后的最终长度检查，超限保留草稿与字节计数，明确提示上限，不提交无效操作或权限预检。
 
-TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,byteStart,byteEnd,acceptedRanges,unknownRanges,backendError?,peerAcknowledged}`。outcome=`accepted|partial|rejected|unknown`；各 range 为相对于本次 bytes 的 `{start,end}` U64 区间，互不相交且不超长度。accepted 表示整个字节序列已被后端接受；partial 表示仅部分已接受、其余确定未接受；rejected 表示全未接受；unknown 表示至少一段无法判断，保留已知接受区间。peerAcknowledged 固定 false，只有上层协议另出应答证据可确认对端；驱动接受不表示线路已发完。
+TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,byteStart,byteEnd,acceptedRanges,unknownRanges,backendError?,peerAcknowledged}`。outcome=`accepted|partial|rejected|unknown`；各 range 为相对于本次 bytes 的 `{start,end}` U64 区间，互不相交且不超长度。accepted 表示整个字节序列已被后端接受；partial 表示仅部分已接受、其余确定未接受；rejected 表示全未接受；unknown 表示至少一段无法判断，保留已知接受区间。peerAcknowledged 固定 false，只有上层协议另出应答证据可确认对端；驱动接受不表示线路已发完。工作台详情按 TX 流偏移显示，把已接纳和未知范围加上 `byteStart`。同一请求内既未接纳也未标为未知的范围显示为后端未接纳。
 
 后端按顺序写入时 acceptedRanges 通常为前缀，但不强制所有 TransportProvider 假装具备前缀证明。没有回执的尾段进入 unknownRanges，不能填成零。应用排队期间取消、尚未 dispatch 时 outcome=rejected、accepted/unknown 均空；已写 3/5 后取消时保留 `[0,3)`，剩余若确定停止则 partial/cancelled；驱动仍不确定则 unknown/unknown。TX 日志先保存意图，后关联回执，不能因取消删除历史。
 

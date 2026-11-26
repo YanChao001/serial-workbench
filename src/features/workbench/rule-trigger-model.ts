@@ -4,7 +4,12 @@ import {
   type Target,
 } from "@serial-workbench/contracts";
 import { validateSourceRange } from "../../../packages/contracts/src/generated/validators.mjs";
+import { formatHex } from "@serial-workbench/host-client";
 import { readVerifiedFile } from "@/lib/host-reader";
+import {
+  parseRuleRequestHex,
+  parseRuleResponseDelay,
+} from "../../../packages/plugin-sdk/examples/reference-automation/rule-response.ts";
 import { isRecord } from "@/lib/settings-model";
 import type { HostContextValue } from "@/providers/host-context";
 
@@ -27,7 +32,19 @@ export function inspectRuleDefinition(definition: string) {
     )
       return;
     const { kind } = value.condition;
-    if (kind !== "regex" && kind !== "field") return;
+    if (kind !== "regex" && kind !== "field" && kind !== "hex") return;
+    if (
+      kind === "hex" &&
+      (value.startAtBoundary !== true ||
+        Object.keys(value.condition).some(
+          (key) => key !== "kind" && key !== "hex",
+        ))
+    )
+      return;
+    const requestHex =
+      kind === "hex"
+        ? formatHex(parseRuleRequestHex(value.condition.hex))
+        : undefined;
     const effect = value.effect.kind;
     if (effect !== "notify" && effect !== "send" && effect !== "action") return;
     const observationMs = value.observationMs ?? 30_000;
@@ -38,7 +55,35 @@ export function inspectRuleDefinition(definition: string) {
       observationMs > 120_000
     )
       return;
-    if (effect !== "action") return { kind, effect, observationMs } as const;
+    if (effect === "send") {
+      const { bytesBase64, responseDelayMs } = value.effect;
+      if (
+        Object.keys(value.effect).some(
+          (key) => !["kind", "bytesBase64", "responseDelayMs"].includes(key),
+        ) ||
+        typeof bytesBase64 !== "string" ||
+        bytesBase64.length > 344
+      )
+        return;
+      const response = atob(bytesBase64);
+      if (
+        response.length < 1 ||
+        response.length > 256 ||
+        btoa(response) !== bytesBase64
+      )
+        return;
+      return {
+        kind,
+        effect,
+        observationMs,
+        requestHex,
+        responseHex: formatHex(
+          Uint8Array.from(response, (char) => char.charCodeAt(0)),
+        ),
+        responseDelayMs: parseRuleResponseDelay(responseDelayMs),
+      } as const;
+    }
+    if (effect === "notify") return { kind, effect, observationMs } as const;
     const { actionId, params } = value.effect;
     if (
       typeof actionId !== "string" ||

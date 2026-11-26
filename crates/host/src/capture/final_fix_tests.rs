@@ -134,9 +134,14 @@ impl Fixture {
             .await
     }
     async fn start(&self, append: bool) -> (Operation, ObjectRef) {
-        let mut call = self.h.call(&self.target(&self.location), "capture.start", json!({"sessionRefs":[self.session],"targetRef":self.location,"overflowPolicy":"stop","writeMode": if append { "append" } else { "create_new" }}));
-        call.execution_mode = Some(ExecutionMode::Independent);
-        let accepted = self.h.invoke(call).await;
+        self.start_with_options(append, None).await
+    }
+    async fn start_with_options(
+        &self,
+        append: bool,
+        rules: Option<&[CaptureRedactionRule]>,
+    ) -> (Operation, ObjectRef) {
+        let accepted = self.request_start(append, rules).await;
         let live = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let current = self
@@ -161,6 +166,22 @@ impl Fixture {
         .await
         .unwrap();
         (accepted, live)
+    }
+    async fn request_start(
+        &self,
+        append: bool,
+        rules: Option<&[CaptureRedactionRule]>,
+    ) -> Operation {
+        let mut params = json!({"sessionRefs":[self.session],"targetRef":self.location,"overflowPolicy":"stop","writeMode": if append { "append" } else { "create_new" }});
+        if let Some(rules) = rules {
+            params["mode"] = json!("redacted");
+            params["redactionRules"] = json!(rules);
+        }
+        let mut call = self
+            .h
+            .call(&self.target(&self.location), "capture.start", params);
+        call.execution_mode = Some(ExecutionMode::Independent);
+        self.h.invoke(call).await
     }
     async fn tx(&self, bytes: &str) {
         let before = self
@@ -339,10 +360,126 @@ async fn capture_source_revoke_before_queue_admission_keeps_only_the_authorized_
                     _ => None,
                 },
                 CaptureEntry::ReaderGap(_) | CaptureEntry::TxSettlement(_) => None,
+                CaptureEntry::Redacted(_) => {
+                    panic!("Raw duplicate-settlement fixture produced transformed data")
+                }
             },
         )
         .collect();
     assert_eq!(received, ["AQ=="]);
+    drop(scan);
+    f.h.host.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn redacted_capture_revokes_before_rx_suffix_and_preserves_only_authorized_receive_text() {
+    assert_redacted_revoke_before_rx_suffix("content.read", |f| f.session.clone()).await;
+}
+
+#[tokio::test]
+async fn redacted_capture_target_revoke_stops_admission_and_publication() {
+    assert_redacted_revoke_before_rx_suffix("workspace.modify", |f| f.target(&f.location)).await;
+}
+
+async fn assert_redacted_revoke_before_rx_suffix(
+    permission: &str,
+    target: impl FnOnce(&Fixture) -> Target,
+) {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let f = Fixture::new(CaptureLimits::default()).await;
+    let target = target(&f);
+    f.h.auth.require(&f.h.actor, permission, &target).unwrap();
+    let rules = [CaptureRedactionRule {
+        pattern: "token=[^ ]+".into(),
+        replacement: "token=[hidden]".into(),
+    }];
+    let (owner, live) = f.start_with_options(false, Some(&rules)).await;
+    f.tx(&STANDARD.encode(b"token=FIRST-APPROVED\n")).await;
+    f.written(&live, 2).await;
+
+    let gate = f.h.host.inner.capture_api.capture_queue_gate();
+    let mut prefix = gate.arm();
+    f.tx(&STANDARD.encode(b"pending tok")).await;
+    prefix.entered().await;
+    prefix.release();
+    let mut suffix = gate.arm();
+    f.tx(&STANDARD.encode(b"en=REVOKED-SUFFIX\n")).await;
+    suffix.entered().await;
+    f.h.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.h.actor.id().clone(),
+                permissions: vec![permission.into()],
+                targets: vec![target.clone()],
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.h.auth
+            .require(&f.h.actor, permission, &target)
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    suffix.release();
+
+    let failed = f.h.wait(&owner.operation_id).await;
+    assert_eq!(failed.state, OperationState::Failed);
+    assert_eq!(failed.error.unwrap().code, "PERMISSION_DENIED");
+    assert!(matches!(
+        failed.result,
+        Some(ActionResult::Reference(reference)) if reference.result_ref == live
+    ));
+    assert_eq!(
+        f.h.host
+            .inner
+            .files
+            .metadata(&live, &f.h.actor)
+            .unwrap()
+            .file_ref
+            .revision,
+        None
+    );
+    f.tx(&STANDARD.encode(b"token=AFTER-REVOKE\n")).await;
+    let mut scan = verify_directory(&f.path).unwrap();
+    assert_eq!(scan.summary.mode, CaptureMode::Redacted);
+    assert_eq!(scan.summary.state, CaptureState::Failed);
+    assert!(scan.report.container_complete);
+    assert!(scan.report.recoverable);
+    assert!(scan.manifest.redaction_resume.is_none());
+    scan.bind_files(&f.path).unwrap();
+    let mut received = Vec::new();
+    for position in 0..scan.index.records.len() {
+        let CaptureEntry::Redacted(record) = scan.read_verified_record(position).unwrap().entry
+        else {
+            panic!("unexpected non-text source entry");
+        };
+        if record
+            .byte_range
+            .as_ref()
+            .is_some_and(|range| range.direction == Direction::Rx)
+        {
+            received.push(record.result);
+        }
+    }
+    assert_eq!(
+        received,
+        [CaptureRedactedResult::Text {
+            text: "token=[hidden]".into(),
+            replacements: 1.into()
+        }]
+    );
+    for entry in std::fs::read_dir(&f.path).unwrap() {
+        let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+        for secret in [
+            b"FIRST-APPROVED".as_slice(),
+            b"REVOKED-SUFFIX",
+            b"AFTER-REVOKE",
+        ] {
+            assert!(!bytes.windows(secret.len()).any(|part| part == secret));
+        }
+    }
     drop(scan);
     f.h.host.shutdown().await.unwrap();
 }
@@ -353,19 +490,22 @@ impl Drop for CaptureGateRelease {
         self.0.release();
     }
 }
-struct GatedFailureVolume {
+struct GatedVolume {
     file: Option<std::fs::File>,
     gate: Arc<crate::test_support::Gate>,
     armed: Arc<std::sync::atomic::AtomicBool>,
     closed: Arc<std::sync::atomic::AtomicBool>,
+    fail_write: bool,
 }
-impl std::io::Write for GatedFailureVolume {
+impl std::io::Write for GatedVolume {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         if self.armed.swap(false, std::sync::atomic::Ordering::SeqCst) {
             while !self.gate.is_released() {
                 self.gate.hold();
             }
-            return Err(std::io::Error::other("gated capture write failure"));
+            if self.fail_write {
+                return Err(std::io::Error::other("gated capture write failure"));
+            }
         }
         std::io::Write::write(self.file.as_mut().unwrap(), bytes)
     }
@@ -373,7 +513,7 @@ impl std::io::Write for GatedFailureVolume {
         std::io::Write::flush(self.file.as_mut().unwrap())
     }
 }
-impl crate::capture::writer::CaptureVolume for GatedFailureVolume {
+impl crate::capture::writer::CaptureVolume for GatedVolume {
     fn sync_all(&mut self) -> std::io::Result<()> {
         self.file.as_ref().unwrap().sync_all()
     }
@@ -381,11 +521,157 @@ impl crate::capture::writer::CaptureVolume for GatedFailureVolume {
         Ok(self.file.as_ref().unwrap().metadata()?.len())
     }
 }
-impl Drop for GatedFailureVolume {
+impl Drop for GatedVolume {
     fn drop(&mut self) {
         self.file.take();
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
     }
+}
+
+fn gated_volume_opener(
+    gate: Arc<crate::test_support::Gate>,
+    armed: Arc<std::sync::atomic::AtomicBool>,
+    closed: Arc<std::sync::atomic::AtomicBool>,
+    fail_write: bool,
+) -> crate::capture::writer::VolumeOpener {
+    Arc::new(move |file| {
+        Ok(Box::new(GatedVolume {
+            file: Some(file),
+            gate: gate.clone(),
+            armed: armed.clone(),
+            closed: closed.clone(),
+            fail_write,
+        }))
+    })
+}
+
+#[tokio::test]
+async fn redacted_slow_writer_stops_on_backpressure_and_recovers_only_admitted_prefix() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let gate = Arc::new(crate::test_support::Gate::default());
+    let _release = CaptureGateRelease(gate.clone());
+    let armed = Arc::new(AtomicBool::new(false));
+    let closed = Arc::new(AtomicBool::new(false));
+    let opener = gated_volume_opener(gate.clone(), armed.clone(), closed.clone(), false);
+    let f = Fixture::with_storage(CaptureLimits::default(), opener).await;
+    let stream = f.h.host.streams();
+    let reader_baseline = stream.memory_usage().reader_bytes;
+    let capture = &f.h.host.inner.capture_api;
+    let rules = [CaptureRedactionRule {
+        pattern: "token=[^ ]+".into(),
+        replacement: "token=[hidden]".into(),
+    }];
+    let (owner, live) = f.start_with_options(false, Some(&rules)).await;
+    f.tx(&STANDARD.encode(b"token=FIRST-APPROVED\n")).await;
+    f.written(&live, 2).await;
+    assert!(stream.memory_usage().reader_bytes > reader_baseline);
+
+    armed.store(true, Ordering::SeqCst);
+    f.tx(&STANDARD.encode(b"token=ADMITTED-WHILE-BLOCKED\n"))
+        .await;
+    gate.entered().await;
+    let queued_at_stall = capture.memory_usage().queued_bytes;
+    let mut line = vec![b'x'; 32 * 1024];
+    line[..16].copy_from_slice(b"OVERFLOW-RAW-DAT");
+    *line.last_mut().unwrap() = b'\n';
+    let payload = STANDARD.encode(line);
+    for _ in 0..96 {
+        if stream.memory_usage().reader_bytes == reader_baseline {
+            break;
+        }
+        let before = capture.memory_usage().queued_bytes;
+        f.tx(&payload).await;
+        crate::test_support::until(|| {
+            stream.memory_usage().reader_bytes == reader_baseline
+                || capture.memory_usage().queued_bytes >= before + 64 * 1024
+        })
+        .await;
+    }
+    assert_eq!(stream.memory_usage().reader_bytes, reader_baseline);
+    assert!(capture.memory_usage().queued_bytes > queued_at_stall + 64 * 1024);
+    assert!(!closed.load(Ordering::SeqCst));
+    assert!(
+        !f.h.store
+            .get(&f.h.actor, &owner.operation_id)
+            .unwrap()
+            .state
+            .is_terminal()
+    );
+
+    // The session still accepts real input while the recording writer is blocked.
+    let source_position_at_stop = stream.current_cursor(&f.session).unwrap().position;
+    f.tx(&STANDARD.encode(b"token=AFTER-OVERFLOW\n")).await;
+    gate.release();
+    let failed = f.h.wait(&owner.operation_id).await;
+    assert_eq!(failed.state, OperationState::Failed);
+    let error = failed.error.unwrap();
+    assert!(
+        error.code == "READER_OVERFLOW"
+            || (error.code == "CAPTURE_IO_FAILED"
+                && error
+                    .message
+                    .contains("writer byte budget or queue exhausted")),
+        "{error:?}"
+    );
+    assert!(closed.load(Ordering::SeqCst));
+    assert_eq!(capture.memory_usage().queued_bytes, 0);
+
+    let mut scan = verify_directory(&f.path).unwrap();
+    assert_eq!(scan.summary.state, CaptureState::Failed);
+    assert!(scan.report.container_complete);
+    assert!(scan.report.recoverable);
+    assert!(scan.report.verified_prefix.get() >= 4);
+    assert!(scan.manifest.redaction_resume.is_none());
+    let source_fingerprint = scan.report.source_fingerprint.clone();
+    let recovered_path = f.path.with_file_name("redacted-recovery");
+    let recovery =
+        crate::capture::recovery::recover_directory(&f.path, &recovered_path, &scan.report)
+            .unwrap();
+    assert_eq!(recovery.state, CaptureState::Incomplete);
+    assert_eq!(recovery.watermarks.verified, scan.report.verified_prefix);
+    let mut recovered = verify_directory(&recovered_path).unwrap();
+    assert_eq!(
+        recovered.report.verified_prefix,
+        scan.report.verified_prefix
+    );
+    assert!(recovered.manifest.redaction_resume.is_none());
+    scan.bind_files(&f.path).unwrap();
+    recovered.bind_files(&recovered_path).unwrap();
+    let mut text_count = 0;
+    for position in 0..scan.report.verified_prefix.get() as usize {
+        let original = scan.read_verified_record(position).unwrap().entry;
+        let copied = recovered.read_verified_record(position).unwrap().entry;
+        assert_eq!(original, copied);
+        let CaptureEntry::Redacted(record) = original else {
+            panic!("overflow cannot create missing source ranges or raw records");
+        };
+        assert!(record.event_end <= source_position_at_stop.checked_next().unwrap());
+        if let CaptureRedactedResult::Text { text, .. } = record.result {
+            assert_eq!(text, "token=[hidden]");
+            text_count += 1;
+        }
+    }
+    assert_eq!(text_count, 4);
+    for path in [&f.path, &recovered_path] {
+        for entry in std::fs::read_dir(path).unwrap() {
+            let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+            for secret in [
+                b"FIRST-APPROVED".as_slice(),
+                b"ADMITTED-WHILE-BLOCKED",
+                b"OVERFLOW-RAW-DAT",
+                b"AFTER-OVERFLOW",
+            ] {
+                assert!(!bytes.windows(secret.len()).any(|part| part == secret));
+            }
+        }
+    }
+    assert_eq!(
+        crate::capture::format::fingerprint(&f.path).unwrap(),
+        source_fingerprint
+    );
+    f.h.host.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -395,20 +681,7 @@ async fn final_fix_pending_capture_failure_retains_owner_until_real_file_is_rele
     let _release = CaptureGateRelease(gate.clone());
     let armed = Arc::new(AtomicBool::new(false));
     let closed = Arc::new(AtomicBool::new(false));
-    let opener = {
-        let gate = gate.clone();
-        let armed = armed.clone();
-        let closed = closed.clone();
-        Arc::new(move |file| {
-            Ok(Box::new(GatedFailureVolume {
-                file: Some(file),
-                gate: gate.clone(),
-                armed: armed.clone(),
-                closed: closed.clone(),
-            })
-                as Box<dyn crate::capture::writer::CaptureVolume>)
-        })
-    };
+    let opener = gated_volume_opener(gate.clone(), armed.clone(), closed.clone(), true);
     let f = Fixture::with_storage(CaptureLimits::default(), opener).await;
     let (owner, _) = f.start(false).await;
     armed.store(true, Ordering::SeqCst);
@@ -564,6 +837,114 @@ async fn final_fix_host_append_records_real_pause_gap_without_damaging_old_segme
     let verified = verify_directory(&f.path).unwrap();
     assert!(verified.report.container_complete);
     assert!(!verified.report.source_continuous);
+}
+
+#[tokio::test]
+async fn redacted_host_append_preserves_pause_gap_and_rejects_another_policy() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let f = Fixture::new(CaptureLimits::default()).await;
+    let rules = [CaptureRedactionRule {
+        pattern: "token=[^ ]+".into(),
+        replacement: "token=[hidden]".into(),
+    }];
+    let (owner, live) = f.start_with_options(false, Some(&rules)).await;
+    f.tx(&STANDARD.encode(b"token=FIRST\n")).await;
+    f.written(&live, 2).await;
+    let (stopped, owner) = f.stop(&owner, &live).await;
+    assert_eq!(
+        stopped.state,
+        OperationState::Succeeded,
+        "{:?}",
+        stopped.error
+    );
+    assert_eq!(owner.state, OperationState::Succeeded, "{:?}", owner.error);
+    let first_ref = fixed(&owner);
+    let manifest = f.path.join("manifest.json");
+    let first_manifest = std::fs::read(&manifest).unwrap();
+    let first_report = verify_directory(&f.path).unwrap();
+    let saved = first_report.manifest.redaction_resume.unwrap().remove(0);
+    let volume = f.path.join("volume-000001.swbr");
+    let original = std::fs::read(&volume).unwrap();
+
+    let different = [CaptureRedactionRule {
+        pattern: rules[0].pattern.clone(),
+        replacement: "[other]".into(),
+    }];
+    for attempted in [Some(different.as_slice()), None] {
+        let operation = f.request_start(true, attempted).await;
+        let rejected = f.h.wait(&operation.operation_id).await;
+        assert_eq!(rejected.state, OperationState::Failed);
+        assert_eq!(rejected.error.unwrap().code, "CONFIGURATION_CONFLICT");
+        assert_eq!(std::fs::read(&manifest).unwrap(), first_manifest);
+        assert_eq!(std::fs::read(&volume).unwrap(), original);
+        assert!(!f.path.join("volume-000002.swbr").exists());
+    }
+
+    f.tx(&STANDARD.encode(b"paused tok")).await;
+    let pause_end =
+        f.h.host
+            .streams()
+            .current_cursor(&f.session)
+            .unwrap()
+            .position;
+    let (owner, live) = f.start_with_options(true, Some(&rules)).await;
+    assert_eq!(live.id, first_ref.id);
+    f.tx(&STANDARD.encode(b"en=PAUSED-CANARY\ntoken=SECOND-CANARY\n"))
+        .await;
+    f.written(&live, 7).await;
+    let (stopped, owner) = f.stop(&owner, &live).await;
+    assert_eq!(
+        stopped.state,
+        OperationState::Succeeded,
+        "{:?}",
+        stopped.error
+    );
+    assert_eq!(owner.state, OperationState::Succeeded, "{:?}", owner.error);
+    assert_ne!(fixed(&owner).revision, first_ref.revision);
+    let mut scan = verify_directory(&f.path).unwrap();
+    assert!(scan.report.container_complete);
+    assert!(!scan.report.source_continuous);
+    assert_eq!(std::fs::read(&volume).unwrap(), original);
+    scan.bind_files(&f.path).unwrap();
+    let CaptureEntry::ReaderGap(gap) = scan.read_verified_record(2).unwrap().entry else {
+        panic!("expected explicit pause gap")
+    };
+    assert_eq!(gap.reason, ReaderGapReason::CapturePaused);
+    assert_eq!(
+        gap.missing_event_range,
+        ByteRange {
+            start: saved.event_position.checked_next().unwrap(),
+            end: pause_end.checked_next().unwrap()
+        }
+    );
+    let mut boundary_count = 0;
+    let mut text_directions = Vec::new();
+    for position in 3..scan.index.records.len() {
+        let CaptureEntry::Redacted(record) = scan.read_verified_record(position).unwrap().entry
+        else {
+            panic!("expected transformed append entry")
+        };
+        match record.result {
+            CaptureRedactedResult::Text { text, replacements } => {
+                assert_eq!(text, "token=[hidden]");
+                assert_eq!(replacements.get(), 1);
+                text_directions.push(record.byte_range.unwrap().direction);
+            }
+            CaptureRedactedResult::Omitted { reason } => {
+                assert_eq!(reason, CaptureRedactionOmission::Boundary);
+                boundary_count += 1;
+            }
+        }
+    }
+    assert_eq!(boundary_count, 2);
+    assert_eq!(text_directions.len(), 2);
+    assert!(text_directions.contains(&Direction::Rx) && text_directions.contains(&Direction::Tx));
+    drop(scan);
+    let appended = std::fs::read(f.path.join("volume-000002.swbr")).unwrap();
+    for secret in [b"PAUSED-CANARY".as_slice(), b"SECOND-CANARY"] {
+        assert!(!appended.windows(secret.len()).any(|bytes| bytes == secret));
+    }
+    f.h.host.shutdown().await.unwrap();
 }
 
 #[tokio::test]

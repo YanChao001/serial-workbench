@@ -324,6 +324,7 @@ function CaptureStatusView({
         <span role="status" className="font-medium">
           {labels.captureStates[summary.state]}
         </span>
+        {summary.mode === "redacted" && <span>{labels.captureRedacted}</span>}
         <Popover>
           <PopoverTrigger asChild>
             <WorkbenchIconButton label={labels.captureStatusDetails}>

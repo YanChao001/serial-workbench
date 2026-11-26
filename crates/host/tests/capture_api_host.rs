@@ -13,6 +13,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 #[path = "support/experiment_browser.rs"]
 mod experiment_browser;
+#[path = "support/mapped_capture_browser.rs"]
+mod mapped_capture_browser;
 #[path = "support/operation_source_host.rs"]
 mod operation_source_host;
 #[path = "support/replay_search_host.rs"]
@@ -37,7 +39,24 @@ impl Fixture {
         Self::with_bundled_packages(false).await
     }
     async fn with_bundled_packages(bundled: bool) -> Self {
+        Self::with_runtime(bundled, None).await
+    }
+    async fn with_runtime(
+        bundled: bool,
+        runtime: Option<serial_workbench_host::node_runtime::VerifiedNodeRuntime>,
+    ) -> Self {
         let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        if runtime.is_some() {
+            let provision = HostServer::bind(dir.path()).await.unwrap();
+            let startup =
+                serial_workbench_ipc::startup_config::resolve(Some(dir.path().into())).unwrap();
+            Host::with_startup_config(provision.store(), provision.auth(), startup.snapshot())
+                .await
+                .unwrap()
+                .shutdown()
+                .await
+                .unwrap();
+        }
         let mut server = HostServer::bind(dir.path()).await.unwrap();
         let store = server.store();
         let auth = server.auth();
@@ -49,7 +68,16 @@ impl Fixture {
         let operator = auth
             .authenticate_user_control(&id("capture-user"), &credential)
             .unwrap();
-        let host = if bundled {
+        let host = if let Some(runtime) = runtime {
+            Host::with_verified_node_runtime_native(
+                store.clone(),
+                auth.clone(),
+                Arc::new(serial_workbench_host::clock::SystemClock::new().unwrap()),
+                runtime,
+            )
+            .await
+            .unwrap()
+        } else if bundled {
             let startup =
                 serial_workbench_ipc::startup_config::resolve(Some(dir.path().to_path_buf()))
                     .unwrap();
@@ -207,16 +235,13 @@ impl Fixture {
                     .store
                     .get(&self.operator, &operation.operation_id)
                     .unwrap();
-                if if evidence_only {
-                    current.result.is_some()
-                } else {
-                    !matches!(
-                        current.state,
-                        OperationState::Queued
-                            | OperationState::Running
-                            | OperationState::CancelRequested
-                    )
-                } {
+                if !matches!(
+                    current.state,
+                    OperationState::Queued
+                        | OperationState::Running
+                        | OperationState::CancelRequested
+                ) || (evidence_only && current.result.is_some())
+                {
                     return current;
                 }
                 tokio::time::sleep(Duration::from_millis(2)).await;
@@ -316,11 +341,61 @@ impl Fixture {
             )
             .await;
         let current = self.wait(&operation, true).await;
-        assert_eq!(current.state, OperationState::Running);
+        assert_eq!(
+            current.state,
+            OperationState::Running,
+            "capture start: {:?}",
+            current.error
+        );
         let Some(ActionResult::Reference(reference)) = current.result else {
             panic!("live ref evidence")
         };
         (operation, reference.result_ref)
+    }
+    async fn wait_written(&self, live: &ObjectRef, minimum: u64) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let request = RpcRequest::Query(self.query(
+                    &self.user,
+                    "capture.status",
+                    self.reference_target(live),
+                    json!({"captureRef":live}),
+                ));
+                let RpcResult::Query(QueryResult::CaptureStatus(status)) =
+                    success(self.user.request(request).await.unwrap())
+                else {
+                    panic!("capture status expected");
+                };
+                if status.summary.watermarks.written.get() >= minimum {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("capture did not reach the expected written watermark");
+    }
+    async fn stop_capture(&self, owner: &Operation, live: &ObjectRef) -> CaptureStatusResult {
+        let stop = self
+            .action(
+                &self.user,
+                "capture.stop",
+                self.reference_target(live),
+                json!({"captureRef":live}),
+            )
+            .await;
+        assert_eq!(stop.state, OperationState::Succeeded, "{:?}", stop.error);
+        let settled = self.wait(owner, false).await;
+        let Some(ActionResult::CaptureStatus(status)) = settled.result else {
+            panic!("fixed capture expected: {:?}", settled.error);
+        };
+        assert_eq!(
+            settled.state,
+            OperationState::Succeeded,
+            "{:?}",
+            settled.error
+        );
+        status
     }
     fn grant(&self, permission: &str, target: Target) {
         self.auth
@@ -351,6 +426,550 @@ fn failure(reply: RpcReply) -> HostError {
         panic!("expected failure: {reply:?}")
     };
     error
+}
+
+#[tokio::test]
+async fn redaction_preview_only_returns_the_transformed_sample_to_its_requester() {
+    let f = Fixture::new().await;
+    let query =
+        |params| RpcRequest::Query(f.query(&f.user, "capture.redactionPreview", f.host(), params));
+    const EXAMPLE: &str = "recorded-example-private-token";
+    let reply = f
+        .user
+        .request(query(json!({
+            "sample":format!("设备=7 token={EXAMPLE}\r\nphone=13800000000\nstate=ready"),
+            "rules":[
+                {"pattern":"token=[^ ]+","replacement":"token=[hidden]"},
+                {"pattern":"phone=[0-9]+","replacement":"phone=$1"}
+            ],
+        })))
+        .await
+        .unwrap();
+    let RpcResult::Query(QueryResult::CaptureRedactionPreview(result)) = success(reply) else {
+        panic!("expected redaction preview");
+    };
+    assert_eq!(
+        result.text,
+        "设备=7 token=[hidden]\r\nphone=$1\nstate=ready"
+    );
+    assert_eq!(result.replacements.get(), 2);
+
+    let invalid = f
+        .user
+        .request(query(json!({
+            "sample":EXAMPLE,
+            "rules":[{"pattern":format!("(?={EXAMPLE})"),"replacement":""}],
+        })))
+        .await
+        .unwrap();
+    let error = failure(invalid);
+    assert_eq!(error.code, "INVALID_ARGUMENT");
+    assert_eq!(
+        serde_json::to_value(&error.details).unwrap(),
+        json!({"ruleIndex":1}),
+    );
+    assert!(!serde_json::to_string(&error).unwrap().contains(EXAMPLE));
+
+    let expansive = f
+        .user
+        .request(query(json!({
+            "sample":"a".repeat(400),
+            "rules":[{"pattern":"a","replacement":"b".repeat(128)}],
+        })))
+        .await
+        .unwrap();
+    assert_eq!(failure(expansive).code, "LIMIT_EXCEEDED");
+    for file in ["state.sqlite3", "state.sqlite3-wal"] {
+        match std::fs::read(f.dir.path().join("host-v0").join(file)) {
+            Ok(bytes) => assert!(
+                !bytes
+                    .windows(EXAMPLE.len())
+                    .any(|part| part == EXAMPLE.as_bytes())
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("cannot inspect test profile: {error}"),
+        }
+    }
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn redacted_recording_writes_only_transformed_lines_and_omissions() {
+    verify_redacted_recording(None).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires SWB_TEST_CAPTURE_NODE_BIN pointing to the repository Node executable"]
+async fn redacted_host_archive_passes_independent_readback() {
+    let node = std::env::var_os("SWB_TEST_CAPTURE_NODE_BIN").expect("missing test Node executable");
+    let node = std::path::PathBuf::from(node);
+    assert!(node.is_absolute() && node.is_file());
+    verify_redacted_recording(Some(&node)).await;
+}
+
+async fn verify_redacted_recording(node: Option<&std::path::Path>) {
+    let f = Fixture::new().await;
+    let session = f.open().await;
+    let invalid = f.register("refuse-unconfigured-redaction").await;
+    let failed = f.action(
+        &f.user, "capture.start", f.reference_target(&invalid),
+        json!({"sessionRefs":[session],"targetRef":invalid,"mode":"redacted","overflowPolicy":"stop"}),
+    ).await;
+    assert_eq!(failed.error.unwrap().code, "INVALID_ARGUMENT");
+    assert!(!f.dir.path().join("refuse-unconfigured-redaction").exists());
+
+    let destination = f.register("capture").await;
+    const POLICY_LITERAL: &str = "private-policy-input-canary";
+    let rules = json!([
+        {"pattern":"token=[^ ]+", "replacement":"token=[hidden]"},
+        {"pattern":POLICY_LITERAL, "replacement":"unused"}
+    ]);
+    let chunks: [&[u8]; 3] = [b"board \xe8\xae", b"\xbe token=CARRY", b"-SECRET\r\n"];
+    let byte_end = chunks.iter().map(|chunk| chunk.len() as u64).sum::<u64>();
+    if node.is_some() {
+        let attachment = f.user.attachment();
+        let records = ["rx", "tx"].map(|direction| {
+            json!({
+                "direction":direction, "start":"0", "end":byte_end.to_string(),
+                "text":"board 设 token=[hidden]", "replacements":"1",
+            })
+        });
+        let expected = json!({
+            "fixtureVersion":"virtual-echo-redacted-1", "mode":"redacted", "minimumVolumes":1,
+            "streams":[{
+                "hostId":attachment.host_id, "instanceEpoch":attachment.instance_epoch,
+                "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+            }],
+            "rules":rules,
+            "records":records,
+            "rawPayloads":[], "finalReceipts":[],
+        });
+        std::fs::write(
+            f.dir.path().join("expected.json"),
+            serde_json::to_vec(&expected).unwrap(),
+        )
+        .unwrap();
+    }
+    let owner = f
+        .invoke(
+            &f.user,
+            "capture.start",
+            f.reference_target(&destination),
+            json!({
+                "sessionRefs":[session],
+                "targetRef":destination,
+                "mode":"redacted",
+                "overflowPolicy":"stop",
+                "redactionRules":rules,
+            }),
+        )
+        .await;
+    let running = f.wait(&owner, true).await;
+    let Some(ActionResult::Reference(reference)) = running.result else {
+        panic!("redacted capture did not start: {:?}", running.error);
+    };
+    let live = reference.result_ref;
+    for chunk in chunks {
+        let sent = f
+            .action(
+                &f.user,
+                "session.tx",
+                session.clone(),
+                json!({"bytesBase64":STANDARD.encode(chunk),"writeWaitMs":"1000"}),
+            )
+            .await;
+        assert_eq!(sent.state, OperationState::Succeeded, "{:?}", sent.error);
+    }
+    f.wait_written(&live, 2).await;
+    let status = f.stop_capture(&owner, &live).await;
+    let fixed = status.capture_ref;
+    assert_eq!(status.summary.mode, CaptureMode::Redacted);
+    assert_eq!(status.summary.watermarks.verified.get(), 2);
+    let directory = f.dir.path().join("capture");
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(directory.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["formatVersion"], "0.3");
+    assert_eq!(manifest["mode"], "redacted");
+    assert_eq!(manifest["redactionDigest"].as_str().unwrap().len(), 64);
+    assert_eq!(manifest["redactionResume"].as_array().unwrap().len(), 1);
+    if let Some(node) = node {
+        let output_dir = tempfile::tempdir().unwrap();
+        let report = output_dir.path().join("readback.json");
+        let reader = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../scripts/test-capture-container-independent.mjs");
+        let mut command = tokio::process::Command::new(node);
+        command
+            .arg(reader)
+            .arg("--fixture")
+            .arg(f.dir.path())
+            .arg("--result")
+            .arg(&report)
+            .kill_on_drop(true);
+        let output = tokio::time::timeout(Duration::from_secs(15), command.output())
+            .await
+            .expect("independent reader timed out")
+            .expect("could not launch independent reader");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report: Value = serde_json::from_slice(&std::fs::read(report).unwrap()).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["recordCount"], 2);
+        assert_eq!(report["redactionDigest"], manifest["redactionDigest"]);
+    }
+
+    for entry in std::fs::read_dir(&directory).unwrap() {
+        let entry = entry.unwrap();
+        let bytes = std::fs::read(entry.path()).unwrap();
+        for private in [b"CARRY".as_slice(), b"-SECRET", POLICY_LITERAL.as_bytes()] {
+            assert!(!bytes.windows(private.len()).any(|part| part == private));
+        }
+        for chunk in chunks {
+            let encoded = STANDARD.encode(chunk);
+            assert!(
+                !bytes
+                    .windows(encoded.len())
+                    .any(|part| part == encoded.as_bytes())
+            );
+        }
+    }
+    for name in ["state.sqlite3", "state.sqlite3-wal"] {
+        let path = f.dir.path().join("host-v0").join(name);
+        if path.exists() {
+            let bytes = std::fs::read(path).unwrap();
+            assert!(
+                !bytes
+                    .windows(POLICY_LITERAL.len())
+                    .any(|part| part == POLICY_LITERAL.as_bytes())
+            );
+        }
+    }
+    let verification = f
+        .action(
+            &f.user,
+            "capture.verify",
+            f.reference_target(&fixed),
+            json!({"captureRef":fixed}),
+        )
+        .await;
+    let Some(ActionResult::CaptureVerification(verification)) = verification.result else {
+        panic!("verify failed: {:?}", verification.error);
+    };
+    assert!(verification.container_complete);
+    assert_eq!(verification.mode, CaptureMode::Redacted);
+    let tail_request = |client| {
+        RpcRequest::Query(f.query(
+            client,
+            "capture.tail",
+            f.reference_target(&fixed),
+            json!({"captureRef":fixed}),
+        ))
+    };
+    let observer_raw = f.observer.connect_raw().await.unwrap();
+    assert_eq!(
+        failure(
+            observer_raw
+                .request(tail_request(&f.observer))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED",
+    );
+    f.grant("content.read", f.reference_target(&destination));
+    assert!(matches!(
+        success(
+            observer_raw
+                .request(tail_request(&f.observer))
+                .await
+                .unwrap()
+        ),
+        RpcResult::Query(QueryResult::CaptureTail(_))
+    ));
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.observer.attachment().actor_id.clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![f.reference_target(&destination)],
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        failure(
+            observer_raw
+                .request(tail_request(&f.observer))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED",
+    );
+
+    let raw = f.user.connect_raw().await.unwrap();
+    let RpcResult::Query(QueryResult::CaptureTail(tail)) =
+        success(raw.request(tail_request(&f.user)).await.unwrap())
+    else {
+        panic!("capture tail expected");
+    };
+    let playback = f
+        .action(
+            &f.user,
+            "replay.open",
+            f.reference_target(&fixed),
+            json!({"captureRef":fixed,"mode":"fastest"}),
+        )
+        .await;
+    let Some(ActionResult::Opened(playback)) = playback.result else {
+        panic!("redacted replay did not open: {:?}", playback.error);
+    };
+    let mut replay_target = f.target("session", playback.session_id.as_str());
+    replay_target.session_id = Some(playback.session_id.clone());
+    replay_target.session_epoch = Some(playback.session_epoch);
+    let search = f.query(
+        &f.user,
+        "replay.search",
+        replay_target.clone(),
+        json!({
+            "sessionId":playback.session_id,
+            "sessionEpoch":playback.session_epoch,
+            "command":{
+                "kind":"start",
+                "searchId":"a6b21411-cf47-472c-98d4-79482bd9d433",
+                "bytesBase64":STANDARD.encode("[hidden]"),
+                "direction":"rx"
+            }
+        }),
+    );
+    assert_eq!(
+        failure(raw.request(RpcRequest::Query(search)).await.unwrap()).code,
+        "UNSUPPORTED_CAPABILITY",
+    );
+    let read = f.query(
+        &f.user,
+        "replay.read",
+        replay_target,
+        json!({"sessionId":playback.session_id,"sessionEpoch":playback.session_epoch,
+               "maxRecords":"100","maxBytes":"65536"}),
+    );
+    let RpcResult::Query(QueryResult::ReplayRead(page)) =
+        success(raw.request(RpcRequest::Query(read)).await.unwrap())
+    else {
+        panic!("redacted replay page expected");
+    };
+    assert_eq!(page.records, tail.records);
+    assert_eq!(tail.mode, CaptureMode::Redacted);
+    assert_eq!(page.mode, CaptureMode::Redacted);
+    let mut directions = Vec::new();
+    for record in tail.records {
+        let ReplayRecord::Inline { record } = record else {
+            panic!("bounded record expected");
+        };
+        let CaptureEntry::Redacted(record) = record.entry else {
+            panic!("private container entry");
+        };
+        let CaptureRedactedResult::Text { text, replacements } = record.result else {
+            panic!("expected complete transformed line");
+        };
+        assert_eq!(text, "board 设 token=[hidden]");
+        assert_eq!(replacements.get(), 1);
+        let range = record.byte_range.unwrap();
+        assert_eq!(range.start.get(), 0);
+        assert_eq!(range.end.get(), byte_end);
+        if range.direction == Direction::Tx {
+            assert!(record.event_end.get() > record.event_start.get() + 1);
+        }
+        directions.push(range.direction);
+    }
+    assert_eq!(directions.len(), 2);
+    assert!(directions.contains(&Direction::Tx) && directions.contains(&Direction::Rx));
+
+    let text_target = f.register("redacted-export.csv").await;
+    let export = f
+        .action(
+            &f.user,
+            "capture.export",
+            f.reference_target(&fixed),
+            json!({"captureRef":fixed,"targetRef":text_target,"format":"csv"}),
+        )
+        .await;
+    assert_eq!(
+        export.state,
+        OperationState::Succeeded,
+        "{:?}",
+        export.error
+    );
+    let csv = std::fs::read_to_string(f.dir.path().join("redacted-export.csv")).unwrap();
+    assert!(csv.contains("board 设 token=[hidden]"));
+    assert!(!csv.contains("CARRY") && !csv.contains("-SECRET"));
+
+    let recovered_target = f.register("redacted-recovery").await;
+    let recovered = f
+        .action(
+            &f.user,
+            "capture.recover",
+            f.reference_target(&recovered_target),
+            json!({
+                "verificationId":verification.verification_id,
+                "sourceFingerprint":verification.source_fingerprint,
+                "targetRef":recovered_target
+            }),
+        )
+        .await;
+    assert_eq!(
+        recovered.state,
+        OperationState::Succeeded,
+        "{:?}",
+        recovered.error
+    );
+    let recovered: Value = serde_json::from_slice(
+        &std::fs::read(f.dir.path().join("redacted-recovery/manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(recovered["mode"], manifest["mode"]);
+    assert_eq!(recovered["redactionDigest"], manifest["redactionDigest"]);
+    assert!(recovered.get("redactionResume").is_none());
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn redacted_replacement_verifies_old_fingerprint_and_archives_exact_prior_capture() {
+    let f = Fixture::new().await;
+    let session = f.open().await;
+    let name = "replace-capture";
+    let path = f.dir.path().join(name);
+    let destination = f.register(name).await;
+    let (first, live) = f.start(&f.user, &session, &destination).await;
+    let prior = f
+        .action(
+            &f.user,
+            "session.tx",
+            session.clone(),
+            json!({"bytesBase64":STANDARD.encode(b"prior raw payload\n"),"writeWaitMs":"1000"}),
+        )
+        .await;
+    assert_eq!(prior.state, OperationState::Succeeded, "{:?}", prior.error);
+    f.wait_written(&live, 3).await;
+    let original = f.stop_capture(&first, &live).await;
+    assert_eq!(original.summary.mode, CaptureMode::Raw);
+    let expected = original.summary.source_fingerprint.unwrap();
+    let directory_contents = |path: &std::path::Path| {
+        std::fs::read_dir(path)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (entry.file_name(), std::fs::read(entry.path()).unwrap())
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let original_files = directory_contents(&path);
+    assert!(original_files.len() >= 3);
+    let destination = f.register(name).await;
+    let replacement = |fingerprint: &str| {
+        json!({
+            "sessionRefs":[session], "targetRef":destination, "mode":"redacted",
+            "overflowPolicy":"stop", "writeMode":"replace", "expectedFingerprint":fingerprint,
+            "redactionRules":[{"pattern":"token=[^ ]+", "replacement":"token=[hidden]"}],
+        })
+    };
+    let stale = f
+        .action(
+            &f.user,
+            "capture.start",
+            f.reference_target(&destination),
+            replacement(&"0".repeat(64)),
+        )
+        .await;
+    assert_eq!(stale.error.unwrap().code, "SOURCE_CHANGED");
+    assert_eq!(directory_contents(&path), original_files);
+    let owner = f
+        .invoke(
+            &f.user,
+            "capture.start",
+            f.reference_target(&destination),
+            replacement(expected.as_str()),
+        )
+        .await;
+    let running = f.wait(&owner, true).await;
+    let Some(ActionResult::Reference(live)) = running.result else {
+        panic!("redacted replacement did not start: {:?}", running.error);
+    };
+    let live = live.result_ref;
+    let sent = f
+        .action(
+            &f.user,
+            "session.tx",
+            session,
+            json!({"bytesBase64":STANDARD.encode(b"discarded boundary\nnew token=SECOND-CANARY\n"),"writeWaitMs":"1000"}),
+        )
+        .await;
+    assert_eq!(sent.state, OperationState::Succeeded, "{:?}", sent.error);
+    f.wait_written(&live, 4).await;
+    assert_eq!(directory_contents(&path), original_files);
+    let fixed = f.stop_capture(&owner, &live).await;
+    assert_eq!(fixed.summary.mode, CaptureMode::Redacted);
+    assert_ne!(fixed.capture_ref.id, original.capture_ref.id);
+    assert_ne!(fixed.summary.source_fingerprint.as_ref(), Some(&expected));
+
+    let archives: Vec<_> = std::fs::read_dir(f.dir.path())
+        .unwrap()
+        .map(Result::unwrap)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("capture-archive-")
+        })
+        .collect();
+    assert_eq!(archives.len(), 1);
+    assert_eq!(directory_contents(&archives[0].path()), original_files);
+    for bytes in directory_contents(&path).values() {
+        assert!(
+            !bytes
+                .windows(b"SECOND-CANARY".len())
+                .any(|part| part == b"SECOND-CANARY")
+        );
+    }
+    let query = f.query(
+        &f.user,
+        "capture.tail",
+        f.reference_target(&fixed.capture_ref),
+        json!({"captureRef":fixed.capture_ref}),
+    );
+    let connection = f.user.connect_raw().await.unwrap();
+    let RpcResult::Query(QueryResult::CaptureTail(tail)) =
+        success(connection.request(RpcRequest::Query(query)).await.unwrap())
+    else {
+        panic!("replacement tail expected");
+    };
+    let mut text_directions = Vec::new();
+    let mut boundaries = 0;
+    for record in tail.records {
+        let ReplayRecord::Inline { record } = record else {
+            panic!("inline replacement record expected");
+        };
+        let CaptureEntry::Redacted(record) = record.entry else {
+            panic!("raw entry in replacement capture");
+        };
+        match record.result {
+            CaptureRedactedResult::Text { text, replacements } => {
+                assert_eq!(text, "new token=[hidden]");
+                assert_eq!(replacements.get(), 1);
+                text_directions.push(record.byte_range.unwrap().direction);
+            }
+            CaptureRedactedResult::Omitted { reason } => {
+                assert_eq!(reason, CaptureRedactionOmission::Boundary);
+                boundaries += 1;
+            }
+        }
+    }
+    assert_eq!(boundaries, 2);
+    assert_eq!(text_directions.len(), 2);
+    assert!(text_directions.contains(&Direction::Rx) && text_directions.contains(&Direction::Tx));
+    f.finish().await;
 }
 
 #[tokio::test]

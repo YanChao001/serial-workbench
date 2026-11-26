@@ -256,3 +256,30 @@ test("rejects capture gaps, timing changes, lost cursor positions and epoch chan
     assert.equal(watch.observe(rx("32", 3, "OR\n")), undefined);
   }
 });
+
+test("exact HEX request requires a known boundary and matches only one full frame across blocks", () => {
+  const condition = { kind: "hex", hex: "aa 55 00 FF" };
+  assert.throws(
+    () => watchRuleCondition(condition, session, "31", false),
+    /confirmed starting boundary/i,
+  );
+  const watch = watchRuleCondition(condition, session, "31", true);
+  assert.equal(
+    watch.observe(rx("31", 0, [0xaa, 0x55, 0x00, 0x01, 0xaa, 0x55])),
+    undefined,
+  );
+  assert.deepEqual(watch.observe(rx("32", 6, [0x00, 0xff, 0x00])), {
+    kind: "match",
+    source: {
+      ...session,
+      direction: "rx",
+      eventStart: "31",
+      eventEnd: "33",
+      byteStart: String(baseOffset + 4n),
+      byteEnd: String(baseOffset + 8n),
+    },
+  });
+  for (const hex of ["", "A", "ZZ", "AB".repeat(257)]) {
+    assert.throws(() => compileRuleCondition({ kind: "hex", hex }));
+  }
+});

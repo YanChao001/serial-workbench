@@ -18,10 +18,10 @@ import { register } from "../packages/plugin-sdk/examples/reference-transport/ma
 const host = "127.0.0.1";
 const signal = new AbortController().signal;
 
-async function reserve(port = 0) {
+async function reserve(port = 0, address = host) {
   const server = createServer();
   const listening = once(server, "listening");
-  server.listen({ host, port });
+  server.listen({ host: address, port });
   await listening;
   return {
     port: server.address().port,
@@ -127,6 +127,60 @@ test(
     await stop();
     assert.equal(await waiting, null);
     const rebound = await reserve(port);
+    await rebound.close();
+  },
+);
+
+test(
+  "TCP device client and listener exchange binary bytes over IPv6",
+  { timeout: 5000 },
+  async (t) => {
+    const address = "::1";
+    const reserved = await reserve(0, address);
+    await reserved.close();
+    let open;
+    const stop = register({
+      transports: {
+        register(_id, handler) {
+          open = handler;
+        },
+      },
+    });
+    t.after(stop);
+    const endpoint = { host: address, port: reserved.port };
+    const server = await open({
+      params: { role: "server", ...endpoint },
+      signal,
+    });
+    const client = await open({
+      params: { role: "client", ...endpoint },
+      signal,
+    });
+    const data = Buffer.from([0, 255, 13, 10, 128]);
+    for (const [from, to] of [
+      [client, server],
+      [server, client],
+    ]) {
+      assert.equal(
+        await from.write({ bytes: data, waitMs: 500, signal }),
+        data.length,
+      );
+      const result = [];
+      while (result.length < data.length) {
+        const chunk = await to.read({
+          maxBytes: data.length - result.length,
+          waitMs: 500,
+          signal,
+        });
+        assert.ok(chunk?.length, "Expected IPv6 receive bytes");
+        result.push(...chunk);
+      }
+      assert.deepEqual(Buffer.from(result), data);
+    }
+    await client.close();
+    assert.equal(await server.read({ maxBytes: 1, waitMs: 500, signal }), null);
+    await server.close();
+    const rebound = await reserve(endpoint.port, address);
     await rebound.close();
   },
 );

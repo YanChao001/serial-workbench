@@ -950,6 +950,93 @@ it("updates the receipt from the shared Host operation after admission", async (
     labels.succeeded,
   );
 });
+
+it.each([
+  {
+    outcome: "partial",
+    bytesBase64: "DQo=",
+    byteEnd: "9007199254740995",
+    acceptedRanges: [{ start: "0", end: "1" }],
+    unknownRanges: [],
+    expected: [
+      "Requested bytes: [9007199254740993, 9007199254740995)",
+      "Bytes accepted by backend: [9007199254740993, 9007199254740994)",
+      "Bytes not accepted by backend: [9007199254740994, 9007199254740995)",
+    ],
+  },
+  {
+    outcome: "unknown",
+    bytesBase64: "AQIDBAU=",
+    byteEnd: "9007199254740998",
+    acceptedRanges: [
+      { start: "3", end: "4" },
+      { start: "0", end: "1" },
+    ],
+    unknownRanges: [{ start: "2", end: "3" }],
+    expected: [
+      "Requested bytes: [9007199254740993, 9007199254740998)",
+      "Bytes accepted by backend: [9007199254740996, 9007199254740997)",
+      "Bytes accepted by backend: [9007199254740993, 9007199254740994)",
+      "Bytes with unknown outcome: [9007199254740995, 9007199254740996)",
+      "Bytes not accepted by backend: [9007199254740994, 9007199254740995)",
+      "Bytes not accepted by backend: [9007199254740997, 9007199254740998)",
+    ],
+  },
+] as const)(
+  "keeps $outcome write results and exact TX stream ranges visible",
+  async ({
+    outcome,
+    bytesBase64,
+    byteEnd,
+    acceptedRanges,
+    unknownRanges,
+    expected,
+  }) => {
+    const initial: Operation = { ...operation(), state: "queued" };
+    const send = vi.fn().mockResolvedValue(initial);
+    const props = {
+      session: session(),
+      draft: "original",
+      onDraftChange: vi.fn(),
+      labels,
+      onSend: send,
+    };
+    const view = render(<SendPanel {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: labels.send }));
+    const receipt = await openReceipt();
+    expect(receipt).toHaveTextContent(labels.queued);
+    const settled: Operation = {
+      ...initial,
+      revision: "2",
+      state: outcome === "unknown" ? "unknown" : "succeeded",
+      result: {
+        kind: "tx",
+        value: {
+          operationId: initial.operationId,
+          sessionId: props.session.sessionId,
+          sessionEpoch: props.session.sessionEpoch,
+          bytesBase64,
+          byteStart: "9007199254740993",
+          byteEnd,
+          acceptedRanges: [...acceptedRanges],
+          unknownRanges: [...unknownRanges],
+          peerAcknowledged: false,
+          outcome,
+        },
+      },
+    };
+    view.rerender(<SendPanel {...props} operations={[settled]} />);
+    expect(receipt).toHaveTextContent(labels[outcome]);
+    expect(receipt).not.toHaveTextContent(labels.succeeded);
+    for (const text of expected) expect(receipt).toHaveTextContent(text);
+    expect(receipt).toHaveTextContent(labels.peerUnconfirmed);
+    expect(screen.getByRole("textbox", { name: labels.draft })).toHaveValue(
+      "original",
+    );
+    expect(send).toHaveBeenCalledOnce();
+  },
+);
+
 it("uses the exact preview bytes for sending CRLF and preserves the draft", async () => {
   const send = vi.fn().mockResolvedValue(operation());
   render(

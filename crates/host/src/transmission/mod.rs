@@ -27,6 +27,7 @@ use crate::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use scheduler::{Entry, QueueReservation, Runtime, Turn};
 use serial_workbench_core::*;
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -36,6 +37,44 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Notify;
+fn validate_mapped_tx_source(
+    source: &TxSourceText,
+    transforms: &[TransformReference],
+) -> HostResult<()> {
+    let original = STANDARD
+        .decode(source.utf8_base64.as_str())
+        .map_err(|_| invalid())?;
+    std::str::from_utf8(&original).map_err(|_| invalid())?;
+
+    let replacements = &source.mapping.replacements;
+    if replacements.len() > CHARACTER_REMAP_MAX_REPLACEMENTS {
+        return Err(invalid());
+    }
+    let mut seen = HashSet::with_capacity(replacements.len());
+    for row in replacements {
+        if row.source.chars().count() != 1
+            || matches!(row.source.as_str(), "\r" | "\n" | "\x08")
+            || row.replacement.encode_utf16().count() > CHARACTER_REMAP_MAX_REPLACEMENT_UTF16
+            || !seen.insert(row.source.as_str())
+        {
+            return Err(invalid());
+        }
+    }
+
+    let mapping = serde_json::to_vec(&source.mapping).map_err(|_| invalid())?;
+    let digest = format!("{:x}", Sha256::digest(mapping));
+    let [transform] = transforms else {
+        return Err(invalid());
+    };
+    if transform.id.as_str() != CHARACTER_REMAP_TRANSFORM_ID
+        || transform.version != CHARACTER_REMAP_TRANSFORM_VERSION
+        || transform.configuration_digest.as_str() != digest
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 type RuntimeMap = HashMap<(Id, U64), Arc<Runtime>>;
 type AdmissionScope = (Id, U64, Id);
 #[cfg(test)]
@@ -268,6 +307,9 @@ impl TransmissionService {
                 .is_some_and(|window| window.earliest_unix_ms > window.latest_unix_ms)
             {
                 return Err(invalid());
+            }
+            if let Some(source) = &params.source_text {
+                validate_mapped_tx_source(source, params.transforms.as_deref().unwrap_or(&[]))?;
             }
             let bytes: Arc<[u8]> = STANDARD
                 .decode(params.bytes_base64.as_str())
