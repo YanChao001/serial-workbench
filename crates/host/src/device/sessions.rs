@@ -1902,9 +1902,11 @@ fn owner_loop(
             Err(_) => break,
         };
         let read = backend.read(16 * 1024, Duration::from_millis(wait_ms));
-        receive_ready = read.as_ref().is_ok_and(|block| !block.bytes.is_empty());
+        receive_ready = read
+            .as_ref()
+            .is_ok_and(|block| !block.bytes.is_empty() || block.message.is_some());
         match read {
-            Ok(block) if !block.bytes.is_empty() => {
+            Ok(block) if receive_ready => {
                 observability
                     .lock()
                     .map_err(|_| unavailable())?

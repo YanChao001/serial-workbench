@@ -27,6 +27,7 @@ enum TransportScenario {
     Server,
     Rfc2217,
     OwnerExit,
+    Messages,
 }
 
 const EXIT_DURING_WRITE: &str = r#"
@@ -82,6 +83,12 @@ async fn native_node_dynamic_transport_rfc2217_requires_confirmed_serial_setting
     signed_transport(TransportScenario::Rfc2217).await;
 }
 
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_keeps_message_boundaries_in_raw_and_recording() {
+    signed_transport(TransportScenario::Messages).await;
+}
+
 async fn signed_transport(scenario: TransportScenario) {
     let rfc2217 = scenario == TransportScenario::Rfc2217;
     let (package_id, provider_id, example) = if rfc2217 {
@@ -94,13 +101,17 @@ async fn signed_transport(scenario: TransportScenario) {
         (PACKAGE, PROVIDER, "reference-transport")
     };
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let program = std::fs::read(
-        package_root
-            .join(".cache/plugin-sdk/examples")
-            .join(example)
-            .join("main.js"),
-    )
-    .expect("Compile the public SDK transport fixture");
+    let program = if scenario == TransportScenario::Messages {
+        include_bytes!("message_provider.mjs").to_vec()
+    } else {
+        std::fs::read(
+            package_root
+                .join(".cache/plugin-sdk/examples")
+                .join(example)
+                .join("main.js"),
+        )
+        .expect("Compile the public SDK transport fixture")
+    };
     let profile = support::Profile::isolated("host-node-transport-public-");
     let runtime = tokio::task::spawn_blocking(|| {
         let root = std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT")
@@ -141,7 +152,8 @@ async fn signed_transport(scenario: TransportScenario) {
 
     // 断言失败仍由外层等 Host 收回自有的 Node 和套接字。
     let checked = tokio::spawn(async move {
-        let mut admin_options = ConnectOptions::new(path.clone(), operator_id, ClientKind::Desktop);
+        let mut admin_options =
+            ConnectOptions::new(path.clone(), operator_id.clone(), ClientKind::Desktop);
         admin_options.user_control_credential = Some(credential);
         let admin = HostClient::connect(admin_options).await.unwrap();
         let manager = HostClient::connect(ConnectOptions::new(
@@ -151,13 +163,16 @@ async fn signed_transport(scenario: TransportScenario) {
         ))
         .await
         .unwrap();
-        let client = HostClient::connect(ConnectOptions::new(
-            path.clone(),
-            id("transport-driver"),
-            ClientKind::Cli,
-        ))
-        .await
-        .unwrap();
+        let (client_name, client_kind) = if scenario == TransportScenario::Messages {
+            // The desktop action uses the same file-selection client with a non-control context.
+            (operator_id, ClientKind::Desktop)
+        } else {
+            (id("transport-driver"), ClientKind::Cli)
+        };
+        let client =
+            HostClient::connect(ConnectOptions::new(path.clone(), client_name, client_kind))
+                .await
+                .unwrap();
         let host_id = client.attachment().host_id.clone();
         let host_target = Target {
             host_id: host_id.clone(),
@@ -246,6 +261,19 @@ async fn signed_transport(scenario: TransportScenario) {
             id: provider.device_id.clone(),
             ..host_target.clone()
         };
+        if scenario == TransportScenario::Messages {
+            check_messages(
+                &admin,
+                &client,
+                &auth,
+                &operator,
+                &host_target,
+                &device,
+                &path,
+            )
+            .await;
+            return;
+        }
         let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let endpoint = reserved.local_addr().unwrap();
         let (listener, transport_params) = if scenario == TransportScenario::Server {
@@ -831,6 +859,318 @@ fn denied(reply: RpcReply) {
     );
 }
 
+async fn check_messages(
+    admin: &HostClient,
+    client: &HostClient,
+    auth: &AuthService,
+    operator: &AuthenticatedActor,
+    host: &Target,
+    device: &Target,
+    path: &Path,
+) {
+    use tokio::net::UdpSocket;
+    assert_eq!(admin.attachment().client_id, client.attachment().client_id);
+    let peer = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+    grant(auth, operator, client, device, &["device.modify"]);
+    let session = open_session(
+        client,
+        host,
+        device,
+        json!({
+            "configuration": SerialConfiguration::default(),
+            "transportParams": {"port": peer.local_addr().unwrap().port()},
+        }),
+    )
+    .await;
+    grant(
+        auth,
+        operator,
+        client,
+        &session,
+        &["metadata.read", "content.read", "device.modify"],
+    );
+    let QueryResult::Session(snapshot) = query_result(success(
+        client
+            .request(RpcRequest::Query(query(
+                client,
+                "session.get",
+                &session,
+                json!({}),
+            )))
+            .await
+            .unwrap(),
+    )) else {
+        panic!("Expected negotiated message session");
+    };
+    assert_eq!(snapshot.capabilities.semantics, TransportSemantics::Message);
+    let target_for = |reference: &ObjectRef| Target {
+        kind: reference.kind.clone(),
+        id: reference.id.clone(),
+        ..host.clone()
+    };
+    let registered = completed(
+        admin,
+        host,
+        call(
+            admin,
+            "file.register",
+            host,
+            json!({
+                "path": path.join("message-recording"), "purpose": "capture_target",
+            }),
+        ),
+    )
+    .await;
+    let Some(ActionResult::FileMetadata(archive)) = registered.result else {
+        panic!("Expected archive reference");
+    };
+    let destination = target_for(&archive.file_ref);
+    grant(
+        auth,
+        operator,
+        client,
+        &destination,
+        &["workspace.modify", "content.read", "metadata.read"],
+    );
+    let mut record = call(
+        client,
+        "capture.start",
+        &destination,
+        json!({
+            "sessionRefs": [&session], "targetRef": archive.file_ref, "overflowPolicy": "stop",
+        }),
+    );
+    record.execution_mode = Some(ExecutionMode::Independent);
+    let RpcResult::Operation(owner) =
+        success(client.request(RpcRequest::Invoke(record)).await.unwrap())
+    else {
+        panic!("Expected capture operation");
+    };
+    let owner_id = owner.operation.operation_id.clone();
+    let live = timeout(WAIT, async {
+        loop {
+            let RpcResult::Operation(observed) = success(
+                client
+                    .request(RpcRequest::OperationGet(query(
+                        client,
+                        "operation.get",
+                        host,
+                        json!({"operationId":owner_id}),
+                    )))
+                    .await
+                    .unwrap(),
+            ) else {
+                panic!("Expected capture status");
+            };
+            if let Some(ActionResult::Reference(result)) = observed.operation.result {
+                break result.result_ref;
+            }
+            assert!(
+                !observed.operation.state.is_terminal(),
+                "{:?}",
+                observed.operation.error
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    let sent = completed(client, host, tx_call(client, &session, b"probe")).await;
+    assert!(matches!(
+        sent.result,
+        Some(ActionResult::Tx(TxReceipt {
+            outcome: TxOutcome::Accepted,
+            ..
+        }))
+    ));
+    let mut packet = [0; 16];
+    let (length, address) = timeout(WAIT, peer.recv_from(&mut packet))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&packet[..length], b"probe");
+    let text = "T测试".as_bytes();
+    let binary = vec![0xa5; 20_001];
+    for bytes in [text, &[][..], &binary] {
+        assert_eq!(peer.send_to(bytes, address).await.unwrap(), bytes.len());
+    }
+    let raw = client.connect_raw().await.unwrap();
+    let read_params = json!({
+        "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+        "startEventSeq":"1", "maxEvents":"20", "maxBytes":"65536",
+    });
+    let chunks = timeout(WAIT, async {
+        loop {
+            let QueryResult::StreamRead(read) = query_result(success(
+                raw.request(RpcRequest::Query(query(
+                    client,
+                    "stream.read",
+                    &session,
+                    read_params.clone(),
+                )))
+                .await
+                .unwrap(),
+            )) else {
+                panic!("Expected Raw read");
+            };
+            let chunks = read
+                .events
+                .into_iter()
+                .filter_map(|event| match event.payload {
+                    RawPayload::Rx(chunk) => Some(chunk),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if chunks.len() >= 4 {
+                break chunks;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(chunks.len(), 4, "Idle reads must not create RX events");
+    let [short, zero, head, tail] = chunks.as_slice() else {
+        unreachable!()
+    };
+    let decode = |chunk: &RxPayload| STANDARD.decode(chunk.bytes_base64.as_str()).unwrap();
+    assert_eq!(decode(short), text);
+    assert!(decode(zero).is_empty());
+    assert_eq!(zero.byte_start, zero.byte_end);
+    let second = tail.message.as_ref().unwrap();
+    let first = head.message.as_ref().unwrap();
+    assert_eq!(short.message.as_ref().unwrap().message_type, "text");
+    let empty = zero.message.as_ref().unwrap();
+    assert_eq!(empty.message_type, "datagram");
+    assert_eq!(empty.message_length.get(), 0);
+    assert_eq!(head.byte_start, zero.byte_end);
+    assert_eq!(first.message_id, second.message_id);
+    assert_ne!(first.message_id, empty.message_id);
+    assert_eq!(first.message_type, "binary");
+    assert_eq!(second.message_type, "binary");
+    assert_eq!(first.fragment_offset.get(), 0);
+    assert_eq!(second.fragment_offset.get(), 16384);
+    assert_eq!(first.message_length.get(), 20_001);
+    assert_eq!(first.message_length, second.message_length);
+    assert_eq!([decode(head), decode(tail)].concat(), binary);
+    assert_eq!(head.byte_end, tail.byte_start);
+
+    let ambiguous = wait_for_terminal(
+        client,
+        host,
+        success(
+            client
+                .request(RpcRequest::Invoke(tx_call(client, &session, b"partial")))
+                .await
+                .unwrap(),
+        ),
+    )
+    .await;
+    let Some(ActionResult::Tx(receipt)) = ambiguous.result else {
+        panic!("Expected unknown write evidence");
+    };
+    assert_eq!(receipt.outcome, TxOutcome::Unknown);
+    assert_eq!(
+        receipt.unknown_ranges,
+        vec![ByteRange {
+            start: 0.into(),
+            end: 7.into()
+        }]
+    );
+
+    timeout(WAIT, async {
+        loop {
+            let QueryResult::CaptureStatus(progress) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        client,
+                        "capture.status",
+                        &target_for(&live),
+                        json!({"captureRef":live}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected live capture");
+            };
+            if progress.summary.watermarks.written.get() >= 8 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    completed(
+        client,
+        host,
+        call(
+            client,
+            "capture.stop",
+            &target_for(&live),
+            json!({"captureRef":live}),
+        ),
+    )
+    .await;
+    let finished = wait_for_terminal(client, host, RpcResult::Operation(owner)).await;
+    assert_eq!(finished.state, OperationState::Succeeded, "{finished:?}");
+    let Some(ActionResult::CaptureStatus(status)) = finished.result else {
+        panic!("Expected finished recording reference");
+    };
+    assert!(status.summary.container_complete && status.summary.source_continuous);
+    let QueryResult::CaptureTail(capture) = query_result(success(
+        raw.request(RpcRequest::Query(query(
+            client,
+            "capture.tail",
+            &target_for(&status.capture_ref),
+            json!({"captureRef":status.capture_ref,"maxRecords":"30","maxBytes":"65536"}),
+        )))
+        .await
+        .unwrap(),
+    )) else {
+        panic!("Expected recorded instances");
+    };
+    for expected in [short, zero] {
+        assert!(capture.records.iter().any(|record| matches!(record, ReplayRecord::Inline { record }
+            if matches!(&record.entry, CaptureEntry::Event(event) if matches!(&event.payload, RawPayload::Rx(rx) if rx == expected)))),
+            "Recorded message is missing its original metadata");
+    }
+    let session_state = || async {
+        let QueryResult::Session(current) = query_result(success(
+            client
+                .request(RpcRequest::Query(query(
+                    client,
+                    "session.get",
+                    &session,
+                    json!({}),
+                )))
+                .await
+                .unwrap(),
+        )) else {
+            panic!("Expected session state");
+        };
+        current.state
+    };
+    assert_eq!(session_state().await, SessionState::Open);
+    peer.send_to(&[0xfa, 0xce], address).await.unwrap();
+    timeout(WAIT, async {
+        loop {
+            if session_state().await == SessionState::Disconnected {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    raw.close().await.unwrap();
+    eprintln!(
+        "node_message fixture=udp text_bytes={} empty_events=1 binary_bytes={} fragments=2 recorded_metadata=true partial_write_unknown=true eof_disconnected=true",
+        text.len(),
+        binary.len()
+    );
+}
 fn grant(
     auth: &AuthService,
     operator: &AuthenticatedActor,
@@ -1152,9 +1492,10 @@ async fn install_signed_provider(
     approve.expected_revision = Some(0.into());
     completed(admin, host, approve).await;
     let (entry, wrapped) = match scenario {
-        TransportScenario::Normal | TransportScenario::Server | TransportScenario::Rfc2217 => {
-            (program, None)
-        }
+        TransportScenario::Normal
+        | TransportScenario::Server
+        | TransportScenario::Rfc2217
+        | TransportScenario::Messages => (program, None),
         TransportScenario::OwnerExit => (
             EXIT_DURING_WRITE
                 .replace(

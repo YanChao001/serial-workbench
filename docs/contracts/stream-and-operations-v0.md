@@ -56,6 +56,8 @@ Host 重启核对持久接纳/dispatch/回执记录，把未完成任务标 inte
 
 `TransportSemantics=stream|message`。stream 后端读块只是采集块，不是协议帧/文本行；message 保留后端消息边界及类型。消息发生拆分时使用 `messageId,fragmentOffset,messageLength,messageType`，前三项分别 Id/U64/U64，messageType 为后端 schema 枚举；WebSocket 文本/二进制与 UDP 报文不能在传输中被混成无边界流。
 
+Node 消息连接的入站类型为 `binary`、`text`、`datagram`。单条消息有共同的 ID 和总字节数，分片偏移从零开始。零字节消息有独立 Raw 事件，`byteStart` 与 `byteEnd` 相等，消息长度和偏移均为零。等待内没有消息时没有 Raw 事件。会话写入继续遵守现有最少一字节的规则，单次写入对应一个出站消息，回执按完整接纳、未接纳或未知结算。
+
 `RawEvent={hostId,instanceEpoch,sessionId,sessionEpoch,eventSeq,configurationRevision,kind,time,payload}`。eventSeq 在 sessionEpoch 内从 `"1"` 连续递增；kind 的全部 v0 值为 `rx|tx_intent|tx|gap|configuration_boundary|lifecycle|control`。configurationRevision 指该事件采集/提交时最近完成的配置尝试 revision；即使结果不确定也推进，并在 boundary 中标明 uncertain。Session.configuration 保留最后完整确认的值，不把该对象冒充为不确定期间的实际配置。
 
 `time={clockId,sourceMonoNs,sourceWallTime?,receivedWallTime,precision}`；clockId 为源 Host 的 instanceEpoch 时钟域 Id，sourceMonoNs 为 U64，sourceWallTime/receivedWallTime 为 Timestamp。precision 含 `source: host_read|device|line_capture|sample_clock,resolutionNs: U64,syncMethod: string`；可选 `offsetEstimateNs` 为有符号十进制字符串、`offsetErrorNs,rttNs` 为 U64。源/接收墙钟仅用于展示，顺序由源 eventSeq 决定；A 转发 B 事件不替换其源时间，可在副本元数据追加本机接收时间。离线波形另带 `sampleClockId,sampleStart,sampleEnd,sampleRateHz`，sampleRateHz 为 schema 校验的正十进制字符串，不伪装成主机读块精度。
