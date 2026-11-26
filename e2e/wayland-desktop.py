@@ -21,7 +21,8 @@ def find_consent(action):
     while time.monotonic() < end:
         for app in desktop:
             for window in app:
-                if window.name != "Global Shortcuts Requested":
+                title = window.name
+                if title != "Global Shortcuts Requested":
                     continue
                 for item in descendants(window):
                     if (item.name == action and item.getRole() == pyatspi.ROLE_PUSH_BUTTON
@@ -29,7 +30,7 @@ def find_consent(action):
                             and item.getState().contains(pyatspi.STATE_ENABLED)):
                         if not item.queryAction().doAction(0):
                             raise RuntimeError(f"KDE dialog did not activate {action}")
-                        print(json.dumps({"dialog": window.name, "action": action}))
+                        print(json.dumps({"dialog": title, "action": action}))
                         return
         time.sleep(0.2)
     raise RuntimeError(f"No visible, enabled {action} button in the KDE shortcut dialog")

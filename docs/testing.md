@@ -89,6 +89,8 @@ cargo fmt --all -- --check
 
 `native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。探针确认带功能键标志的 F10 在独立应用前台时收到一对 Carbon 按下和释放回调。收据记录会话内标记事件的数量和修饰键。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
 
+`native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的两个独立 KWin 会话分别选择批准和取消。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。通过 KDE 原生弹窗、Virtual Echo 和独立 Raw 读回核对发送与取消。候选摘要、门户和后端版本、焦点及读回收据保存在 `wayland-global-send` 产物中。系统改键、撤回和冲突等场景继续按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
+
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。

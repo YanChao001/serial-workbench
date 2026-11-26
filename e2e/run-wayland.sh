@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-evidence="$PWD/artifacts/e2e/wayland-global-send"
 if [[ ${1:-} != --session ]]; then
-  mkdir -p "$evidence"
   session=$(mktemp -d)
   trap 'rm -rf -- "$session"' EXIT
-  env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u AT_SPI_BUS_ADDRESS \
-    dbus-run-session -- xvfb-run -a -s '-screen 0 1440x1000x24' \
-    bash "$0" --session "$session" 2>&1 | tee "$evidence/session.log"
-  exit
+  failed=0
+  for consent in OK Cancel; do
+    export SWB_E2E_WAYLAND_CONSENT=$consent
+    export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/wayland/$consent"
+    mkdir -p "$SWB_E2E_WAYLAND_ARTIFACTS"
+    if ! env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u AT_SPI_BUS_ADDRESS \
+      dbus-run-session -- xvfb-run -a -s '-screen 0 1440x1000x24' \
+      bash "$0" --session "$session/$consent" 2>&1 | tee "$SWB_E2E_WAYLAND_ARTIFACTS/session.log"; then
+      failed=1
+    fi
+  done
+  exit "$failed"
 fi
 
 # Xvfb hosts one outer KWin window. The desktop and both clients below use Wayland.
 session=$2
+evidence=${SWB_E2E_WAYLAND_ARTIFACTS:?Run through the isolated desktop entry point}
 export XDG_RUNTIME_DIR="$session/run" XDG_CONFIG_HOME="$session/config"
 export XDG_DATA_HOME="$session/data" XDG_CACHE_HOME="$session/cache"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland
@@ -30,8 +37,8 @@ printf '[Desktop Entry]\nType=Application\nName=%s\nExec="%s"\n' "$name" "$binar
 export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
 [[ $GITHUB_SHA == "$(git rev-parse HEAD)" ]]
 {
-  printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\n' \
-    "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY"
+  printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\nconsent=%s\n' \
+    "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY" "$SWB_E2E_WAYLAND_CONSENT"
   dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde
   sha256sum "$binary"
 } > "$evidence/environment.txt"

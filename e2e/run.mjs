@@ -104,11 +104,14 @@ try {
     wayland &&
     (process.platform !== "linux" ||
       process.env.GDK_BACKEND !== "wayland" ||
+      !isAbsolute(process.env.SWB_E2E_WAYLAND_ARTIFACTS ?? "") ||
+      !["OK", "Cancel"].includes(process.env.SWB_E2E_WAYLAND_CONSENT) ||
       !/^\d+$/.test(process.env.SWB_E2E_KWIN_WINDOW ?? ""))
   )
     throw new Error(
       "Run the isolated Wayland phase with bash e2e/run-wayland.sh.",
     );
+  if (wayland) artifacts = process.env.SWB_E2E_WAYLAND_ARTIFACTS;
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&

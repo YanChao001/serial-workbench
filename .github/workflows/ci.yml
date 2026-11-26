@@ -706,7 +706,7 @@ jobs:
           cache-on-failure: true
       - name: 构建测试专用桌面应用
         run: pnpm e2e:build
-      - name: 验证系统批准与跨应用发送
+      - name: 验证系统批准、取消与跨应用发送
         timeout-minutes: 5
         run: bash e2e/run-wayland.sh
       - name: 保留 Wayland 原生证据
@@ -714,7 +714,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wayland-global-send
-          path: artifacts/e2e/wayland-global-send
+          path: artifacts/e2e/wayland
           if-no-files-found: ignore
 
   desktop-e2e:
