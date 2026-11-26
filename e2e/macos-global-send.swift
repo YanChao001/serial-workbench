@@ -25,14 +25,19 @@ struct ProbeReply: Encodable {
     var sessionMonitor: Bool? = nil
     var sessionPresses: Int? = nil
     var sessionReleases: Int? = nil
+    var sessionPressFlags: UInt64? = nil
     var error: String? = nil
 }
 
 private final class ControlEvents {
+    let key: CGKeyCode
     var presses = 0
     var releases = 0
     var sessionPresses = 0
     var sessionReleases = 0
+    var sessionPressFlags: UInt64?
+
+    init(key: CGKeyCode) { self.key = key }
 }
 
 private let controlEventTag: Int64 = 0x53574246
@@ -41,17 +46,22 @@ private let controlEventTag: Int64 = 0x53574246
 final class GlobalSendPeer: NSObject, NSApplicationDelegate {
     private let foregroundBundle = "com.apple.calculator"
     private var foregroundTarget: NSRunningApplication?
-    private let controlEvents = ControlEvents()
+    private let controlEvents: ControlEvents
     private var controlHandler: EventHandlerRef?
     private var sessionTap: CFMachPort?
     private var sessionSource: CFRunLoopSource?
     private var occupied: EventHotKeyRef?
     private var reclaimed: EventHotKeyRef?
 
+    init(controlKey: CGKeyCode) {
+        controlEvents = ControlEvents(key: controlKey)
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             try observeControlShortcut()
-            occupied = try reserve(key: UInt32(kVK_F10), id: 1)
+            occupied = try reserve(key: UInt32(controlEvents.key), id: 1)
             reply(ProbeReply(ready: true, pid: ProcessInfo.processInfo.processIdentifier,
                              canPost: CGPreflightPostEventAccess(), canListen: CGPreflightListenEventAccess(),
                              secureInput: IsSecureEventInputEnabled()))
@@ -130,14 +140,19 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let context = Unmanaged.passUnretained(controlEvents).toOpaque()
         let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue) |
             (CGEventMask(1) << CGEventType.keyUp.rawValue)
-        // 只记录探针在隔离会话中标记的 F10 事件，不保存其他输入。
+        // 只记录探针在隔离会话中标记的对照事件，不保存其他输入。
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap,
                                          options: .listenOnly, eventsOfInterest: mask,
                                          callback: { _, type, event, context in
-            if let context, event.getIntegerValueField(.eventSourceUserData) == controlEventTag,
-               event.getIntegerValueField(.keyboardEventKeycode) == Int64(kVK_F10) {
+            if let context, event.getIntegerValueField(.eventSourceUserData) == controlEventTag {
                 let events = Unmanaged<ControlEvents>.fromOpaque(context).takeUnretainedValue()
-                if type == .keyDown { events.sessionPresses += 1 }
+                guard event.getIntegerValueField(.keyboardEventKeycode) == Int64(events.key) else {
+                    return Unmanaged.passUnretained(event)
+                }
+                if type == .keyDown {
+                    events.sessionPresses += 1
+                    events.sessionPressFlags = event.flags.rawValue
+                }
                 if type == .keyUp { events.sessionReleases += 1 }
             }
             return Unmanaged.passUnretained(event)
@@ -159,9 +174,9 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             case "observe-session":
                 observeSessionEvents()
             case "press-control":
-                try press(CGKeyCode(kVK_F10), repeating: false)
+                try press(controlEvents.key, repeating: false)
             case "press-control-session":
-                try press(CGKeyCode(kVK_F10), repeating: false, tap: .cgSessionEventTap)
+                try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap)
             case "press":
                 try press(CGKeyCode(kVK_F9), repeating: true)
             case "retained":
@@ -219,7 +234,8 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                           controlPresses: controlEvents.presses, controlReleases: controlEvents.releases,
                           sessionMonitor: sessionTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
                           sessionPresses: controlEvents.sessionPresses,
-                          sessionReleases: controlEvents.sessionReleases)
+                          sessionReleases: controlEvents.sessionReleases,
+                          sessionPressFlags: controlEvents.sessionPressFlags)
     }
 
     private func press(_ key: CGKeyCode, repeating: Bool, tap: CGEventTapLocation = .cghidEventTap) throws {
@@ -246,7 +262,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let up = try event(key, down: false, flags: flags)
         let shiftUp = try event(shift, down: false, flags: .maskCommand, modifier: true)
         let commandUp = try event(command, down: false, flags: [], modifier: true)
-        if key == CGKeyCode(kVK_F10) {
+        if key == controlEvents.key {
             down.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
             up.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
         }
@@ -289,8 +305,12 @@ struct GlobalSendProbe {
             exit(1)
         }
         let application = NSApplication.shared
-        let peer = GlobalSendPeer()
-        application.setActivationPolicy(.accessory)
+        let options = CommandLine.arguments.dropFirst()
+        let peer = GlobalSendPeer(controlKey: CGKeyCode(options.contains("--letter") ? kVK_ANSI_K : kVK_F10))
+        guard application.setActivationPolicy(options.contains("--regular") ? .regular : .accessory) else {
+            FileHandle.standardError.write(Data("Cannot apply the requested AppKit activation policy.\n".utf8))
+            exit(1)
+        }
         application.delegate = peer
         withExtendedLifetime(peer) { application.run() }
     }

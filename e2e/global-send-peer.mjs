@@ -4,13 +4,18 @@ import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawnOwned, stopOwned, waitOwned } from "./process.mjs";
 
-export async function withGlobalSendPeer(helper, logPath, work) {
+export async function withGlobalSendPeer(
+  helper,
+  logPath,
+  work,
+  args = process.platform === "win32" ? ["--global-send"] : [],
+) {
   assert.ok(isAbsolute(helper), "Expected an absolute native helper path");
-  const owned = spawnOwned(
-    helper,
-    process.platform === "win32" ? ["--global-send"] : [],
-    { logPath, privateStdout: true, pipeStdin: true },
-  );
+  const owned = spawnOwned(helper, args, {
+    logPath,
+    privateStdout: true,
+    pipeStdin: true,
+  });
   // 写入失败由回调交给当前请求，避免异步 EPIPE 漏出测试生命周期。
   owned.child.stdin.on("error", () => {});
   const reader = createInterface({ input: owned.child.stdout });

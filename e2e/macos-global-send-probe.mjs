@@ -21,9 +21,11 @@ const receipt = {
   routes: [],
 };
 
-for (const [route, stimulus] of [
-  ["hid", "press-control"],
-  ["session", "press-control-session"],
+for (const [route, stimulus, args] of [
+  ["hid", "press-control", []],
+  ["session", "press-control-session", []],
+  ["regular-session", "press-control-session", ["--regular"]],
+  ["letter-session", "press-control-session", ["--letter"]],
 ]) {
   const observation = { route, delivered: false };
   receipt.routes.push(observation);
@@ -75,14 +77,15 @@ for (const [route, stimulus] of [
         assert.equal(
           observation.observed.controlPresses,
           1,
-          "Expected one Carbon F10 press",
+          "Expected one Carbon control press",
         );
         assert.equal(
           observation.observed.controlReleases,
           1,
-          "Expected one Carbon F10 release",
+          "Expected one Carbon control release",
         );
       },
+      args,
     );
     observation.delivered = true;
   } catch (error) {
@@ -97,7 +100,7 @@ writeFileSync(
 );
 for (const { route, failure } of receipt.routes) {
   console.log(
-    `${route}: ${failure ?? "Carbon F10 press and release received"}`,
+    `${route}: ${failure ?? "Carbon control press and release received"}`,
   );
 }
 if (!receipt.routes.some(({ delivered }) => delivered)) process.exitCode = 1;
