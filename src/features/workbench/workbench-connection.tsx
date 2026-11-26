@@ -27,6 +27,7 @@ import {
   RotateCw,
   ScrollText,
   PanelsTopLeft,
+  Columns2,
   LoaderCircle,
   X,
   Cable,
@@ -426,6 +427,14 @@ export function WorkbenchConnection({
                   {toolLabels.framing}
                 </DropdownMenuItem>
               ) : null}
+              {toolLabels?.liveComparison && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("liveComparison")}
+                >
+                  <Columns2 aria-hidden="true" />
+                  {toolLabels.liveComparison}
+                </DropdownMenuItem>
+              )}
               {toolLabels?.repeatSend && (
                 <DropdownMenuItem
                   onSelect={() => selectToolFromMenu("repeatSend")}

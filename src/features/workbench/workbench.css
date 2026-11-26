@@ -2133,3 +2133,132 @@
     grid-column: 1 / -1;
   }
 }
+
+.workbench-dialog:has(.workbench-live-compare) {
+  --workbench-dialog-width: 60rem;
+}
+.workbench-dialog:has(.workbench-live-compare-log) {
+  --workbench-dialog-height: 44rem;
+}
+.workbench-live-compare {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.workbench-live-compare-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) max-content;
+  justify-content: start;
+  align-items: center;
+  gap: 0.5rem;
+}
+.workbench-live-compare-actions [data-slot="select-trigger"],
+.workbench-live-compare-actions .ui-button,
+.workbench-live-compare-pane [data-slot="select-trigger"] {
+  min-height: var(--workbench-control-size);
+}
+.workbench-live-compare-panes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--workbench-dialog-spacing);
+  align-items: start;
+}
+.workbench-live-compare-pane,
+.workbench-live-compare-detail {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.workbench-live-compare-pane [data-slot="select-trigger"] {
+  width: 100%;
+}
+.workbench-live-compare-log {
+  height: clamp(10rem, calc(100dvh - 15rem), 29rem);
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.workbench-live-compare-rows {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workbench-dialog .workbench-live-compare-rows > li {
+  position: absolute;
+  inset-inline: 0;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+.workbench-live-compare-log .workbench-live-compare-row,
+.workbench-live-compare-boundary {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  justify-content: stretch;
+  gap: 0.25rem;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 0;
+  font-weight: 400;
+  padding: 0 0.5rem;
+  text-align: start;
+  font-size: var(--text-xs);
+  line-height: 1.25;
+}
+.workbench-live-compare-row > *,
+.workbench-live-compare-coordinates > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workbench-live-compare-bytes {
+  font-family: var(--font-mono);
+}
+.workbench-live-compare-coordinates {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.workbench-live-compare-row:is(:hover, [aria-expanded="true"]),
+.workbench-live-compare-rows [data-aligned] .workbench-live-compare-row {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+.workbench-live-compare-row:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.workbench-live-compare-boundary {
+  color: var(--muted-foreground);
+}
+.workbench-live-compare-detail pre {
+  max-height: 8rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+}
+.workbench-live-compare-status {
+  min-height: 1.25rem;
+}
+@container workbench-tool (max-width: 35rem) {
+  .workbench-live-compare-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workbench-live-compare-log {
+    height: clamp(5.5rem, 20dvh, 12rem);
+  }
+}

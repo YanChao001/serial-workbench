@@ -391,6 +391,7 @@ export function workbenchToolLabels(t: Translate) {
     captureTools: t("workbench.tools.captureTools"),
     diagnostics: t("workbench.tools.diagnostics"),
     framing: t("workbench.tools.framing"),
+    liveComparison: t("workbench.tools.liveComparison"),
     sessionTemplates: t("sessionTemplate.title"),
     repeatSend: t("repeatSend.title"),
     calendarSchedule: t("calendar.title"),

@@ -97,8 +97,8 @@ export type WorkbenchFixture = {
   emitSharedActivity: (items: unknown[]) => number;
   lanSwitches: { generation: string | null; route: LanRoute | null }[];
   rawSubscriptions: string[];
-  emitRaw: (items: unknown[]) => number;
-  endRaw: (error: HostError) => number;
+  emitRaw: (items: unknown[], sessionId?: string) => number;
+  endRaw: (error: HostError, sessionId?: string) => number;
   unexpectedCommands: string[];
   hostQueries: string[];
   pluginIntents: LocalNodeIntent[];
@@ -108,6 +108,7 @@ export type WorkbenchFixture = {
   configureCheckDelayMs: number;
   configureAllowed: boolean;
   deniedReplayReads: string[];
+  deniedRawSessions: string[];
   sendHistoryReadable: boolean;
   manualSendRevision: string;
   invocations: Call[];
@@ -908,6 +909,7 @@ export async function seedWorkbenchFixture(
         requestId: string;
         index: number;
         lifecycleIndex: number;
+        sessionId?: string;
         cursor: Cursor;
         sentBytes: bigint;
       }
@@ -1111,14 +1113,17 @@ export async function seedWorkbenchFixture(
         }
         return delivered;
       },
-      emitRaw(items) {
+      emitRaw(items, sessionId) {
         const bytes = items.reduce<bigint>(
           (total, item) =>
             total +
             BigInt(new TextEncoder().encode(JSON.stringify(item)).byteLength),
           0n,
         );
+        let delivered = 0;
         for (const [subscriptionId, entry] of rawChannels) {
+          if (sessionId && sessionId !== entry.sessionId) continue;
+          delivered++;
           entry.sentBytes += bytes;
           const previousCursor = entry.cursor;
           entry.cursor = {
@@ -1138,11 +1143,12 @@ export async function seedWorkbenchFixture(
             index: entry.index++,
           });
         }
-        return rawChannels.size;
+        return delivered;
       },
-      endRaw(error) {
+      endRaw(error, sessionId) {
         let delivered = 0;
         for (const [subscriptionId, entry] of [...rawChannels]) {
+          if (sessionId && sessionId !== entry.sessionId) continue;
           const callback = callbacks.get(entry.lifecycle);
           if (!callback) continue;
           delivered++;
@@ -1166,6 +1172,7 @@ export async function seedWorkbenchFixture(
       configureCheckDelayMs: 0,
       configureAllowed: true,
       deniedReplayReads: [],
+      deniedRawSessions: [],
       sendHistoryReadable: true,
       manualSendRevision: openedSession.revision,
       invocations: [],
@@ -3586,6 +3593,14 @@ export async function seedWorkbenchFixture(
                 typeof lifecycle.id !== "number"
               )
                 throw new Error("Invalid raw subscription fixture request");
+              const sessionId = request.target.sessionId ?? request.target.id;
+              if (fixture.deniedRawSessions.includes(sessionId)) {
+                throw {
+                  code: "PERMISSION_DENIED",
+                  message: "Content access revoked",
+                  retryable: false,
+                };
+              }
               const subscriptionId = `workbench-gui-subscription-${nextSubscription++}`;
               rawChannels.set(subscriptionId, {
                 callback: channel.id,
@@ -3593,6 +3608,7 @@ export async function seedWorkbenchFixture(
                 requestId: request.requestId,
                 index: 0,
                 lifecycleIndex: 0,
+                sessionId,
                 cursor: {
                   hostId: after.hostId,
                   instanceEpoch: after.instanceEpoch,

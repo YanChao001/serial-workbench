@@ -61,6 +61,7 @@ export type HostInvocation = Pick<
   Required<Pick<Call, "executionMode">>;
 
 export type HostStreamView = {
+  sourceSubscriptionId?: string;
   items: readonly import("@/lib/receive-history").HistoryStreamItem[];
   sourceItems?: readonly import("@serial-workbench/contracts").StreamItem[];
   error: Error | null;

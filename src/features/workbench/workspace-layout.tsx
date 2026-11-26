@@ -131,6 +131,7 @@ import {
 import "./workbench.css";
 
 const ReplayComparisonDialog = lazy(() => import("./replay-comparison-dialog"));
+const LiveSessionComparison = lazy(() => import("./live-session-comparison"));
 
 type TabNameSource = { sourceKey?: string; sessionKey?: string; name?: string };
 function sameActionInput(
@@ -185,6 +186,7 @@ export type WorkbenchTool =
   | "transfer"
   | "captureTools"
   | "framing"
+  | "liveComparison"
   | "repeatSend"
   | "broadcastSend"
   | "calendarSchedule"
@@ -219,6 +221,7 @@ function activityPanel(
     case "transfer":
     case "captureTools":
     case "framing":
+    case "liveComparison":
     case "repeatSend":
     case "broadcastSend":
     case "calendarSchedule":
@@ -321,6 +324,7 @@ export type WorkspaceLayoutProps = {
     | Exclude<
         WorkbenchTool,
         | "framing"
+        | "liveComparison"
         | "sessionTemplates"
         | "repeatSend"
         | "broadcastSend"
@@ -341,6 +345,7 @@ export type WorkspaceLayoutProps = {
   > & {
     saveCurrentLayoutHint?: string;
     framing?: string;
+    liveComparison?: string;
     sessionTemplates?: string;
     repeatSend?: string;
     broadcastSend?: string;
@@ -2849,6 +2854,18 @@ export function WorkspaceLayout({
               />
             )}
             {dialog === "logs" && <WorkbenchLogPanel />}
+            {dialog === "liveComparison" && (
+              <Suspense fallback={null}>
+                <LiveSessionComparison
+                  state={state}
+                  watchIds={uniqueSessionIds}
+                  selectedSession={sessionId}
+                  attachment={
+                    disabled ? undefined : host.connection?.attachment
+                  }
+                />
+              </Suspense>
+            )}
             {dialog === "sendHistory" &&
               !disabled &&
               historyHostId &&
@@ -2885,6 +2902,7 @@ export function WorkspaceLayout({
                 "activity",
                 "logs",
                 "sendHistory",
+                "liveComparison",
               ].includes(dialog) &&
               renderTool?.(dialog as WorkbenchTool, {
                 trackCapture,

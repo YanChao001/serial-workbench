@@ -29,6 +29,7 @@ type OptionsSelectProps<T extends string> = Pick<
   onValueChange(value: T): void;
   options: readonly SelectOption<T>[];
   label?: string;
+  placeholder?: string;
   triggerRef?: RefObject<HTMLButtonElement | null>;
 };
 
@@ -38,6 +39,7 @@ export function OptionsSelect<T extends string>({
   onValueChange,
   options,
   label,
+  placeholder,
   disabled = false,
   className,
   triggerRef,
@@ -74,7 +76,7 @@ export function OptionsSelect<T extends string>({
         aria-label={label}
         className={cn("options-select", className)}
       >
-        <SelectValue />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent position="popper" className="options-select-content">
         {options.map((option) => (

@@ -661,6 +661,14 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 运行 `pnpm exec vitest run src/features/workbench/session-comparison-model.test.ts`。使用相同帧长读取两段只读录制，以原始事件和字节界限核对数据。位置模式保留已知缺失帧的序号，前缀和多字段模式分别用插入帧、重复键、无法解码的键及乱序设备地址核对配对。字节差检查零基半开区间，字段差检查同字段的原值和解码值。右侧相对耗时减左侧相对耗时，跨时钟、采集缺口或非单调时间返回未知。夹具校对高位纳秒、跨接收块来源及两侧边界。打开两份只读回放，各读取需要对照的页，在字段图表输入已知帧起点和帧长。把第一份用作基准、第二份用作对照，再从回放工具栏打开「会话对比」。切换对齐键后重新计算，展开结果行核对原始 HEX、事件和录制序号，以及右侧相对时间减左侧相对时间。运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts --grep "two recordings compare" --workers=1`，模拟 Host 对照两份样本并验证访问撤销后收回原始内容。通过当前有内容读取权限的会话调用字段包动作 `swb.reference.fields.compareSessions`。每侧传入有序的 `position` 和 `bytesBase64`，可提供精确纳秒和连续片段编号。首次读取核对全窗摘要，使用零基 `detail.rowIndex` 选择明细，分别用 `byteOffset` 和 `fieldOffset` 分页。运行 `node --test scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对契约、签名包一致性及分页金样。原生固定 Node 用例 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对未授权拒绝、授权后读回原始差异与精确时差。对 0.1.0 和 0.2.0 分别核对启用、停用、卸载和重复启动后身份保持。
 
+### 双会话对比（DISP-17）
+
+在同一个工作台打开两个不同的串口会话，在「工作台菜单」选择「双会话对比」。检查会话名称和接收记录，宽窗并排，窄窗上下排列。两端的记录区均可独立聚焦和滚动。选择一条记录可逐页查看其完整 HEX 及半开字节范围。打开、滚动和查看字节期间核对既有读流持续运行且无新增发送。
+
+分别选择按时间、事件号和 RX 字节偏移。时间定位需要同一单调源时钟和对侧连续记录，落在容差内时显示实际差值。事件号定位只使用对侧同号记录，偏移定位检查对侧实际包含字节的半开区间。对侧缺失时留在原位置，显示无可定位记录。关闭联动时保留当前滚动位置。撤销某一会话的读取后，原字节和所选详情从该侧消失，另一侧仍可查看。
+
+用 `pnpm exec vitest run src/features/workbench/live-session-comparison-model.test.ts` 核对 64 位坐标、时钟与缺口，用 `pnpm test:ui e2e/browser/live-session-comparison.spec.ts --workers=1` 核对真实界面中的滚动、两侧位置、授权和焦点。实机使用两个不同数据源，分别注入长短不同的字节串及接收缺口，对照两侧 Host Raw 坐标和工具位置。 [宽窄草稿](./ui-design.md#双会话拆屏草稿disp-17)
+
 ### 帧字段定义与报文构造（PROTO-02、PROTO-05、PROTO-07、PROTO-19）
 
 在分帧结果选择一帧，然后选择 JSON 或 YAML，填写版本为字符串 `"1"` 的定义。`byteLength` 是整帧字节数。每个字段用 `id`、`kind`、`byteOffset` 和宽度或校验算法描述。字节偏移位于帧内，结果显示折算后的半开原始字节范围和实际 HEX。十进制比例 `scale` 与偏移 `bias` 使用字符串，枚举 `labels` 以原始整数为键，可选 `unit`。整数和位域使用指定端序与符号位。校验字段以 `coverageStart` 和 `coverageEnd` 选定计算区间。
