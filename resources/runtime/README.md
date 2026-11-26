@@ -38,4 +38,4 @@ cargo build --locked -p serial-workbench-host --example node_runtime_probe --tar
 pnpm test:runtime --target <triple> --resources <资源根> --probe <实际构建的node_runtime_probe路径>
 ```
 
-使用实际输出复制独立布局，检查缺失、篡改、错架构、超时/取消与进程退出。不修改来源；夹具不证明真实安装器或操作系统断网。相关 ignored 用例与环境变量见[测试指南](../../docs/acceptance.md#签名运行时与-sdk)，平台限制见[分发契约](../../docs/contracts/runtime-distribution.md)。
+使用实际输出复制独立布局，检查缺失、篡改、错架构、超时/取消与进程退出。不修改来源；夹具不证明真实安装器或操作系统断网。相关 ignored 用例与环境变量见[专项验收](../../docs/acceptance.md#签名运行时与-sdk)，平台限制见[分发契约](../../docs/contracts/runtime-distribution.md)。

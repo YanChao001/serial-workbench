@@ -6,15 +6,17 @@
 
 ## 日常验证范围
 
-| 变化                        | 选择                                                                        |
-| --------------------------- | --------------------------------------------------------------------------- |
-| 文档、链接或路径            | 格式、文件/标题链接、配置事实；涉及账本时运行 planning:check 和校验脚本测试 |
-| TypeScript 业务、状态与组件 | 受影响 Vitest、typecheck、lint；界面接线再选 browser 场景                   |
-| 工程脚本                    | `node --test <相关.test.mjs>`，核对实际命中及平台条件                       |
-| Host/Rust                   | 受影响包/target 的测试、fmt/Clippy；独立程序交叉测试先构建同源入口          |
-| DTO、命令注册或契约         | 对应生成/check、Rust 与 TS fixture，再验证语义边界                          |
-| 存储、权限、取消、恢复      | 成功及实际失败路径、冲突、未来格式、原件、撤权、晚结果和资源责任            |
-| 里程碑                      | 整体复审、`pnpm verify`、无头 UI、完整四目标手动 CI及所属正式场景           |
+| 变化                        | 选择                                                                                                           |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 文档、链接或路径            | 检查 Markdown 格式、相对文件和标题链接。命令与事实对照脚本、配置或代码。涉及账本时核对阶段汇总并运行账本校验。 |
+| TypeScript 业务、状态与组件 | 受影响 Vitest、typecheck、lint；界面接线再选 browser 场景                                                      |
+| 工程脚本                    | `node --test <相关.test.mjs>`，核对实际命中及平台条件                                                          |
+| Host/Rust                   | 受影响包/target 的测试、fmt/Clippy；独立程序交叉测试先构建同源入口                                             |
+| DTO、命令注册或契约         | 对应生成/check、Rust 与 TS fixture，再验证语义边界                                                             |
+| 存储、权限、取消、恢复      | 成功及实际失败路径、冲突、未来格式、原件、撤权、晚结果和资源责任                                               |
+| 里程碑                      | 整体复审、`pnpm verify`、无头 UI、完整四目标手动 CI 和所属正式场景                                             |
+
+文档修改可用 `pnpm exec prettier --check <文件>` 检查格式。涉及阶段和需求时，再运行 `pnpm planning:check` 与 `node --test scripts/check-feature-status.test.mjs`。已有验收结果需追溯到对应候选、命令及证据。仓库或应用配置的说明用 `pnpm config:check` 核对。
 
 从实际用户行为、契约或故障后果选测试。优先复用能发现同类回归的现有用例，在真实系统、平台差异或跨进程行为会改变结论时做集成验证。夹具只准备用到的输入。定向检查足以支持当前判断时停止复跑，阶段出口执行相应正式验收。删除功能时同步清理专属用例。
 
@@ -101,10 +103,7 @@ Linux 签名后台作业在完成固定运行时校验后保存完整归档，Ub
 
 Windows x64 的 Rust 作业使用同一候选的 `dist-web` 和无头 Chromium 连接隔离 Host。文件交接覆盖浏览器选取、拖放、写入终态、独立 Raw 核对和命令槽回读。实验包从一个 Host 导出，在另一个 Host 检查、导入并明确重绑。字符映射使用签名 TCP 和独立回环对端，从配对浏览器打开会话，核对映射预览、实际字节、Raw、原稿和已封存录制。按住连发用真实配对 Chromium 和隔离 Host 的 Virtual Echo 核对两笔按序结算、松手停止及独立 Raw。Windows Git Bash 用 `cygpath` 规范化运行器临时目录，供 Cargo 和 Node 共用。配对用例的日志、截图和回执都保留在该目录，CI 区分测试进程失败与收据缺失。
 
-专项复验先执行 `pnpm build:web` 和 `pnpm exec playwright install --only-shell chromium`，并在隔离环境按以下入口运行。两个环境变量分别指定本地证据目录。
-
-- `SWB_TEST_BROWSER_TRANSFER_OUTPUT` 对应 `cargo test --locked -p serial-workbench-host --test browser_pairing browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation -- --test-threads=1`。
-- `SWB_TEST_EXPERIMENT_BROWSER_OUTPUT` 对应 `cargo test --locked -p serial-workbench-host --test capture_api_host paired_browsers_exchange_experiment_between_two_hosts -- --ignored --test-threads=1`。
+本机定向复验的环境、命令及收据见[真实配对工作台专项](./acceptance.md#真实配对工作台专项)。
 
 ## 依赖审计
 

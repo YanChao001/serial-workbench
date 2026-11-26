@@ -15,9 +15,9 @@ pnpm run doctor
 pnpm app:dev
 ```
 
-`pnpm dev` previews the interface without connecting to local serial ports. If startup reports an older Host after a source change, run `pnpm host:stop` with the same profile, then `pnpm app:dev`. Stopping the Host disconnects its sessions but preserves settings and drafts.
+`pnpm app:dev` starts the desktop development app with access to local devices. For a UI preview without attaching to the local Host, run `pnpm dev`. To open a [paired browser](./docs/development.md#浏览器访问), use the desktop settings. The Host serves the production assets. For missing `dist` assets, missing prerequisites, or a Host version mismatch, see [startup and troubleshooting](./docs/development.md#环境与启动).
 
-`pnpm app:build` builds installers; Windows also supports `pnpm app:portable`. See [build and release](./docs/development.md#构建与发布) for output paths, signing and update prerequisites.
+`pnpm app:build` builds installers. On Windows, `pnpm app:portable` builds a portable package. See [build and release](./docs/development.md#构建与发布) for output paths, runtime dependencies, signing and update prerequisites.
 
 ## License and security
 
