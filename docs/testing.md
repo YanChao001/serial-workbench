@@ -89,7 +89,7 @@ cargo fmt --all -- --check
 
 `native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。探针确认带功能键标志的 F10 在独立应用前台时收到一对 Carbon 按下和释放回调。收据记录会话内标记事件的数量和修饰键。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
 
-`native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的两个独立 KWin 会话分别选择批准和取消。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。批准会话还从工作台打开 KDE 快捷键设置，操作捕获取消、系统键位冲突、换键和撤回，并从 Virtual Echo 的独立 Raw 读回核对新旧键写入结果。候选摘要、门户和后端版本、焦点及读回收据保存在 `wayland-global-send` 产物中。其它环境按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
+`native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的独立 KWin 会话分别验证批准、取消和系统弹窗待定时重载工作台。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。批准会话还从工作台打开 KDE 快捷键设置，操作捕获取消、系统键位冲突、换键和撤回，并从 Virtual Echo 的独立 Raw 读回核对新旧键写入结果。候选摘要、门户和后端版本、焦点及读回收据保存在 `wayland-global-send` 产物中。其它环境按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
 
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 

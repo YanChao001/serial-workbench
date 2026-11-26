@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { $, browser } from "@wdio/globals";
 import { globalSendRawReader } from "../global-send.mjs";
-import { language, openDeepLink, ready } from "../helpers.mjs";
+import { language, openDeepLink, ready, reloadDocument } from "../helpers.mjs";
 import {
   captureGlobalSendKey,
   closeShortcutHelp,
@@ -25,7 +25,7 @@ const artifactDir = join(
   "wayland-global-send",
 );
 const focusPath = join(artifactDir, "peer-focus.json");
-const consent = process.env.SWB_E2E_WAYLAND_CONSENT;
+const scenario = process.env.SWB_E2E_WAYLAND_SCENARIO;
 const hotkey = "ctrl+shift+F9";
 const replacement = "ctrl+shift+F10";
 
@@ -72,6 +72,35 @@ async function exitEditor() {
   await closeEditor.waitForEnabled();
   await closeEditor.click();
   await closeShortcutHelp();
+}
+
+async function settleConsent(receipt, payload) {
+  if (scenario === "reload") {
+    receipt.pending = await kdeControl("consent", "Cancel", "observe");
+    await reloadDocument(browser);
+    await ready();
+    receipt.dismissed = await kdeControl("consent", "Cancel", "wait-closed");
+    await openDeepLink("/");
+    await openVirtual();
+    await (await sendDraft()).setValue(payload);
+    await editGlobalSend();
+    return;
+  }
+
+  receipt.consent = await kdeControl(
+    "consent",
+    scenario === "cancel" ? "Cancel" : "OK",
+  );
+  if (scenario === "cancel") {
+    const status = await $("#shortcut-conflict");
+    await status.waitForDisplayed();
+    assert.equal(
+      await status.getText(),
+      "Shortcut registration was cancelled.",
+    );
+  } else {
+    await $("#shortcut-capture").waitForExist({ reverse: true });
+  }
 }
 
 async function startRecordingNewKey() {
@@ -155,7 +184,7 @@ async function checkSystemSettings(receipt, draft, bytes) {
   );
 }
 
-it(`honors KDE consent ${consent} with a separate foreground Wayland client`, async () => {
+it(`honors the ${scenario} shortcut decision with a separate foreground Wayland client`, async () => {
   assert.equal(process.env.GDK_BACKEND, "wayland");
   assert.equal(process.env.XDG_SESSION_TYPE, "wayland");
   const outerWindow = process.env.SWB_E2E_KWIN_WINDOW;
@@ -168,6 +197,7 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
     candidate: process.env.GITHUB_SHA,
     portalVersion: process.env.SWB_E2E_PORTAL_VERSION,
     waylandDisplay: process.env.WAYLAND_DISPLAY,
+    scenario,
   };
   let peer;
   try {
@@ -181,19 +211,9 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
     await editGlobalSend();
     assert.equal(await (await globalShortcutKey()).getText(), "Off");
     await captureGlobalSendKey("F9");
-    receipt.consent = await kdeControl("consent", consent);
-    if (consent === "Cancel") {
-      const status = await $("#shortcut-conflict");
-      await status.waitForDisplayed();
-      assert.equal(
-        await status.getText(),
-        "Shortcut registration was cancelled.",
-      );
-    } else {
-      await $("#shortcut-capture").waitForExist({ reverse: true });
-    }
+    await settleConsent(receipt, payload);
     receipt.binding = await (await globalShortcutKey()).getText();
-    if (consent === "Cancel") {
+    if (scenario !== "approve") {
       assert.equal(receipt.binding, "Off");
       await exitEditor();
     } else {
@@ -225,7 +245,7 @@ it(`honors KDE consent ${consent} with a separate foreground Wayland client`, as
     assert.equal(receipt.focusBefore.display, receipt.waylandDisplay);
     assert.equal(await inject("getwindowfocus"), outerWindow);
 
-    if (consent === "Cancel") {
+    if (scenario !== "approve") {
       receipt.raw = await assertNoTransmit(read);
       receipt.focusAfter = readFocus();
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);

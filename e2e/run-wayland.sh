@@ -5,13 +5,13 @@ if [[ ${1:-} != --session ]]; then
   session=$(mktemp -d)
   trap 'rm -rf -- "$session"' EXIT
   failed=0
-  for consent in OK Cancel; do
-    export SWB_E2E_WAYLAND_CONSENT=$consent
-    export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/wayland/$consent"
+  for scenario in approve cancel reload; do
+    export SWB_E2E_WAYLAND_SCENARIO=$scenario
+    export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/wayland/$scenario"
     mkdir -p "$SWB_E2E_WAYLAND_ARTIFACTS"
     if ! env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u AT_SPI_BUS_ADDRESS \
       dbus-run-session -- xvfb-run -a -s '-screen 0 1440x1000x24' \
-      bash "$0" --session "$session/$consent" 2>&1 | tee "$SWB_E2E_WAYLAND_ARTIFACTS/session.log"; then
+      bash "$0" --session "$session/$scenario" 2>&1 | tee "$SWB_E2E_WAYLAND_ARTIFACTS/session.log"; then
       failed=1
     fi
   done
@@ -38,8 +38,8 @@ printf '[Desktop Entry]\nType=Application\nName=%s\nExec="%s"\n' "$name" "$binar
 export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
 [[ $GITHUB_SHA == "$(git rev-parse HEAD)" ]]
 {
-  printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\nconsent=%s\n' \
-    "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY" "$SWB_E2E_WAYLAND_CONSENT"
+  printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\nscenario=%s\n' \
+    "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY" "$SWB_E2E_WAYLAND_SCENARIO"
   dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde systemsettings plasma-desktop
   sha256sum "$binary"
 } > "$evidence/environment.txt"

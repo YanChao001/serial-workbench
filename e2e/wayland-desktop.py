@@ -26,11 +26,15 @@ def control(target, name, action):
     seen_windows = set()
     seen_controls = set()
     while time.monotonic() < end:
+        matching_window = False
         for app in desktop:
             for window in app:
                 title = window.name or ""
                 seen_windows.add(title)
                 if titles[target] not in title:
+                    continue
+                matching_window = True
+                if action == "wait-closed":
                     continue
                 for item in descendants(window):
                     if item.getRole() not in (pyatspi.ROLE_PUSH_BUTTON, pyatspi.ROLE_CHECK_BOX):
@@ -48,7 +52,12 @@ def control(target, name, action):
                         raise RuntimeError(f"KDE did not activate {name!r}")
                     print(json.dumps({"dialog": title, "control": label, "action": action, "active": active}))
                     return
+        if action == "wait-closed" and not matching_window:
+            print(json.dumps({"dialog": titles[target], "action": action}))
+            return
         time.sleep(0.2)
+    if action == "wait-closed":
+        raise RuntimeError(f"{titles[target]!r} stayed open after the request was dropped")
     raise RuntimeError(
         f"No visible, enabled {name!r} in {titles[target]!r}. "
         f"Windows: {sorted(seen_windows)}. Controls: {sorted(seen_controls)}"
@@ -88,9 +97,9 @@ def report_focus(output):
 
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    if command == "control" and len(args) == 3 and args[2] in ("click", "observe"):
+    if command == "control" and len(args) == 3 and args[2] in ("click", "observe", "wait-closed"):
         control(*args)
     elif command == "focus" and len(args) == 1:
         report_focus(*args)
     else:
-        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|observe, or focus PATH")
+        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME click|observe|wait-closed, or focus PATH")
