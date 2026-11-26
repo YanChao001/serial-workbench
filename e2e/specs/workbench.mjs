@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { openDeepLink, reloadDocument } from "../helpers.mjs";
@@ -12,6 +15,8 @@ import {
   patchSettings,
   readSettings,
 } from "../settings.mjs";
+
+const execute = promisify(execFile);
 
 async function openTool(name) {
   const direct = await $(
@@ -403,6 +408,87 @@ export function workbenchChecks() {
     await draft.setValue("UNSENT AFTER RESTART");
     await saveDrafts();
   });
+
+  if (
+    process.platform === "linux" &&
+    process.env.SWB_E2E_X11_GLOBAL_SEND === "1"
+  ) {
+    it("sends once for an X11 hotkey with another native application focused", async () => {
+      const hotkey = "ctrl+shift+F9";
+      const shortcutDialog = () => $("[role=dialog][data-state=open]");
+      async function editGlobalSend() {
+        await browser.execute(() =>
+          document.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" })),
+        );
+        const dialog = await shortcutDialog();
+        await dialog.waitForDisplayed();
+        await (await dialog.$("input[type=search]")).setValue("global send");
+        await clickEnabled(
+          "button[aria-label='Change shortcut for Global send shortcut']",
+        );
+        await $("#shortcut-capture").waitForDisplayed();
+      }
+      const draft = await sendDraft();
+      const original = await draft.getValue();
+      let registered = false;
+      let other;
+      try {
+        await draft.setValue("NATIVE-GLOBAL-SEND");
+        await editGlobalSend();
+        await browser.execute(() =>
+          document.getElementById("shortcut-capture").dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "F9",
+              ctrlKey: true,
+              shiftKey: true,
+              bubbles: true,
+              cancelable: true,
+            }),
+          ),
+        );
+        await clickEnabled("button=Save");
+        await $("#shortcut-capture").waitForExist({ reverse: true });
+        registered = true;
+        await browser.keys(Key.Escape);
+        await (await shortcutDialog()).waitForExist({ reverse: true });
+
+        const title = "Serial Workbench X11 test focus";
+        other = spawn("xmessage", ["-title", title, "Native hotkey focus"], {
+          stdio: "ignore",
+        });
+        const xdo = async (...args) =>
+          (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
+        const otherWindow = await xdo("search", "--sync", "--name", title);
+        await xdo("windowactivate", "--sync", otherWindow);
+        assert.equal(await xdo("getactivewindow"), otherWindow);
+        await xdo("keydown", hotkey);
+        try {
+          await browser.waitUntil(
+            async () =>
+              (await streamPayloadState("NATIVE-GLOBAL-SEND"))
+                .acceptedTxRows === 1,
+          );
+          await delay(800);
+          const sent = await streamPayloadState("NATIVE-GLOBAL-SEND");
+          assert.equal(sent.txRows, 1);
+          assert.equal(sent.acceptedTxRows, 1);
+          assert.equal(await xdo("getactivewindow"), otherWindow);
+        } finally {
+          await xdo("keyup", hotkey);
+        }
+      } finally {
+        other?.kill();
+        if (registered) {
+          await editGlobalSend();
+          await clickEnabled("button=Disable");
+          await $("#shortcut-capture").waitForExist({ reverse: true });
+          await browser.keys(Key.Escape);
+          await (await shortcutDialog()).waitForExist({ reverse: true });
+        }
+        await draft.setValue(original);
+      }
+    });
+  }
 
   it("keeps connected controls usable through rapid theme changes and focus refreshes", async () => {
     const before = await readSettings();

@@ -54,6 +54,7 @@ import {
 import { useSettings } from "@/providers/settings";
 import { APP_ROUTES, settingsLocation } from "@/routes";
 import { ActivityNavigationContext, CommandsContext } from "./commands-context";
+import { useGlobalSendShortcut } from "./use-global-send-shortcut";
 
 export function CommandsProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -71,6 +72,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     setOverlay(open ? "actions" : null);
   }, []);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const globalSend = useGlobalSendShortcut(overlay !== null || aboutOpen);
   const [registrations, setRegistrations] = useState<
     Map<symbol, readonly AppCommand[]>
   >(() => new Map());
@@ -372,6 +374,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       paletteOpen: overlay !== null,
       shortcutHelp: overlay === "shortcuts",
       changeShortcut,
+      globalSend,
       setPaletteOpen,
       aboutOpen,
       setAboutOpen,
@@ -383,6 +386,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       register,
       overlay,
       changeShortcut,
+      globalSend,
       setPaletteOpen,
       aboutOpen,
       fullscreen,

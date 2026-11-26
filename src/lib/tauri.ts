@@ -26,6 +26,7 @@ import type {
   DeliveryStream,
   NodeViewPresentation,
   TransferDrop,
+  ShortcutBinding,
 } from "./generated/bindings";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type {
@@ -694,6 +695,32 @@ export async function hostSubscribe(
   return callHost((commands) =>
     commands.hostSubscribe(request, channel, generation),
   );
+}
+
+export async function configureGlobalSend(
+  binding: ShortcutBinding | undefined,
+  registration: string,
+  onPress: (revision: number) => void,
+): Promise<void> {
+  requireDesktop();
+  const { Channel } = await import("@tauri-apps/api/core");
+  await callNative((commands) =>
+    commands.configureGlobalSend(
+      binding ?? null,
+      registration,
+      new Channel<number>(onPress),
+    ),
+  );
+}
+
+export async function setGlobalSendTarget(
+  registration: string,
+  revision: number,
+  enabled: boolean,
+): Promise<void> {
+  requireDesktop();
+  const { commands } = await import("./generated/bindings");
+  await commands.setGlobalSendTarget(registration, revision, enabled);
 }
 export async function hostRawSubscribe(
   request: Query,

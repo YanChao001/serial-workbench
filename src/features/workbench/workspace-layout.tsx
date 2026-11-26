@@ -2785,6 +2785,7 @@ export function WorkspaceLayout({
         draftKey={draftKey}
         labels={labels}
         operations={state.operations}
+        globalSendAllowed={allowed("session.tx") && !dialog && !promptDevice}
         holdSend={
           writableViewScope && target
             ? { scope: writableViewScope, target, wait: host.waitForOperation }

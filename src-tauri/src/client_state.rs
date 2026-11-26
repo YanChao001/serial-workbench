@@ -43,7 +43,7 @@ pub struct ShortcutBinding {
 }
 
 impl ShortcutBinding {
-    fn is_valid(&self) -> bool {
+    pub(crate) fn is_valid(&self) -> bool {
         if let Some(number) = self.key.strip_prefix('F') {
             return matches!(
                 number,

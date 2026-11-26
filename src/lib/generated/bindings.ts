@@ -4,6 +4,33 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+  configureGlobalSend: (
+    binding: {
+      key: string;
+      primary: boolean;
+      alt: boolean;
+      shift: boolean;
+    } | null,
+    registration: string,
+    onPress: Channel<number>,
+  ) =>
+    typedError<null, NativeError>(
+      __TAURI_INVOKE("configure_global_send", {
+        binding,
+        registration,
+        onPress,
+      }),
+    ),
+  setGlobalSendTarget: (
+    registration: string,
+    revision: number,
+    enabled: boolean,
+  ) =>
+    __TAURI_INVOKE<void>("set_global_send_target", {
+      registration,
+      revision,
+      enabled,
+    }),
   saveTextExport: (name: string, content: string) =>
     typedError<string | null, NativeError>(
       __TAURI_INVOKE("save_text_export", { name, content }),

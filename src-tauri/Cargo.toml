@@ -58,6 +58,7 @@ tokio = { version = "1", features = ["rt", "macros"] }
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 wry = { version = "=0.57.0", default-features = false, features = ["os-webview"] }
 tauri-plugin-single-instance = "2"
+global-hotkey = "0.10"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-wdio-webdriver = { version = "1.5", optional = true }
 
