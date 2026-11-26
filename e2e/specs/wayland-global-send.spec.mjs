@@ -395,6 +395,8 @@ async function checkSystemSettings(receipt, draft, bytes) {
   } else {
     await systemSettings.waitForEnabled();
     await systemSettings.click();
+    // ConfigureShortcuts closes the capture editor after the portal replies.
+    await $("#shortcut-capture").waitForExist({ reverse: true });
   }
 
   receipt.settingsComponent = await kdeControl(
@@ -432,22 +434,32 @@ async function checkSystemSettings(receipt, draft, bytes) {
       !receipt.changedBinding.includes("F9")
     );
   });
-  await exitEditor();
-
+  const closeHelp = await $(
+    "[role=dialog][data-state=open] button[data-slot=dialog-close]",
+  );
+  await closeHelp.waitForEnabled();
+  await closeHelp.click();
+  await closeHelp.waitForExist({ reverse: true });
   const readChanged = await globalSendRawReader();
-  receipt.oldKeyRaw = await assertNoTransmit(readChanged);
   receipt.settingsFocus = await kdeControl(
     "settings",
     "Add custom shortcut",
     "observe",
   );
   assert.equal(receipt.settingsFocus.active, true);
+  receipt.oldKeyRaw = await assertNoTransmit(readChanged);
   await withHotkey(replacement);
   await browser.waitUntil(async () => {
     receipt.newKeyRaw = await readChanged();
     return rawRxBytes(receipt.newKeyRaw).length >= bytes.length;
   });
   checkGlobalSendRaw(receipt.newKeyRaw, bytes);
+  receipt.settingsFocusAfter = await kdeControl(
+    "settings",
+    "Add custom shortcut",
+    "observe",
+  );
+  assert.equal(receipt.settingsFocusAfter.active, true);
 
   await kdeControl("settings", "Delete shortcut");
   receipt.revoke = await kdeControl("settings", "Apply");
