@@ -554,7 +554,7 @@ Ubuntu 手动 CI 在联网安装/构建后运行 `scripts/test-host-offline.mjs`
 
 Raw 断开时的收尾顺序用 `cargo test --locked -p serial-workbench-host --lib raw_disconnect_closes_output_before_releasing_connection_resources` 验证。使用本机 IPC，确认连接资源释放回调已观察到输出关闭，再允许旧连接资源回收。
 
-工作台入口用 `pnpm test:ui e2e/browser/replay-layout.spec.ts --workers=1` 验证。窄短窗中文深色与宽窗英文浅色核对 Raw 搜索请求、跨记录字节范围、控件高度、精确定位、暂停状态、输入与返回焦点。组件回归覆盖首批结果前停止、已编辑条件与原结果隔离、录制源变化后清除结果。运行 `cargo test --locked -p serial-workbench-host --lib capture:: -- --test-threads=1` 验证 1,024 条、原始负载 4 MiB 的多卷录制。修改侧车索引的末记录偏移后，常规验证报告不完整，回放仍从已验证的卷重建索引。搜索分 16 页命中，跳到最后一条原始记录。重建保留原索引，修改最后一条记录的摘要字节后回放拒绝打开。真实客户端用例 `raw_replay_search_pages_keep_connection_and_source_authority` 在移走侧车后从正常文件登记入口打开回放并验证 Raw 分页。常规 `capture_api_host` 套件在 Windows 通过 15 项，需 Chromium 的独立实验包交换由专项门禁执行。正式候选四平台另按专项复验。 [录制内搜索草稿](./ui-design.md#录制内搜索草稿)
+工作台入口用 `pnpm test:ui e2e/browser/replay-layout.spec.ts --workers=1` 验证。窄短窗中文深色与宽窗英文浅色核对 Raw 搜索请求、跨记录字节范围、控件高度、精确定位、暂停状态、输入与返回焦点。组件回归覆盖首批结果前停止、已编辑条件与原结果隔离、录制源变化后清除结果。运行 `cargo test --locked -p serial-workbench-host --lib capture:: -- --test-threads=1` 验证 1,024 条、原始负载 4 MiB 的多卷录制。修改侧车索引的末记录偏移后，常规验证报告不完整，回放仍从已验证的卷重建索引。搜索分 16 页命中，跳到最后一条原始记录。重建保留原索引，修改最后一条记录的摘要字节后回放拒绝打开。真实客户端用例 `raw_replay_search_pages_keep_connection_and_source_authority` 在移走侧车后从正常文件登记入口打开回放并验证 Raw 分页。常规 `capture_api_host` 套件在 Windows 通过 15 项，需 Chromium 的独立实验包交换由专项门禁执行。该软件场景已随 #81 通过四目标门禁。下方近 1 GiB 数据保留为单次历史专项结果。 [四目标验收](https://github.com/YanChao001/serial-workbench/actions/runs/45640702694) [录制内搜索草稿](./ui-design.md#录制内搜索草稿)
 
 接近默认 1 GiB 容量的专项使用 `SWB_TEST_LARGE_CAPTURE_DIR` 选择已有的临时父目录，保留至少 2 GiB 可用空间。用例在独立子目录生成和回收录制。
 
@@ -845,7 +845,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 在实时分帧或回放字段图表绘制数值字段，点击「导出 CSV」。打开压缩曲线后核对 CSV 行数仍与当前范围的帧数一致。再选择「最近 32 帧」及 XY，核对 CSV 从原图表帧序号开始，包含同一帧的 X 和 Y、原始码值以及各自来源。已确认的采集缺口保留缺失帧数，校验失败和无法确认来源的帧标为无效。对跨收块样本检查事件和字节半开区间、录制序号及原始 HEX。取消系统保存对话框时界面不显示保存成功。
 
-运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。原生对话框、离屏 PNG 的独立 CI 和 MDF4 继续专项验收。
+运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。离屏 PNG 的原生检查见上文，MDF4 的专业导出与读回见下文。真实系统保存对话框按对应场景验收。
 
 ### MDF4 专业导出（VIZ-13）
 
