@@ -16,6 +16,8 @@
 
 ### 本轮交付与验收
 
+- IO-08 候选 `9f21c6e` 通过 X11 独立进程占键冲突、停用后零写入和原键接管。Wayland v1、v2 均确认主窗单次写入，速查、应用设置页和次窗零写入，返回工作台后另一应用前台可再次发送。两版的门户交接在测试启动之前被场景白名单拦截，待修复启动器后在真实门户复验。 [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45895543201/artifacts/15154545154) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45895543201/artifacts/15153019670)
+
 - IO-08 候选 `0ecc633` 以一次定向预检并行核对 X11 与 Wayland。X11 的系统占键冲突、原键保留、另一应用前台单次 TX 与停用后零写入均通过。停用后独立客户端接管 F9 仍返回 `BadAccess`。Wayland v1、v2 的主窗单次写入、速查及次窗零写入均通过，切到应用设置页后各产生一笔错误 TX。工作台路由的授权撤回和返回重订已通过本地无头回归。X11 注销改为等待服务端处理，通过 Linux 目标编译检查。两项修复与真实门户交接进入同一批原生复验，软件验收继续进行。 [合并预检](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856/artifacts/15152792583) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856/artifacts/15152533998)
 
 - IO-08 的 Wayland 候选 `ce76aa3` 在 Ubuntu 26.04 构建通过。批准和取消两套 KWin 会话均有真实 Wayland 客户端连接，门户在会话变量生效前被启动，未暴露 GlobalShortcuts，工作台场景未执行。复验先确认 KDE 后端和已接管私有总线的门户，再运行批准、取消、改键与 Raw 收发。 [首轮诊断产物](https://github.com/YanChao001/serial-workbench/actions/runs/45878510321/artifacts/15145423839)
