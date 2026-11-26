@@ -342,14 +342,11 @@ mod desktop {
         {
             active.revision = revision;
             active.enabled = enabled;
-            log::debug!("[DEBUG-io08] target revision={revision} enabled={enabled}");
         }
     }
 
     fn handle_event(app: &AppHandle, event: GlobalHotKeyEvent) {
-        let pressed = event.state == HotKeyState::Pressed;
-        log::debug!("[DEBUG-io08] native callback pressed={pressed}");
-        dispatch_press(app, pressed, |active| {
+        dispatch_press(app, event.state == HotKeyState::Pressed, |active| {
             active
                 .backend
                 .native_key()
@@ -367,27 +364,21 @@ mod desktop {
             let updating = false;
             let documents = dispatch.documents;
             let Some(active) = dispatch.active.as_mut() else {
-                log::debug!("[DEBUG-io08] ignored because registration is missing");
                 return;
             };
             if !matches(active) || active.document != documents[active.owner] {
-                log::debug!("[DEBUG-io08] ignored because registration or document changed");
                 return;
             }
             // Windows 已用 MOD_NOREPEAT 过滤长按，释放通知可能晚于下一次物理按键。
             let first_press = pressed && (cfg!(windows) || !active.pressed);
             active.pressed = pressed;
             if !first_press || !active.enabled || updating {
-                log::debug!(
-                    "[DEBUG-io08] ignored first_press={first_press} enabled={} updating={updating}",
-                    active.enabled
-                );
                 return;
             }
             (active.owner, active.revision, active.id.clone())
         };
         let handle = app.clone();
-        let scheduled = app.run_on_main_thread(move || {
+        let _ = app.run_on_main_thread(move || {
             let label = WINDOWS[owner];
             if !handle
                 .get_window(label)
@@ -397,7 +388,6 @@ mod desktop {
                     .values()
                     .any(|window| window.label() != label && window.is_focused().unwrap_or(false))
             {
-                log::debug!("[DEBUG-io08] ignored because the window cannot dispatch");
                 return;
             }
             let state = handle.state::<Mutex<Dispatch>>();
@@ -413,18 +403,9 @@ mod desktop {
                 && active.revision == revision
                 && active.enabled
             {
-                let sent = active.events.send(GlobalSendEvent::Press { revision });
-                log::debug!(
-                    "[DEBUG-io08] channel revision={revision} sent={}",
-                    sent.is_ok()
-                );
-            } else {
-                log::debug!("[DEBUG-io08] ignored because target revision changed");
+                let _ = active.events.send(GlobalSendEvent::Press { revision });
             }
         });
-        if scheduled.is_err() {
-            log::debug!("[DEBUG-io08] main thread dispatch could not be scheduled");
-        }
     }
 
     pub fn reset_window(app: &AppHandle, label: &str) {
