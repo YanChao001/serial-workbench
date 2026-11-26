@@ -85,7 +85,7 @@ cargo fmt --all -- --check
 
 [手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
 
-工作区测试的集成目标同时构建 Host、CLI、MCP 和默认示例。后续步骤使用这次编译生成的正式入口。遇到重复构建时，先从 Cargo 的 `compiler-artifact` 核对后续所需的可执行路径和目标特性，再合并构建步骤。原测试范围与负载继续执行。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
+工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。
 
@@ -101,9 +101,7 @@ Linux 签名后台作业在完成固定运行时校验后保存完整归档，Ub
 
 期限内的事件可能在下一次轮询才被读到。边界用例固定事件源时间，单独控制观察进度，核对最后一次读取和完整来源。真实运行再验证跨进程接线及结果一致性。
 
-Windows x64 的 Rust 作业使用同一候选的 `dist-web` 和无头 Chromium 连接隔离 Host。文件交接覆盖浏览器选取、拖放、写入终态、独立 Raw 核对和命令槽回读。实验包从一个 Host 导出，在另一个 Host 检查、导入并明确重绑。字符映射使用签名 TCP 和独立回环对端，从配对浏览器打开会话，核对映射预览、实际字节、Raw、原稿和已封存录制。按住连发用真实配对 Chromium 和隔离 Host 的 Virtual Echo 核对两笔按序结算、松手停止及独立 Raw。Windows Git Bash 用 `cygpath` 规范化运行器临时目录，供 Cargo 和 Node 共用。配对用例的日志、截图和回执都保留在该目录，CI 区分测试进程失败与收据缺失。
-
-本机定向复验的环境、命令及收据见[真实配对工作台专项](./acceptance.md#真实配对工作台专项)。
+Windows x64 Rust 作业用同源 `dist-web`、无头 Chromium 和隔离 Host 跑[真实配对工作台专项](./acceptance.md#真实配对工作台专项)。Git Bash 以 `cygpath` 转换运行器临时路径供 Cargo 与 Node 共用。日志、截图和回执留在该目录，CI 分别报告进程失败和收据缺失。
 
 ## 依赖审计
 

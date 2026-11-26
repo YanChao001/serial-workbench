@@ -657,18 +657,19 @@ Windows 的 `windows-nsis-wire-v1` 运行时预检从已合入的 `ffff1fe` 构�
 
 ### 签名插件传输
 
-按[签名运行时](#签名运行时与-sdk)准备固定 Node 及 `SWB_NODE_RUNTIME_TEST_ROOT`，然后用同轮源码构建 SDK 示例并运行实证。
+先按[签名运行时](#签名运行时与-sdk)准备固定 Node、设置 `SWB_NODE_RUNTIME_TEST_ROOT`。共用命令覆盖 TCP、UDP、WebSocket 和 RFC 2217 的签名 Host 与工作台。按需执行共用命令及下列协议专项。
 
 ```sh
 pnpm plugin-sdk:fixture
 cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
 ```
 
 用例安装实际签名参考包，通过标准 Host IPC 对批准的插件设备执行打开、写入和关闭。独立本机 TCP 对端核对实际二进制字节，Raw 核对 Host 实例、会话代次和来源。未经授权的打开不能到达对端，撤销用户读取授权终止其 Raw 交付。显式关闭、重新打开的新会话代次和停用后的实际对端断开分别核对。故障用例单独签名测试包装，实际写入后在返回线路回执前退出所属 Node 进程。TCP 对端核对已到达的字节和关闭，Host 核对派发区间仍为 `unknown`、卸下设备目录条目并拒绝过期操作。四目标 CI 的原生运行时检查运行主动连接、侦听与进程退出三种用例。桌面参数输入、跨机适配和发行候选证据沿用各阶段的专项。
 
 在同一原生传输测试集合中，`native_node_dynamic_transport_keeps_message_boundaries_in_raw_and_recording` 安装仅用于验收的签名消息插件。独立 UDP 回环对端发送 UTF-8 文本、零字节数据报和跨 16 KiB 的二进制消息。核对会话语义、原 Raw 字节、消息标识、偏移和录制读取。空消息有事件而不推进字节水位，部分写入结算为未知，输入结束更新实际会话状态。运行 `node --test scripts/node-message-transport.test.mjs` 核对私有线路上的等待、空消息、EOF、超限、未声明类型及传统字节流回执。WebSocket 与 UDP 产品提供方仍各自按协议验收。
 
-桌面参数入口运行 `pnpm test:ui e2e/browser/plugin-transport.spec.ts`，检查显式提交、失败保留输入和成功清理草稿登记。Host 参数校验和实际 TCP 对端继续通过签名传输用例检查。
+工作台用例核对显式提交、失败保留输入及成功清理草稿。TCP 的参数校验和独立对端由签名 Host 用例核对。
 
 TCP 参考包兼容原有的端口参数。添加 `role` 选择 `client` 或 `server`，可用 `host` 指定目标地址或要侦听的本机 IP。默认 `127.0.0.1`。侦听用例先核对未授权的请求未占用端口、无对端写入的回执无接纳或未知区间，再由独立对端核对双向二进制字节、Raw 会话代次、重开和停用。运行 `node --test scripts/reference-transport.test.mjs` 复验端口占用、取消打开和读取、不会接纳第二位对端以及先交付半关闭前已收到的字节。
 
@@ -677,19 +678,18 @@ TCP 参考包兼容原有的端口参数。添加 `role` 选择 `client` 或 `se
 ```sh
 cargo test --locked -p serial-workbench-host --lib native_node_bundled_ -- --ignored --test-threads=1 --nocapture
 node --test scripts/reference-transport.test.mjs scripts/components-build.test.mjs
-pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 ```
 
 重建包时以 esbuild 针对 Node 26 打包 `reference-transport/builtin.ts`，使用 `sign_builtin_tcp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。收到验签结果后登记归档、入口、清单摘要与来源公钥。正式发行与跨设备收发继续按 T11 和 T14 验收。
 
 #### UDP（NET-02）
 
+SDK、签名 Host 与工作台命令见[共用传输检查](#签名插件传输)。
+
 首方 `swb.builtin.udp` 0.1.0 随 Host 登记。从工作台选择「UDP 数据报」，按[连接草稿](./ui-design.md#udp-连接草稿)选择地址族、模式、目标地址与端口。单播的本机地址和端口可留空，由系统绑定。IPv4 广播使用明确输入的限域广播地址，或选择本机接口 IP 后输入该网段的定向广播地址。组播用通配地址在目标端口入组，可填写独立本机端口。IPv4 组播接口填写本机 IPv4 地址，IPv6 填写数字接口索引。链路本地 IPv6 单播地址附 `%索引`。
 
 ```sh
 node --test scripts/udp-transport.test.mjs scripts/components-build.test.mjs
-pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
-cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
 cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
 ```
 
@@ -699,13 +699,12 @@ cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_
 
 #### WebSocket 设备（NET-03、CONN-12）
 
+SDK、签名 Host 与工作台命令见[共用传输检查](#签名插件传输)。
+
 工作台选「WebSocket 设备」打开[连接窗](./ui-design.md#websocket-设备连接草稿)。主动连接使用 `ws://` 或 `wss://` URL，侦听指定本机 IP、端口及握手路径。回环场景可以用独立浏览器作为对端，在连接窗填该页面的 HTTP 来源。每个侦听会话接纳一个对端。主机的配对页面继续通过原配对控制通道工作。发送类型可选二进制或 UTF-8 文本。
 
 ```sh
-pnpm plugin-sdk:fixture
 node --test scripts/websocket-transport.test.mjs scripts/components-build.test.mjs
-pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers=1
-cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
 ```
 
 独立套接字验证消息分片、空消息、128 KiB 上限、错误路径和浏览器来源、取消握手、正常与异常断连以及再次绑定。独立 Chromium 用浏览器原生 WebSocket 和设备侦听互发文本及二进制。签名 Host 的双角色用例用独立 Rust WebSocket 对端，核对未授权打开被拒、实际线上的发送类型、Raw 数据与同消息标识、旧会话终态和端口回收。先准备固定 Node，再按签名启动用例核对首启、重启及准确归档。WSS 可用本机专用测试证书验证，默认信任配置拒绝未授权证书，仅将测试证书设为一轮隔离 Node 进程的额外信任根后验证文本交换。
@@ -714,12 +713,12 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 #### RFC 2217（NET-06）
 
+SDK、签名 Host 与工作台命令见[共用传输检查](#签名插件传输)。
+
 参考包 `reference.rfc2217` 使用独立设备贡献 `reference.rfc2217.transport`。通过已有插件参数入口指定 `host`、`port` 与整数 `baudRate`。默认 8N1、无流控，可显式提交 `dataBits`、`parity`、`stopBits`、`flowControl`、`dtr`、`rts`。停止位取字符串 `1`、`1.5`、`2`，1.5 适用于 5 数据位。选用硬件流控时由流控管理 RTS。 [RFC 2217](https://www.rfc-editor.org/rfc/rfc2217)
 
 ```sh
-pnpm plugin-sdk:fixture
 node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs
-cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
 cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- .cache/plugin-sdk/examples/reference-rfc2217/main.js <32字节种子文件> <新归档> <可信来源ID> <keyID>
 ```
 
@@ -730,7 +729,6 @@ cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- 
 ```sh
 cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
 node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs scripts/components-build.test.mjs
-pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 ```
 
 生成首方归档时以 esbuild 针对 Node 26 打包 `reference-rfc2217/builtin.ts`。使用 `sign_builtin_rfc2217 <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`，登记并核对归档、入口、清单摘要和来源公钥。原生首启重启用例以实际归档摘要核对来源、激活状态和设备登记。

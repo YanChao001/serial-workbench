@@ -6,7 +6,7 @@
 
 工具版本读取 [package.json](../package.json) 的 engines/packageManager、[.nvmrc](../.nvmrc) 和 [rust-toolchain.toml](../rust-toolchain.toml)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2；macOS 需要 Xcode Command Line Tools；Linux 需要编译工具与 WebKitGTK 开发库，具体安装见 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)。
 
-首次安装和启动命令见[项目首页](../README.md#从源码运行)。`pnpm run doctor` 只读取环境。依赖尚未安装时可直接运行 `node scripts/doctor.mjs`，再按报告补齐工具。pnpm 的工作区与补丁配置见 [pnpm-workspace.yaml](../pnpm-workspace.yaml)，Rust 构建目录由 [.cargo/config.toml](../.cargo/config.toml) 指定。
+安装见[项目首页](../README.md#从源码运行)。`pnpm run doctor` 只读诊断，未装依赖可用 `node scripts/doctor.mjs`。工作区补丁查 [pnpm-workspace.yaml](../pnpm-workspace.yaml)，Rust target 查 [.cargo/config.toml](../.cargo/config.toml)。
 
 | 场景               | 命令或入口                                                         | 资源                                               |
 | ------------------ | ------------------------------------------------------------------ | -------------------------------------------------- |
@@ -21,7 +21,7 @@ React Provider 的组件模块只导出组件，Context、工厂和 Hook 放在�
 
 `pnpm app:dev` 在 `dist/index.html` 缺失时先构建配对浏览器资源，再构建同源 Host/CLI 并从 `.cache/dev-runtime/` 的不可变副本启动，避免 Windows 锁住 Cargo 输出。关闭窗口不会退出 Host。`DEV_RUNTIME_MISMATCH` 表示旧实例的可执行文件与当前副本不同。确认可结束该实例的会话后，沿用同一 `SWB_PROFILE` 运行 `pnpm host:stop --json`，或用 `pnpm host:stop --profile "<实际绝对目录>" --json` 明确指定。收到 `stopped: true` 后重新启动。`alreadyStopped: true` 表示原 profile 已无正在运行的实例。若 `PROTOCOL_UNSUPPORTED` 使当前 CLI 无法附着，使用与运行实例兼容的原版本入口正常退出，再用同一 profile 启动当前构建。Vite 热更新不更新后台程序。
 
-启动报 `resource path ../dist doesn't exist` 时，先从仓库根运行 `pnpm build`，确认 `dist/index.html` 已生成，再用 `pnpm app:dev` 启动。`pnpm build:web` 输出到 `dist-web/`，供静态预览与浏览器专项使用。
+若报 `resource path ../dist doesn't exist`，从根目录运行 `pnpm build`，确认 `dist/index.html` 后再运行 `pnpm app:dev`。
 
 准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
@@ -67,7 +67,7 @@ CLI 管理用同一 profile 的本机用户控制身份。`lan status` 查看身
 
 ### 浏览器访问
 
-桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发配对资源的准备与刷新见[环境与启动](#环境与启动)。
+桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。安装版和 Windows 便携版从 `browser-workbench/` 提供同源页面。开发版见[启动资源](#环境与启动)。
 
 ### 本机 HTTP 控制
 
