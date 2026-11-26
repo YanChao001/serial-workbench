@@ -26,6 +26,7 @@ struct ProbeReply: Encodable {
     var sessionPresses: Int? = nil
     var sessionReleases: Int? = nil
     var sessionPressFlags: UInt64? = nil
+    var sessionCharacter: UniChar? = nil
     var error: String? = nil
 }
 
@@ -36,6 +37,7 @@ private final class ControlEvents {
     var sessionPresses = 0
     var sessionReleases = 0
     var sessionPressFlags: UInt64?
+    var sessionCharacter: UniChar?
 
     init(key: CGKeyCode) { self.key = key }
 }
@@ -152,6 +154,11 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 if type == .keyDown {
                     events.sessionPresses += 1
                     events.sessionPressFlags = event.flags.rawValue
+                    var character: UniChar = 0
+                    var length = 0
+                    event.keyboardGetUnicodeString(maxStringLength: 1, actualStringLength: &length,
+                                                   unicodeString: &character)
+                    if length == 1 { events.sessionCharacter = character }
                 }
                 if type == .keyUp { events.sessionReleases += 1 }
             }
@@ -179,6 +186,9 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap)
             case "press-control-function":
                 try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap, functionKey: true)
+            case "press-control-function-character":
+                try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap,
+                          functionKey: true, functionCharacter: UniChar(NSF10FunctionKey))
             case "press":
                 try press(CGKeyCode(kVK_F9), repeating: true)
             case "retained":
@@ -237,11 +247,12 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                           sessionMonitor: sessionTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
                           sessionPresses: controlEvents.sessionPresses,
                           sessionReleases: controlEvents.sessionReleases,
-                          sessionPressFlags: controlEvents.sessionPressFlags)
+                          sessionPressFlags: controlEvents.sessionPressFlags,
+                          sessionCharacter: controlEvents.sessionCharacter)
     }
 
     private func press(_ key: CGKeyCode, repeating: Bool, tap: CGEventTapLocation = .cghidEventTap,
-                       functionKey: Bool = false) throws {
+                       functionKey: Bool = false, functionCharacter: UniChar? = nil) throws {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
@@ -266,6 +277,10 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let up = try event(key, down: false, flags: keyFlags)
         let shiftUp = try event(shift, down: false, flags: .maskCommand, modifier: true)
         let commandUp = try event(command, down: false, flags: [], modifier: true)
+        if var functionCharacter {
+            down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &functionCharacter)
+            up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &functionCharacter)
+        }
         if key == controlEvents.key {
             down.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
             up.setIntegerValueField(.eventSourceUserData, value: controlEventTag)

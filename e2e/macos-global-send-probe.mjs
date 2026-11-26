@@ -27,6 +27,7 @@ for (const [route, stimulus, args] of [
   ["regular-session", "press-control-session", ["--regular"]],
   ["letter-session", "press-control-session", ["--letter"]],
   ["function-session", "press-control-function", []],
+  ["function-character-session", "press-control-function-character", []],
 ]) {
   const observation = { route, delivered: false };
   receipt.routes.push(observation);
