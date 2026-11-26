@@ -662,6 +662,12 @@ export function SendPanel({
   function sendOnce() {
     if (!hold.isHolding()) void send();
   }
+  const holdHint = hold.holding
+    ? labels.holdingSend
+    : canHold && !busy
+      ? labels.holdSendHint
+      : sendHint;
+  const holdHintId = `${id}-${holdHint === sendHint ? "send" : "hold-send"}-reason`;
 
   const emptyDraft = draft.length === 0;
   const invalidChecksum = preview.reason === "checksum";
@@ -1103,20 +1109,18 @@ export function SendPanel({
         >
           <Send aria-hidden="true" />
         </WorkbenchIconButton>
-        {holdSend && (
-          <WorkbenchIconButton
-            {...hold.handlers}
-            label={labels.holdSend}
-            tooltip={hold.holding ? labels.holdingSend : labels.holdSendHint}
-            aria-busy={hold.holding || undefined}
-            aria-describedby={`${id}-send-reason`}
-            variant={hold.holding ? "secondary" : "outline"}
-            className="workbench-hold-send-button"
-            disabled={!canHold || (busy && !hold.holding)}
-          >
-            <Repeat2 aria-hidden="true" />
-          </WorkbenchIconButton>
-        )}
+        <WorkbenchIconButton
+          {...hold.handlers}
+          label={labels.holdSend}
+          tooltip={holdHint}
+          aria-busy={hold.holding || undefined}
+          aria-describedby={holdHintId}
+          variant={hold.holding ? "secondary" : "outline"}
+          className="workbench-hold-send-button"
+          disabled={!canHold || (busy && !hold.holding)}
+        >
+          <Repeat2 aria-hidden="true" />
+        </WorkbenchIconButton>
       </div>
       {preview.invalid && (
         <p
@@ -1128,6 +1132,7 @@ export function SendPanel({
       )}
       <div className="sr-only">
         <span id={`${id}-send-reason`}>{sendHint}</span>
+        {holdHint !== sendHint && <span id={holdHintId}>{holdHint}</span>}
       </div>
       <WorkbenchNotice
         noticeKey={`draft-validation:${encoding}:${preview.reason ?? "none"}:${encodingStatus}`}

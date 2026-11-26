@@ -938,6 +938,7 @@ test("opening and changing views preserves the receive and send rectangles", asy
         ".workbench-stream-log",
         ".workbench-draft",
         ".workbench-send-button",
+        ".workbench-hold-send-button",
       ].map((selector) => {
         const element = document.querySelector(selector);
         if (!element) throw new Error(`Missing ${selector}`);
