@@ -609,6 +609,50 @@ export function workbenchChecks() {
         checkGlobalSendRaw(receipt.newKeyRaw, bytes);
         receipt.changedFocusAfter = await xdo("getactivewindow");
         assert.equal(receipt.changedFocusAfter, otherWindow);
+
+        const window = { label: "main" };
+        const visible = () => nativeValue("plugin:window|is_visible", window);
+        const { runInBackground } = await nativeValue("get_desktop_status");
+        const setRunInBackground = async (value) => {
+          await patchSettings({ runInBackground: value });
+          await nativeValue("apply_host_settings_effects");
+          const status = await nativeValue("get_desktop_status");
+          assert.equal(status.runInBackground, value);
+          return status;
+        };
+        try {
+          receipt.trayStatus = await setRunInBackground(true);
+          assert.equal(receipt.trayStatus.trayAvailable, true);
+          const readHidden = await globalSendRawReader();
+          assert.equal(await visible(), true);
+          await nativeValue("plugin:window|close", window);
+          await browser.waitUntil(async () => (await visible()) === false);
+          await xdo("windowactivate", "--sync", otherWindow);
+          receipt.hiddenFocus = await xdo("getactivewindow");
+          assert.equal(receipt.hiddenFocus, otherWindow);
+          await xdo("key", "ctrl+shift+F8");
+          await delay(500);
+          receipt.hiddenVisible = await visible();
+          assert.equal(receipt.hiddenVisible, false);
+          receipt.hiddenRaw = await readHidden();
+          assert.deepEqual(receipt.hiddenRaw.events, []);
+
+          await nativeValue("plugin:window|show", window);
+          await browser.waitUntil(async () => (await visible()) === true);
+          await xdo("windowactivate", "--sync", otherWindow);
+          receipt.restoredFocus = await xdo("getactivewindow");
+          assert.equal(receipt.restoredFocus, otherWindow);
+          await xdo("key", "ctrl+shift+F8");
+          await browser.waitUntil(async () => {
+            receipt.restoredRaw = await readHidden();
+            return rawRxBytes(receipt.restoredRaw).length >= bytes.length;
+          });
+          checkGlobalSendRaw(receipt.restoredRaw, bytes);
+        } finally {
+          if ((await visible()) === false)
+            await nativeValue("plugin:window|show", window);
+          await setRunInBackground(runInBackground);
+        }
       } catch (error) {
         receipt.failure =
           error instanceof Error ? error.message : String(error);
