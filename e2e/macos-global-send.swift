@@ -190,7 +190,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                 try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap,
                           functionKey: true, functionCharacter: UniChar(NSF10FunctionKey))
             case "press":
-                try press(CGKeyCode(kVK_F9), repeating: true)
+                try press(CGKeyCode(kVK_F9), repeating: true, tap: .cgSessionEventTap, functionKey: true)
             case "retained":
                 var handle: EventHotKeyRef?
                 let status = register(key: UInt32(kVK_F9), id: 2, handle: &handle)

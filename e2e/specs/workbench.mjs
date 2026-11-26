@@ -580,13 +580,29 @@ export function workbenchChecks() {
                   },
                 );
                 if (process.platform === "darwin") {
-                  receipt.controlPosted = await command("press-control");
+                  receipt.controlPosted = await command(
+                    "press-control-function",
+                  );
+                  await browser.waitUntil(
+                    async () => {
+                      receipt.controlObserved = await command("foreground");
+                      return (
+                        receipt.controlObserved.controlPresses > 0 &&
+                        receipt.controlObserved.controlReleases > 0
+                      );
+                    },
+                    {
+                      timeout: 2000,
+                      timeoutMsg:
+                        "The macOS F10 control produced no complete Carbon callback",
+                    },
+                  );
+                  assert.equal(receipt.controlObserved.foreground, true);
+                  assert.equal(receipt.controlObserved.controlPresses, 1);
+                  assert.equal(receipt.controlObserved.controlReleases, 1);
                 }
                 assert.equal((await command("press")).foreground, true);
                 receipt.inputPostedWithPeerForeground = true;
-                if (process.platform === "darwin") {
-                  receipt.controlObserved = await command("foreground");
-                }
                 await browser.waitUntil(
                   async () => {
                     const page = await read();
