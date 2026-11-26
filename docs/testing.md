@@ -85,6 +85,8 @@ cargo fmt --all -- --check
 
 [手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
 
+原生预检可选择单个目标。Windows 和两种 macOS 架构需要集中复验时，设置 `native_preflight=true`、`native_preflight_target=windows-and-macos` 和 `desktop_e2e=true`。三组复用原生 E2E，分别保留日志和收据，完整候选继续按四目标验收。
+
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。

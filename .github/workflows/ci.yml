@@ -50,7 +50,7 @@ on:
           - macos-offline-installer
         required: true
       native_preflight_target:
-        description: 原生预检目标；完整四目标模式不使用此选项
+        description: 原生预检目标。windows-and-macos 执行 Windows 和两种 macOS 架构
         type: choice
         default: x86_64-unknown-linux-gnu
         options:
@@ -58,6 +58,7 @@ on:
           - x86_64-pc-windows-msvc
           - aarch64-apple-darwin
           - x86_64-apple-darwin
+          - windows-and-macos
         required: true
       native_preflight_chart:
         description: 原生预检只运行签名图表和实际窗口场景
@@ -630,14 +631,18 @@ jobs:
 
   native-preflight:
     if: inputs.native_preflight && !inputs.runtime_preflight
-    name: 原生全场景预检（${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}）
+    name: 原生全场景预检（${{ matrix.target }}）
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ inputs.native_preflight_target == 'windows-and-macos' && fromJSON('["x86_64-pc-windows-msvc","aarch64-apple-darwin","x86_64-apple-darwin"]') || fromJSON(format('["{0}"]', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu')) }}
     uses: ./.github/workflows/native-e2e.yml
     with:
-      platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[inputs.native_preflight_target || 'x86_64-unknown-linux-gnu'] }}
-      target: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
-      native_file_dialogs: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' }}
+      platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[matrix.target] }}
+      target: ${{ matrix.target }}
+      native_file_dialogs: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
       chart_only: ${{ inputs.native_preflight_chart }}
-      windows_reference_only: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
+      windows_reference_only: ${{ matrix.target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
 
   desktop-e2e:
     if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight
@@ -699,7 +704,7 @@ jobs:
           CHECKED_TARGET: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
         run: |
           echo "Native preflight only: $CHECKED_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Native target: $CHECKED_TARGET. This result is not milestone acceptance; run the complete four-target mode before merging." >> "$GITHUB_STEP_SUMMARY"
+          echo "Native preflight selection: $CHECKED_TARGET. This result is not milestone acceptance; run the complete four-target mode before merging." >> "$GITHUB_STEP_SUMMARY"
       - name: 记录检查基线与范围
         if: ${{ !inputs.native_preflight }}
         env:

@@ -107,19 +107,27 @@ test("preflight shares the full native runner and retains successful source rece
   assert.match(targetInput, /default: x86_64-unknown-linux-gnu/);
   assert.deepEqual(
     [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
-    Object.keys(JSON.parse(runnerMap[1])),
+    [...Object.keys(JSON.parse(runnerMap[1])), "windows-and-macos"],
   );
+  assert.match(preflight, /fail-fast: false/);
+  const desktopGroup = preflight.match(
+    /inputs\.native_preflight_target == 'windows-and-macos' && fromJSON\('([^']+)'\)/,
+  );
+  assert.ok(desktopGroup);
+  assert.deepEqual(JSON.parse(desktopGroup[1]), [
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+  ]);
   assert.match(
     preflight,
-    /\)\[inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu'\] \}\}/,
+    /fromJSON\(format\('\["\{0\}"\]', inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu'\)\)/,
   );
+  assert.match(preflight, /\)\[matrix\.target\] \}\}/);
+  assert.match(preflight, /^ {6}target: \$\{\{ matrix\.target \}\}$/m);
   assert.match(
     preflight,
-    /target: \$\{\{ inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu' \}\}/,
-  );
-  assert.match(
-    preflight,
-    /native_file_dialogs: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' \}\}/,
+    /native_file_dialogs: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' \}\}/,
   );
   assert.match(
     job("desktop-e2e"),
@@ -145,8 +153,8 @@ test("preflight shares the full native runner and retains successful source rece
     /if: runner\.os != 'Linux' && !inputs\.chart_only && !\(runner\.os == 'Windows' && inputs\.windows_reference_only\)\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
   );
   assert.match(
-    ci,
-    /windows_reference_only: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
+    preflight,
+    /windows_reference_only: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
   );
   assert.match(
     preflight,
