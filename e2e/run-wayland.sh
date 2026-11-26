@@ -5,7 +5,7 @@ if [[ ${1:-} != --session ]]; then
   session=$(mktemp -d)
   trap 'rm -rf -- "$session"' EXIT
   failed=0
-  for scenario in approve cancel reload; do
+  for scenario in approve cancel deny reload key-control; do
     export SWB_E2E_WAYLAND_SCENARIO=$scenario
     export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/wayland/$scenario"
     mkdir -p "$SWB_E2E_WAYLAND_ARTIFACTS"
@@ -36,6 +36,11 @@ printf '[preferred]\ndefault=kde\n' > "$XDG_CONFIG_HOME/xdg-desktop-portal/kde-p
 [[ -r /usr/share/applications/org.kde.plasma.settings.open.desktop ]]
 printf '[Default Applications]\nx-scheme-handler/systemsettings=org.kde.plasma.settings.open.desktop;\n' \
   > "$XDG_CONFIG_HOME/mimeapps.list"
+if [[ $SWB_E2E_WAYLAND_SCENARIO == key-control ]]; then
+  # Compare the exact same chord in a separate profile without the application binding.
+  printf '[kwin]\nWindow Close=Ctrl+Shift+F9,Alt+F4,Close Window\n' \
+    > "$XDG_CONFIG_HOME/kglobalshortcutsrc"
+fi
 binary=$(node --input-type=module -e 'import { readE2EBuild } from "./e2e/build.mjs"; process.stdout.write(readE2EBuild());')
 name=$(node -p 'require("./src-tauri/tauri.e2e.conf.json").productName')
 printf '[Desktop Entry]\nType=Application\nName=%s\nExec="%s"\n' "$name" "$binary" \
@@ -49,7 +54,8 @@ export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
   sha256sum "$binary"
 } > "$evidence/environment.txt"
 
-kwin_wayland --x11-display "$DISPLAY" --socket "$WAYLAND_DISPLAY" \
+QT_LOGGING_RULES='kf.globalaccel.kglobalacceld.debug=true' \
+  kwin_wayland --x11-display "$DISPLAY" --socket "$WAYLAND_DISPLAY" \
   --width 1440 --height 1000 --no-lockscreen > "$evidence/kwin.log" 2>&1 &
 kwin=$!
 children=("$kwin")
@@ -110,5 +116,27 @@ dbus-monitor --session \
   "type='method_call',interface='org.freedesktop.impl.portal.Session',member='Close'" \
   > "$evidence/shortcuts-dbus.log" 2>&1 &
 children+=("$!")
+
+if [[ $SWB_E2E_WAYLAND_SCENARIO == key-control ]]; then
+  gdbus call --session --timeout 5 --dest org.kde.kglobalaccel \
+    --object-path /component/kwin --method org.kde.kglobalaccel.Component.allShortcutInfos \
+    > "$evidence/kwin-bindings.txt"
+  focus="$evidence/peer-focus.json"
+  timeout 15 /usr/bin/python3 e2e/wayland-desktop.py focus "$focus" "$evidence/peer-keys.jsonl" &
+  peer=$!
+  children+=("$peer")
+  for attempt in {1..25}; do
+    if [[ -r $focus ]] && grep -Fq '"active": true' "$focus"; then break; fi
+    sleep 0.2
+  done
+  grep -Fq '"active": true' "$focus"
+  [[ $(xdotool getwindowfocus) == "$SWB_E2E_KWIN_WINDOW" ]]
+  xdotool keydown Control_L Shift_L F9
+  xdotool keyup F9 Shift_L Control_L
+  peer_status=0
+  wait "$peer" || peer_status=$?
+  printf 'comparison_chord=Ctrl+Shift+F9 peer_status=%s\n' "$peer_status" | tee -a "$evidence/environment.txt"
+  exit "$peer_status"
+fi
 
 pnpm test:e2e --interactive --skip-build --wayland-global-send

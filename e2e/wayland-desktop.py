@@ -21,6 +21,11 @@ def control(target, name, action):
         "settings": "System Settings",
         "conflict": "Resolve Shortcut Conflict",
     }
+    actionable_roles = (
+        pyatspi.ROLE_PUSH_BUTTON,
+        pyatspi.ROLE_CHECK_BOX,
+        pyatspi.ROLE_LIST_ITEM,
+    )
     end = time.monotonic() + 20
     desktop = pyatspi.Registry.getDesktop(0)
     seen_windows = set()
@@ -43,7 +48,7 @@ def control(target, name, action):
                     })
                     continue
                 for item in descendants(window):
-                    if item.getRole() not in (pyatspi.ROLE_PUSH_BUTTON, pyatspi.ROLE_CHECK_BOX):
+                    if item.getRole() not in actionable_roles:
                         continue
                     state = item.getState()
                     visible = state.contains(pyatspi.STATE_SHOWING)

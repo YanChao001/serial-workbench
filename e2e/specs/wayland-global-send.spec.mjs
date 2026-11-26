@@ -176,23 +176,37 @@ async function settleConsent(receipt, payload) {
     receipt.documentAfter = await browser.execute(() => performance.timeOrigin);
     assert.notEqual(receipt.documentAfter, receipt.documentBefore);
     await openDeepLink("/");
-    await openVirtual();
+    const closeSession = await $("button[aria-label='Close session']");
+    if (
+      !(await closeSession.isDisplayed()) ||
+      !(await closeSession.isEnabled())
+    ) {
+      await openVirtual();
+    }
     await (await sendDraft()).setValue(payload);
     await editGlobalSend();
     return;
   }
 
+  if (scenario === "deny") {
+    receipt.cleared = await kdeControl("consent", "Clear Key Sequence");
+  }
   receipt.consent = await kdeControl(
     "consent",
     scenario === "cancel" ? "Cancel" : "OK",
   );
-  if (scenario === "cancel") {
+  if (scenario === "cancel" || scenario === "deny") {
     const status = await $("#shortcut-conflict");
     await status.waitForDisplayed();
-    assert.equal(
-      await status.getText(),
-      "Shortcut registration was cancelled.",
-    );
+    receipt.registrationStatus = await status.getText();
+    if (scenario === "cancel") {
+      assert.equal(
+        receipt.registrationStatus,
+        "Shortcut registration was cancelled.",
+      );
+    } else {
+      assert.match(receipt.registrationStatus, /Try another combination\.$/);
+    }
   } else {
     await $("#shortcut-capture").waitForExist({ reverse: true });
   }
@@ -223,6 +237,10 @@ async function checkSystemSettings(receipt, draft, bytes) {
   await systemSettings.waitForEnabled();
   await systemSettings.click();
 
+  receipt.settingsComponent = await kdeControl(
+    "settings",
+    process.env.SWB_E2E_WAYLAND_APP_NAME,
+  );
   await startRecordingNewKey();
   receipt.cancelledEdit = await kdeControl(
     "settings",
