@@ -564,76 +564,88 @@ export function workbenchChecks() {
             await closeShortcutHelp();
 
             const read = await globalSendRawReader();
-            if (peer.canPost) {
-              receipt.focus = await command("focus");
-              await browser.waitUntil(
-                async () => {
-                  receipt.focus = await command("foreground");
-                  return receipt.focus.foreground;
-                },
-                {
-                  timeoutMsg:
-                    "The independent test application did not get foreground",
-                },
-              );
-              if (process.platform === "darwin") {
-                receipt.controlPosted = await command("press-control");
+            let dispatchFailure;
+            try {
+              if (peer.canPost) {
+                receipt.focus = await command("focus");
+                await browser.waitUntil(
+                  async () => {
+                    receipt.focus = await command("foreground");
+                    return receipt.focus.foreground;
+                  },
+                  {
+                    timeoutMsg:
+                      "The independent test application did not get foreground",
+                  },
+                );
+                if (process.platform === "darwin") {
+                  receipt.controlPosted = await command("press-control");
+                }
+                assert.equal((await command("press")).foreground, true);
+                receipt.inputPostedWithPeerForeground = true;
+                if (process.platform === "darwin") {
+                  receipt.controlObserved = await command("foreground");
+                }
+                await browser.waitUntil(
+                  async () => {
+                    const page = await read();
+                    receipt.raw = page;
+                    return (
+                      page.events.some(({ kind }) => kind === "tx") &&
+                      rawRxBytes(page).length >= bytes.length
+                    );
+                  },
+                  {
+                    timeoutMsg:
+                      "No matching Virtual Echo TX and RX reached the Raw page",
+                  },
+                );
+                await delay(300);
+                const page = await read();
+                receipt.raw = page;
+                const tx = page.events.filter(({ kind }) => kind === "tx");
+                const intents = page.events.filter(
+                  ({ kind }) => kind === "tx_intent",
+                );
+                assert.equal(
+                  tx.length,
+                  1,
+                  "Repeated key-down must not produce another TX",
+                );
+                assert.equal(intents.length, 1);
+                assert.equal(
+                  tx[0].payload.operationId,
+                  intents[0].payload.operationId,
+                );
+                assert.equal(tx[0].payload.outcome, "accepted");
+                assert.deepEqual(tx[0].payload.unknownRanges, []);
+                assert.deepEqual(
+                  Buffer.from(tx[0].payload.bytesBase64, "base64"),
+                  bytes,
+                );
+                assert.deepEqual(rawRxBytes(page), bytes);
+                assert.equal((await command("foreground")).foreground, true);
+                receipt.dispatch = "passed";
+              } else {
+                receipt.dispatch = "system-input-authorization-unavailable";
+                assert.equal(process.platform, "darwin");
+                console.warn(
+                  "Global shortcut dispatch still needs a macOS session authorized to post input.",
+                );
               }
-              assert.equal((await command("press")).foreground, true);
-              receipt.inputPostedWithPeerForeground = true;
-              if (process.platform === "darwin") {
-                receipt.controlObserved = await command("foreground");
-              }
-              await browser.waitUntil(
-                async () => {
-                  const page = await read();
-                  receipt.raw = page;
-                  return (
-                    page.events.some(({ kind }) => kind === "tx") &&
-                    rawRxBytes(page).length >= bytes.length
-                  );
-                },
-                {
-                  timeoutMsg:
-                    "No matching Virtual Echo TX and RX reached the Raw page",
-                },
-              );
-              await delay(300);
-              const page = await read();
-              receipt.raw = page;
-              const tx = page.events.filter(({ kind }) => kind === "tx");
-              const intents = page.events.filter(
-                ({ kind }) => kind === "tx_intent",
-              );
-              assert.equal(
-                tx.length,
-                1,
-                "Repeated key-down must not produce another TX",
-              );
-              assert.equal(intents.length, 1);
-              assert.equal(
-                tx[0].payload.operationId,
-                intents[0].payload.operationId,
-              );
-              assert.equal(tx[0].payload.outcome, "accepted");
-              assert.deepEqual(tx[0].payload.unknownRanges, []);
-              assert.deepEqual(
-                Buffer.from(tx[0].payload.bytesBase64, "base64"),
-                bytes,
-              );
-              assert.deepEqual(rawRxBytes(page), bytes);
-              assert.equal((await command("foreground")).foreground, true);
-              receipt.dispatch = "passed";
-            } else {
-              receipt.dispatch = "system-input-authorization-unavailable";
-              assert.equal(process.platform, "darwin");
-              console.warn(
-                "Global shortcut dispatch still needs a macOS session authorized to post input.",
-              );
+            } catch (error) {
+              dispatchFailure = { error };
             }
-            await disableGlobalSend();
-            await command("reclaim");
-            receipt.reclaimed = true;
+            try {
+              await disableGlobalSend();
+              await command("reclaim");
+              receipt.reclaimed = true;
+            } catch (error) {
+              if (!dispatchFailure) throw error;
+              receipt.releaseFailure =
+                error instanceof Error ? error.message : String(error);
+            }
+            if (dispatchFailure) throw dispatchFailure.error;
           },
         );
       } catch (error) {

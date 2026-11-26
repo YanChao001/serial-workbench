@@ -96,7 +96,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             var hotKey = EventHotKeyID()
             let status = GetEventParameter(event, EventParamName(kEventParamDirectObject),
                                            EventParamType(typeEventHotKeyID), nil,
-                                           ByteCount(MemoryLayout<EventHotKeyID>.size), nil, &hotKey)
+                                           MemoryLayout<EventHotKeyID>.size, nil, &hotKey)
             guard status == noErr, hotKey.signature == 0x53574245, hotKey.id == 1 else {
                 return OSStatus(eventNotHandledErr)
             }
@@ -104,7 +104,7 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             if GetEventKind(event) == UInt32(kEventHotKeyPressed) { events.presses += 1 }
             else { events.releases += 1 }
             return noErr
-        }, ItemCount(types.count), types, context, &controlHandler)
+        }, types.count, types, context, &controlHandler)
         guard status == noErr else {
             throw ProbeError("Cannot observe the native control shortcut (OSStatus \(status)).")
         }
@@ -181,15 +181,35 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
-        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
-              let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false) else {
-            throw ProbeError("Cannot create the native keyboard event.")
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            throw ProbeError("Cannot create the native keyboard event source.")
         }
+        func event(_ key: CGKeyCode, down: Bool, flags: CGEventFlags, modifier: Bool = false) throws -> CGEvent {
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else {
+                throw ProbeError("Cannot create the native keyboard event.")
+            }
+            if modifier { event.type = .flagsChanged }
+            event.flags = flags
+            return event
+        }
+        let command = CGKeyCode(kVK_Command)
+        let shift = CGKeyCode(kVK_Shift)
+        let flags: CGEventFlags = [.maskCommand, .maskShift]
+        let commandDown = try event(command, down: true, flags: .maskCommand, modifier: true)
+        let shiftDown = try event(shift, down: true, flags: flags, modifier: true)
+        let down = try event(key, down: true, flags: flags)
+        let up = try event(key, down: false, flags: flags)
+        let shiftUp = try event(shift, down: false, flags: .maskCommand, modifier: true)
+        let commandUp = try event(command, down: false, flags: [], modifier: true)
         guard foreground else { throw ProbeError("The independent test application is not in the foreground.") }
-        down.flags = [.maskCommand, .maskShift]
-        up.flags = down.flags
+        commandDown.post(tap: .cghidEventTap)
+        shiftDown.post(tap: .cghidEventTap)
         down.post(tap: .cghidEventTap)
-        defer { up.post(tap: .cghidEventTap) }
+        defer {
+            up.post(tap: .cghidEventTap)
+            shiftUp.post(tap: .cghidEventTap)
+            commandUp.post(tap: .cghidEventTap)
+        }
         guard repeating else { return }
         for _ in 0..<4 {
             Thread.sleep(forTimeInterval: 0.2)
