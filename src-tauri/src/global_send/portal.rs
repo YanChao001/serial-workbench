@@ -7,10 +7,11 @@ use zbus::{
     fdo::DBusProxy,
     message::Type,
     names::{BusName, WellKnownName},
-    proxy::OwnerChangedStream,
     zvariant::{DynamicType, ObjectPath, OwnedObjectPath, OwnedValue, Value},
 };
 
+const BUS_DAEMON: &str = "org.freedesktop.DBus";
+const BUS_DAEMON_PATH: &str = "/org/freedesktop/DBus";
 const SERVICE: &str = "org.freedesktop.portal.Desktop";
 const DESKTOP: &str = "/org/freedesktop/portal/desktop";
 const SHORTCUTS: &str = "org.freedesktop.portal.GlobalShortcuts";
@@ -30,7 +31,7 @@ pub(super) enum Signal {
 pub(super) struct Portal {
     connection: Connection,
     signals: MessageStream,
-    owner_changes: OwnerChangedStream<'static>,
+    owner_changes: MessageStream,
     proxy: Proxy<'static>,
     version: u32,
 }
@@ -67,10 +68,20 @@ impl Portal {
                 )
                 .await
                 .map_err(unavailable)?;
-                dbus.get_name_owner(service).await.map_err(unavailable)?
+                dbus.get_name_owner(service.clone())
+                    .await
+                    .map_err(unavailable)?
             }
             Err(error) => return Err(unavailable(error)),
         };
+        // 实际调用固定在原进程，服务名交接时立即使该会话失效。
+        let owner_rule = portal_owner_loss_rule(owner.as_str()).map_err(unavailable)?;
+        let owner_changes = MessageStream::for_match_rule(owner_rule, &connection, Some(4))
+            .await
+            .map_err(unavailable)?;
+        if dbus.get_name_owner(service).await.map_err(unavailable)? != owner {
+            return Err(super::unavailable());
+        }
 
         // 裸包使用已安装的桌面条目标识。旧版门户没有 Registry，可用常规发现。
         if let Some(application) = application
@@ -104,7 +115,6 @@ impl Portal {
         let proxy = Proxy::new_owned(connection.clone(), owner, DESKTOP, SHORTCUTS)
             .await
             .map_err(unavailable)?;
-        let owner_changes = proxy.receive_owner_changed().await.map_err(unavailable)?;
         let version = proxy
             .get_property::<u32>("version")
             .await
@@ -277,6 +287,18 @@ impl Portal {
     }
 }
 
+fn portal_owner_loss_rule(owner: &str) -> zbus::Result<MatchRule<'_>> {
+    Ok(MatchRule::builder()
+        .msg_type(Type::Signal)
+        .sender(BUS_DAEMON)?
+        .path(BUS_DAEMON_PATH)?
+        .interface(BUS_DAEMON)?
+        .member("NameOwnerChanged")?
+        .arg(0, SERVICE)?
+        .arg(1, owner)?
+        .build())
+}
+
 fn session_closed(header: &zbus::message::Header<'_>, session: &OwnedObjectPath) -> bool {
     header.interface().is_some_and(|name| name == SESSION)
         && header.member().is_some_and(|name| name == "Closed")
@@ -332,6 +354,34 @@ fn protocol_error() -> NativeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn portal_owner_watch_matches_handoff_even_while_the_previous_peer_stays_connected() {
+        let previous = ":1.42";
+        let next = ":1.43";
+        let rule = portal_owner_loss_rule(previous).unwrap();
+        let owner_changed = |name: &str, old: &str, new: &str| {
+            zbus::Message::signal(BUS_DAEMON_PATH, BUS_DAEMON, "NameOwnerChanged")
+                .unwrap()
+                .sender(BUS_DAEMON)
+                .unwrap()
+                .build(&(name, old, new))
+                .unwrap()
+        };
+
+        assert!(
+            rule.matches(&owner_changed(SERVICE, previous, next))
+                .unwrap()
+        );
+        assert!(rule.matches(&owner_changed(SERVICE, previous, "")).unwrap());
+        assert!(!rule.matches(&owner_changed(SERVICE, "", previous)).unwrap());
+        assert!(!rule.matches(&owner_changed(SERVICE, next, "")).unwrap());
+        assert!(
+            !rule
+                .matches(&owner_changed("org.example.Unrelated", previous, ""))
+                .unwrap()
+        );
+    }
 
     #[test]
     fn portal_variant_returns_the_system_trigger_for_the_requested_action() {
