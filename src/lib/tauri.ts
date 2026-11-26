@@ -27,6 +27,7 @@ import type {
   NodeViewPresentation,
   TransferDrop,
   ShortcutBinding,
+  GlobalSendBinding,
   GlobalSendEvent,
 } from "./generated/bindings";
 import { HostRequestError } from "@serial-workbench/host-client";
@@ -703,7 +704,7 @@ export async function configureGlobalSend(
   registration: string,
   description: string,
   onEvent: (event: GlobalSendEvent) => void,
-): Promise<string | null> {
+): Promise<GlobalSendBinding> {
   requireDesktop();
   const { Channel } = await import("@tauri-apps/api/core");
   return callNative((commands) =>
@@ -714,6 +715,13 @@ export async function configureGlobalSend(
       new Channel<GlobalSendEvent>(onEvent),
     ),
   );
+}
+
+export async function openGlobalSendSettings(
+  registration: string,
+): Promise<void> {
+  requireDesktop();
+  await callNative((commands) => commands.openGlobalSendSettings(registration));
 }
 
 export async function setGlobalSendTarget(

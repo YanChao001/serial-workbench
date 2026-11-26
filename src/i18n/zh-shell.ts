@@ -23,8 +23,11 @@ export const zhShell = {
   "commands.globalSend": "全局发送热键",
   "commands.globalSendOff": "已关闭",
   "commands.globalSendScope":
-    "可在其他应用前台时发送当前草稿。隐藏到托盘时暂停，重载窗口或退出后清除键位。",
+    "可在其他应用前台时发送当前草稿。隐藏到托盘时暂停，重载窗口或退出后停用热键。",
   "commands.globalSendDisable": "停用",
+  "commands.globalSendSystemOpen": "打开系统快捷键设置",
+  "commands.globalSendSystemHelp": "在桌面的快捷键设置中更改此键位。",
+  "commands.globalSendSystemFailed": "未能打开系统快捷键设置。请重试。",
   "commands.globalSendPending": "等待系统确认…",
   "commands.globalSendCancelled": "已取消注册热键。",
   "commands.globalSendConflict":

@@ -20,6 +20,13 @@ pub enum GlobalSendEvent {
     },
 }
 
+#[derive(Default, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalSendBinding {
+    trigger: Option<String>,
+    can_configure: bool,
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn configure_global_send(
@@ -28,12 +35,27 @@ pub async fn configure_global_send(
     registration: String,
     description: String,
     events: Channel<GlobalSendEvent>,
-) -> NativeResult<Option<String>> {
+) -> NativeResult<GlobalSendBinding> {
     #[cfg(desktop)]
     return desktop::configure(window, binding, registration, description, events).await;
     #[cfg(not(desktop))]
     {
         let _ = (window, binding, registration, description, events);
+        Err(unavailable())
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn open_global_send_settings(
+    window: WebviewWindow,
+    registration: String,
+) -> NativeResult<()> {
+    #[cfg(all(desktop, target_os = "linux"))]
+    return desktop::open_portal_settings(window, registration).await;
+    #[cfg(not(all(desktop, target_os = "linux")))]
+    {
+        let _ = (window, registration);
         Err(unavailable())
     }
 }
@@ -122,6 +144,7 @@ mod desktop {
     struct PortalRegistration {
         stop: oneshot::Sender<()>,
         disconnected: oneshot::Receiver<()>,
+        settings: Option<super::portal::Settings>,
     }
 
     struct Registration {
@@ -174,7 +197,7 @@ mod desktop {
         id: String,
         description: String,
         events: Channel<GlobalSendEvent>,
-    ) -> NativeResult<Option<String>> {
+    ) -> NativeResult<GlobalSendBinding> {
         let owner = window_index(window.label()).ok_or_else(unavailable)?;
         crate::error::bounded_text(&id, 64, "Global send registration")?;
         crate::error::bounded_text(&description, 192, "Global send description")?;
@@ -208,7 +231,10 @@ mod desktop {
                     error,
                 )
             })?;
-        result.await.map_err(|_| unavailable())?.map(|()| None)
+        result
+            .await
+            .map_err(|_| unavailable())?
+            .map(|()| GlobalSendBinding::default())
     }
 
     fn configure_on_main(
@@ -434,7 +460,7 @@ mod desktop {
         binding: Option<ShortcutBinding>,
         description: String,
         events: Channel<GlobalSendEvent>,
-    ) -> NativeResult<Option<String>> {
+    ) -> NativeResult<GlobalSendBinding> {
         use super::portal::Portal;
         let state = app.state::<Mutex<Dispatch>>();
         let (cancel, mut cancelled) = oneshot::channel();
@@ -443,15 +469,19 @@ mod desktop {
             if dispatch.documents[owner] != document {
                 return Err(portal_cancelled());
             }
-            if dispatch
-                .active
-                .as_ref()
-                .is_some_and(|active| active.owner != owner)
-            {
-                return Err(NativeError::new(
-                    ErrorCode::Conflict,
-                    "Another workbench window owns the global send shortcut",
-                ));
+            if let Some(active) = &dispatch.active {
+                if active.owner != owner {
+                    return Err(NativeError::new(
+                        ErrorCode::Conflict,
+                        "Another workbench window owns the global send shortcut",
+                    ));
+                }
+                if binding.is_some() {
+                    return Err(NativeError::new(
+                        ErrorCode::Conflict,
+                        "Change the active Wayland shortcut in the desktop's shortcut settings",
+                    ));
+                }
             }
             if dispatch.pending_portal.is_some() {
                 return Err(NativeError::new(
@@ -474,7 +504,7 @@ mod desktop {
         let result = async {
             let Some(binding) = binding else {
                 close_portal(removed).await;
-                return Ok(None);
+                return Ok(GlobalSendBinding::default());
             };
             let mut portal = tokio::select! {
                 biased;
@@ -499,35 +529,52 @@ mod desktop {
             };
             let (stop, stopped) = oneshot::channel();
             let (released, disconnected) = oneshot::channel();
-            let previous = {
+            let settings = portal.settings(&session);
+            let can_configure = settings.is_some();
+            let registered = {
                 let mut dispatch = state.lock().unwrap();
-                if dispatch.documents[owner] == document {
-                    Some(dispatch.active.replace(Registration {
+                let current = dispatch.documents[owner] == document;
+                if current {
+                    dispatch.active = Some(Registration {
                         owner,
                         document,
                         id: id.clone(),
-                        backend: Backend::Portal(PortalRegistration { stop, disconnected }),
+                        backend: Backend::Portal(PortalRegistration {
+                            stop,
+                            disconnected,
+                            settings,
+                        }),
                         events,
                         revision: 0,
                         enabled: false,
                         pressed: false,
-                    }))
-                } else {
-                    None
+                    });
                 }
+                current
             };
-            let Some(previous) = previous else {
+            if !registered {
                 portal.disconnect().await;
                 return Err(portal_cancelled());
-            };
+            }
             let handle = app.clone();
             let registration = id.clone();
+            let initial_trigger = trigger.clone();
             tauri::async_runtime::spawn(async move {
-                watch_portal(handle, registration, portal, session, stopped).await;
+                watch_portal(
+                    handle,
+                    registration,
+                    portal,
+                    session,
+                    stopped,
+                    initial_trigger,
+                )
+                .await;
                 let _ = released.send(());
             });
-            close_portal(previous).await;
-            Ok(Some(trigger))
+            Ok(GlobalSendBinding {
+                trigger: Some(trigger),
+                can_configure,
+            })
         }
         .await;
         let mut dispatch = state.lock().unwrap();
@@ -542,6 +589,29 @@ mod desktop {
     }
 
     #[cfg(target_os = "linux")]
+    pub async fn open_portal_settings(window: WebviewWindow, id: String) -> NativeResult<()> {
+        let owner = window_index(window.label()).ok_or_else(unavailable)?;
+        let settings = {
+            let state = window.state::<Mutex<Dispatch>>();
+            let dispatch = state.lock().unwrap();
+            let active = dispatch
+                .active
+                .as_ref()
+                .filter(|active| {
+                    active.owner == owner
+                        && active.document == dispatch.documents[owner]
+                        && active.id == id
+                })
+                .ok_or_else(portal_cancelled)?;
+            match &active.backend {
+                Backend::Portal(registration) => registration.settings.clone(),
+                Backend::Native(_) => None,
+            }
+        };
+        settings.ok_or_else(unavailable)?.open().await
+    }
+
+    #[cfg(target_os = "linux")]
     fn portal_cancelled() -> NativeError {
         NativeError::new(
             ErrorCode::UserCancelled,
@@ -551,8 +621,9 @@ mod desktop {
 
     #[cfg(target_os = "linux")]
     async fn close_portal(registration: Option<Registration>) {
-        if let Some(Backend::Portal(PortalRegistration { stop, disconnected })) =
-            registration.map(|active| active.backend)
+        if let Some(Backend::Portal(PortalRegistration {
+            stop, disconnected, ..
+        })) = registration.map(|active| active.backend)
         {
             drop(stop);
             let _ = disconnected.await;
@@ -566,6 +637,7 @@ mod desktop {
         mut portal: super::portal::Portal,
         session: zbus::zvariant::OwnedObjectPath,
         mut stopped: oneshot::Receiver<()>,
+        mut current_trigger: String,
     ) {
         use super::portal::Signal;
         loop {
@@ -575,10 +647,15 @@ mod desktop {
                 result = portal.next(&session) => match result {
                     Signal::Pressed(pressed) => dispatch_press(&app, pressed, |active| active.id == id),
                     Signal::Binding(Some(trigger)) => {
+                        if trigger == current_trigger {
+                            continue;
+                        }
+                        current_trigger = trigger.clone();
                         let state = app.state::<Mutex<Dispatch>>();
                         let mut dispatch = state.lock().unwrap();
                         if let Some(active) = dispatch.active.as_mut().filter(|active| active.id == id) {
                             active.pressed = false;
+                            active.enabled = false;
                             let _ = active.events.send(GlobalSendEvent::Binding { trigger: Some(trigger) });
                         }
                     }

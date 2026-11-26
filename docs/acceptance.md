@@ -459,7 +459,18 @@ Windows 与 macOS 的隔离原生 E2E 在原有桌面阶段内构建并启动一
 3. 切换到另一打开会话并用不同草稿复验，只允许当前已授权会话产生 TX。检查空稿、断连、撤权、回放、速查弹窗、非工作台页面和托盘隐藏时无新增 TX。打开次窗口并置前，核对热键不会发送到另一个窗口。
 4. 保留候选 SHA、实际按键、前台窗口、注册及冲突记录、Host 操作与字节范围、对端回执。系统热键的独立桌面证据、物理串口和正式安装包分别登记。
 
-Wayland 专项另外记录 `xdg-desktop-portal` 及桌面后端版本，从系统弹窗核对批准、取消、拒绝和实际分配的键位。修改或撤回系统绑定后检查速查及发送范围。用另一个系统应用获得前台，再以一个物理按键周期核对一笔 TX。关窗或重载时检查待定请求及原会话释放，门户退出后核对关闭状态与零新增 TX。无头 IPC 夹具可检查状态回执和目标失效，真实系统分配、冲突与按键仍在独立 Wayland 桌面验证。系统缺少 GlobalShortcuts 服务时，记录发行版及桌面环境并检查明确反馈，保留该环境的兼容验收。
+Wayland 专项另外记录 `xdg-desktop-portal`、GlobalShortcuts 接口及桌面后端版本，从系统弹窗核对批准、取消、拒绝和实际分配的键位。启用后从原编辑入口打开系统设置（v2），或按提示在桌面设置（v1）修改组合。尝试冲突及取消，检查原绑定保留。确认改动后核对速查显示实际分配的新键，旧键没有新增 TX，新键只对当前授权目标有效。撤回系统绑定后核对「已关闭」。用另一个系统应用获得前台，再以一个物理按键周期核对一笔 TX。关窗或重载时检查待定请求及原会话释放，门户退出后核对关闭状态与零新增 TX。无头 IPC 夹具检查设置入口、错误反馈、状态回执和目标失效。真实系统分配、冲突与按键在独立 Wayland 桌面验证。系统缺少 GlobalShortcuts 服务时，记录发行版及桌面环境并检查明确反馈，保留该环境的兼容验收。
+
+在运行候选的同一图形会话记录以下输出。测试源码候选时 `HEAD` 应与构建输入一致，测试安装包时同时记录包的 SHA-256。
+
+```sh
+git rev-parse HEAD
+printf 'session=%s desktop=%s\n' "$XDG_SESSION_TYPE" "$XDG_CURRENT_DESKTOP"
+gdbus call --session --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop \
+  --method org.freedesktop.DBus.Properties.Get \
+  org.freedesktop.portal.GlobalShortcuts version
+```
 
 ### 定时与循环发送（IO-09）
 

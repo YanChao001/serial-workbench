@@ -235,7 +235,7 @@ function ShortcutReference({
             id: "global-send",
             label: t("commands.globalSend"),
             key:
-              globalSend.systemTrigger ??
+              globalSend.system?.trigger ??
               (globalSend.binding
                 ? formatShortcut(globalSend.binding)
                 : t("commands.globalSendOff")),
@@ -270,9 +270,7 @@ function ShortcutReference({
           label={selected.label ?? t(selected.labelKey)}
           defaultShortcut={defaultShortcut}
           commands={available.filter((command) => command.id !== selected.id)}
-          globalConflict={
-            globalSend?.systemTrigger ? undefined : globalSend?.binding
-          }
+          globalConflict={globalSend?.system ? undefined : globalSend?.binding}
           onCancel={finishEditing}
           onSave={(binding) => {
             changeShortcut(selected.id, binding);
@@ -282,10 +280,21 @@ function ShortcutReference({
       )}
       {editingGlobalSend && (
         <ShortcutEditor
-          key="global-send"
+          key={editingGlobalSend.system ? "global-send-system" : "global-send"}
           label={t("commands.globalSend")}
           commands={available}
           onCancel={finishEditing}
+          system={
+            editingGlobalSend.system && {
+              trigger: editingGlobalSend.system.trigger,
+              open: editingGlobalSend.system.canConfigure
+                ? async () => {
+                    await editingGlobalSend.openSystemSettings();
+                    finishEditing();
+                  }
+                : undefined,
+            }
+          }
           onSave={async (binding) => {
             await editingGlobalSend.changeBinding(binding);
             finishEditing();
@@ -359,6 +368,7 @@ function ShortcutEditor({
   onCancel,
   onSave,
   onDisable,
+  system,
 }: {
   label: string;
   defaultShortcut?: Shortcut;
@@ -367,6 +377,7 @@ function ShortcutEditor({
   onCancel: () => void;
   onSave: (binding: ShortcutBinding) => void | Promise<void>;
   onDisable?: () => Promise<void>;
+  system?: { trigger: string; open?: () => Promise<void> };
 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState<ShortcutBinding>();
@@ -389,7 +400,12 @@ function ShortcutEditor({
   if (draft && globalConflict && sameShortcut(draft, globalConflict))
     names.push(t("commands.globalSend"));
   const conflict = names.join(" · ");
-  async function save(action: () => void | Promise<void>) {
+  const systemHelp = system && !system.open;
+  const description = conflict || error ? "shortcut-conflict" : undefined;
+  async function save(
+    action: () => void | Promise<void>,
+    failed: DictKey = "commands.globalSendFailed",
+  ) {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
@@ -405,8 +421,9 @@ function ShortcutEditor({
             ? "commands.globalSendUnavailable"
             : code === "USER_CANCELLED"
               ? "commands.globalSendCancelled"
-              : "commands.globalSendFailed",
+              : failed,
       );
+      input.current?.focus();
     } finally {
       busy.current = false;
       setPending(false);
@@ -422,11 +439,13 @@ function ShortcutEditor({
         ref={input}
         readOnly
         placeholder={t("commands.shortcutPress")}
-        value={draft ? formatShortcut(draft) : ""}
-        aria-describedby={conflict || error ? "shortcut-conflict" : undefined}
+        value={system?.trigger ?? (draft ? formatShortcut(draft) : "")}
+        aria-describedby={
+          description ?? (systemHelp ? "shortcut-system-help" : undefined)
+        }
         aria-busy={pending}
         onKeyDown={(event) => {
-          if (event.key === "Tab" || event.key === "Escape") return;
+          if (system || event.key === "Tab" || event.key === "Escape") return;
           event.preventDefault();
           if (busy.current) return;
           const binding = shortcutFromEvent(event.nativeEvent);
@@ -447,16 +466,40 @@ function ShortcutEditor({
             : error && t(error)}
         </p>
       )}
+      {systemHelp && (
+        <p id="shortcut-system-help" className="text-sm text-muted-foreground">
+          {t("commands.globalSendSystemHelp")}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          disabled={!draft || !!conflict || pending}
-          onClick={() => {
-            if (draft && !conflict) void save(() => onSave(draft));
-          }}
-        >
-          {t(pending ? "commands.globalSendPending" : "common.save")}
-        </Button>
+        {system ? (
+          system.open && (
+            <Button
+              size="sm"
+              disabled={pending}
+              onClick={() => {
+                if (system.open)
+                  void save(system.open, "commands.globalSendSystemFailed");
+              }}
+            >
+              {t(
+                pending
+                  ? "commands.globalSendPending"
+                  : "commands.globalSendSystemOpen",
+              )}
+            </Button>
+          )
+        ) : (
+          <Button
+            size="sm"
+            disabled={!draft || !!conflict || pending}
+            onClick={() => {
+              if (draft && !conflict) void save(() => onSave(draft));
+            }}
+          >
+            {t(pending ? "commands.globalSendPending" : "common.save")}
+          </Button>
+        )}
         {defaultShortcut && (
           <Button
             size="sm"

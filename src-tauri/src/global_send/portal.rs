@@ -32,6 +32,25 @@ pub(super) struct Portal {
     signals: MessageStream,
     owner_changes: OwnerChangedStream<'static>,
     proxy: Proxy<'static>,
+    version: u32,
+}
+
+#[derive(Clone)]
+pub(super) struct Settings {
+    proxy: Proxy<'static>,
+    session: OwnedObjectPath,
+}
+
+impl Settings {
+    pub(super) async fn open(&self) -> NativeResult<()> {
+        self.proxy
+            .call(
+                "ConfigureShortcuts",
+                &(&self.session, "", Properties::new()),
+            )
+            .await
+            .map_err(portal_error)
+    }
 }
 
 impl Portal {
@@ -98,6 +117,14 @@ impl Portal {
             signals,
             owner_changes,
             proxy,
+            version,
+        })
+    }
+
+    pub(super) fn settings(&self, session: &OwnedObjectPath) -> Option<Settings> {
+        (self.version >= 2).then(|| Settings {
+            proxy: self.proxy.clone(),
+            session: session.clone(),
         })
     }
 

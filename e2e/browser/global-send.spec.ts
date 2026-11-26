@@ -11,6 +11,8 @@ declare global {
       revision: number;
       allowed: boolean;
       publishedTargets: number;
+      settingsUnavailable: boolean;
+      settingsOpened: number;
       press(revision: number): void;
       changeSystemBinding(trigger: string | null): void;
     };
@@ -44,15 +46,19 @@ test("desktop global send keeps the registered key on conflict and follows autho
       revision: 0,
       allowed: true,
       publishedTargets: 0,
+      settingsUnavailable: false,
+      settingsOpened: 0,
       press: (_revision: number) => {},
       changeSystemBinding: (_trigger: string | null) => {},
     };
     window.globalSendProbe = probe;
+    let activeRegistration: unknown;
     native.invoke = async (command, args = {}) => {
       if (command === "configure_global_send") {
         const binding = args.binding as { key: string } | null;
         if (binding?.key === "F10")
           throw { code: "CONFLICT", message: "Occupied", retryable: false };
+        activeRegistration = binding ? args.registration : undefined;
         const channel = args.events as {
           onmessage: (value: GlobalSendEvent) => void;
         };
@@ -61,7 +67,24 @@ test("desktop global send keeps the registered key on conflict and follows autho
         probe.changeSystemBinding = (trigger) =>
           channel.onmessage({ kind: "binding", trigger });
         probe.enabled = false;
-        return binding?.key === "F8" ? "Alt+F8" : null;
+        const key = binding?.key;
+        return {
+          trigger: key === "F8" || key === "F7" ? `Alt+${key}` : null,
+          canConfigure: key === "F8",
+        };
+      }
+      if (command === "open_global_send_settings") {
+        if (
+          probe.settingsUnavailable ||
+          args.registration !== activeRegistration
+        )
+          throw {
+            code: "WINDOW_ERROR",
+            message: "Settings unavailable",
+            retryable: false,
+          };
+        probe.settingsOpened++;
+        return null;
       }
       if (command === "set_global_send_target") {
         probe.revision = Number(args.revision);
@@ -195,11 +218,70 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await capture.press("Control+Shift+F8");
   await save.click();
   await expect(row.getByText("Alt+F8", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1240, height: 680 });
+  await change.click();
+  await expect(capture).toBeFocused();
+  await expect(capture).toHaveValue("Alt+F8");
+  await capture.press("Control+Shift+F7");
+  await expect(capture).toHaveValue("Alt+F8");
+  await expect(save).toHaveCount(0);
+  const openSettings = dialog.getByRole("button", {
+    name: "Open system shortcut settings",
+  });
+  await page.evaluate(() => {
+    window.globalSendProbe.settingsUnavailable = true;
+  });
+  await openSettings.click();
+  await expect(dialog.getByRole("status")).toHaveText(
+    "The shortcut settings could not be opened. Try again.",
+  );
+  await expect(capture).toBeFocused();
+  await expect(capture).toHaveValue("Alt+F8");
+  await page.evaluate(() => {
+    window.globalSendProbe.settingsUnavailable = false;
+  });
+  await openSettings.click();
+  await expect(change).toBeFocused();
+  expect(await page.evaluate(() => window.globalSendProbe.settingsOpened)).toBe(
+    1,
+  );
+  await expect(row.getByText("Alt+F8", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    window.globalSendProbe.allowed = true;
+  });
+  await draft.fill("NEW");
+  await expect.poll(enabled).toBe(true);
+  const beforeSystemChange = await revision();
   await page.evaluate(() =>
     window.globalSendProbe.changeSystemBinding("Ctrl+Alt+F8"),
   );
+  await expect.poll(revision).toBeGreaterThan(beforeSystemChange);
+  await press(beforeSystemChange);
+  expect(await writes()).toEqual(["QVQ=", "T0s="]);
+  await press(await revision());
+  await expect.poll(writes).toEqual(["QVQ=", "T0s=", "TkVX"]);
+  await page.keyboard.press("F1");
+  await dialog.getByRole("searchbox").fill("global send");
   await expect(row.getByText("Ctrl+Alt+F8", { exact: true })).toBeVisible();
   await page.evaluate(() => window.globalSendProbe.changeSystemBinding(null));
+  await expect(row.getByText("Off", { exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 420, height: 620 });
+  await change.click();
+  await capture.press("Control+Shift+F7");
+  await save.click();
+  await expect(row.getByText("Alt+F7", { exact: true })).toBeVisible();
+  await change.click();
+  await expect(capture).toBeFocused();
+  await expect(capture).toHaveAccessibleDescription(
+    "Change this shortcut in your desktop’s shortcut settings.",
+  );
+  await expect(openSettings).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Disable" }),
+  ).toBeInViewport();
+  await dialog.getByRole("button", { name: "Disable" }).click();
   await expect(row.getByText("Off", { exact: true })).toBeVisible();
 });
 

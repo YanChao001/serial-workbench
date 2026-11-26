@@ -3,7 +3,12 @@ import { toast } from "sonner";
 import { useLatestTranslator } from "@/hooks/use-latest-translator";
 import type { ShortcutBinding } from "@/lib/generated/bindings";
 import { nativeErrorText } from "@/lib/native-error";
-import { configureGlobalSend, isTauri, setGlobalSendTarget } from "@/lib/tauri";
+import {
+  configureGlobalSend,
+  isTauri,
+  openGlobalSendSettings,
+  setGlobalSendTarget,
+} from "@/lib/tauri";
 
 type SendTarget = (signal: AbortSignal) => void;
 
@@ -11,7 +16,7 @@ export function useGlobalSendShortcut(suspended: boolean) {
   const t = useLatestTranslator();
   const [binding, setBinding] = useState<{
     requested: ShortcutBinding;
-    systemTrigger?: string;
+    system?: { trigger: string; canConfigure: boolean };
   }>();
   const state = useRef<{
     registration?: string;
@@ -64,14 +69,20 @@ export function useGlobalSendShortcut(suspended: boolean) {
     async (next: ShortcutBinding | undefined) => {
       const registration = crypto.randomUUID();
       let liveTrigger: string | null | undefined;
+      let canConfigure = false;
       function publishBinding(trigger: string | null | undefined) {
         const active = next && trigger !== null;
         state.current.registration = active ? registration : undefined;
         setBinding(
-          active ? { requested: next, systemTrigger: trigger } : undefined,
+          active
+            ? {
+                requested: next,
+                system: trigger ? { trigger, canConfigure } : undefined,
+              }
+            : undefined,
         );
       }
-      const systemTrigger = await configureGlobalSend(
+      const response = await configureGlobalSend(
         next,
         registration,
         t("commands.globalSend"),
@@ -79,8 +90,10 @@ export function useGlobalSendShortcut(suspended: boolean) {
           const current = state.current;
           if (event.kind === "binding") {
             liveTrigger = event.trigger;
-            if (current.registration === registration)
+            if (current.registration === registration) {
               publishBinding(liveTrigger);
+              publishTarget();
+            }
           } else if (
             !current.suspended &&
             current.registration === registration &&
@@ -91,24 +104,33 @@ export function useGlobalSendShortcut(suspended: boolean) {
         },
       );
       // 系统撤回可能比命令回执更早到达，保留信道中的最新状态。
+      canConfigure = response.canConfigure;
       publishBinding(
-        liveTrigger === undefined ? (systemTrigger ?? undefined) : liveTrigger,
+        liveTrigger === undefined
+          ? (response.trigger ?? undefined)
+          : liveTrigger,
       );
       publishTarget();
     },
     [publishTarget, t],
   );
 
+  const openSystemSettings = useCallback(async () => {
+    const registration = state.current.registration;
+    if (registration) await openGlobalSendSettings(registration);
+  }, []);
+
   return useMemo(
     () =>
       isTauri()
         ? {
             binding: binding?.requested,
-            systemTrigger: binding?.systemTrigger,
+            system: binding?.system,
             changeBinding,
+            openSystemSettings,
             registerTarget,
           }
         : undefined,
-    [binding, changeBinding, registerTarget],
+    [binding, changeBinding, openSystemSettings, registerTarget],
   );
 }
