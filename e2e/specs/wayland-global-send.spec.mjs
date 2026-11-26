@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { $, browser } from "@wdio/globals";
 import { globalSendRawReader } from "../global-send.mjs";
-import { language, openDeepLink, ready, reloadDocument } from "../helpers.mjs";
+import { language, openDeepLink, ready } from "../helpers.mjs";
 import {
   captureGlobalSendKey,
   closeShortcutHelp,
@@ -62,7 +62,25 @@ async function kdeComponent() {
       ],
       { timeout: 5000 },
     );
-    return { path: reply.stdout.trim() };
+    const path = /objectpath '([^']+)'/.exec(reply.stdout)?.[1];
+    assert.ok(path, `KDE component returned no object path: ${reply.stdout}`);
+    const info = await execute(
+      "gdbus",
+      [
+        "call",
+        "--session",
+        "--timeout",
+        "3",
+        "--dest",
+        "org.kde.kglobalaccel",
+        "--object-path",
+        path,
+        "--method",
+        "org.kde.kglobalaccel.Component.allShortcutInfos",
+      ],
+      { timeout: 5000 },
+    );
+    return { path, shortcuts: info.stdout.trim() };
   } catch (error) {
     return { error: error.stderr?.trim() || error.message };
   }
@@ -112,9 +130,14 @@ async function exitEditor() {
 async function settleConsent(receipt, payload) {
   if (scenario === "reload") {
     receipt.pending = await kdeControl("consent", "Cancel", "observe");
-    await reloadDocument(browser);
-    await ready();
+    receipt.documentBefore = await browser.execute(
+      () => performance.timeOrigin,
+    );
+    await browser.refresh();
     receipt.dismissed = await kdeControl("consent", "Cancel", "wait-closed");
+    await ready();
+    receipt.documentAfter = await browser.execute(() => performance.timeOrigin);
+    assert.notEqual(receipt.documentAfter, receipt.documentBefore);
     await openDeepLink("/");
     await openVirtual();
     await (await sendDraft()).setValue(payload);
@@ -344,6 +367,19 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
     } catch (error) {
       failures.push(`Initial dispatch: ${error.message}`);
+    }
+    try {
+      assert.deepEqual(readFocus(), receipt.focusBefore);
+      // 一项由 KWin 自身处理的快捷键证明合成输入经过了桌面的全局过滤器。
+      await inject("key", "alt+F4");
+      await browser.waitUntil(() => peer.exitCode === 0, {
+        timeout: 3000,
+        timeoutMsg:
+          "KWin did not close the independent Wayland window for Alt+F4",
+      });
+      receipt.kwinCloseWindow = true;
+    } catch (error) {
+      failures.push(`KWin built-in shortcut: ${error.message}`);
     } finally {
       peer.kill();
       peer = undefined;

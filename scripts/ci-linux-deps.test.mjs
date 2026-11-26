@@ -228,6 +228,7 @@ for (const mode of ["rust", "native", "wayland"]) {
         for (const required of [
           "kwin-wayland",
           "plasma-desktop",
+          "plasma-workspace",
           "systemsettings",
           "xdg-desktop-portal-kde",
           "python3-pyatspi",

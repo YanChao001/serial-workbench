@@ -25,12 +25,17 @@ export XDG_RUNTIME_DIR="$session/run" XDG_CONFIG_HOME="$session/config"
 export XDG_DATA_HOME="$session/data" XDG_CACHE_HOME="$session/cache"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland
 export KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
+export XDG_MENU_PREFIX=plasma-
 export WAYLAND_DISPLAY=swb-wayland GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland
 export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 QT_QUICK_BACKEND=software LC_ALL=C.UTF-8
 export WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 LIBGL_ALWAYS_SOFTWARE=1
 install -d -m 0700 "$XDG_RUNTIME_DIR" "$XDG_CACHE_HOME" \
   "$XDG_CONFIG_HOME/xdg-desktop-portal" "$XDG_DATA_HOME/applications"
 printf '[preferred]\ndefault=kde\n' > "$XDG_CONFIG_HOME/xdg-desktop-portal/kde-portals.conf"
+[[ -r /etc/xdg/menus/plasma-applications.menu ]]
+[[ -r /usr/share/applications/org.kde.plasma.settings.open.desktop ]]
+printf '[Default Applications]\nx-scheme-handler/systemsettings=org.kde.plasma.settings.open.desktop;\n' \
+  > "$XDG_CONFIG_HOME/mimeapps.list"
 binary=$(node --input-type=module -e 'import { readE2EBuild } from "./e2e/build.mjs"; process.stdout.write(readE2EBuild());')
 name=$(node -p 'require("./src-tauri/tauri.e2e.conf.json").productName')
 printf '[Desktop Entry]\nType=Application\nName=%s\nExec="%s"\n' "$name" "$binary" \
@@ -40,7 +45,7 @@ export GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)}
 {
   printf 'candidate=%s\ndesktop=%s\nsession=%s\nwayland_display=%s\nscenario=%s\n' \
     "$GITHUB_SHA" "$XDG_CURRENT_DESKTOP" "$XDG_SESSION_TYPE" "$WAYLAND_DISPLAY" "$SWB_E2E_WAYLAND_SCENARIO"
-  dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde systemsettings plasma-desktop
+  dpkg-query -W kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde systemsettings plasma-desktop plasma-workspace
   sha256sum "$binary"
 } > "$evidence/environment.txt"
 
@@ -59,13 +64,17 @@ timeout 15 wayland-info > "$evidence/wayland-info.txt"
 
 dbus-update-activation-environment DISPLAY XAUTHORITY WAYLAND_DISPLAY \
   XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_CURRENT_DESKTOP \
-  XDG_SESSION_DESKTOP XDG_SESSION_TYPE KDE_FULL_SESSION KDE_SESSION_VERSION \
+  XDG_SESSION_DESKTOP XDG_SESSION_TYPE XDG_MENU_PREFIX KDE_FULL_SESSION KDE_SESSION_VERSION \
   QT_QPA_PLATFORM QT_QUICK_BACKEND QT_LINUX_ACCESSIBILITY_ALWAYS_ON LC_ALL
 
 bus_method() {
   gdbus call --session --timeout 5 --dest org.freedesktop.DBus \
     --object-path /org/freedesktop/DBus --method "org.freedesktop.DBus.$1" "${@:2}"
 }
+accel_owner=$(bus_method GetConnectionUnixProcessID org.kde.kglobalaccel)
+printf 'global_accel_owner=%s kwin_pid=%s\n' "$accel_owner" "$kwin" | tee -a "$evidence/environment.txt"
+[[ $accel_owner == "(uint32 $kwin,)" ]]
+timeout 15 kbuildsycoca6 --noincremental > "$evidence/desktop-service-cache.log" 2>&1
 bus_method StartServiceByName org.freedesktop.impl.portal.desktop.kde 0
 # Qt can activate the frontend while KWin is starting, before D-Bus sees the KDE environment.
 # Replace that instance on this session bus only after the real Wayland backend is available.
