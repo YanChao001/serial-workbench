@@ -18,6 +18,7 @@ import {
   openDeepLink,
   ready,
 } from "../helpers.mjs";
+import { spawnOwned, stopOwned } from "../process.mjs";
 import {
   captureGlobalSendKey,
   closeShortcutHelp,
@@ -43,6 +44,7 @@ const portalTrace = join(
 );
 const kwinTrace = join(process.env.SWB_E2E_WAYLAND_ARTIFACTS, "kwin.log");
 const scenario = process.env.SWB_E2E_WAYLAND_SCENARIO;
+const expectsBinding = scenario === "approve" || scenario === "replace";
 const hotkey = "F9";
 const replacement = "F10";
 const keycodes = JSON.parse(process.env.SWB_E2E_WAYLAND_KEYCODES);
@@ -369,6 +371,95 @@ async function checkSecondaryTarget(receipt) {
   checkNoTransmit(receipt.secondaryRaw);
 }
 
+async function portalOwner() {
+  const bus = "org.freedesktop.DBus";
+  const path = "/org/freedesktop/DBus";
+  const name = /^\('(:[\d.]+)',\)$/.exec(
+    await busCall(
+      bus,
+      path,
+      `${bus}.GetNameOwner`,
+      "org.freedesktop.portal.Desktop",
+    ),
+  )?.[1];
+  assert.ok(name, "Expected the portal's unique D-Bus name");
+  const pid = /^\(uint32 (\d+),\)$/.exec(
+    await busCall(bus, path, `${bus}.GetConnectionUnixProcessID`, name),
+  )?.[1];
+  assert.ok(pid, "Expected the portal's D-Bus process ID");
+  return { name, pid: Number(pid) };
+}
+
+async function checkPortalReplacement(receipt, read, readFocus, bytes) {
+  await recordPress(receipt, "beforeReplacementRaw", read, bytes);
+  receipt.ownerBefore = await portalOwner();
+  assert.equal(
+    receipt.ownerBefore.pid,
+    Number(process.env.SWB_E2E_WAYLAND_PORTAL_PID),
+  );
+  const nextPortal = spawnOwned(
+    process.env.SWB_E2E_WAYLAND_PORTAL_BIN,
+    ["--replace", "--verbose"],
+    { logPath: join(artifactDir, "replacement-portal.log") },
+  );
+  try {
+    await browser.waitUntil(
+      async () => {
+        receipt.ownerAfter = await portalOwner();
+        return receipt.ownerAfter.pid === nextPortal.child.pid;
+      },
+      { timeoutMsg: "The replacement process did not own the portal name" },
+    );
+    assert.notEqual(receipt.ownerAfter.name, receipt.ownerBefore.name);
+
+    await editGlobalSend();
+    await browser.waitUntil(async () => {
+      receipt.bindingAfterReplacement = await (
+        await globalShortcutKey()
+      ).getText();
+      return receipt.bindingAfterReplacement === "Off";
+    });
+    await exitEditor();
+    assert.deepEqual(readFocus(), receipt.focusBefore);
+    receipt.afterReplacementRaw = await assertNoTransmit(
+      await globalSendRawReader(),
+    );
+
+    await editGlobalSend();
+    await captureGlobalSendKey(hotkey);
+    await browser.waitUntil(
+      async () => {
+        if (!(await $("#shortcut-capture").isExisting())) return true;
+        if (!receipt.replacementConsent) {
+          const decision = await kdeControl(
+            "consent",
+            "OK",
+            "click-if-present",
+          );
+          if (decision.control) receipt.replacementConsent = decision;
+        }
+        return false;
+      },
+      {
+        timeoutMsg:
+          "The explicit registration on the new portal did not settle",
+      },
+    );
+    receipt.replacementBinding = await (await globalShortcutKey()).getText();
+    assert.equal(receipt.replacementBinding, receipt.binding);
+    await closeShortcutHelp();
+    assert.deepEqual(readFocus(), receipt.focusBefore);
+    await recordPress(
+      receipt,
+      "replacementRaw",
+      await globalSendRawReader(),
+      bytes,
+    );
+  } finally {
+    await stopOwned(nextPortal);
+  }
+}
+
 async function confirmPortalClose(receipt) {
   await browser.waitUntil(
     () => {
@@ -625,7 +716,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     await settleConsent(receipt, payload);
     receipt.componentAfter = await kdeComponent();
     receipt.binding = await (await globalShortcutKey()).getText();
-    if (scenario !== "approve") {
+    if (!expectsBinding) {
       assert.equal(receipt.binding, "Off");
       await exitEditor();
     } else {
@@ -670,7 +761,7 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
     assert.equal(receipt.focusBefore.display, receipt.waylandDisplay);
     assert.equal(await inject("getwindowfocus"), outerWindow);
 
-    if (scenario !== "approve") {
+    if (!expectsBinding) {
       receipt.raw = await assertNoTransmit(read);
       receipt.unboundKey = await peerInput(hotkey);
       receipt.focusAfter = readFocus();
@@ -685,6 +776,11 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
         });
         checkGlobalSendRaw(receipt.manualRaw, bytes);
       }
+      return;
+    }
+
+    if (scenario === "replace") {
+      await checkPortalReplacement(receipt, read, readFocus, bytes);
       return;
     }
 

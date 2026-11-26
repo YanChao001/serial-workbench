@@ -93,7 +93,9 @@ cargo fmt --all -- --check
 
 `native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的独立 KWin 会话分别验证批准、取消、清除系统分配后确认，以及系统弹窗待定时重载工作台。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。批准会话核对同一个绑定在主工作台置前时写入一次，在速查、偏好设置及次窗口置前时没有新增 TX，返回原发送面后能向 Virtual Echo 再次写入。从工作台打开 KDE 快捷键设置，选择工作台的条目，操作捕获取消、系统键位冲突、换键和撤回。从 Virtual Echo 的独立 Raw 读回核对写入结果。另一个独立配置用同一组合键触发 KWin 的关闭窗口，用来检查输入是否被 KWin 当成全局热键。`wayland-global-send` 产物保存候选摘要、门户和后端版本、前台窗口、门户请求和会话关闭、KWin 注册日志与 Raw 收据。其它环境按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
 
-同一预检用相同的工作台构建和 KDE 后端验收 GlobalShortcuts v1。作业从上游取得 `xdg-desktop-portal` 1.20.4 官方源码包并验证 SHA-256，编译后只在私有会话总线启动。隔离环境可用 `bash e2e/run-wayland.sh --portal-v1 /absolute/path/to/xdg-desktop-portal` 复验。脚本确认该进程持有门户服务名和接口版本 1，记录其版本及摘要。工作台显示手动设置指引后，从桌面直接打开系统快捷键页，复用冲突、换键和撤回的 Raw 断言。四个场景的收据保存到 `artifacts/e2e/wayland-v1`。 [上游 v1 接口](https://github.com/flatpak/xdg-desktop-portal/blob/1.20.4/src/global-shortcuts.c#L521)
+同一预检用相同的工作台构建和 KDE 后端验收 GlobalShortcuts v1。作业从上游取得 `xdg-desktop-portal` 1.20.4 官方源码包并验证 SHA-256，编译后只在私有会话总线启动。隔离环境可用 `bash e2e/run-wayland.sh --portal-v1 /absolute/path/to/xdg-desktop-portal` 复验。脚本确认该进程持有门户服务名和接口版本 1，记录其版本及摘要。工作台显示手动设置指引后，从桌面直接打开系统快捷键页，复用冲突、换键和撤回的 Raw 断言。v1 收据保存到 `artifacts/e2e/wayland-v1`。 [上游 v1 接口](https://github.com/flatpak/xdg-desktop-portal/blob/1.20.4/src/global-shortcuts.c#L521)
+
+两版均在独立会话实测门户服务名交接。另一 Wayland 应用置前时先验证旧门户的一笔发送，再启动第二个门户进程并核对实际服务名和进程身份。工作台回到关闭状态，原键零写入。用户显式重新申请后，再以同一前台窗口和工作台草稿核对一笔 TX 及精确回环。
 
 缺少 GlobalShortcuts 的场景在独立配置中禁用该接口，先从真实门户的 D-Bus 接口清单确认 Settings 可用且 GlobalShortcuts 缺失。工作台应显示不可注册，前台辅助窗口收到按键且 Raw 无写入，随后从编辑器主动发送同一草稿并核对回环。重载场景将旧连接发出的请求关闭和会话关闭与新文档、弹窗消失及零写入一并留证。 [门户配置](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
 

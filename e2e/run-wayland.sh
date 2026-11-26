@@ -5,12 +5,12 @@ if [[ ${1:-} != --session ]]; then
   export SWB_E2E_WAYLAND_PORTAL_BIN=/usr/libexec/xdg-desktop-portal
   export SWB_E2E_WAYLAND_EXPECT_V1=0
   suite=wayland
-  scenarios=(approve cancel deny reload unavailable key-control)
+  scenarios=(approve cancel deny reload replace unavailable key-control)
   if [[ ${1:-} == --portal-v1 && $# -eq 2 && $2 == /* && -x $2 ]]; then
     SWB_E2E_WAYLAND_PORTAL_BIN=$2
     SWB_E2E_WAYLAND_EXPECT_V1=1
     suite=wayland-v1
-    scenarios=(approve cancel deny reload)
+    scenarios=(approve cancel deny reload replace)
   elif (( $# != 0 )); then
     echo "Usage: $0 [--portal-v1 /absolute/path/to/xdg-desktop-portal]" >&2
     exit 2
@@ -131,6 +131,7 @@ for attempt in {1..30}; do
 done
 printf 'portal_owner=%s expected_pid=%s\n' "$owner" "$portal_pid" | tee -a "$evidence/environment.txt"
 [[ $owner == "(uint32 $portal_pid,)" ]]
+export SWB_E2E_WAYLAND_PORTAL_PID=$portal_pid
 
 if [[ $SWB_E2E_WAYLAND_SCENARIO == unavailable ]]; then
   timeout 15 gdbus introspect --session --dest org.freedesktop.portal.Desktop \
@@ -158,6 +159,7 @@ bus_method GetNameOwner org.freedesktop.impl.portal.desktop.kde | tee -a "$evide
 
 export SWB_E2E_WAYLAND_APP_NAME=$name
 stdbuf -oL dbus-monitor --session \
+  "type='signal',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.portal.Desktop'" \
   "type='signal',interface='org.freedesktop.portal.GlobalShortcuts'" \
   "type='signal',interface='org.freedesktop.impl.portal.GlobalShortcuts'" \
   "type='signal',interface='org.kde.kglobalaccel.Component'" \

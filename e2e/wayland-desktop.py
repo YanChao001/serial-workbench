@@ -31,6 +31,7 @@ def control(target, name, action):
     seen_windows = set()
     seen_controls = set()
     matching_windows = []
+    activate = action in ("click", "click-if-present")
     while time.monotonic() < end:
         matching_windows.clear()
         for app in desktop:
@@ -59,7 +60,7 @@ def control(target, name, action):
                     if not (visible and enabled and label == name):
                         continue
                     active = window.getState().contains(pyatspi.STATE_ACTIVE)
-                    if action == "click" and not item.queryAction().doAction(0):
+                    if activate and not item.queryAction().doAction(0):
                         raise RuntimeError(f"KDE did not activate {name!r}")
                     result = {"dialog": title, "control": label, "action": action, "active": active}
                     if action == "bounds":
@@ -69,6 +70,9 @@ def control(target, name, action):
                     return
         if action == "wait-closed" and not matching_windows:
             print(json.dumps({"dialog": titles[target], "action": action}))
+            return
+        if action == "click-if-present":
+            print("{}")
             return
         time.sleep(0.2)
     if action == "wait-closed":
@@ -130,9 +134,16 @@ def report_focus(output, keys_output):
 
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    if command == "control" and len(args) == 3 and args[2] in ("bounds", "click", "observe", "wait-closed"):
+    if (
+        command == "control"
+        and len(args) == 3
+        and args[2] in ("bounds", "click", "click-if-present", "observe", "wait-closed")
+    ):
         control(*args)
     elif command == "focus" and len(args) == 2:
         report_focus(*args)
     else:
-        raise SystemExit("Usage: wayland-desktop.py control TARGET NAME bounds|click|observe|wait-closed, or focus FOCUS_PATH KEYS_PATH")
+        raise SystemExit(
+            "Usage: wayland-desktop.py control TARGET NAME "
+            "bounds|click|click-if-present|observe|wait-closed, or focus FOCUS_PATH KEYS_PATH"
+        )
