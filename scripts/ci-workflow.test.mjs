@@ -310,6 +310,10 @@ test("Windows gates real Chromium file transfer, experiments, mapped capture and
   assert.match(step, /按住连发收据缺失/);
   assert.match(step, /hold-send\/host-receipt\.json/);
   assert.match(step, /hold-send\/browser-receipt\.json/);
+  assert.match(
+    step,
+    /按住连发收据缺失[^\n]*\n\s+exit 1\n\s+fi\n\s+printf[^\n]*\$GITHUB_SHA[\s\S]*?独立 Raw 确认两笔[\s\S]*?cygpath -u "\$GITHUB_STEP_SUMMARY"/,
+  );
   assert.match(step, /mapped-capture\/host-receipt\.json/);
   assert.match(step, /mapped-capture\/browser-receipt\.json/);
   assert.doesNotMatch(

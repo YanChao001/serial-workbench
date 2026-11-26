@@ -443,6 +443,9 @@ jobs:
             echo "::error::真实配对浏览器按住连发收据缺失。"
             exit 1
           fi
+          printf '%s\n' '### 配对浏览器按住连发（IO-08）' "候选提交 $GITHUB_SHA" \
+            '独立 Raw 确认两笔已接纳的写入和完整 Virtual Echo 回显。松手后没有新增发送请求。' \
+            >> "$(cygpath -u "$GITHUB_STEP_SUMMARY")"
 
       - name: 保留 runtime 验收收据与原始输出
         if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
