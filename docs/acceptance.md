@@ -475,11 +475,11 @@ recorded_send_2                   recorded_send_2
 
 ### 专业跨源 XY 与李萨如（VIZ-06）
 
-通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间严格递增的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。
+通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间非递减的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。
 
-共享时钟使用同一 `clockId` 并省略 `anchors`。两个时钟分别读到同一同步事件时，传入 `{ "xMonoNs": "18000000000000000000", "yMonoNs": "100" }` 作为一对锚点。第二次同步事件定义漂移斜率。以上述锚点及 `{ "xMonoNs": "18000000000000000003", "yMonoNs": "102" }` 为例，Y 的一个纳秒对应 X 的 1.5 纳秒。Y 的 `100`、`101` 分别取值 `0`、`6` 时，X 时间 `18000000000000000001` 的插值为 `4`，权重为 `2/3`。报告保留两端时间和数组索引。连续图形按 `breakBefore` 断线。缺值、无精确匹配、区段断开或超过 Y 两端时核对报告原因。
+共享时钟使用同一 `clockId` 并省略 `anchors`。两个时钟分别读到同一同步事件时，传入 `{ "xMonoNs": "18000000000000000000", "yMonoNs": "100" }` 作为一对锚点。第二次同步事件定义漂移斜率。以上述锚点及 `{ "xMonoNs": "18000000000000000003", "yMonoNs": "102" }` 为例，Y 的一个纳秒对应 X 的 1.5 纳秒。Y 的 `100`、`101` 分别取值 `0`、`6` 时，X 时间 `18000000000000000001` 的插值为 `4`，权重为 `2/3`。报告保留两端时间和数组索引。连续图形按 `breakBefore` 断线。缺值、无精确匹配、区段断开、多个同刻 Y 候选或超过 Y 两端时核对报告原因。
 
-运行 `node --test scripts/reference-statistics.test.mjs`，核对高位时间、比例、间隙、范围外和取消。使用相位差四分之一周期的正弦、余弦样本，比对两路时钟校准后的李萨如单位圆。四目标 CI 的 `native_node_dynamic_statistics_reads_windows_from_signed_package` 在相同签名安装上用真实 Host 验证插值报告。在工作台「插件」页展开已经启用且获得执行信任的统计窗口与 XY 包，打开「跨源 XY」。载入李萨如示例并对齐通道，核对 33 个配对点、两个时钟、同步锚点、比率和散点切换。用样本序号选择第二点，核对两条原始 Y 记录和权重。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional XY" --workers=1`，覆盖完整插件入口、结果摘要、键盘定位和非法 JSON 的焦点。独立设备和发行继续专项验收。
+运行 `node --test scripts/reference-statistics.test.mjs`，核对高位时间、比例、间隙、范围外和取消。使用相位差四分之一周期的正弦、余弦样本，比对两路时钟校准后的李萨如单位圆。四目标 CI 的 `native_node_dynamic_statistics_reads_windows_from_signed_package` 在相同签名安装上用真实 Host 验证插值报告。在工作台「插件」页展开已经启用且获得执行信任的统计窗口与 XY 包，打开「跨源 XY」。载入李萨如示例并对齐通道，核对 33 个配对点、两个时钟、同步锚点、比率和散点切换。用样本序号选择第二点，核对两条原始 Y 记录和权重。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional XY" --workers=1`，覆盖完整插件入口、结果摘要、键盘定位和非法 JSON 的焦点。在实时分帧或只读回放的「字段曲线」绘制当前范围，选择字段后分别「暂存为 X 轴」和「暂存为 Y 轴」。打开跨源 XY，载入暂存通道，核对原始十进制值、帧末接收时间和缺口。相同采集时钟可直接对齐，独立时钟先录入锚点。在结果中选点，核对暂存帧号、事件、字节范围和回放录制序号。撤回回放权限后，核对已载入的 JSON 与来源定位清除，重新授权时旧暂存不会恢复。实时与回放入口分别在 `framing-tool.spec.ts` 和 `replay-layout.spec.ts` 复验。独立设备和发行继续专项验收。
 
 ## 签名主题
 

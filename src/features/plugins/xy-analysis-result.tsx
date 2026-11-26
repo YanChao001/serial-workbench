@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useI18n } from "@/providers/i18n";
+import type { CapturedXyChannel, CapturedXyPair } from "@/lib/xy-capture";
 import type { XyPair, XyReport } from "./xy-analysis-model";
 
 const low = 28;
@@ -170,17 +171,51 @@ function Plot({
   );
 }
 
-function Origin({ point, side }: { point: XyPair["x"]; side: "X" | "Y" }) {
+function Origin({
+  point,
+  side,
+  channel,
+}: {
+  point: XyPair["x"];
+  side: "X" | "Y";
+  channel?: CapturedXyChannel;
+}) {
   const { t } = useI18n();
+  const captured = channel?.samples[point.index];
+  const origin =
+    captured?.monoNs === point.time && captured.value === point.value
+      ? captured.origin
+      : undefined;
   return (
-    <div className="wrap-anywhere font-mono tabular-nums">
-      {side} #{point.index + 1} · {point.time} ns ·{" "}
-      {point.value ?? t("plugins.xy.missingValue")}
+    <div className="grid gap-0.5 wrap-anywhere font-mono tabular-nums">
+      <p>
+        {side} #{point.index + 1} · {point.time} ns ·{" "}
+        {point.value ?? t("plugins.xy.missingValue")}
+      </p>
+      {origin ? (
+        <p className="text-xs text-muted-foreground">
+          {t("plugins.xy.captureOrigin", {
+            frame: origin.frame,
+            event: origin.event,
+            start: origin.firstByte,
+            end: origin.afterByte,
+          })}
+          {origin.record !== undefined
+            ? " · " + t("plugins.xy.captureRecord", { record: origin.record })
+            : null}
+        </p>
+      ) : null}
     </div>
   );
 }
 
-function Evidence({ pair }: { pair: XyPair }) {
+function Evidence({
+  pair,
+  captured,
+}: {
+  pair: XyPair;
+  captured?: CapturedXyPair;
+}) {
   const { t } = useI18n();
   const { y } = pair;
   return (
@@ -192,13 +227,15 @@ function Evidence({ pair }: { pair: XyPair }) {
             : `plugins.xy.status.${y.status}`,
         )}
       </p>
-      <Origin point={pair.x} side="X" />
-      {y.status === "exact" ? <Origin point={y.sample} side="Y" /> : null}
+      <Origin point={pair.x} side="X" channel={captured?.x} />
+      {y.status === "exact" ? (
+        <Origin point={y.sample} side="Y" channel={captured?.y} />
+      ) : null}
       {y.status !== "exact" && y.before ? (
-        <Origin point={y.before} side="Y" />
+        <Origin point={y.before} side="Y" channel={captured?.y} />
       ) : null}
       {y.status !== "exact" && y.after ? (
-        <Origin point={y.after} side="Y" />
+        <Origin point={y.after} side="Y" channel={captured?.y} />
       ) : null}
       {y.status === "interpolated" ? (
         <p className="wrap-anywhere font-mono tabular-nums">
@@ -216,7 +253,13 @@ function Evidence({ pair }: { pair: XyPair }) {
   );
 }
 
-export function XyAnalysisResult({ report }: { report: XyReport }) {
+export function XyAnalysisResult({
+  report,
+  captured,
+}: {
+  report: XyReport;
+  captured?: CapturedXyPair;
+}) {
   const { t } = useI18n();
   const id = useId();
   const [selected, setSelected] = useState(0);
@@ -276,6 +319,23 @@ export function XyAnalysisResult({ report }: { report: XyReport }) {
               </div>
             ) : null}
           </dl>
+          {captured
+            ? (
+                [
+                  ["X", captured.x],
+                  ["Y", captured.y],
+                ] as const
+              ).map(([axis, channel]) => (
+                <p key={axis} className="wrap-anywhere text-muted-foreground">
+                  {axis}{" "}
+                  {t("plugins.xy.captureClock", {
+                    host: channel.host,
+                    session: channel.session ?? "—",
+                    clock: channel.clock,
+                  })}
+                </p>
+              ))
+            : null}
           {pair ? (
             <div className="grid gap-2 border-t pt-3">
               <Label htmlFor={id + "-pair"}>{t("plugins.xy.point")}</Label>
@@ -296,7 +356,7 @@ export function XyAnalysisResult({ report }: { report: XyReport }) {
                     setSelected(index);
                 }}
               />
-              <Evidence pair={pair} />
+              <Evidence pair={pair} captured={captured} />
             </div>
           ) : null}
         </div>

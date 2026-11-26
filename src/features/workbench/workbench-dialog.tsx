@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { UnsavedWorkScope, useRequestLeave } from "@/providers/unsaved-work";
+import { WorkbenchDialogExit } from "./workbench-dialog-exit";
 
 function focusToolContent(content: HTMLElement) {
   const candidates = content.querySelectorAll<HTMLElement>(
@@ -111,7 +112,9 @@ export function WorkbenchDialog({
     }
   }
   async function close() {
-    if (await negotiate()) latest.current.onRequestClose();
+    if (!(await negotiate())) return false;
+    latest.current.onRequestClose();
+    return true;
   }
   return (
     <Dialog
@@ -143,9 +146,11 @@ export function WorkbenchDialog({
         </DialogHeader>
         <div className="workbench-dialog-body" tabIndex={0}>
           <UnsavedWorkScope scope={scope}>
-            {typeof shown.children === "function"
-              ? shown.children(negotiate)
-              : shown.children}
+            <WorkbenchDialogExit.Provider value={close}>
+              {typeof shown.children === "function"
+                ? shown.children(negotiate)
+                : shown.children}
+            </WorkbenchDialogExit.Provider>
           </UnsavedWorkScope>
         </div>
       </DialogContent>

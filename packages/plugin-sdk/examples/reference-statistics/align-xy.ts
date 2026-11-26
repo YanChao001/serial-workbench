@@ -28,11 +28,11 @@ function readSeries(input: unknown, axis: "x" | "y") {
     const path = axis + ".samples[" + index + "]";
     const sample = record(entry, path);
     const monoNs = u64(sample.monoNs, path + ".monoNs");
-    if (monoNs <= previous)
-      throw new Error(path + ".monoNs must be strictly increasing");
+    if (monoNs < previous)
+      throw new Error(path + ".monoNs must not go backwards");
     previous = monoNs;
     const value =
-      sample.value === null ? null : decimal(sample.value, path + ".value", 32);
+      sample.value === null ? null : decimal(sample.value, path + ".value");
     if (sample.gapBefore !== undefined && typeof sample.gapBefore !== "boolean")
       throw new Error(path + ".gapBefore must be a boolean");
     return { index, monoNs, value, gapBefore: sample.gapBefore === true };
@@ -110,10 +110,19 @@ function interpolate(
   return String(result);
 }
 
-type TimedSample = Sample & { ticks: bigint; segment: number };
+type TimedSample = Sample & {
+  ticks: bigint;
+  segment: number;
+  ambiguous: boolean;
+};
 type SourceSample = ReturnType<typeof sourceSample>;
 type MissingReason =
-  "x_missing" | "y_missing" | "outside" | "gap" | "no_exact_match";
+  | "x_missing"
+  | "y_missing"
+  | "outside"
+  | "gap"
+  | "no_exact_match"
+  | "ambiguous_y_time";
 type SampleMatch =
   | {
       segment: number;
@@ -142,19 +151,25 @@ function matchSample(
   ticks: bigint,
   before: TimedSample | undefined,
   after: TimedSample | undefined,
+  next: TimedSample | undefined,
   method: "exact" | "linear",
 ): SampleMatch {
-  const missing = (reason: MissingReason): SampleMatch => ({
+  const missing = (
+    reason: MissingReason,
+    lower = before,
+    upper = after,
+  ): SampleMatch => ({
     segment: undefined,
     result: {
       status: "missing" as const,
       reason,
-      ...(before ? { before: sourceSample(before) } : {}),
-      ...(after ? { after: sourceSample(after) } : {}),
+      ...(lower ? { before: sourceSample(lower) } : {}),
+      ...(upper ? { after: sourceSample(upper) } : {}),
     },
   });
   if (sample.value === null) return missing("x_missing");
   if (after?.ticks === ticks) {
+    if (after.ambiguous) return missing("ambiguous_y_time", after, next);
     if (after.value === null) return missing("y_missing");
     return {
       segment: after.segment,
@@ -163,6 +178,7 @@ function matchSample(
   }
   if (!before || !after) return missing("outside");
   if (method === "exact") return missing("no_exact_match");
+  if (before.ambiguous || after.ambiguous) return missing("ambiguous_y_time");
   if (
     before.segment !== after.segment ||
     before.value === null ||
@@ -201,17 +217,22 @@ export function alignXY(input: unknown, signal: AbortSignal) {
   const maxGapTicks = maxGapNs * denominator;
   let segment = 0;
   let previous: TimedSample | undefined;
-  const timed = y.samples.map((sample): TimedSample => {
+  const timed = y.samples.map((sample, index): TimedSample => {
     const ticks = (sample.monoNs - yOrigin) * numerator;
+    const ambiguous =
+      y.samples[index - 1]?.monoNs === sample.monoNs ||
+      y.samples[index + 1]?.monoNs === sample.monoNs;
     if (
       previous &&
       (sample.gapBefore ||
+        ambiguous ||
+        previous.ambiguous ||
         sample.value === null ||
         previous.value === null ||
         ticks - previous.ticks > maxGapTicks)
     )
       segment += 1;
-    previous = { ...sample, ticks, segment };
+    previous = { ...sample, ticks, segment, ambiguous };
     return previous;
   });
   let ahead = 0;
@@ -224,7 +245,14 @@ export function alignXY(input: unknown, signal: AbortSignal) {
       ahead += 1;
       after = timed[ahead];
     }
-    const match = matchSample(sample, ticks, timed[ahead - 1], after, method);
+    const match = matchSample(
+      sample,
+      ticks,
+      timed[ahead - 1],
+      after,
+      timed[ahead + 1],
+      method,
+    );
     const breakBefore =
       sample.gapBefore ||
       (index > 0 &&

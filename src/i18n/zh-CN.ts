@@ -124,6 +124,23 @@ export const zhCN = {
   "plugins.spectrum.binRange": "分箱范围",
   "plugins.spectrum.count": "样本数",
   "plugins.spectrum.noValues": "暂无可统计的观测值。",
+  "workbench.fieldChart.xyStageX": "暂存为 X 轴",
+  "workbench.fieldChart.xyStageY": "暂存为 Y 轴",
+  "workbench.fieldChart.xyOpen": "打开跨源 XY",
+  "workbench.fieldChart.xyClear": "清除暂存样本",
+  "workbench.fieldChart.xyStaged": "{axis} 轴 · {field} · {count} 个样本",
+  "workbench.fieldChart.xyOmitted": "已跳过 {count} 个接收时间无法核对的帧。",
+  "workbench.fieldChart.xyRange": "请选择最多 128 帧的范围，或打开最近范围。",
+  "workbench.fieldChart.xyTime": "请选择来自同一源时钟且有有效样本的范围。",
+  "plugins.xy.loadCaptured": "载入暂存通道",
+  "plugins.xy.capturedNote":
+    "样本暂存在当前窗口，运行分析时才提交给当前 Host。",
+  "plugins.xy.capturedAnchors":
+    "这两路通道使用不同的时钟。请在分析输入中加入同步锚点，再进行对齐。",
+  "plugins.xy.captureOrigin":
+    "帧 {frame} · 事件 {event} · 字节 [{start}, {end})",
+  "plugins.xy.captureRecord": "录制记录 {record}",
+  "plugins.xy.captureClock": "来源 {host} / {session} · 时钟 {clock}",
   "plugins.xy.title": "跨源 XY",
   "plugins.xy.input": "分析输入（JSON）",
   "plugins.xy.help":
@@ -149,6 +166,7 @@ export const zhCN = {
   "plugins.xy.reason.y_missing": "Y 样本缺值",
   "plugins.xy.reason.outside": "超出 Y 的采样范围",
   "plugins.xy.reason.gap": "Y 区间存在缺口",
+  "plugins.xy.reason.ambiguous_y_time": "多个 Y 样本共用同一时间",
   "plugins.xy.reason.no_exact_match": "该时刻没有 Y 样本",
   "plugins.xy.weight": "Y = {value}（右侧权重 {numerator}/{denominator}）",
   "plugins.xy.break": "曲线在此点前断开。",

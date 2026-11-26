@@ -6,15 +6,22 @@ import { parseAnalysisInput, readAnalysisReport } from "./analysis-report";
 import { parseU64 } from "@/lib/u64";
 import type { HostContextValue } from "@/providers/host-context";
 
+import { alignXyAction } from "@/lib/xy-capture";
+
 export { statisticsPackage } from "./analysis-report";
-export const alignXyAction = "swb.reference.statistics.alignXY";
-export const maxAnalysisInput = 32768;
+export { alignXyAction };
+export const maxAnalysisInput = 49152;
 
 type Sample = { index: number; time: string; value: string | null };
 type Fraction = { numerator: string; denominator: string };
 type Source = { sourceId: string; clockId: string };
 type MissingReason =
-  "x_missing" | "y_missing" | "outside" | "gap" | "no_exact_match";
+  | "x_missing"
+  | "y_missing"
+  | "outside"
+  | "gap"
+  | "no_exact_match"
+  | "ambiguous_y_time";
 type Match =
   | { status: "exact"; sample: Sample }
   | {
@@ -57,7 +64,7 @@ function source(value: unknown): Source {
 function decimal(value: unknown): string {
   if (
     typeof value !== "string" ||
-    value.length > 32 ||
+    value.length > 64 ||
     !/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value) ||
     !Number.isFinite(Number(value))
   )
@@ -134,7 +141,8 @@ function match(value: unknown): Match {
       reason !== "y_missing" &&
       reason !== "outside" &&
       reason !== "gap" &&
-      reason !== "no_exact_match")
+      reason !== "no_exact_match" &&
+      reason !== "ambiguous_y_time")
   )
     invalidReport();
   return {

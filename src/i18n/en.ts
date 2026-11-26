@@ -132,6 +132,26 @@ export const en = {
   "plugins.spectrum.binRange": "Bin range",
   "plugins.spectrum.count": "Samples",
   "plugins.spectrum.noValues": "No observed values to count.",
+  "workbench.fieldChart.xyStageX": "Stage as X",
+  "workbench.fieldChart.xyStageY": "Stage as Y",
+  "workbench.fieldChart.xyOpen": "Open cross-source XY",
+  "workbench.fieldChart.xyClear": "Clear staged samples",
+  "workbench.fieldChart.xyStaged": "{axis} · {field} · {count} samples",
+  "workbench.fieldChart.xyOmitted":
+    "Skipped {count} frames without a verifiable receive time.",
+  "workbench.fieldChart.xyRange":
+    "Choose a range of at most 128 frames or enable the recent range.",
+  "workbench.fieldChart.xyTime":
+    "Select a range with usable samples from one source clock.",
+  "plugins.xy.loadCaptured": "Load staged channels",
+  "plugins.xy.capturedNote":
+    "Captured values stay in this window until you run analysis on the current Host.",
+  "plugins.xy.capturedAnchors":
+    "These channels use different clocks. Add synchronization anchors to the analysis input before aligning.",
+  "plugins.xy.captureOrigin":
+    "Frame {frame} · Event {event} · Bytes [{start}, {end})",
+  "plugins.xy.captureRecord": "Recording record {record}",
+  "plugins.xy.captureClock": "Source {host} / {session} · Clock {clock}",
   "plugins.xy.title": "Cross-source XY",
   "plugins.xy.input": "Analysis input (JSON)",
   "plugins.xy.help":
@@ -157,6 +177,7 @@ export const en = {
   "plugins.xy.reason.y_missing": "Y sample is missing",
   "plugins.xy.reason.outside": "Outside the Y sampling range",
   "plugins.xy.reason.gap": "Y interval contains a gap",
+  "plugins.xy.reason.ambiguous_y_time": "Several Y samples share this time",
   "plugins.xy.reason.no_exact_match": "No Y sample at this time",
   "plugins.xy.weight": "Y = {value} (right weight {numerator}/{denominator})",
   "plugins.xy.break": "The trace breaks before this point.",

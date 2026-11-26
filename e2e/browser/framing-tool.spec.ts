@@ -8,6 +8,7 @@ import {
 } from "../../packages/plugin-sdk/examples/reference-protocol-fields/modbus-frame";
 import { en } from "../../src/i18n/en";
 import { zhCN } from "../../src/i18n/zh-CN";
+import { xyCaptureFixture } from "./xy-capture.fixture";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
@@ -1537,6 +1538,7 @@ test("the workbench scans only visible receive data through the Host action and 
   );
   await seedWorkbenchFixture(page, {
     language: "en",
+    extraActions: [xyCaptureFixture().action],
     framing: {
       action,
       page: {
@@ -1716,6 +1718,13 @@ test("the workbench scans only visible receive data through the Host action and 
     bus.getByRole("columnheader", { name: "Protocol errors" }),
   ).toBeVisible();
   await dialog.getByText("Bus load", { exact: true }).click();
+  const capture = chart.getByRole("region", { name: "Cross-source XY" });
+  await capture.getByRole("button", { name: "Stage as X" }).click();
+  await expect(capture.getByText("X · reading · 1 samples")).toBeVisible();
+  await expect(
+    capture.getByRole("button", { name: "Open cross-source XY" }),
+  ).toHaveCount(0);
+  await capture.getByRole("button", { name: "Clear staged samples" }).click();
   await expect(reading).toHaveAttribute("data-chart-selected", "true");
   await dialog
     .getByRole("button", { name: en["workbench.fields.edit"] })

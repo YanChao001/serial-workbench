@@ -271,6 +271,7 @@ export async function seedWorkbenchFixture(
     automation,
     diagnosticLogs,
     experiment,
+    extraActions = [],
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -323,6 +324,7 @@ export async function seedWorkbenchFixture(
       sequenceRetry?: boolean;
       sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
+    extraActions?: ActionSpec[];
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -560,6 +562,7 @@ export async function seedWorkbenchFixture(
           ...workbenchCatalog,
           ...(framing && !framing.initiallyUnavailable ? [framing.action] : []),
           ...(automation ? [automation.action] : []),
+          ...extraActions,
         ],
       },
     },
