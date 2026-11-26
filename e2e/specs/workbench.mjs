@@ -580,9 +580,7 @@ export function workbenchChecks() {
                   },
                 );
                 if (process.platform === "darwin") {
-                  receipt.controlPosted = await command(
-                    "press-control-function",
-                  );
+                  receipt.controlPosted = await command("press-control");
                   await browser.waitUntil(
                     async () => {
                       receipt.controlObserved = await command("foreground");

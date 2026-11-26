@@ -87,7 +87,7 @@ cargo fmt --all -- --check
 
 原生预检设置 `native_preflight=true` 和 `desktop_e2e=true`。`native_preflight_target` 可选择单个目标，`macos` 一次复验两种 macOS 架构，`windows-and-macos` 同时复验 Windows。各目标复用原生 E2E 并分别保留日志和收据，完整候选继续按四目标验收。
 
-`native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。每个对照单独启动探针。F10 比较两个投递入口，也在常规应用进程复验一次。字母组合对照用于区分功能键映射和通用热键分发。F10 另比较功能键标志和显式字符编码。收据记录每项 Carbon 按下、释放的次数，以及会话内标记事件的数量、修饰键和字符。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
+`native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。探针确认带功能键标志的 F10 在独立应用前台时收到一对 Carbon 按下和释放回调。收据记录会话内标记事件的数量和修饰键。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
 
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 

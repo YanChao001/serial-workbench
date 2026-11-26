@@ -26,20 +26,15 @@ struct ProbeReply: Encodable {
     var sessionPresses: Int? = nil
     var sessionReleases: Int? = nil
     var sessionPressFlags: UInt64? = nil
-    var sessionCharacter: UniChar? = nil
     var error: String? = nil
 }
 
 private final class ControlEvents {
-    let key: CGKeyCode
     var presses = 0
     var releases = 0
     var sessionPresses = 0
     var sessionReleases = 0
     var sessionPressFlags: UInt64?
-    var sessionCharacter: UniChar?
-
-    init(key: CGKeyCode) { self.key = key }
 }
 
 private let controlEventTag: Int64 = 0x53574246
@@ -48,22 +43,17 @@ private let controlEventTag: Int64 = 0x53574246
 final class GlobalSendPeer: NSObject, NSApplicationDelegate {
     private let foregroundBundle = "com.apple.calculator"
     private var foregroundTarget: NSRunningApplication?
-    private let controlEvents: ControlEvents
+    private let controlEvents = ControlEvents()
     private var controlHandler: EventHandlerRef?
     private var sessionTap: CFMachPort?
     private var sessionSource: CFRunLoopSource?
     private var occupied: EventHotKeyRef?
     private var reclaimed: EventHotKeyRef?
 
-    init(controlKey: CGKeyCode) {
-        controlEvents = ControlEvents(key: controlKey)
-        super.init()
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             try observeControlShortcut()
-            occupied = try reserve(key: UInt32(controlEvents.key), id: 1)
+            occupied = try reserve(key: UInt32(kVK_F10), id: 1)
             reply(ProbeReply(ready: true, pid: ProcessInfo.processInfo.processIdentifier,
                              canPost: CGPreflightPostEventAccess(), canListen: CGPreflightListenEventAccess(),
                              secureInput: IsSecureEventInputEnabled()))
@@ -146,19 +136,12 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap,
                                          options: .listenOnly, eventsOfInterest: mask,
                                          callback: { _, type, event, context in
-            if let context, event.getIntegerValueField(.eventSourceUserData) == controlEventTag {
+            if let context, event.getIntegerValueField(.eventSourceUserData) == controlEventTag,
+               event.getIntegerValueField(.keyboardEventKeycode) == Int64(kVK_F10) {
                 let events = Unmanaged<ControlEvents>.fromOpaque(context).takeUnretainedValue()
-                guard event.getIntegerValueField(.keyboardEventKeycode) == Int64(events.key) else {
-                    return Unmanaged.passUnretained(event)
-                }
                 if type == .keyDown {
                     events.sessionPresses += 1
                     events.sessionPressFlags = event.flags.rawValue
-                    var character: UniChar = 0
-                    var length = 0
-                    event.keyboardGetUnicodeString(maxStringLength: 1, actualStringLength: &length,
-                                                   unicodeString: &character)
-                    if length == 1 { events.sessionCharacter = character }
                 }
                 if type == .keyUp { events.sessionReleases += 1 }
             }
@@ -181,16 +164,9 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             case "observe-session":
                 observeSessionEvents()
             case "press-control":
-                try press(controlEvents.key, repeating: false)
-            case "press-control-session":
-                try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap)
-            case "press-control-function":
-                try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap, functionKey: true)
-            case "press-control-function-character":
-                try press(controlEvents.key, repeating: false, tap: .cgSessionEventTap,
-                          functionKey: true, functionCharacter: UniChar(NSF10FunctionKey))
+                try press(CGKeyCode(kVK_F10), repeating: false)
             case "press":
-                try press(CGKeyCode(kVK_F9), repeating: true, tap: .cgSessionEventTap, functionKey: true)
+                try press(CGKeyCode(kVK_F9), repeating: true)
             case "retained":
                 var handle: EventHotKeyRef?
                 let status = register(key: UInt32(kVK_F9), id: 2, handle: &handle)
@@ -247,12 +223,10 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
                           sessionMonitor: sessionTap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
                           sessionPresses: controlEvents.sessionPresses,
                           sessionReleases: controlEvents.sessionReleases,
-                          sessionPressFlags: controlEvents.sessionPressFlags,
-                          sessionCharacter: controlEvents.sessionCharacter)
+                          sessionPressFlags: controlEvents.sessionPressFlags)
     }
 
-    private func press(_ key: CGKeyCode, repeating: Bool, tap: CGEventTapLocation = .cghidEventTap,
-                       functionKey: Bool = false, functionCharacter: UniChar? = nil) throws {
+    private func press(_ key: CGKeyCode, repeating: Bool) throws {
         guard CGPreflightPostEventAccess() else {
             throw ProbeError("The macOS session has not authorized posting keyboard events.")
         }
@@ -270,22 +244,20 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
         let command = CGKeyCode(kVK_Command)
         let shift = CGKeyCode(kVK_Shift)
         let flags: CGEventFlags = [.maskCommand, .maskShift]
-        let keyFlags = functionKey ? flags.union(.maskSecondaryFn) : flags
+        // F9/F10 事件需要平台功能键标志才能进入 Carbon 热键回调。
+        let keyFlags = flags.union(.maskSecondaryFn)
         let commandDown = try event(command, down: true, flags: .maskCommand, modifier: true)
         let shiftDown = try event(shift, down: true, flags: flags, modifier: true)
         let down = try event(key, down: true, flags: keyFlags)
         let up = try event(key, down: false, flags: keyFlags)
         let shiftUp = try event(shift, down: false, flags: .maskCommand, modifier: true)
         let commandUp = try event(command, down: false, flags: [], modifier: true)
-        if var functionCharacter {
-            down.keyboardSetUnicodeString(stringLength: 1, unicodeString: &functionCharacter)
-            up.keyboardSetUnicodeString(stringLength: 1, unicodeString: &functionCharacter)
-        }
-        if key == controlEvents.key {
+        if key == CGKeyCode(kVK_F10) {
             down.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
             up.setIntegerValueField(.eventSourceUserData, value: controlEventTag)
         }
         guard foreground else { throw ProbeError("The independent test application is not in the foreground.") }
+        let tap = CGEventTapLocation.cgSessionEventTap
         commandDown.post(tap: tap)
         shiftDown.post(tap: tap)
         down.post(tap: tap)
@@ -324,9 +296,8 @@ struct GlobalSendProbe {
             exit(1)
         }
         let application = NSApplication.shared
-        let options = CommandLine.arguments.dropFirst()
-        let peer = GlobalSendPeer(controlKey: CGKeyCode(options.contains("--letter") ? kVK_ANSI_K : kVK_F10))
-        guard application.setActivationPolicy(options.contains("--regular") ? .regular : .accessory) else {
+        let peer = GlobalSendPeer()
+        guard application.setActivationPolicy(.accessory) else {
             FileHandle.standardError.write(Data("Cannot apply the requested AppKit activation policy.\n".utf8))
             exit(1)
         }

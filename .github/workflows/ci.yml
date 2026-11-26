@@ -662,7 +662,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: 验证 WindowServer 与登录会话的热键回调
+      - name: 验证登录会话的功能键回调
         shell: bash
         run: |
           helper="$RUNNER_TEMP/serial-workbench-global-send"

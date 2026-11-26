@@ -18,91 +18,77 @@ const receipt = {
   candidate,
   architecture: process.arch,
   osRelease: osRelease(),
-  routes: [],
 };
 
-for (const [route, stimulus, args] of [
-  ["hid", "press-control", []],
-  ["session", "press-control-session", []],
-  ["regular-session", "press-control-session", ["--regular"]],
-  ["letter-session", "press-control-session", ["--letter"]],
-  ["function-session", "press-control-function", []],
-  ["function-character-session", "press-control-function-character", []],
-]) {
-  const observation = { route, delivered: false };
-  receipt.routes.push(observation);
-  try {
-    // 每条路径使用新进程和独立的注册，上一条路径的回调不能计入下一条。
-    await withGlobalSendPeer(
-      helper,
-      join(output, `${route}.log`),
-      async (ready, command) => {
-        observation.ready = ready;
-        assert.equal(
-          ready.canPost,
-          true,
-          "The runner cannot post keyboard events",
-        );
-        await command("focus");
-        const focusDeadline = performance.now() + 5000;
-        do {
-          observation.foreground = await command("foreground");
-          if (observation.foreground.foreground) break;
-          await delay(80);
-        } while (performance.now() < focusDeadline);
-        assert.equal(
-          observation.foreground.foreground,
-          true,
-          "Calculator did not acquire foreground",
-        );
-
-        observation.baseline = await command("observe-session");
-        assert.equal(observation.baseline.controlPresses, 0);
-        assert.equal(observation.baseline.controlReleases, 0);
-        observation.posted = await command(stimulus);
-        assert.equal(observation.posted.foreground, true);
-        const deliveryDeadline = performance.now() + 1500;
-        do {
-          observation.observed = await command("foreground");
-          if (
-            observation.observed.controlPresses &&
-            observation.observed.controlReleases
-          )
-            break;
-          await delay(80);
-        } while (performance.now() < deliveryDeadline);
-        assert.equal(
-          observation.observed.foreground,
-          true,
-          "Calculator lost foreground",
-        );
-        assert.equal(
-          observation.observed.controlPresses,
-          1,
-          "Expected one Carbon control press",
-        );
-        assert.equal(
-          observation.observed.controlReleases,
-          1,
-          "Expected one Carbon control release",
-        );
-      },
-      args,
-    );
-    observation.delivered = true;
-  } catch (error) {
-    observation.failure =
-      error instanceof Error ? error.message : String(error);
-  }
+async function observe(command, timeout, reached) {
+  const deadline = performance.now() + timeout;
+  let state;
+  do {
+    state = await command("foreground");
+    if (reached(state)) break;
+    await delay(80);
+  } while (performance.now() < deadline);
+  return state;
 }
 
-writeFileSync(
-  join(output, "input.json"),
-  JSON.stringify(receipt, null, 2) + "\n",
-);
-for (const { route, failure } of receipt.routes) {
-  console.log(
-    `${route}: ${failure ?? "Carbon control press and release received"}`,
+try {
+  await withGlobalSendPeer(
+    helper,
+    join(output, "input.log"),
+    async (ready, command) => {
+      receipt.ready = ready;
+      assert.equal(
+        ready.canPost,
+        true,
+        "The runner cannot post keyboard events",
+      );
+      await command("focus");
+      receipt.foreground = await observe(
+        command,
+        5000,
+        (state) => state.foreground,
+      );
+      assert.equal(
+        receipt.foreground.foreground,
+        true,
+        "Calculator did not acquire foreground",
+      );
+
+      receipt.baseline = await command("observe-session");
+      assert.equal(receipt.baseline.controlPresses, 0);
+      assert.equal(receipt.baseline.controlReleases, 0);
+      receipt.posted = await command("press-control");
+      assert.equal(receipt.posted.foreground, true);
+      receipt.observed = await observe(
+        command,
+        2000,
+        (state) => state.controlPresses > 0 && state.controlReleases > 0,
+      );
+      assert.equal(
+        receipt.observed.foreground,
+        true,
+        "Calculator lost foreground",
+      );
+      assert.equal(
+        receipt.observed.controlPresses,
+        1,
+        "Expected one Carbon F10 press",
+      );
+      assert.equal(
+        receipt.observed.controlReleases,
+        1,
+        "Expected one Carbon F10 release",
+      );
+    },
+  );
+  console.log("Carbon F10 press and release received");
+} catch (error) {
+  receipt.failure = error instanceof Error ? error.message : String(error);
+  console.error(receipt.failure);
+  process.exitCode = 1;
+} finally {
+  writeFileSync(
+    join(output, "input.json"),
+    JSON.stringify(receipt, null, 2) + "\n",
   );
 }
-if (!receipt.routes.some(({ delivered }) => delivered)) process.exitCode = 1;
