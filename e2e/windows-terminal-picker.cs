@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Web.Script.Serialization;
+using System.Windows.Forms;
 
 internal static class TerminalPickerWindow
 {
@@ -69,6 +70,8 @@ internal static class TerminalPickerWindow
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, Input[] inputs, int size);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool UnregisterHotKey(IntPtr window, int id);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsChild(IntPtr parent, IntPtr window);
@@ -81,6 +84,7 @@ internal static class TerminalPickerWindow
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern IntPtr ReadText(IntPtr window, uint message, UIntPtr size, StringBuilder value, uint flags, uint timeout, out UIntPtr result);
 
+    [STAThread]
     private static int Main(string[] args)
     {
         try
@@ -97,7 +101,13 @@ internal static class TerminalPickerWindow
             }
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" ||
                 Environment.GetEnvironmentVariable("RUNNER_OS") != "Windows")
-                throw new InvalidOperationException("The native picker probe requires the independent Windows CI desktop.");
+                throw new InvalidOperationException("The native probe requires the independent Windows CI desktop.");
+
+            if (args.Length == 1 && args[0] == "--global-send")
+            {
+                DriveGlobalSend();
+                return 0;
+            }
 
             uint pid;
             if (args.Length >= 3 && args[1].StartsWith("Zoom", StringComparison.Ordinal))
@@ -121,6 +131,105 @@ internal static class TerminalPickerWindow
             Console.Error.WriteLine(error.Message);
             return 1;
         }
+    }
+
+    private static void DriveGlobalSend()
+    {
+        const uint modifiers = 0x0002 | 0x0004 | 0x4000;
+        const ushort control = 0x11, shift = 0x10, f9 = 0x78, f10 = 0x79;
+        const int occupied = 1, reclaimed = 2;
+        using (var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true })
+        using (var peer = new Form { Text = "Serial Workbench global send peer", Width = 360, Height = 130 })
+        {
+            var serializer = new JavaScriptSerializer();
+            Action<object> reply = fields => output.WriteLine(serializer.Serialize(fields));
+            var window = peer.Handle;
+            if (!RegisterHotKey(window, occupied, modifiers, f10))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot reserve the conflict test shortcut.");
+            bool ownsReclaimed = false;
+            var input = new Thread(() =>
+            {
+                string command;
+                while ((command = Console.ReadLine()) != null)
+                {
+                    var request = command;
+                    peer.Invoke(new MethodInvoker(() =>
+                    {
+                        try
+                        {
+                            switch (request)
+                            {
+                                case "focus":
+                                    peer.Show();
+                                    peer.Activate();
+                                    break;
+                                case "foreground":
+                                    break;
+                                case "press":
+                                    RequirePeerForeground(window);
+                                    try
+                                    {
+                                        SendKeys(new[] { Key(control, 0, 0), Key(shift, 0, 0), Key(f9, 0, 0) });
+                                        // 重复键按下沿同一次物理按键周期发送，最后再释放主键和修饰键。
+                                        for (int repeat = 0; repeat < 4; repeat++)
+                                        {
+                                            Thread.Sleep(200);
+                                            RequirePeerForeground(window);
+                                            SendKeys(new[] { Key(f9, 0, 0) });
+                                        }
+                                    }
+                                    finally
+                                    {
+                                        SendKeys(new[] { Key(f9, 0, KeyUp), Key(shift, 0, KeyUp), Key(control, 0, KeyUp) });
+                                    }
+                                    break;
+                                case "retained":
+                                    if (RegisterHotKey(window, reclaimed, modifiers, f9))
+                                    {
+                                        UnregisterHotKey(window, reclaimed);
+                                        throw new InvalidOperationException("The workbench did not retain the original system shortcut.");
+                                    }
+                                    const int hotkeyAlreadyRegistered = 1409;
+                                    int conflict = Marshal.GetLastWin32Error();
+                                    if (conflict != hotkeyAlreadyRegistered)
+                                        throw new System.ComponentModel.Win32Exception(conflict, "Cannot verify the original shortcut.");
+                                    break;
+                                case "reclaim":
+                                    ownsReclaimed = RegisterHotKey(window, reclaimed, modifiers, f9);
+                                    if (!ownsReclaimed)
+                                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot acquire the released workbench shortcut.");
+                                    break;
+                                default:
+                                    throw new ArgumentException("Unknown global send probe command.");
+                            }
+                            reply(new { ok = true, foreground = GetForegroundWindow() == window });
+                        }
+                        catch (Exception error)
+                        {
+                            reply(new { ok = false, error = error.Message });
+                        }
+                    }));
+                }
+                peer.BeginInvoke(new MethodInvoker(Application.ExitThread));
+            }) { IsBackground = true };
+            try
+            {
+                reply(new { ready = true, pid = Process.GetCurrentProcess().Id, canPost = true });
+                input.Start();
+                Application.Run();
+            }
+            finally
+            {
+                if (ownsReclaimed) UnregisterHotKey(window, reclaimed);
+                UnregisterHotKey(window, occupied);
+            }
+        }
+    }
+
+    private static void RequirePeerForeground(IntPtr window)
+    {
+        if (GetForegroundWindow() != window)
+            throw new InvalidOperationException("The independent global send peer is not in the foreground.");
     }
 
     private static void WriteReceipt(object receipt)
@@ -340,7 +449,7 @@ internal static class TerminalPickerWindow
     private static void SendKeys(Input[] inputs)
     {
         if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))) != inputs.Length)
-            throw new InvalidOperationException("Windows did not accept all file dialog keystrokes.");
+            throw new InvalidOperationException("Windows did not accept all keyboard events.");
     }
 
     private static IntPtr FocusFileName(IntPtr dialog, IntPtr edit, uint applicationPid)
