@@ -278,42 +278,35 @@ async fn signed_transport(scenario: TransportScenario) {
         .await
         .expect("Signed transport registration");
         grant(&auth, &operator, &client, &host_target, &["metadata.read"]);
-        // Wait for a new directory scan after the package has actually activated.
-        success(
-            client
-                .request(RpcRequest::Query(query(
-                    &client,
-                    "device.refresh",
-                    &host_target,
-                    json!({}),
-                )))
-                .await
-                .unwrap(),
-        );
-        let RpcResult::Query(QueryResult::Devices(devices)) = success(
-            client
-                .request(RpcRequest::Query(query(
-                    &client,
-                    "device.list",
-                    &host_target,
-                    json!({}),
-                )))
-                .await
-                .unwrap(),
-        ) else {
-            panic!("Expected the product device directory");
-        };
-        let providers = devices
-            .devices
-            .into_iter()
-            .filter(|device| {
-                device.fingerprint.transport == DeviceTransportKind::Plugin
-                    && device.system_name == provider_id
-            })
-            .collect::<Vec<_>>();
-        let [provider] = providers.as_slice() else {
-            panic!("Expected exactly one signed provider: {providers:?}");
-        };
+        // Active describes the package; the device becomes observable through discovery.
+        let provider = timeout(WAIT, async {
+            loop {
+                let QueryResult::Devices(devices) = query_result(success(
+                    client
+                        .request(RpcRequest::Query(query(
+                            &client,
+                            "device.refresh",
+                            &host_target,
+                            json!({}),
+                        )))
+                        .await
+                        .unwrap(),
+                )) else {
+                    panic!("Expected the refreshed product device directory");
+                };
+                let mut providers = devices.devices.into_iter().filter(|device| {
+                    device.fingerprint.transport == DeviceTransportKind::Plugin
+                        && device.system_name == provider_id
+                });
+                if let Some(provider) = providers.next() {
+                    assert!(providers.next().is_none(), "Duplicate signed provider");
+                    break provider;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("Signed provider {provider_id} was not discovered"));
         assert_eq!(provider.host_id, host_id);
         assert_eq!(provider.driver.as_deref(), Some(package_id));
         assert_eq!(provider.capabilities.semantics, TransportSemantics::Stream);
