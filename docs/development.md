@@ -280,4 +280,6 @@ Windows portable 包含程序、组件和许可证，需要 WebView2，数据写
 
 清理先预览 `pnpm clean:temporary --dry-run`。temporary 清理临时报告、前端输出、默认 Rust 缓存和旧便携备份，保留正式版本归档与依赖；outputs 清理生成内容并保留识别出的 Cargo 缓存；artifacts 清整个分发目录；clean 默认还清默认 Rust 输出；all 再删除根依赖。精确路径见 [clean-lib.mjs](../scripts/clean-lib.mjs)，自定义 target 自行管理，重装依赖使用冻结锁文件。
 
+日常根据预览选择具体的闲置子目录。需要重建默认 Rust 缓存时，才执行会清除它的清理模式。本地编译受磁盘 I/O 限制时，在主工作区复用依赖和默认 target。日常迭代先做相关无头检查或 `cargo check`，需要链接的验证按[测试指南](./testing.md#rust-与生成)顺序执行。清理优先处理已确认闲置的独立 target、旧工作树归档中的重复编译副本和可重建的临时产物。保留正在使用的 Host、编译缓存和验收证据。根据预览核对实际路径，删除后查验目录与可用空间，额外 worktree 随[合入与清理](./conventions.md#合入与清理)收尾。
+
 带 `-Force` 的检查与删除、修改、服务启停分开调用。遇到 blocked by policy，检查是否混用操作并核验实际结果，记录仍失败的命令和错误。
