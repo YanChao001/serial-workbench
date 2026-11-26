@@ -11,8 +11,8 @@
 | 改动后跑什么、失败怎么查 | [测试指南](./testing.md)收录常用命令、运行边界和 CI 复验方法。                                              |
 | 签名包、升级和实机怎么验 | [专项验收](./acceptance.md)按场景提供命令、执行条件和证据要求。                                             |
 
-**按当前任务选入口。** 改动界面先读 [GUI 设计规范](./gui-design.md#先设计后编码)和[对应草稿](./ui-design.md)。查看 Modbus 时可直达[工作台入口和布局](./ui-design.md#modbus-工作台入口与宽窄草稿)。启动出错先查[启动与排障](./development.md#环境与启动)。核对发布与最低支持环境时，查看[分发契约](./contracts/runtime-distribution.md)和[安装与发行验收](./acceptance.md#安装与发行验收)。
+界面见 [GUI 设计规范](./gui-design.md#先设计后编码)、[页面草稿](./ui-design.md)和 [Modbus 入口](./ui-design.md#modbus-工作台入口与宽窄草稿)。常用入口另有[启动排障](./development.md#环境与启动)、[分发契约](./contracts/runtime-distribution.md)和[安装验收](./acceptance.md#安装与发行验收)。
 
-`marketplace/` 是独立 Git 子模块，市场目录的开发和验证遵循其自身文档。主库的宿主接入进度见[当前任务顺序](./plan.md#当前任务顺序)。
+`marketplace/` 遵循子模块文档。主库宿主进度见[当前任务顺序](./plan.md#当前任务顺序)。
 
-更新文档时按[文档维护约定](./conventions.md#文档)选择归属。已交付的逐轮记录可从 Git、PR 和 CI 回看。
+文档归属见[维护约定](./conventions.md#文档)，历史证据查 Git、PR 和 CI。

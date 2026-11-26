@@ -1,6 +1,6 @@
 # Serial Workbench
 
-跨平台串口工作台。独立 Rust Host 管理串口、会话与录制，Tauri 桌面、CLI 和 MCP 共用同一后端。支持 Text/HEX 收发、文件发送、录制与只读回放、工作区及共享设置。通过可信 Node 插件扩展能力，配对后可从浏览器访问或在局域网共享串口。 [路线与进度](./docs/plan.md)
+跨平台串口工作台。Tauri 桌面、CLI 和 MCP 共用 Rust Host，支持 Text/HEX 收发、文件发送、录制、只读回放和共享工作区。可信 Node 插件扩展能力。桌面可配对浏览器，Host 可在 LAN 共享串口。 [路线与进度](./docs/plan.md)
 
 [English](./README.en.md) · [工程文档](./docs/README.md) · [贡献](./CONTRIBUTING.md)
 
@@ -15,9 +15,9 @@ pnpm run doctor
 pnpm app:dev
 ```
 
-`pnpm app:dev` 启动可操作本机设备的桌面开发环境。仅查看界面可运行 `pnpm dev`，此入口不附着本机 Host。[配对浏览器](./docs/development.md#浏览器访问)从桌面设置进入，由 Host 提供生产资源。遇到缺少 `dist`、环境缺项或 Host 版本不一致，按[启动与排障](./docs/development.md#环境与启动)处理。
+`pnpm dev` 仅预览界面。实际设备使用 `pnpm app:dev`，浏览器走[桌面配对](./docs/development.md#浏览器访问)。缺少 `dist`、环境缺项或 Host 不匹配见[启动与排障](./docs/development.md#环境与启动)。
 
-`pnpm app:build` 构建安装包。Windows 还可用 `pnpm app:portable` 构建便携包。输出位置、运行时依赖、签名及更新前提见[构建与发布](./docs/development.md#构建与发布)。
+用 `pnpm app:build` 构建安装包，Windows 便携包用 `pnpm app:portable`。产物与签名见[构建与发布](./docs/development.md#构建与发布)。
 
 ## 许可与安全
 
