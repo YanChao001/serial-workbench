@@ -5,7 +5,7 @@ if [[ ${1:-} != --session ]]; then
   session=$(mktemp -d)
   trap 'rm -rf -- "$session"' EXIT
   failed=0
-  for scenario in approve cancel deny reload key-control; do
+  for scenario in approve cancel deny reload unavailable key-control; do
     export SWB_E2E_WAYLAND_SCENARIO=$scenario
     export SWB_E2E_WAYLAND_ARTIFACTS="$PWD/artifacts/e2e/wayland/$scenario"
     mkdir -p "$SWB_E2E_WAYLAND_ARTIFACTS"
@@ -32,6 +32,10 @@ export WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 LIBGL_ALWAYS_SOFTWARE=1
 install -d -m 0700 "$XDG_RUNTIME_DIR" "$XDG_CACHE_HOME" \
   "$XDG_CONFIG_HOME/xdg-desktop-portal" "$XDG_DATA_HOME/applications"
 printf '[preferred]\ndefault=kde\n' > "$XDG_CONFIG_HOME/xdg-desktop-portal/kde-portals.conf"
+if [[ $SWB_E2E_WAYLAND_SCENARIO == unavailable ]]; then
+  printf 'org.freedesktop.impl.portal.GlobalShortcuts=none\n' \
+    >> "$XDG_CONFIG_HOME/xdg-desktop-portal/kde-portals.conf"
+fi
 [[ -r /etc/xdg/menus/plasma-applications.menu ]]
 [[ -r /usr/share/applications/org.kde.plasma.settings.open.desktop ]]
 printf '[Default Applications]\nx-scheme-handler/systemsettings=org.kde.plasma.settings.open.desktop;\n' \
@@ -110,16 +114,27 @@ done
 printf 'portal_owner=%s expected_pid=%s\n' "$owner" "$portal_pid" | tee -a "$evidence/environment.txt"
 [[ $owner == "(uint32 $portal_pid,)" ]]
 
-portal=$(gdbus call --session --timeout 15 --dest org.freedesktop.portal.Desktop \
-  --object-path /org/freedesktop/portal/desktop \
-  --method org.freedesktop.DBus.Properties.Get org.freedesktop.portal.GlobalShortcuts version)
-printf 'GlobalShortcuts=%s\n' "$portal" | tee -a "$evidence/environment.txt"
-[[ $portal =~ uint32[[:space:]]+([1-9][0-9]*) ]]
-export SWB_E2E_PORTAL_VERSION=${BASH_REMATCH[1]}
+if [[ $SWB_E2E_WAYLAND_SCENARIO == unavailable ]]; then
+  timeout 15 gdbus introspect --session --dest org.freedesktop.portal.Desktop \
+    --object-path /org/freedesktop/portal/desktop > "$evidence/portal-interfaces.txt"
+  grep -Fq 'interface org.freedesktop.portal.Settings ' "$evidence/portal-interfaces.txt"
+  if grep -Fq 'interface org.freedesktop.portal.GlobalShortcuts ' "$evidence/portal-interfaces.txt"; then
+    exit 1
+  fi
+  printf 'GlobalShortcuts=unavailable\n' | tee -a "$evidence/environment.txt"
+  export SWB_E2E_PORTAL_VERSION=0
+else
+  portal=$(gdbus call --session --timeout 15 --dest org.freedesktop.portal.Desktop \
+    --object-path /org/freedesktop/portal/desktop \
+    --method org.freedesktop.DBus.Properties.Get org.freedesktop.portal.GlobalShortcuts version)
+  printf 'GlobalShortcuts=%s\n' "$portal" | tee -a "$evidence/environment.txt"
+  [[ $portal =~ uint32[[:space:]]+([1-9][0-9]*) ]]
+  export SWB_E2E_PORTAL_VERSION=${BASH_REMATCH[1]}
+fi
 bus_method GetNameOwner org.freedesktop.impl.portal.desktop.kde | tee -a "$evidence/environment.txt"
 
 export SWB_E2E_WAYLAND_APP_NAME=$name
-dbus-monitor --session \
+stdbuf -oL dbus-monitor --session \
   "type='signal',interface='org.freedesktop.portal.GlobalShortcuts'" \
   "type='signal',interface='org.freedesktop.impl.portal.GlobalShortcuts'" \
   "type='signal',interface='org.kde.kglobalaccel.Component'" \

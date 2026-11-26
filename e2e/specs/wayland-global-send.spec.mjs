@@ -27,10 +27,20 @@ const artifactDir = join(
 );
 const focusPath = join(artifactDir, "peer-focus.json");
 const keyPath = join(artifactDir, "peer-keys.jsonl");
+const portalTrace = join(
+  process.env.SWB_E2E_WAYLAND_ARTIFACTS,
+  "shortcuts-dbus.log",
+);
 const scenario = process.env.SWB_E2E_WAYLAND_SCENARIO;
 const hotkey = "F9";
 const replacement = "F10";
 const keycodes = JSON.parse(process.env.SWB_E2E_WAYLAND_KEYCODES);
+const registrationFailures = {
+  cancel: "Shortcut registration was cancelled.",
+  deny: "The system, another app, or another workbench window may be using this shortcut. Try another combination.",
+  unavailable:
+    "This desktop session cannot register a global shortcut. You can use the send editor shortcut.",
+};
 
 async function inject(...args) {
   return (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
@@ -173,6 +183,40 @@ async function exitEditor() {
   await closeShortcutHelp();
 }
 
+async function confirmPortalClose(receipt) {
+  await browser.waitUntil(
+    () => {
+      const lines = readFileSync(portalTrace, "utf8").split("\n");
+      const request = lines.findIndex((line) =>
+        /path=\/org\/freedesktop\/portal\/desktop\/request\/\d+_\d+\/bind_send_shortcut; interface=org\.freedesktop\.portal\.Request; member=Close$/.test(
+          line,
+        ),
+      );
+      if (request < 0) return false;
+      const owner = /sender=:(\d+\.\d+) /.exec(lines[request])?.[1];
+      if (!owner) return false;
+      const sessionPath = `/org/freedesktop/portal/desktop/session/${owner.replace(".", "_")}/send_shortcut`;
+      const session = lines
+        .slice(request + 1)
+        .find(
+          (line) =>
+            line.includes(`sender=:${owner} `) &&
+            line.endsWith(
+              `path=${sessionPath}; interface=org.freedesktop.portal.Session; member=Close`,
+            ),
+        );
+      if (!session) return false;
+      receipt.portalClose = [lines[request], session];
+      return true;
+    },
+    {
+      timeout: 5000,
+      timeoutMsg:
+        "The old document did not close its portal request and session",
+    },
+  );
+}
+
 async function settleConsent(receipt, payload) {
   if (scenario === "reload") {
     receipt.pending = await kdeControl("consent", "Cancel", "observe");
@@ -187,6 +231,7 @@ async function settleConsent(receipt, payload) {
     await ready();
     receipt.documentAfter = await browser.execute(() => performance.timeOrigin);
     assert.notEqual(receipt.documentAfter, receipt.documentBefore);
+    await confirmPortalClose(receipt);
     await openDeepLink("/");
     const closeSession = await $("button[aria-label='Close session']");
     if (
@@ -200,25 +245,23 @@ async function settleConsent(receipt, payload) {
     return;
   }
 
-  if (scenario === "deny") {
-    receipt.cleared = await kdeControl("consent", "Clear Key Sequence");
+  if (scenario === "unavailable") {
+    assert.equal(receipt.portalVersion, "0");
+  } else {
+    if (scenario === "deny") {
+      receipt.cleared = await kdeControl("consent", "Clear Key Sequence");
+    }
+    receipt.consent = await kdeControl(
+      "consent",
+      scenario === "cancel" ? "Cancel" : "OK",
+    );
   }
-  receipt.consent = await kdeControl(
-    "consent",
-    scenario === "cancel" ? "Cancel" : "OK",
-  );
-  if (scenario === "cancel" || scenario === "deny") {
+  const expectedStatus = registrationFailures[scenario];
+  if (expectedStatus) {
     const status = await $("#shortcut-conflict");
     await status.waitForDisplayed();
     receipt.registrationStatus = await status.getText();
-    if (scenario === "cancel") {
-      assert.equal(
-        receipt.registrationStatus,
-        "Shortcut registration was cancelled.",
-      );
-    } else {
-      assert.match(receipt.registrationStatus, /Try another combination\.$/);
-    }
+    assert.equal(receipt.registrationStatus, expectedStatus);
   } else {
     await $("#shortcut-capture").waitForExist({ reverse: true });
   }
@@ -403,6 +446,16 @@ it(`honors the ${scenario} shortcut decision with a separate foreground Wayland 
       receipt.unboundKey = await peerInput(hotkey);
       receipt.focusAfter = readFocus();
       assert.deepEqual(receipt.focusAfter, receipt.focusBefore);
+      if (scenario === "unavailable") {
+        const send = await $("button[aria-label='Send']");
+        await send.waitForEnabled();
+        await send.click();
+        await browser.waitUntil(async () => {
+          receipt.manualRaw = await read();
+          return rawRxBytes(receipt.manualRaw).length >= bytes.length;
+        });
+        checkRaw(receipt.manualRaw, bytes);
+      }
       return;
     }
 

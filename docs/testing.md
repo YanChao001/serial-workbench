@@ -91,6 +91,8 @@ cargo fmt --all -- --check
 
 `native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的独立 KWin 会话分别验证批准、取消、清除系统分配后确认，以及系统弹窗待定时重载工作台。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。批准会话还从工作台打开 KDE 快捷键设置，选择工作台的条目，操作捕获取消、系统键位冲突、换键和撤回，并从 Virtual Echo 的独立 Raw 读回核对新旧键写入结果。另一个独立配置用同一组合键触发 KWin 的关闭窗口，用来检查输入是否被 KWin 当成全局热键。`wayland-global-send` 产物保存候选摘要、门户和后端版本、前台辅助窗口实际收到的按键、门户请求和会话关闭、KWin 注册日志与 Raw 收据。其它环境按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
 
+缺少 GlobalShortcuts 的场景在独立配置中禁用该接口，先从真实门户的 D-Bus 接口清单确认 Settings 可用且 GlobalShortcuts 缺失。工作台应显示不可注册，前台辅助窗口收到按键且 Raw 无写入，随后从编辑器主动发送同一草稿并核对回环。重载场景将旧连接发出的请求关闭和会话关闭与新文档、弹窗消失及零写入一并留证。 [门户配置](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
+
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。
