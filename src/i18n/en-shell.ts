@@ -29,7 +29,8 @@ export const enShell = {
   "commands.globalSendScope":
     "Send the current draft while another app is in front. Hiding to the tray pauses it. Reloading or quitting clears the shortcut.",
   "commands.globalSendDisable": "Disable",
-  "commands.globalSendPending": "Updating shortcut…",
+  "commands.globalSendPending": "Waiting for the system…",
+  "commands.globalSendCancelled": "Shortcut registration was cancelled.",
   "commands.globalSendConflict":
     "The system, another app, or another workbench window may be using this shortcut. Try another combination.",
   "commands.globalSendUnavailable":

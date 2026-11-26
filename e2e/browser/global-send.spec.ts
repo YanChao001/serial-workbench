@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { RpcRequest } from "@serial-workbench/contracts";
 import { session } from "../../src/features/workbench/test-fixtures";
+import type { GlobalSendEvent } from "../../src/lib/generated/bindings";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 declare global {
@@ -11,6 +12,7 @@ declare global {
       allowed: boolean;
       publishedTargets: number;
       press(revision: number): void;
+      changeSystemBinding(trigger: string | null): void;
     };
   }
 }
@@ -43,6 +45,7 @@ test("desktop global send keeps the registered key on conflict and follows autho
       allowed: true,
       publishedTargets: 0,
       press: (_revision: number) => {},
+      changeSystemBinding: (_trigger: string | null) => {},
     };
     window.globalSendProbe = probe;
     native.invoke = async (command, args = {}) => {
@@ -50,11 +53,15 @@ test("desktop global send keeps the registered key on conflict and follows autho
         const binding = args.binding as { key: string } | null;
         if (binding?.key === "F10")
           throw { code: "CONFLICT", message: "Occupied", retryable: false };
-        probe.press = binding
-          ? (args.onPress as { onmessage: (value: number) => void }).onmessage
-          : () => {};
+        const channel = args.events as {
+          onmessage: (value: GlobalSendEvent) => void;
+        };
+        probe.press = (revision) =>
+          channel.onmessage({ kind: "press", revision });
+        probe.changeSystemBinding = (trigger) =>
+          channel.onmessage({ kind: "binding", trigger });
         probe.enabled = false;
-        return null;
+        return binding?.key === "F8" ? "Alt+F8" : null;
       }
       if (command === "set_global_send_target") {
         probe.revision = Number(args.revision);
@@ -182,6 +189,17 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await dialog.getByRole("searchbox").fill("global send");
   await change.click();
   await dialog.getByRole("button", { name: "Disable" }).click();
+  await expect(row.getByText("Off", { exact: true })).toBeVisible();
+
+  await change.click();
+  await capture.press("Control+Shift+F8");
+  await save.click();
+  await expect(row.getByText("Alt+F8", { exact: true })).toBeVisible();
+  await page.evaluate(() =>
+    window.globalSendProbe.changeSystemBinding("Ctrl+Alt+F8"),
+  );
+  await expect(row.getByText("Ctrl+Alt+F8", { exact: true })).toBeVisible();
+  await page.evaluate(() => window.globalSendProbe.changeSystemBinding(null));
   await expect(row.getByText("Off", { exact: true })).toBeVisible();
 });
 

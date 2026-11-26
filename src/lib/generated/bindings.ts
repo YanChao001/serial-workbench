@@ -12,13 +12,15 @@ export const commands = {
       shift: boolean;
     } | null,
     registration: string,
-    onPress: Channel<number>,
+    description: string,
+    events: Channel<GlobalSendEvent>,
   ) =>
-    typedError<null, NativeError>(
+    typedError<string | null, NativeError>(
       __TAURI_INVOKE("configure_global_send", {
         binding,
         registration,
-        onPress,
+        description,
+        events,
       }),
     ),
   setGlobalSendTarget: (
@@ -2390,6 +2392,10 @@ export type GalleryEntry_Serialize = {
   reference: ObjectRef_Serialize;
   name: string;
 };
+
+export type GlobalSendEvent =
+  | { kind: "press"; revision: number }
+  | { kind: "binding"; trigger: string | null };
 
 export type HostError = HostError_Serialize | HostError_Deserialize;
 

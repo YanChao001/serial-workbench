@@ -77,6 +77,11 @@ windows-core = "=0.62.2"
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+futures-util = "0.3"
+tokio = { version = "1", features = ["macros"] }
+zbus = "5"
+
 [[bin]]
 name = "export-bindings"
 path = "src/bin/export-bindings.rs"

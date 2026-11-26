@@ -16,7 +16,7 @@
 
 ### 本轮交付与验收
 
-- M4 桌面热键（IO-08）的 Windows、macOS 与 X11 实现及候选证据见 #89。无头 Chromium 已核对当前目标、旧事件、授权拒绝和普通浏览器的热键范围。系统按键和冲突按各桌面环境核验，Wayland 接入、物理串口和发行继续待验。 [PR #89](https://github.com/YanChao001/serial-workbench/pull/89)
+- M4 桌面热键（IO-08）的 Windows、macOS 与 X11 实现及候选证据见 #89。本地任务分支继续积累当前草稿授权和 Wayland 门户接线。系统按键、冲突与门户注册按各桌面环境核验，物理串口和发行继续待验。 [PR #89](https://github.com/YanChao001/serial-workbench/pull/89)
 - M4 工作台按住连发逐笔确认实际写入，松手、授权失效或写入状态无法确认时停止后续提交，并保留已接纳回执。四平台门禁、365 项本机无头 Chromium 回归和真实配对 Raw 写入复验通过。 [PR #83](https://github.com/YanChao001/serial-workbench/pull/83) · [四目标检查](https://github.com/YanChao001/serial-workbench/actions/runs/45774688836/attempts/2)
 - M5 独立市场交付了签名目录、时效和回退检查、版本兼容筛选，以及评分来源与时间。宿主固定引用市场主线提交 `455348126b56c58a7b975f3b5075da8d925be23d`。 [Marketplace PR #3](https://github.com/YanChao001/serial-workbench-plugins/pull/3) · [目录四平台检查](https://github.com/YanChao001/serial-workbench-plugins/actions/runs/45790904133)
 

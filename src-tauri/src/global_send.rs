@@ -4,19 +4,36 @@ use crate::{
 };
 use tauri::{AppHandle, WebviewWindow, ipc::Channel};
 
+#[cfg(target_os = "linux")]
+mod portal;
+
+#[derive(serde::Serialize, specta::Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum GlobalSendEvent {
+    Press {
+        revision: u32,
+    },
+    // 保持各构建目标生成相同的 IPC 契约，绑定变化只来自 Wayland 门户。
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Binding {
+        trigger: Option<String>,
+    },
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn configure_global_send(
     window: WebviewWindow,
     binding: Option<ShortcutBinding>,
     registration: String,
-    on_press: Channel<u32>,
-) -> NativeResult<()> {
+    description: String,
+    events: Channel<GlobalSendEvent>,
+) -> NativeResult<Option<String>> {
     #[cfg(desktop)]
-    return desktop::configure(window, binding, registration, on_press).await;
+    return desktop::configure(window, binding, registration, description, events).await;
     #[cfg(not(desktop))]
     {
-        let _ = (window, binding, registration, on_press);
+        let _ = (window, binding, registration, description, events);
         Err(unavailable())
     }
 }
@@ -62,6 +79,8 @@ mod desktop {
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
     use std::{cell::OnceCell, sync::Mutex};
     use tauri::Manager;
+    #[cfg(target_os = "linux")]
+    use tokio::sync::oneshot;
 
     thread_local! {
         // 注册、注销和销毁都归运行桌面事件循环的线程。
@@ -72,14 +91,45 @@ mod desktop {
     struct Dispatch {
         documents: [u64; 2],
         active: Option<Registration>,
+        #[cfg(target_os = "linux")]
+        pending_portal: Option<PendingPortal>,
+    }
+
+    #[cfg(target_os = "linux")]
+    struct PendingPortal {
+        owner: usize,
+        id: String,
+        _cancel: oneshot::Sender<()>,
+    }
+
+    enum Backend {
+        Native(HotKey),
+        #[cfg(target_os = "linux")]
+        Portal(PortalRegistration),
+    }
+
+    impl Backend {
+        fn native_key(&self) -> Option<HotKey> {
+            match self {
+                Self::Native(key) => Some(*key),
+                #[cfg(target_os = "linux")]
+                Self::Portal(_) => None,
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    struct PortalRegistration {
+        stop: oneshot::Sender<()>,
+        disconnected: oneshot::Receiver<()>,
     }
 
     struct Registration {
         owner: usize,
         document: u64,
         id: String,
-        key: HotKey,
-        on_press: Channel<u32>,
+        backend: Backend,
+        events: Channel<GlobalSendEvent>,
         revision: u32,
         enabled: bool,
         pressed: bool,
@@ -91,13 +141,17 @@ mod desktop {
         WINDOWS.iter().position(|candidate| *candidate == label)
     }
 
+    #[cfg(target_os = "linux")]
+    fn uses_portal() -> bool {
+        std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty())
+            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|session| session == "wayland")
+    }
+
     pub fn setup(app: &AppHandle) {
         app.manage(Mutex::new(Dispatch::default()));
         // Wayland 使用会话级 portal，XWayland 中成功注册也不能证明系统级可达。
         #[cfg(target_os = "linux")]
-        if std::env::var_os("WAYLAND_DISPLAY").is_some()
-            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|session| session == "wayland")
-        {
+        if uses_portal() {
             return;
         }
         match GlobalHotKeyManager::new() {
@@ -118,13 +172,19 @@ mod desktop {
         window: WebviewWindow,
         binding: Option<ShortcutBinding>,
         id: String,
-        on_press: Channel<u32>,
-    ) -> NativeResult<()> {
+        description: String,
+        events: Channel<GlobalSendEvent>,
+    ) -> NativeResult<Option<String>> {
         let owner = window_index(window.label()).ok_or_else(unavailable)?;
         crate::error::bounded_text(&id, 64, "Global send registration")?;
+        crate::error::bounded_text(&description, 192, "Global send description")?;
         let key = binding.as_ref().map(parse_key).transpose()?;
         let app = window.app_handle().clone();
         let document = app.state::<Mutex<Dispatch>>().lock().unwrap().documents[owner];
+        #[cfg(target_os = "linux")]
+        if uses_portal() {
+            return configure_portal(app, owner, document, id, binding, description, events).await;
+        }
         let (resolve, result) = tokio::sync::oneshot::channel();
         window
             .run_on_main_thread(move || {
@@ -136,7 +196,7 @@ mod desktop {
                         document,
                         key,
                         id,
-                        on_press,
+                        events,
                     )
                 });
                 let _ = resolve.send(outcome);
@@ -148,7 +208,7 @@ mod desktop {
                     error,
                 )
             })?;
-        result.await.map_err(|_| unavailable())?
+        result.await.map_err(|_| unavailable())?.map(|()| None)
     }
 
     fn configure_on_main(
@@ -158,7 +218,7 @@ mod desktop {
         document: u64,
         key: Option<HotKey>,
         id: String,
-        on_press: Channel<u32>,
+        events: Channel<GlobalSendEvent>,
     ) -> NativeResult<()> {
         let state = app.state::<Mutex<Dispatch>>();
         let previous = {
@@ -176,7 +236,9 @@ mod desktop {
                         "Another workbench window owns the global send shortcut",
                     ));
                 }
-                active => active.as_ref().map(|active| active.key),
+                active => active
+                    .as_ref()
+                    .and_then(|active| active.backend.native_key()),
             }
         };
         // 先试新键位。系统拒绝时原生键位和前端显示仍指向旧注册。
@@ -208,8 +270,8 @@ mod desktop {
             owner,
             document,
             id,
-            key,
-            on_press,
+            backend: Backend::Native(key),
+            events,
             revision: 0,
             enabled: false,
             pressed: false,
@@ -258,21 +320,33 @@ mod desktop {
     }
 
     fn handle_event(app: &AppHandle, event: GlobalHotKeyEvent) {
+        dispatch_press(app, event.state == HotKeyState::Pressed, |active| {
+            active
+                .backend
+                .native_key()
+                .is_some_and(|key| key.id() == event.id)
+        });
+    }
+
+    fn dispatch_press(app: &AppHandle, pressed: bool, matches: impl FnOnce(&Registration) -> bool) {
         let (owner, revision, id) = {
             let state = app.state::<Mutex<Dispatch>>();
             let mut dispatch = state.lock().unwrap();
+            #[cfg(target_os = "linux")]
+            let updating = dispatch.pending_portal.is_some();
+            #[cfg(not(target_os = "linux"))]
+            let updating = false;
             let documents = dispatch.documents;
             let Some(active) = dispatch.active.as_mut() else {
                 return;
             };
-            if active.key.id() != event.id || active.document != documents[active.owner] {
+            if !matches(active) || active.document != documents[active.owner] {
                 return;
             }
-            let pressed = event.state == HotKeyState::Pressed;
             // Windows 已用 MOD_NOREPEAT 过滤长按，释放通知可能晚于下一次物理按键。
             let first_press = pressed && (cfg!(windows) || !active.pressed);
             active.pressed = pressed;
-            if !first_press || !active.enabled {
+            if !first_press || !active.enabled || updating {
                 return;
             }
             (active.owner, active.revision, active.id.clone())
@@ -292,6 +366,10 @@ mod desktop {
             }
             let state = handle.state::<Mutex<Dispatch>>();
             let dispatch = state.lock().unwrap();
+            #[cfg(target_os = "linux")]
+            if dispatch.pending_portal.is_some() {
+                return;
+            }
             if let Some(active) = &dispatch.active
                 && active.id == id
                 && active.owner == owner
@@ -299,7 +377,7 @@ mod desktop {
                 && active.revision == revision
                 && active.enabled
             {
-                let _ = active.on_press.send(revision);
+                let _ = active.events.send(GlobalSendEvent::Press { revision });
             }
         });
     }
@@ -314,6 +392,14 @@ mod desktop {
         let removed = {
             let mut dispatch = state.lock().unwrap();
             dispatch.documents[owner] += 1;
+            #[cfg(target_os = "linux")]
+            if dispatch
+                .pending_portal
+                .as_ref()
+                .is_some_and(|pending| pending.owner == owner)
+            {
+                dispatch.pending_portal.take();
+            }
             if dispatch
                 .active
                 .as_ref()
@@ -324,15 +410,191 @@ mod desktop {
                 None
             }
         };
-        let Some(removed) = removed else { return };
+        // 门户注册的停止发送端随这里取出的会话一起释放。
+        let Some(key) = removed.and_then(|registration| registration.backend.native_key()) else {
+            return;
+        };
         let _ = app.run_on_main_thread(move || {
             NATIVE.with(|manager| {
                 if let Some(native) = manager.get()
-                    && let Err(error) = native.unregister(removed.key)
+                    && let Err(error) = native.unregister(key)
                 {
                     log::warn!("Cannot release the global send shortcut: {error}");
                 }
             });
         });
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn configure_portal(
+        app: AppHandle,
+        owner: usize,
+        document: u64,
+        id: String,
+        binding: Option<ShortcutBinding>,
+        description: String,
+        events: Channel<GlobalSendEvent>,
+    ) -> NativeResult<Option<String>> {
+        use super::portal::Portal;
+        let state = app.state::<Mutex<Dispatch>>();
+        let (cancel, mut cancelled) = oneshot::channel();
+        let removed = {
+            let mut dispatch = state.lock().unwrap();
+            if dispatch.documents[owner] != document {
+                return Err(portal_cancelled());
+            }
+            if dispatch
+                .active
+                .as_ref()
+                .is_some_and(|active| active.owner != owner)
+            {
+                return Err(NativeError::new(
+                    ErrorCode::Conflict,
+                    "Another workbench window owns the global send shortcut",
+                ));
+            }
+            if dispatch.pending_portal.is_some() {
+                return Err(NativeError::new(
+                    ErrorCode::NativeBusy,
+                    "A portal request is pending",
+                ));
+            }
+            // 认领窗口文档直到系统请求结算，包括停用工作。
+            dispatch.pending_portal = Some(PendingPortal {
+                owner,
+                id: id.clone(),
+                _cancel: cancel,
+            });
+            if binding.is_none() {
+                dispatch.active.take()
+            } else {
+                None
+            }
+        };
+        let result = async {
+            let Some(binding) = binding else {
+                close_portal(removed).await;
+                return Ok(None);
+            };
+            let mut portal = tokio::select! {
+                biased;
+                _ = &mut cancelled => return Err(portal_cancelled()),
+                result = Portal::connect(app.config().product_name.as_deref()) => result?,
+            };
+            let bound = tokio::select! {
+                biased;
+                _ = &mut cancelled => Err(portal_cancelled()),
+                result = async {
+                    let session = portal.create_session().await?;
+                    let trigger = portal.bind(&session, &binding, &description).await?;
+                    Ok((session, trigger))
+                } => result,
+            };
+            let (session, trigger) = match bound {
+                Ok(binding) => binding,
+                Err(error) => {
+                    portal.disconnect().await;
+                    return Err(error);
+                }
+            };
+            let (stop, stopped) = oneshot::channel();
+            let (released, disconnected) = oneshot::channel();
+            let previous = {
+                let mut dispatch = state.lock().unwrap();
+                if dispatch.documents[owner] == document {
+                    Some(dispatch.active.replace(Registration {
+                        owner,
+                        document,
+                        id: id.clone(),
+                        backend: Backend::Portal(PortalRegistration { stop, disconnected }),
+                        events,
+                        revision: 0,
+                        enabled: false,
+                        pressed: false,
+                    }))
+                } else {
+                    None
+                }
+            };
+            let Some(previous) = previous else {
+                portal.disconnect().await;
+                return Err(portal_cancelled());
+            };
+            let handle = app.clone();
+            let registration = id.clone();
+            tauri::async_runtime::spawn(async move {
+                watch_portal(handle, registration, portal, session, stopped).await;
+                let _ = released.send(());
+            });
+            close_portal(previous).await;
+            Ok(Some(trigger))
+        }
+        .await;
+        let mut dispatch = state.lock().unwrap();
+        if dispatch
+            .pending_portal
+            .as_ref()
+            .is_some_and(|pending| pending.owner == owner && pending.id == id)
+        {
+            dispatch.pending_portal.take();
+        }
+        result
+    }
+
+    #[cfg(target_os = "linux")]
+    fn portal_cancelled() -> NativeError {
+        NativeError::new(
+            ErrorCode::UserCancelled,
+            "The global shortcut request is no longer current",
+        )
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn close_portal(registration: Option<Registration>) {
+        if let Some(Backend::Portal(PortalRegistration { stop, disconnected })) =
+            registration.map(|active| active.backend)
+        {
+            drop(stop);
+            let _ = disconnected.await;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn watch_portal(
+        app: AppHandle,
+        id: String,
+        mut portal: super::portal::Portal,
+        session: zbus::zvariant::OwnedObjectPath,
+        mut stopped: oneshot::Receiver<()>,
+    ) {
+        use super::portal::Signal;
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut stopped => break,
+                result = portal.next(&session) => match result {
+                    Signal::Pressed(pressed) => dispatch_press(&app, pressed, |active| active.id == id),
+                    Signal::Binding(Some(trigger)) => {
+                        let state = app.state::<Mutex<Dispatch>>();
+                        let mut dispatch = state.lock().unwrap();
+                        if let Some(active) = dispatch.active.as_mut().filter(|active| active.id == id) {
+                            active.pressed = false;
+                            let _ = active.events.send(GlobalSendEvent::Binding { trigger: Some(trigger) });
+                        }
+                    }
+                    Signal::Binding(None) | Signal::Closed => {
+                        let state = app.state::<Mutex<Dispatch>>();
+                        let mut dispatch = state.lock().unwrap();
+                        if dispatch.active.as_ref().is_some_and(|active| active.id == id)
+                            && let Some(active) = dispatch.active.take()
+                        {
+                            let _ = active.events.send(GlobalSendEvent::Binding { trigger: None });
+                        }
+                        break;
+                    }
+                },
+            }
+        }
+        portal.disconnect().await;
     }
 }

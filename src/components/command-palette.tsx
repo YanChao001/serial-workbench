@@ -234,9 +234,11 @@ function ShortcutReference({
           {
             id: "global-send",
             label: t("commands.globalSend"),
-            key: globalSend.binding
-              ? formatShortcut(globalSend.binding)
-              : t("commands.globalSendOff"),
+            key:
+              globalSend.systemTrigger ??
+              (globalSend.binding
+                ? formatShortcut(globalSend.binding)
+                : t("commands.globalSendOff")),
             note: t("commands.globalSendScope"),
             editable: true,
           },
@@ -268,7 +270,9 @@ function ShortcutReference({
           label={selected.label ?? t(selected.labelKey)}
           defaultShortcut={defaultShortcut}
           commands={available.filter((command) => command.id !== selected.id)}
-          globalConflict={globalSend?.binding}
+          globalConflict={
+            globalSend?.systemTrigger ? undefined : globalSend?.binding
+          }
           onCancel={finishEditing}
           onSave={(binding) => {
             changeShortcut(selected.id, binding);
@@ -312,8 +316,8 @@ function ShortcutReference({
                     </span>
                   )}
                 </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <kbd className="font-mono text-xs text-muted-foreground">
+                <span className="flex max-w-full min-w-0 items-center gap-2">
+                  <kbd className="font-mono text-xs break-words text-muted-foreground">
                     {key}
                   </kbd>
                   {editable && (
@@ -399,7 +403,9 @@ function ShortcutEditor({
           ? "commands.globalSendConflict"
           : code === "PLATFORM_UNAVAILABLE"
             ? "commands.globalSendUnavailable"
-            : "commands.globalSendFailed",
+            : code === "USER_CANCELLED"
+              ? "commands.globalSendCancelled"
+              : "commands.globalSendFailed",
       );
     } finally {
       busy.current = false;

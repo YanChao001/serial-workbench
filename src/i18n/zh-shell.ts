@@ -25,7 +25,8 @@ export const zhShell = {
   "commands.globalSendScope":
     "可在其他应用前台时发送当前草稿。隐藏到托盘时暂停，重载窗口或退出后清除键位。",
   "commands.globalSendDisable": "停用",
-  "commands.globalSendPending": "正在更新键位…",
+  "commands.globalSendPending": "等待系统确认…",
+  "commands.globalSendCancelled": "已取消注册热键。",
   "commands.globalSendConflict":
     "此组合无法注册，可能已被系统、其他应用或另一个工作台窗口占用。请试用其他组合。",
   "commands.globalSendUnavailable":
