@@ -16,6 +16,8 @@
 
 ### 本轮交付与验收
 
+- IO-08 候选 `0ecc633` 以一次定向预检并行核对 X11 与 Wayland。X11 的系统占键冲突、原键保留、另一应用前台单次 TX 与停用后零写入均通过。停用后独立客户端接管 F9 仍返回 `BadAccess`。Wayland v1、v2 的主窗单次写入、速查及次窗零写入均通过，切到应用设置页后各产生一笔错误 TX。工作台路由的授权撤回和返回重订已通过本地无头回归。X11 注销改为等待服务端处理，通过 Linux 目标编译检查。两项修复与真实门户交接进入同一批原生复验，软件验收继续进行。 [合并预检](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856/artifacts/15152792583) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856/artifacts/15152533998)
+
 - IO-08 的 Wayland 候选 `ce76aa3` 在 Ubuntu 26.04 构建通过。批准和取消两套 KWin 会话均有真实 Wayland 客户端连接，门户在会话变量生效前被启动，未暴露 GlobalShortcuts，工作台场景未执行。复验先确认 KDE 后端和已接管私有总线的门户，再运行批准、取消、改键与 Raw 收发。 [首轮诊断产物](https://github.com/YanChao001/serial-workbench/actions/runs/45878510321/artifacts/15145423839)
 - Wayland 候选 `317a246` 在 KDE 6.6.7 与 `xdg-desktop-portal` 1.21.1 下确认 GlobalShortcuts v2。原生弹窗取消后速查显示关闭，另一 Wayland 客户端在前台时没有新增 TX。批准后速查显示系统分配的 Ctrl+Shift+F9，原始 Raw 读回仍为空，门户日志未报告激活。复验保留前台客户端按键、KGlobalAccel、KDE 后端和公共门户的信号。先核对这几段证据，再判断是否需要修改产品的收发路径。 [批准和取消收据](https://github.com/YanChao001/serial-workbench/actions/runs/45879721728/artifacts/15145488821)
 - 候选 `958c43c` 的取消会话通过。前台 GTK Wayland 窗口收到一次带正确修饰键的 F9 按下与释放，Raw 无写入。批准前 KDE 未登记该组件，批准后组件出现且速查显示 F9。前台窗口仍收到 F9，KGlobalAccel、KDE 后端和公共门户都无激活信号。`ConfigureShortcuts` 已到 KDE 后端，系统设置窗口未出现。重载场景的旧门户连接已关闭，读取新文档超时。下一批核对 KWin 自身快捷键、KDE 实际键位与标准系统设置关联，并先从系统侧确认待定弹窗释放。 [输入、总线与重载证据](https://github.com/YanChao001/serial-workbench/actions/runs/45880795320/artifacts/15147805519)
