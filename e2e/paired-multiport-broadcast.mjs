@@ -36,6 +36,7 @@ export async function checkMultiportBroadcast({
   listSessions,
   readEcho,
   prepareTcpRaw,
+  holdTcpLease,
   operation,
   submittedTx,
 }) {
@@ -95,7 +96,7 @@ export async function checkMultiportBroadcast({
       await expect(panel).toBeVisible();
     }
 
-    async function run(label, frame, accepted) {
+    async function run(label, frame, accepted, cancelTcp = false) {
       const before = submittedTx();
       const positions = await Promise.all(
         targets.map(
@@ -127,18 +128,54 @@ export async function checkMultiportBroadcast({
         const row = results
           .getByRole("listitem")
           .filter({ hasText: target.label });
+        let stoppedId;
+        if (index === 1 && cancelTcp) {
+          const stop = row.getByRole("button", {
+            name: /^(Stop this port|停止此端口)$/,
+          });
+          await expect(stop).toBeEnabled();
+          await expect(row.locator("code")).toHaveText(/^[a-f0-9-]{36}$/);
+          stoppedId = await row.locator("code").textContent();
+          const queued = await operation(stoppedId);
+          assert.ok(["queued", "running"].includes(queued.state), queued.state);
+          let waitingRead = 0;
+          await expect
+            .poll(async () => {
+              const { events } = await target.read(
+                label + "-waiting-" + waitingRead++,
+                positions[index],
+              );
+              assert.equal(
+                events.some(({ kind }) => kind === "tx"),
+                false,
+              );
+              return events.some(
+                ({ kind, payload }) =>
+                  kind === "tx_intent" && payload.operationId === stoppedId,
+              );
+            })
+            .toBe(true);
+          await stop.click();
+        }
         await expect(row.getByText(receiptText(accepted[index]))).toBeVisible();
         await expect(
           row.getByText(
-            accepted[index] > 0
-              ? /^(Write accepted|写入已接纳)$/
-              : /^(Write rejected|写入被拒绝)$/,
+            stoppedId
+              ? /^(Stopped|已停止)$/
+              : accepted[index] > 0
+                ? /^(Write accepted|写入已接纳)$/
+                : /^(Write rejected|写入被拒绝)$/,
           ),
         ).toBeVisible();
         const id = await row.locator("code").textContent();
         assert.ok(id);
         const op = await operation(id);
         assert.equal(op.operationId, id);
+        if (stoppedId) {
+          assert.equal(id, stoppedId);
+          assert.equal(op.state, "cancelled");
+        }
+        if (accepted[index] > 0) assert.equal(op.state, "succeeded");
         assert.equal(op.executionMode, "independent");
         assert.deepEqual(op.target, target.session);
         assert.equal(op.result?.kind, "tx");
@@ -194,6 +231,7 @@ export async function checkMultiportBroadcast({
           sessionEpoch: tx.sessionEpoch,
           operationId: id,
           rawEvent: writes[0].eventSeq,
+          state: op.state,
           outcome: tx.outcome,
           acceptedBytes: accepted[index],
           unknownBytes: 0,
@@ -209,6 +247,8 @@ export async function checkMultiportBroadcast({
         await expect(
           results.getByText(receipt.operationId, { exact: true }),
         ).toBeVisible();
+      if (cancelTcp)
+        await expect(results.getByText(/^(Stopped|已停止)$/)).toBeVisible();
       assert.equal(submittedTx(), before + 2, "Reopening submitted new TX");
       await results.screenshot({ path: join(output, label + "-results.png") });
       await panel.getByRole("button", { name: closeView }).click();
@@ -233,6 +273,23 @@ export async function checkMultiportBroadcast({
       .poll(() => Buffer.concat(chunks).toString("hex"))
       .toBe(sample.toString("hex"));
 
+    const held = await holdTcpLease();
+    let stopped;
+    try {
+      stopped = await run(
+        "broadcast-cancel-held-port",
+        Buffer.of(0x43, 0, 0x54),
+        [3, 0],
+        true,
+      );
+      const lease = await operation(held.operationId);
+      assert.equal(lease.state, "running");
+      assert.equal(lease.result?.value.state, "active");
+      assert.deepEqual(Buffer.concat(chunks), sample);
+    } finally {
+      await held.release();
+    }
+
     await tcpTab.click();
     await page
       .getByRole("button", { name: /^(Close session|关闭会话)$/ })
@@ -248,8 +305,14 @@ export async function checkMultiportBroadcast({
     return {
       peerUnattached: unattached,
       bothAttached: attached,
+      cancelledWhileHeld: stopped,
+      blockedPortLeaseOperationId: held.operationId,
       tcpPeerBytesHex: Buffer.concat(chunks).toString("hex"),
-      echoPeerBytesHex: [unattached[0].echoBytesHex, attached[0].echoBytesHex],
+      echoPeerBytesHex: [
+        unattached[0].echoBytesHex,
+        attached[0].echoBytesHex,
+        stopped[0].echoBytesHex,
+      ],
       reopenedWithoutResending: true,
       tcpPeerClosed: true,
     };
