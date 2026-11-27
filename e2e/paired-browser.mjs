@@ -583,7 +583,7 @@ try {
         grant,
         JSON.stringify({
           clientId: context.clientId,
-          permissions: ["content.read"],
+          permissions: ["content.read", "device.modify"],
           targets: [target],
         }),
         { flag: "wx" },
@@ -594,6 +594,63 @@ try {
         const { result } = await query("stream.read", path, params);
         assert.equal(result.value.hasMore, false);
         return result.value;
+      };
+    },
+    async holdTcpLease() {
+      async function leaseCall(action, params) {
+        const path = join(root, action + "-broadcast.json");
+        await writeFile(path, JSON.stringify(params), { flag: "wx" });
+        const { result } = await cli(
+          "invoke",
+          action,
+          "--target-json",
+          join(root, "broadcast-tcp-target.json"),
+          "--params-json",
+          path,
+          "--request-id",
+          randomUUID(),
+          "--request-context-json",
+          join(root, "cli-context.json"),
+          "--execution-mode",
+          "independent",
+        );
+        return result.operation;
+      }
+      const acquired = await leaseCall("lease.acquire", {
+        kind: "transaction",
+        ttlMs: "30000",
+      });
+      let leaseId;
+      await expect
+        .poll(async () => {
+          const { result } = await cli(
+            "operation",
+            "get",
+            acquired.operationId,
+          );
+          const lease = result.operation.result;
+          if (lease?.kind !== "lease" || lease.value.state !== "active")
+            return undefined;
+          leaseId = lease.value.leaseId;
+          return result.operation.state;
+        })
+        .toBe("running");
+      assert.ok(leaseId);
+      return {
+        operationId: acquired.operationId,
+        async release() {
+          const released = await leaseCall("lease.release", { leaseId });
+          await expect
+            .poll(async () => {
+              const { result } = await cli(
+                "operation",
+                "get",
+                released.operationId,
+              );
+              return result.operation.state;
+            })
+            .toBe("succeeded");
+        },
       };
     },
     async operation(id) {

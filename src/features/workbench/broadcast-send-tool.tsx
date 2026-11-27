@@ -157,8 +157,12 @@ export default function BroadcastSendTool({
   function rowStatus(row: BroadcastRow) {
     const operation = row.operation;
     const state = operation?.state;
-    if (row.phase === "done" && operation?.result?.kind === "tx")
-      return t(`broadcastSend.tx.${operation.result.value.outcome}`);
+    if (row.phase === "done" && operation?.result?.kind === "tx") {
+      const outcome = operation.result.value.outcome;
+      return state === "cancelled" && outcome === "rejected"
+        ? t("workbench.operation.cancelled")
+        : t(`broadcastSend.tx.${outcome}`);
+    }
     if (state && (row.phase === "waiting" || row.phase === "done"))
       return t(
         state === "cancel_requested"
