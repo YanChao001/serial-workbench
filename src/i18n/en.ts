@@ -1872,7 +1872,9 @@ export const en = {
     "Use the system notification and sound when this rule matches while its window is hidden in the tray.",
   "ruleTrigger.backgroundAlertEnable":
     "Enable Run in background in Desktop settings to use tray alerts.",
-  "ruleTrigger.backgroundAlertArmed": "Tray alert armed for this rule.",
+  "ruleTrigger.backgroundAlert.armed": "Tray alert armed for this rule.",
+  "ruleTrigger.backgroundAlert.requesting":
+    "Requesting the system notification…",
   "ruleTrigger.backgroundAlert.submitted": "System notification requested.",
   "ruleTrigger.backgroundAlert.skipped": "Tray alert skipped.",
   "ruleTrigger.backgroundAlert.unavailable": "System notification unavailable.",

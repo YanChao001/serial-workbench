@@ -338,6 +338,7 @@ pub fn status(app: &tauri::AppHandle) -> DesktopStatus {
 
 pub(crate) fn present_background_rule_alert(
     window: &tauri::WebviewWindow,
+    instance: u64,
     message: &str,
 ) -> NativeResult<bool> {
     crate::error::bounded_text(message, 768, "Rule alert message")?;
@@ -374,22 +375,25 @@ pub(crate) fn present_background_rule_alert(
     let sound = if cfg!(windows) {
         "Default"
     } else if cfg!(target_os = "macos") {
-        "default"
+        "NSUserNotificationDefaultSoundName"
     } else {
         "message-new-instant"
     };
-    notification
-        .builder()
-        .body(message)
-        .sound(sound)
-        .show()
-        .map_err(|error| {
-            NativeError::operation(
-                ErrorCode::PlatformUnavailable,
-                "Cannot submit background rule alert",
-                error,
-            )
-        })?;
+    let notification = notification.builder().body(message).sound(sound);
+    if !app
+        .state::<crate::host_bridge::DesktopHostBridge>()
+        .bind_window(window)
+        .is_ok_and(|current| current == instance)
+    {
+        return Ok(false);
+    }
+    notification.show().map_err(|error| {
+        NativeError::operation(
+            ErrorCode::PlatformUnavailable,
+            "Cannot submit background rule alert",
+            error,
+        )
+    })?;
     Ok(true)
 }
 

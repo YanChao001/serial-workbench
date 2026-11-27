@@ -214,7 +214,14 @@ pub async fn present_background_rule_alert(
     message: String,
 ) -> NativeResult<bool> {
     require_host_window(window.label())?;
-    blocking::run(move || desktop::present_background_rule_alert(&window, &message)).await
+    let instance = window
+        .app_handle()
+        .state::<crate::host_bridge::DesktopHostBridge>()
+        .bind_window(&window)
+        .map_err(|_| {
+            NativeError::new(ErrorCode::WindowError, "Rule window is no longer current")
+        })?;
+    blocking::run(move || desktop::present_background_rule_alert(&window, instance, &message)).await
 }
 
 #[tauri::command]

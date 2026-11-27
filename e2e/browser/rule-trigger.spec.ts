@@ -396,7 +396,7 @@ for (const viewport of [
       .toBe(1);
     await dialog.getByRole("button", { name: "Arm rule", exact: true }).click();
     const status = dialog.getByRole("status");
-    await expect(status).toContainText(en["ruleTrigger.backgroundAlertArmed"]);
+    await expect(status).toContainText(en["ruleTrigger.backgroundAlert.armed"]);
     await expect(alertSwitch).toBeDisabled();
     await status.scrollIntoViewIfNeeded();
     await page.screenshot({
@@ -409,16 +409,35 @@ for (const viewport of [
     await expect(dialog).toBeHidden();
     await page.evaluate((submitted) => {
       window.workbenchFixture.backgroundRuleAlertResult = submitted;
+      window.workbenchFixture.holdBackgroundRuleAlert = submitted;
       window.workbenchFixture.finishRuleNotification();
     }, viewport.submitted);
     await expect.poll(alerts).toEqual(["Bench alert received"]);
     const reopened = await openRuleMenu(page);
-    await expect(reopened.getByRole("status")).toContainText(
+    const reopenedStatus = reopened.getByRole("status");
+    await expect(reopenedStatus).toContainText(
+      "Rule matched and returned a notification.",
+    );
+    await expect(reopenedStatus).toContainText("[2, 8)");
+    if (viewport.submitted) {
+      await expect(reopenedStatus).toContainText(
+        en["ruleTrigger.backgroundAlert.requesting"],
+      );
+      await reopened
+        .getByRole("button", { name: "Load example", exact: true })
+        .click();
+      await expect(
+        reopened.getByRole("button", { name: "Arm rule", exact: true }),
+      ).toBeEnabled();
+      await page.evaluate(() =>
+        window.workbenchFixture.releaseBackgroundRuleAlert(),
+      );
+    }
+    await expect(reopenedStatus).toContainText(
       en[
         `ruleTrigger.backgroundAlert.${viewport.submitted ? "submitted" : "skipped"}`
       ],
     );
-    await expect(reopened.getByRole("status")).toContainText("[2, 8)");
     expect(await alerts()).toEqual(["Bench alert received"]);
   });
 }

@@ -1725,7 +1725,8 @@ export const zhCN = {
     "窗口隐藏到托盘后，本次规则命中会请求系统通知和铃声。",
   "ruleTrigger.backgroundAlertEnable":
     "在桌面偏好中开启后台运行即可使用托盘提醒。",
-  "ruleTrigger.backgroundAlertArmed": "本次规则已开启托盘提醒。",
+  "ruleTrigger.backgroundAlert.armed": "本次规则已开启托盘提醒。",
+  "ruleTrigger.backgroundAlert.requesting": "正在请求系统通知…",
   "ruleTrigger.backgroundAlert.submitted": "已请求系统通知。",
   "ruleTrigger.backgroundAlert.skipped": "已跳过托盘提醒。",
   "ruleTrigger.backgroundAlert.unavailable": "系统通知不可用。",

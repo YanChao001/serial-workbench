@@ -1,4 +1,12 @@
-import { useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ContractValidationError,
   type ActionSpec,
@@ -80,6 +88,8 @@ const reservedRuleActions = new Set<string>([
 function pending(operation: Operation) {
   return ["queued", "running", "cancel_requested"].includes(operation.state);
 }
+
+const subscribeToNoAlerts = () => () => {};
 
 export function RuleTriggerTool({
   access,
@@ -176,6 +186,13 @@ export function RuleTriggerTool({
     refreshing ||
     (shown ? pending(shown) && !finished?.terminal : false);
   const observedId = watched?.operationId;
+  const alertStatus = useSyncExternalStore(
+    observations?.subscribeBackgroundAlerts ?? subscribeToNoAlerts,
+    () =>
+      access && watched
+        ? observations?.backgroundAlert(access, watched)
+        : undefined,
+  );
   const latest = useRef({ access, watched });
   latest.current = { access, watched };
 
@@ -253,21 +270,14 @@ export function RuleTriggerTool({
         throw new ContractValidationError(
           "Rule acceptance belongs to another session",
         );
-      const wantsAlert = enableBackgroundAlert && backgroundAlert;
-      const observed = observations.observe(access, operation, wantsAlert);
+      void observations.observe(
+        access,
+        operation,
+        enableBackgroundAlert && backgroundAlert,
+      );
       if (!signal.aborted) {
         admitted.current = operation.operationId;
         setAccepted(operation);
-        if (wantsAlert)
-          void observed.then((outcome) => {
-            if (
-              !signal.aborted &&
-              admitted.current === outcome.id &&
-              "report" in outcome &&
-              outcome.backgroundAlert
-            )
-              setResult(outcome);
-          });
       }
       if (current.stopRequested && pending(operation) && access.cancel) {
         if (signal.aborted)
@@ -573,11 +583,8 @@ export function RuleTriggerTool({
             )}
           </p>
         ) : null}
-        {refreshing &&
-        access &&
-        watched &&
-        observations?.backgroundAlertArmed(access, watched) ? (
-          <p>{t("ruleTrigger.backgroundAlertArmed")}</p>
+        {alertStatus ? (
+          <p>{t(`ruleTrigger.backgroundAlert.${alertStatus}`)}</p>
         ) : null}
         {watched ? (
           <p>{t("repeatSend.task", { id: watched.operationId })}</p>
@@ -592,11 +599,6 @@ export function RuleTriggerTool({
         {finished && "report" in finished ? (
           <>
             <p>{t(`ruleTrigger.outcome.${finished.report.outcome}`)}</p>
-            {finished.backgroundAlert && (
-              <p>
-                {t(`ruleTrigger.backgroundAlert.${finished.backgroundAlert}`)}
-              </p>
-            )}
             {"message" in finished.report ? (
               <p>{finished.report.message}</p>
             ) : null}

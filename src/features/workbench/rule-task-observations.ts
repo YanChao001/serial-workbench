@@ -22,15 +22,11 @@ export type RuleTaskAccess = Pick<
   target: Target;
 };
 
-type BackgroundAlert = "submitted" | "skipped" | "unavailable";
+type BackgroundAlert =
+  "armed" | "requesting" | "submitted" | "skipped" | "unavailable";
 
 type RuleObservation =
-  | {
-      id: string;
-      report: RuleResult;
-      terminal: true;
-      backgroundAlert?: BackgroundAlert;
-    }
+  | { id: string; report: RuleResult; terminal: true }
   | { id: string; stopped: true; terminal: true }
   | { id: string; error: unknown; terminal: boolean };
 
@@ -39,8 +35,7 @@ type Entry = {
   operation: Operation;
   controller: AbortController;
   pending: boolean;
-  backgroundAlert: boolean;
-  alertRequest?: Promise<BackgroundAlert>;
+  alert?: BackgroundAlert;
   outcome?: Promise<RuleObservation>;
 };
 
@@ -85,24 +80,31 @@ async function observeRule(
   }
 }
 
-async function withBackgroundAlert(entry: Entry, result: RuleObservation) {
-  if (
-    !entry.backgroundAlert ||
-    entry.controller.signal.aborted ||
-    !("report" in result) ||
-    result.report.outcome !== "notification"
-  )
-    return result;
-  entry.alertRequest ??= presentBackgroundRuleAlert(result.report.message).then(
-    (submitted) => (submitted ? "submitted" : "skipped"),
-    () => "unavailable",
-  );
-  const backgroundAlert = await entry.alertRequest;
-  return { ...result, backgroundAlert };
-}
-
 export function createRuleTaskObservations() {
   const entries = new Map<string, Entry>();
+  const alertListeners = new Set<() => void>();
+  function setAlert(entry: Entry, alert?: BackgroundAlert) {
+    if (entry.controller.signal.aborted) return;
+    entry.alert = alert;
+    for (const listener of alertListeners) listener();
+  }
+  function requestAlert(entry: Entry, result: RuleObservation) {
+    if (
+      entry.alert !== "armed" ||
+      entry.controller.signal.aborted ||
+      !result.terminal
+    )
+      return;
+    if (!("report" in result) || result.report.outcome !== "notification") {
+      setAlert(entry);
+      return;
+    }
+    setAlert(entry, "requesting");
+    void presentBackgroundRuleAlert(result.report.message).then(
+      (submitted) => setAlert(entry, submitted ? "submitted" : "skipped"),
+      () => setAlert(entry, "unavailable"),
+    );
+  }
   const trim = () => {
     for (const [key, entry] of entries) {
       if (entries.size <= 64) break;
@@ -121,37 +123,40 @@ export function createRuleTaskObservations() {
         operation,
         controller: new AbortController(),
         pending: true,
-        backgroundAlert: false,
       };
-      entry.backgroundAlert ||= backgroundAlert;
-      if (entry.outcome)
-        return entry.outcome.then((outcome) =>
-          withBackgroundAlert(entry, outcome),
-        );
-      entry.pending = true;
-      entries.delete(key);
-      entries.set(key, entry);
-      entry.outcome = observeRule(
-        access,
-        operation,
-        entry.controller.signal,
-      ).then((result) => {
-        entry.pending = false;
-        if (entry.controller.signal.aborted) return result;
-        if (!result.terminal) entry.outcome = undefined;
-        if ("report" in result && result.report.outcome === "notification")
-          toast.info(result.report.message, { id: key });
+      if (!entry.outcome) {
+        entry.pending = true;
+        entries.delete(key);
+        entries.set(key, entry);
+        entry.outcome = observeRule(
+          access,
+          operation,
+          entry.controller.signal,
+        ).then((result) => {
+          entry.pending = false;
+          if (entry.controller.signal.aborted) return result;
+          if (!result.terminal) entry.outcome = undefined;
+          if ("report" in result && result.report.outcome === "notification")
+            toast.info(result.report.message, { id: key });
+          trim();
+          return result;
+        });
         trim();
-        return result;
-      });
-      trim();
-      return entry.outcome.then((outcome) =>
-        withBackgroundAlert(entry, outcome),
-      );
+      }
+      if (backgroundAlert && !entry.alert) setAlert(entry, "armed");
+      if (entry.alert === "armed")
+        void entry.outcome.then((outcome) => requestAlert(entry, outcome));
+      return entry.outcome;
     },
-    backgroundAlertArmed(access: RuleTaskAccess, operation: Operation) {
+    backgroundAlert(access: RuleTaskAccess, operation: Operation) {
       const key = JSON.stringify([access.scope, operation.operationId]);
-      return entries.get(key)?.backgroundAlert ?? false;
+      return entries.get(key)?.alert;
+    },
+    subscribeBackgroundAlerts(listener: () => void) {
+      alertListeners.add(listener);
+      return () => {
+        alertListeners.delete(listener);
+      };
     },
     recent(access: RuleTaskAccess) {
       let result: Operation | undefined;
