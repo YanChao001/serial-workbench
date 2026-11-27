@@ -903,7 +903,9 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 未生成预览、等待、失败或草稿过期时，核对发送不可用且 Host 收不到写入。生成成功后核对单次发送、按住连发及全局热键均取当前最终预览并继续沿用写入授权。关闭设置时丢弃等待中的晚结果。同一视图重连或会话换代后保留步骤和启用状态，重新生成前仍禁止发送。两个已打开的视图各自保留设置，切回启用的视图必须重新生成。运行 `pnpm exec vitest run src/features/workbench/send-preprocess.test.ts src/features/workbench/send-panel.test.tsx` 与 `pnpm test:ui e2e/browser/send-preprocess.spec.ts e2e/browser/hold-send.spec.ts e2e/browser/global-send.spec.ts`。 [宽窄草稿](./ui-design.md#发送前预处理草稿io-15)
 
-M4 核对内置转换与现有 SDK 查询入口。M5 的宿主市场接入（FUT-07）提供专用加密、压缩包后，安装已签名候选并以对应金样核对精确字节和失败时零发送。实机使用独立对端比对最终字节。正式签名候选在独立环境断网安装后，复验固定运行时、已取得的扩展和同一发送路径。
+M4 的签名 Host 检查使用固定 Node 和独立的 Virtual Echo 会话。按[签名运行时与 SDK](#签名运行时与-sdk)设置 `SWB_NODE_RUNTIME_TEST_ROOT`，运行 `cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_send_preprocess_ -- --ignored --test-threads=1`。独立客户端先因缺少会话读取权限被拒，获准后查询将 `00 41 FF` 转换为 `FF 41 00`。继续核对查询授权不包含发送，另获写入授权后仅接纳 3 个转换字节，回执属于原会话和代次。 [签名用例](../crates/host/tests/client_parity/node_plugins.rs)
+
+M5 的宿主市场接入（FUT-07）提供专用加密、压缩包后，安装已签名候选并以对应金样核对精确字节和失败时零发送。实机使用独立对端比对最终字节。正式签名候选在独立环境断网安装后，复验固定运行时、已取得的扩展和同一发送路径。
 
 ### CRC 识别与验证（PROTO-03）
 

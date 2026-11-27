@@ -31,6 +31,145 @@ async fn native_node_dynamic_query_cli_and_official_mcp_preserve_decimal_and_rev
     dynamic_plugin_parity(definition).await;
 }
 
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT pointing to a prepared native distribution"]
+async fn native_node_dynamic_send_preprocess_preserves_session_and_write_authority() {
+    const ACTION: &str = "example.terminal.preprocess";
+    let mut definition = spec();
+    definition.action_id = id(ACTION);
+    definition.kind = ActionKind::Query;
+    definition.cancellation = Cancellation::None;
+    definition.target_kinds = vec![ResourceKind::try_from("session").unwrap()];
+    definition.input_schema = serde_json::from_value(json!({
+        "type":"object","properties":{"payload":{"type":"string"}},
+        "required":["payload"],"additionalProperties":false
+    }))
+    .unwrap();
+    definition.output_schema = serde_json::from_value(json!({
+        "type":"object","properties":{"output":{"type":"string"}},
+        "required":["output"],"additionalProperties":false
+    }))
+    .unwrap();
+    let fixture = Fixture::program_with_virtual(
+        definition,
+        br#"export function register(context) {
+            context.queries.register('example.terminal.preprocess', query => ({
+                output: Buffer.from(query.params.payload, 'base64').reverse().toString('base64')
+            }));
+            return () => {};
+        }"#,
+    )
+    .await;
+    use futures_util::FutureExt;
+    let checked = std::panic::AssertUnwindSafe(async {
+        let reader = HostClient::connect(ConnectOptions::new(
+            fixture.dir.path().to_path_buf(),
+            id("send-preprocess-client"),
+            ClientKind::Cli,
+        ))
+        .await
+        .unwrap();
+        let client = &reader;
+        let device = Target {
+            kind: ResourceKind::try_from("device").unwrap(),
+            id: id("virtual:echo"),
+            ..fixture.target.clone()
+        };
+        let grant = |target: Target, permission: &'static str| {
+            let fixture = &fixture;
+            async move {
+                let call = fixture.call(
+                    &fixture.user,
+                    &fixture.target,
+                    "auth.authorize",
+                    json!({"clientId":client.attachment().client_id,
+                           "permissions":[permission],"targets":[target]}),
+                );
+                let operation = fixture.invoke(&fixture.user, call).await;
+                let settled = fixture.wait(&fixture.user, &operation.operation_id).await;
+                assert_eq!(settled.state, OperationState::Succeeded, "{settled:?}");
+            }
+        };
+        grant(device.clone(), "device.modify").await;
+        let opened = fixture
+            .invoke(
+                client,
+                fixture.call(
+                    client,
+                    &device,
+                    "device.open",
+                    json!({"configuration":SerialConfiguration::default()}),
+                ),
+            )
+            .await;
+        let opened = fixture.wait(client, &opened.operation_id).await;
+        let Some(ActionResult::Opened(opened)) = opened.result else {
+            panic!("Expected Virtual Echo open receipt: {opened:?}");
+        };
+        let session = Target {
+            kind: ResourceKind::try_from("session").unwrap(),
+            id: opened.session_id.clone(),
+            session_id: Some(opened.session_id),
+            session_epoch: Some(opened.session_epoch),
+            ..fixture.target.clone()
+        };
+        let request = RpcRequest::Query(fixture.query_call(
+            client,
+            &session,
+            ACTION,
+            json!({"payload":"AEH/"}),
+        ));
+        let denied = client.request(request.clone()).await.unwrap();
+        assert!(
+            matches!(&denied, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"),
+            "{denied:?}"
+        );
+        grant(session.clone(), "content.read").await;
+        let RpcResult::Query(QueryResult::Extension(transformed)) =
+            success(client.request(request).await.unwrap())
+        else {
+            panic!("Expected the signed session query result");
+        };
+        let value = serde_json::to_value(transformed).unwrap();
+        assert_eq!(value, json!({"output":"/0EA"}));
+        let call = fixture.call(
+            client,
+            &session,
+            "session.tx",
+            json!({"bytesBase64":value["output"],"writeWaitMs":"1000"}),
+        );
+        let denied = client
+            .request(RpcRequest::Invoke(call.clone()))
+            .await
+            .unwrap();
+        assert!(
+            matches!(&denied, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"),
+            "{denied:?}"
+        );
+        grant(session.clone(), "device.modify").await;
+        let mut call = call;
+        call.request_id = request_id();
+        let sent = fixture.invoke(client, call).await;
+        let sent = fixture.wait(client, &sent.operation_id).await;
+        let Some(ActionResult::Tx(receipt)) = sent.result else {
+            panic!("Expected transformed bytes to reach Virtual Echo: {sent:?}");
+        };
+        assert_eq!(sent.state, OperationState::Succeeded);
+        assert_eq!(receipt.outcome, TxOutcome::Accepted);
+        assert_eq!(Some(receipt.session_id), session.session_id);
+        assert_eq!(Some(receipt.session_epoch), session.session_epoch);
+        assert_eq!(receipt.byte_start, 0.into());
+        assert_eq!(receipt.byte_end, 3.into());
+        assert_eq!(receipt.bytes_base64.as_str(), "/0EA");
+    })
+    .catch_unwind()
+    .await;
+    fixture.finish().await;
+    if let Err(failure) = checked {
+        std::panic::resume_unwind(failure);
+    }
+}
+
 async fn dynamic_plugin_parity(definition: ActionSpec) {
     let cli_binary = binary("SWB_TEST_CLI_BIN", "serial-workbench-cli");
     let mcp_binary = binary("SWB_TEST_MCP_BIN", "serial-workbench-mcp");
