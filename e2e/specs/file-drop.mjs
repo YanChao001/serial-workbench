@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { browser, $ } from "@wdio/globals";
 import { globalSendRawReader, rawRxBytes } from "../global-send.mjs";
-import { dropFilesOnX11 } from "../x11-file-drop.mjs";
+import { fileDropDriver } from "../file-drop-driver.mjs";
 
 const transferSource = "[role='dialog'] output[aria-label='Source file']";
 const transferSample =
@@ -17,7 +17,7 @@ const field = (caption, tag = "input") =>
 
 async function closeDialog() {
   const current = await dialog();
-  await current.$("button[aria-label='Close view']").click();
+  await current.$("button[data-slot='dialog-close']").click();
   const discard = await $("button=Discard and continue");
   await browser.waitUntil(
     async () => !(await current.isExisting()) || (await discard.isDisplayed()),
@@ -30,10 +30,12 @@ const writes = ({ events }) =>
   events.filter(({ kind }) => kind === "tx" || kind === "tx_intent");
 
 export function fileDropChecks(openTool) {
-  if (process.platform !== "linux" || !process.env.SWB_E2E_X11_FILE_DRAG)
-    return;
+  const driver = fileDropDriver();
+  if (!driver) return;
+  const { platform, dropFiles } = driver;
+  const artifact = (name) => `${platform}-file-drop-${name}`;
 
-  it("receives a real X11 file drag for transfer and command body with explicit confirmation", async () => {
+  it(`receives a real ${platform} file drag for transfer and command body with explicit confirmation`, async () => {
     const directory = resolve(
       "artifacts",
       "e2e",
@@ -49,18 +51,22 @@ export function fileDropChecks(openTool) {
     await openTool("File transfer");
     const source = await $(transferSource);
     assert.equal(await source.getText(), "Drop one file here");
-    const outside = await dropFilesOnX11(
-      "[role=dialog] [data-slot=dialog-title]",
-      [transferPath],
-    );
+    const outside = await dropFiles("[role=dialog] [data-slot=dialog-title]", [
+      transferPath,
+    ]);
     assert.equal(await source.getText(), "Drop one file here");
-    const multiple = await dropFilesOnX11(transferSource, [
+    const multiple = await dropFiles(transferSource, [
       transferPath,
       commandPath,
     ]);
     assert.equal(await source.getText(), "Drop one file here");
-    const transferPoint = await dropFilesOnX11(transferSource, [transferPath]);
-    assert.equal(transferPoint.urisOffered, true);
+    const transferPoint = await dropFiles(transferSource, [transferPath]);
+    assert.equal(transferPoint.fileDataOffered, true);
+    if (process.env.SWB_E2E_FILE_DRAG_SCALE)
+      assert.equal(
+        transferPoint.pixelRatio,
+        Number(process.env.SWB_E2E_FILE_DRAG_SCALE),
+      );
     await browser.waitUntil(
       async () => (await source.getText()) === "io18-transfer.bin",
     );
@@ -85,7 +91,7 @@ export function fileDropChecks(openTool) {
     );
     const sample = await preview.getText();
     await preview.scrollIntoView({ block: "nearest" });
-    await browser.saveScreenshot(join(directory, "x11-file-drop-transfer.png"));
+    await browser.saveScreenshot(join(directory, artifact("transfer.png")));
     assert.deepEqual(writes(await readTransfer()), []);
     const send = await (await dialog()).$("button=Send file");
     await send.waitForEnabled();
@@ -106,6 +112,22 @@ export function fileDropChecks(openTool) {
     ]);
     assert.deepEqual(sent[0].payload.unknownRanges, []);
     assert.deepEqual(rawRxBytes(raw), Buffer.of(0xfe, 0x23));
+    const receipt = {
+      platform,
+      candidate: process.env.GITHUB_SHA,
+      outside,
+      multiple,
+      transferPoint,
+      transfer: {
+        offset: 1,
+        length: 2,
+        sample,
+        receipt: sent[0],
+        echoHex: rawRxBytes(raw).toString("hex"),
+      },
+    };
+    const receiptPath = join(directory, artifact("receipt.json"));
+    writeFileSync(receiptPath, JSON.stringify(receipt, null, 2));
     await closeDialog();
 
     const readCommand = await globalSendRawReader();
@@ -122,14 +144,14 @@ export function fileDropChecks(openTool) {
     await (await field("Name")).setValue("IO-18 file command");
     const body = await $(commandBody);
     await body.setValue("original");
-    const commandPoint = await dropFilesOnX11(commandBody, [commandPath]);
-    assert.equal(commandPoint.urisOffered, true);
+    const commandPoint = await dropFiles(commandBody, [commandPath]);
+    assert.equal(commandPoint.fileDataOffered, true);
     const replace = await (await dialog()).$("button=Replace command body");
     await replace.waitForEnabled();
     assert.equal(await body.getValue(), "original");
     assert.match(await (await dialog()).getText(), /09 FF 00 41/);
     assert.deepEqual(writes(await readCommand()), []);
-    await browser.saveScreenshot(join(directory, "x11-file-drop-command.png"));
+    await browser.saveScreenshot(join(directory, artifact("command.png")));
     await replace.click();
     assert.equal(await body.getValue(), "09 FF 00 41");
     const save = await (await dialog()).$("button=Save");
@@ -148,22 +170,11 @@ export function fileDropChecks(openTool) {
     await closeDialog();
 
     writeFileSync(
-      join(directory, "x11-file-drop-receipt.json"),
+      receiptPath,
       JSON.stringify(
         {
-          platform: "x11",
-          candidate: process.env.GITHUB_SHA,
-          outside,
-          multiple,
-          transferPoint,
+          ...receipt,
           commandPoint,
-          transfer: {
-            offset: 1,
-            length: 2,
-            sample,
-            receipt: sent[0],
-            echoHex: rawRxBytes(raw).toString("hex"),
-          },
           command: { body: "09 FF 00 41", savedAndReopened: true, writes: 0 },
         },
         null,

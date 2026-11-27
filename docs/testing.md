@@ -89,6 +89,8 @@ cargo fmt --all -- --check
 
 `native_preflight_target=linux-desktop` 在一次预检中并行执行 Ubuntu 22.04 的 X11 原生场景和 Ubuntu 26.04 的双版本 Wayland 热键专项。两个作业分别保留收据，均通过后预检才通过。
 
+`native_preflight_target=file-drop` 在一次预检中执行 Windows x64、macOS arm64/x64 和 Linux X11 的原生桌面作业。X11 在 2 倍缩放的隔离屏幕上运行，所有目标分别保留真实文件传输与命令槽收据。 [文件拖放专项](./acceptance.md#文件拖放发送io-18)
+
 热键里程碑候选在完整检查中选择 `desktop_e2e=true` 和 `wayland_e2e=true`。同一运行并行执行既定四目标与 KDE Wayland v1/v2，质量门禁要求两部分通过。普通完整检查默认仍按四目标执行。
 
 `native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。探针确认带功能键标志的 F10 在独立应用前台时收到一对 Carbon 按下和释放回调。收据记录会话内标记事件的数量和修饰键。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。

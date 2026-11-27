@@ -21,6 +21,9 @@ on:
       windows_reference_only:
         type: boolean
         default: false
+      x11_hidpi:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -48,7 +51,16 @@ jobs:
           "SWB_E2E_WINDOWS_PICKER_BIN=$picker" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "SWB_E2E_GLOBAL_SEND_HELPER=$picker" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: 构建 macOS 热键辅助程序
+      - name: 构建 Windows 系统文件拖放源
+        if: runner.os == 'Windows' && !inputs.chart_only && !inputs.windows_reference_only
+        shell: powershell
+        timeout-minutes: 2
+        run: |
+          $fileDrag = Join-Path $env:RUNNER_TEMP 'serial-workbench-file-drag.exe'
+          Add-Type -LiteralPath 'e2e/windows-file-drag.cs' -ReferencedAssemblies 'System.Drawing.dll','System.Windows.Forms.dll' -OutputAssembly $fileDrag -OutputType ConsoleApplication
+          "SWB_E2E_FILE_DRAG=$fileDrag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 构建 macOS 热键与文件拖放辅助程序
         if: runner.os == 'macOS' && !inputs.chart_only
         shell: bash
         timeout-minutes: 2
@@ -56,6 +68,9 @@ jobs:
           helper="$RUNNER_TEMP/serial-workbench-global-send"
           bash e2e/build-macos-global-send.sh "$helper"
           echo "SWB_E2E_GLOBAL_SEND_HELPER=$helper" >> "$GITHUB_ENV"
+          file_drag="$RUNNER_TEMP/serial-workbench-file-drag"
+          xcrun swiftc -parse-as-library -swift-version 5 e2e/macos-file-drag.swift -o "$file_drag" -framework AppKit -framework CoreGraphics
+          echo "SWB_E2E_FILE_DRAG=$file_drag" >> "$GITHUB_ENV"
 
       - name: 安装 Linux 桌面依赖
         if: runner.os == 'Linux'
@@ -145,6 +160,7 @@ jobs:
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: "1"
           SWB_E2E_X11_GLOBAL_SEND: "1"
           CHART_ONLY: ${{ inputs.chart_only }}
+          X11_HIDPI: ${{ inputs.x11_hidpi }}
         run: |
           mkdir -p artifacts/e2e/crash
           sudo sysctl -w "kernel.core_pattern=$GITHUB_WORKSPACE/artifacts/e2e/crash/core.%p"
@@ -157,9 +173,21 @@ jobs:
             export SWB_E2E_X11_FILE_DRAG="$RUNNER_TEMP/serial-workbench-x11-file-drag"
             read -r -a gtk_flags <<< "$(pkg-config --cflags --libs gtk+-3.0)"
             cc -std=c17 -Wall -Wextra -Werror e2e/x11-file-drag.c "${gtk_flags[@]}" -o "$SWB_E2E_X11_FILE_DRAG"
-            dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
-            test -s artifacts/e2e/fresh/x11-file-drop-receipt.json
+            xvfb=()
+            if [[ "$X11_HIDPI" == true ]]; then
+              export GDK_SCALE=2 SWB_E2E_FILE_DRAG_SCALE=2
+              xvfb=(-s '-screen 0 2560x2048x24')
+            fi
+            dbus-run-session -- xvfb-run -a "${xvfb[@]}" sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
           fi
+
+      - name: 核对系统文件拖放收据
+        if: ${{ !inputs.chart_only && !inputs.windows_reference_only }}
+        run: >-
+          node -e 'const platform = {linux:"x11", win32:"windows", darwin:"macos"}[process.platform];
+          const receipt = require("./artifacts/e2e/fresh/" + platform + "-file-drop-receipt.json");
+          if (receipt.candidate !== process.env.GITHUB_SHA || receipt.transfer.echoHex !== "fe23" || !receipt.command?.savedAndReopened)
+          throw new Error("Missing system file-drop evidence for this candidate");'
 
       - name: 保存 Linux 应用崩溃的原生线程栈
         if: failure() && runner.os == 'Linux'

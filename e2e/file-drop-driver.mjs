@@ -10,10 +10,8 @@ const execute = promisify(execFile);
 const xdo = async (...args) =>
   (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
 
-export async function dropFilesOnX11(selector, paths) {
-  const binary = process.env.SWB_E2E_X11_FILE_DRAG;
-  assert.ok(binary, "The isolated X11 suite must provide its GTK file source");
-  const point = await browser.execute((target) => {
+function viewportPoint(selector) {
+  return browser.execute((target) => {
     const element = document.querySelector(target);
     if (!element) throw new Error("Missing file drop target");
     element.scrollIntoView({ block: "nearest" });
@@ -26,9 +24,13 @@ export async function dropFilesOnX11(selector, paths) {
     return {
       x: Math.round(x * devicePixelRatio),
       y: Math.round(y * devicePixelRatio),
+      pixelRatio: devicePixelRatio,
     };
   }, selector);
+}
 
+async function dropFilesOnX11(binary, selector, paths) {
+  const point = await viewportPoint(selector);
   const targetWindow = await xdo("getactivewindow");
   assert.match(await xdo("getwindowname", targetWindow), /Serial Workbench/i);
   const title = "SWB X11 file source " + randomUUID();
@@ -100,10 +102,61 @@ export async function dropFilesOnX11(selector, paths) {
       /^file-drag-started$/m,
       JSON.stringify({ selector, point }),
     );
-    return { ...point, urisOffered: /^file-uris-offered$/m.test(offered) };
+    return { ...point, fileDataOffered: /^file-uris-offered$/m.test(offered) };
   } finally {
     if (source.exitCode === null && source.signalCode === null) source.kill();
     await finished.catch(() => {});
     await xdo("windowactivate", "--sync", targetWindow);
+  }
+}
+
+async function dropFilesOnDesktop(binary, selector, paths) {
+  const point = await viewportPoint(selector);
+  const destination =
+    process.platform === "darwin"
+      ? await browser.execute(async ({ x, y }) => {
+          const win = window.__TAURI__.window.getCurrentWindow();
+          const [origin, scale] = await Promise.all([
+            win.outerPosition(),
+            win.scaleFactor(),
+          ]);
+          // The macOS workbench uses the Overlay title bar and fills the frame.
+          // CoreGraphics expects screen points, including on Retina displays.
+          return { x: (origin.x + x) / scale, y: (origin.y + y) / scale };
+        }, point)
+      : point;
+  try {
+    const { stdout } = await execute(
+      binary,
+      [String(destination.x), String(destination.y), ...paths],
+      { timeout: 12000, windowsHide: true },
+    );
+    assert.match(stdout, /^file-drag-started\r?$/m);
+    return {
+      ...point,
+      fileDataOffered: true,
+      nativeCopyAccepted: /^file-data-accepted\r?$/m.test(stdout),
+    };
+  } finally {
+    await browser.execute(() =>
+      window.__TAURI__.window.getCurrentWindow().setFocus(),
+    );
+  }
+}
+
+export function fileDropDriver() {
+  if (process.platform === "linux" && process.env.SWB_E2E_X11_FILE_DRAG) {
+    const binary = process.env.SWB_E2E_X11_FILE_DRAG;
+    return { platform: "x11", dropFiles: dropFilesOnX11.bind(null, binary) };
+  }
+  if (
+    (process.platform === "darwin" || process.platform === "win32") &&
+    process.env.SWB_E2E_FILE_DRAG
+  ) {
+    const binary = process.env.SWB_E2E_FILE_DRAG;
+    return {
+      platform: process.platform === "darwin" ? "macos" : "windows",
+      dropFiles: dropFilesOnDesktop.bind(null, binary),
+    };
   }
 }

@@ -118,6 +118,12 @@ test("preflight shares the full native runner and retains successful source rece
       "x86_64-apple-darwin",
     ],
     "linux-desktop": ["x86_64-unknown-linux-gnu"],
+    "file-drop": [
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+    ],
   });
   assert.deepEqual(
     [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
@@ -135,6 +141,10 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(preflight, /\)\[matrix\.target\] \}\}/);
   assert.match(preflight, /^ {6}target: \$\{\{ matrix\.target \}\}$/m);
+  assert.match(
+    preflight,
+    /x11_hidpi: \$\{\{ inputs\.native_preflight_target == 'file-drop' && matrix\.target == 'x86_64-unknown-linux-gnu' \}\}/,
+  );
   assert.match(
     preflight,
     /native_file_dialogs: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' \}\}/,
@@ -164,11 +174,11 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(
     preflight,
-    /windows_reference_only: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
+    /windows_reference_only: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e && inputs\.native_preflight_target != 'file-drop' \}\}/,
   );
   assert.match(
     preflight,
-    /chart_only: \$\{\{ inputs\.native_preflight_chart && inputs\.native_preflight_target != 'linux-desktop' \}\}/,
+    /chart_only: \$\{\{ inputs\.native_preflight_chart && inputs\.native_preflight_target != 'linux-desktop' && inputs\.native_preflight_target != 'file-drop' \}\}/,
   );
   assert.match(
     native,
