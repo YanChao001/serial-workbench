@@ -104,6 +104,37 @@ test("large receive history keeps offscreen rows out of the DOM and locates reta
   });
   await expect(latest).toBeVisible();
   await expect(last).toHaveCount(0);
+  const firstVisibleOffset = () =>
+    log.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return Array.from(
+        element.querySelectorAll<HTMLElement>("[data-offset]"),
+      ).find((row) => {
+        const box = row.getBoundingClientRect();
+        return box.bottom > bounds.top && box.top < bounds.bottom;
+      })?.dataset.offset;
+    });
+  const readingOffset = await firstVisibleOffset();
+  expect(readingOffset).toBeDefined();
+  const rowInset = () =>
+    log.evaluate((element, offset) => {
+      const row = Array.from(
+        element.querySelectorAll<HTMLElement>("[data-offset]"),
+      ).find((row) => row.dataset.offset === offset);
+      return (
+        row &&
+        row.getBoundingClientRect().top - element.getBoundingClientRect().top
+      );
+    }, readingOffset);
+  const readingInset = await rowInset();
+  expect(readingInset).toBeDefined();
+  const insetChange = async () =>
+    Math.abs(((await rowInset()) ?? Infinity) - (readingInset ?? 0));
+  await page.setViewportSize({ width: 420, height: 530 });
+  await expect.poll(insetChange).toBeLessThanOrEqual(1);
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await expect.poll(insetChange).toBeLessThanOrEqual(1);
+
   await page.evaluate(
     (items) => window.workbenchFixture.emitRaw(items),
     packets(601, 1),
@@ -122,6 +153,9 @@ test("large receive history keeps offscreen rows out of the DOM and locates reta
   await expect(target).toBeInViewport();
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
+  await page.setViewportSize({ width: 420, height: 530 });
+  await expect(target).toBeInViewport();
+  await page.setViewportSize({ width: 1240, height: 760 });
   await terminal.getByRole("button", { name: en["workbench.resume"] }).click();
   await expect(log.locator('[data-offset="7200"]')).toBeInViewport();
   await expect(target).toHaveCount(0);
@@ -144,6 +178,139 @@ test("large receive history keeps offscreen rows out of the DOM and locates reta
     path: info.outputPath("receive-search-420x530.png"),
     animations: "disabled",
   });
+});
+
+test("keeps focused HEX boundaries through window activation and scroll", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  for (let start = 1; start <= 192; start += 48) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 48),
+    );
+  }
+  const first = log.locator('[data-offset="2280"]');
+  const last = log.locator('[data-offset="2292"]');
+  await expect(last).toBeInViewport();
+  await first.focus();
+  await log.evaluate((node) => {
+    const start = node.querySelector(
+      '[data-offset="2280"] [data-hex-source]',
+    )?.firstChild;
+    const end = node.querySelector(
+      '[data-offset="2292"] [data-hex-source]',
+    )?.firstChild;
+    if (!start || !end) throw new Error("Missing HEX range");
+    document.getSelection()!.setBaseAndExtent(start, 0, end, 2);
+  });
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    packets(193, 1),
+  );
+  await expect(log.locator('[data-offset="2304"]')).toBeInViewport();
+  await expect(first).toBeFocused();
+  const edges = () =>
+    log.evaluate(() => {
+      const selection = document.getSelection();
+      return [selection?.anchorNode, selection?.focusNode].map(
+        (edge) =>
+          edge?.parentElement?.closest<HTMLElement>("[data-offset]")?.dataset
+            .offset,
+      );
+    });
+  await expect.poll(edges).toEqual(["2280", "2292"]);
+
+  await log.hover();
+  await page.mouse.wheel(0, -4800);
+  await expect(
+    terminal.getByRole("button", { name: en["workbench.returnToLatest"] }),
+  ).toBeVisible();
+  await expect.poll(edges).toEqual(["2280", "2292"]);
+  await expect(first).toBeFocused();
+});
+
+test("restores the selected page of a long record after returning to its row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const fixture = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (fixture?.kind !== "source") throw new Error("Missing RX fixture");
+  const fragments = [Buffer.alloc(65536, 65), Buffer.from("TAIL")].map(
+    (bytes, index) => {
+      const offset = index * 65536;
+      return {
+        kind: "source",
+        event: {
+          ...fixture.event,
+          eventSeq: String(index + 11),
+          time: {
+            ...fixture.event.time,
+            sourceMonoNs: String((index + 1) * 200_000_000),
+          },
+          payload: {
+            bytesBase64: bytes.toString("base64"),
+            byteStart: String(offset),
+            byteEnd: String(offset + bytes.length),
+            message: {
+              messageId: "virtualized-long-record",
+              messageType: "fixture",
+              fragmentOffset: String(offset),
+              messageLength: "65540",
+            },
+          },
+        },
+      };
+    },
+  );
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    fragments,
+  );
+  for (let start = 3; start <= 302; start += 50) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 50, 12, 65540 + (start - 3) * 12),
+    );
+  }
+
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  await expect(log.getByText("packet-0302", { exact: true })).toBeInViewport();
+  await log.press("Home");
+  await expect.poll(() => log.evaluate((element) => element.scrollTop)).toBe(0);
+  const detail = log.locator(".workbench-long-record");
+  await detail.locator("summary").click();
+  await detail.getByRole("button", { name: "Next record page" }).click();
+  await expect(detail.getByRole("status")).toContainText("2/2");
+  await terminal
+    .getByRole("button", { name: en["workbench.returnToLatest"] })
+    .click();
+  await expect(detail).toHaveCount(0);
+  await log.press("Home");
+  await expect(detail.getByRole("status")).toContainText("2/2");
 });
 
 test("applies ordered text highlights and keeps receiving when a rule is invalid", async ({

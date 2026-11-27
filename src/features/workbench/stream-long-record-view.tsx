@@ -12,6 +12,8 @@ import {
 } from "./stream-long-record";
 import { workbenchStatus } from "./stream-presentation";
 
+export type LongRecordReading = { opened: boolean; page: number };
+
 type LongRecordHighlight = {
   track: (id: string, text?: string) => void;
   render: (text: string) => ReactNode;
@@ -19,6 +21,7 @@ type LongRecordHighlight = {
 
 export function LongStreamRecordView({
   record,
+  remembered,
   initialOffset,
   labels,
   mode,
@@ -29,6 +32,7 @@ export function LongStreamRecordView({
   highlight,
 }: {
   record: LongStreamRecord;
+  remembered: Map<string, LongRecordReading>;
   labels: WorkbenchLabels;
   mode: LongRecordMode;
   encoding: TextEncoding;
@@ -44,7 +48,15 @@ export function LongStreamRecordView({
     initialOffset < record.end
       ? Number((initialOffset - record.offset) / BigInt(LONG_RECORD_PAGE_BYTES))
       : undefined;
-  const [opened, setOpened] = useState(initialPage !== undefined);
+  const [reading, setReading] = useState<LongRecordReading>(() =>
+    initialPage === undefined
+      ? (remembered.get(record.key) ?? { opened: false, page: 0 })
+      : { opened: true, page: initialPage },
+  );
+  function updateReading(next: LongRecordReading) {
+    remembered.set(record.key, next);
+    setReading(next);
+  }
   const length = record.end - record.offset;
   const declared = record.message
     ? BigInt(record.message.messageLength)
@@ -55,8 +67,12 @@ export function LongStreamRecordView({
   return (
     <details
       className="workbench-long-record"
-      open={opened}
-      onToggle={(event) => setOpened(event.currentTarget.open)}
+      open={reading.opened}
+      onToggle={(event) => {
+        const opened = event.currentTarget.open;
+        if (opened !== reading.opened)
+          updateReading({ opened, page: initialPage ?? 0 });
+      }}
     >
       <summary>
         {labels.longRecord} · {length.toString()}
@@ -66,10 +82,11 @@ export function LongStreamRecordView({
         {receipt ? " · " + workbenchStatus(receipt.outcome, labels) : ""}
         {receipt?.backendError ? " · " + receipt.backendError.code : ""}
       </summary>
-      {opened && (
+      {reading.opened && (
         <LongRecordPage
           record={record}
-          initialPage={initialPage ?? 0}
+          requested={reading.page}
+          setRequested={(page) => updateReading({ opened: true, page })}
           labels={labels}
           mode={mode}
           encoding={encoding}
@@ -84,7 +101,8 @@ export function LongStreamRecordView({
 
 function LongRecordPage({
   record,
-  initialPage,
+  requested,
+  setRequested,
   labels,
   mode,
   encoding,
@@ -99,9 +117,9 @@ function LongRecordPage({
   hexFormat: HexFormat;
   hexSource?: string;
   highlight?: LongRecordHighlight;
-  initialPage: number;
+  requested: number;
+  setRequested: (page: number) => void;
 }) {
-  const [requested, setRequested] = useState(initialPage);
   const pageCount = Math.max(
     1,
     Math.ceil(Number(record.end - record.offset) / LONG_RECORD_PAGE_BYTES),

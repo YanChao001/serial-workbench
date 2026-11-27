@@ -124,7 +124,10 @@ import {
   collectLongStreamRecords,
   visibleLongRecordPages,
 } from "./stream-long-record";
-import { LongStreamRecordView } from "./stream-long-record-view";
+import {
+  LongStreamRecordView,
+  type LongRecordReading,
+} from "./stream-long-record-view";
 import { readStreamCopySample } from "./stream-copy";
 import { StreamNumberInspector } from "./stream-number-inspector";
 import { streamNumberSample, type StreamNumberSample } from "./stream-number";
@@ -398,6 +401,9 @@ export function StreamView({
   } | null>(null);
   const touchY = useRef<number | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  const [longRecordReading] = useState(
+    () => new Map<string, LongRecordReading>(),
+  );
   const displayed = frozen ?? items;
   const visibleChartSelection =
     chartRevealResult?.request === chartReveal &&
@@ -634,6 +640,15 @@ export function StreamView({
     () => collectLongStreamRecords(projected, displayed),
     [projected, displayed],
   );
+  useEffect(() => {
+    if (!longRecordReading.size) return;
+    const retained = new Set(
+      Array.from(longRecords.values(), (record) => record.key),
+    );
+    for (const key of longRecordReading.keys()) {
+      if (!retained.has(key)) longRecordReading.delete(key);
+    }
+  }, [longRecordReading, longRecords]);
   const rows = useMemo(() => {
     let decoder = createTextDecoder(receiveCodec);
     let txDecoder = createTextDecoder(sendCodec);
@@ -1113,8 +1128,8 @@ export function StreamView({
   const firstVisibleItem = displayed[visibleRows[0]?.itemIndex ?? -1];
   const rowWindow = useStreamRowWindow({
     count: showAnsi || mappedProjection ? 0 : visibleRows.length,
-    layoutKey: JSON.stringify([
-      firstVisibleItem && streamItemIdentity(firstVisibleItem),
+    sourceKey: firstVisibleItem && streamItemIdentity(firstVisibleItem),
+    layoutKey: JSON.stringify({
       receiveCodec,
       sendCodec,
       mode,
@@ -1122,9 +1137,10 @@ export function StreamView({
       showTransmitEcho,
       wrapReceiveText,
       showRecordNumbers,
-      rawSearchOpen && searchDirection,
-      rawSearchOpen && matchVisibility,
-    ]),
+      typography: terminalSettings?.typography,
+      searchDirection: rawSearchOpen && searchDirection,
+      matchVisibility: rawSearchOpen && matchVisibility,
+    }),
     following,
     viewport,
     body: content,
@@ -1341,7 +1357,7 @@ export function StreamView({
     () =>
       visibleRows.slice(rowWindow.first, rowWindow.end).map((row) => (
         <div
-          key={row.itemIndex}
+          key={streamItemIdentity(displayed[row.itemIndex]!)}
           ref={(element) => {
             for (const itemIndex of row.itemIndexes) {
               if (element) rowRefs.current.set(itemIndex, element);
@@ -1458,6 +1474,7 @@ export function StreamView({
                     : undefined
                 }
                 record={row.longRecord}
+                remembered={longRecordReading}
                 labels={labels}
                 mode={mode}
                 encoding={row.kind === "tx" ? sendCodec : receiveCodec}
@@ -1511,6 +1528,7 @@ export function StreamView({
       visibleRows,
       rowWindow.first,
       rowWindow.end,
+      longRecordReading,
       showRecordNumbers,
       locations,
       locatedItem,
@@ -2255,6 +2273,7 @@ export function StreamView({
             className="workbench-stream-log app-scroll-region"
             data-surface="transparent"
             data-following={following}
+            data-stream-windowed={rowWindow.enabled || undefined}
             data-locating={locatedItem !== undefined || undefined}
             onWheel={(event) => {
               if (event.ctrlKey || event.deltaY === 0) return;
@@ -2365,7 +2384,7 @@ export function StreamView({
                   style={terminalTypographyStyle(terminalSettings?.typography)}
                   onReveal={revealMappedSource}
                 />
-              ) : rowWindow.enabled ? (
+              ) : (
                 <>
                   <div
                     aria-hidden="true"
@@ -2386,8 +2405,6 @@ export function StreamView({
                     style={{ blockSize: rowWindow.after }}
                   />
                 </>
-              ) : (
-                renderedRows
               )}
             </div>
           </div>

@@ -379,7 +379,8 @@
 .workbench-stream-log[data-following="false"] {
   overflow-anchor: auto;
 }
-.workbench-stream-log[data-locating="true"] {
+.workbench-stream-log[data-locating="true"],
+.workbench-stream-log[data-stream-windowed] {
   overflow-anchor: none;
 }
 .workbench-stream-row {
@@ -405,7 +406,7 @@
 .workbench-stream-spacer {
   overflow-anchor: none;
 }
-[data-stream-block] > .workbench-stream-row {
+[data-stream-windowed] [data-stream-block] > .workbench-stream-row {
   content-visibility: visible;
 }
 .workbench-stream-row[data-continues="true"] {
