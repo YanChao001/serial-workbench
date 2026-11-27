@@ -18,7 +18,10 @@ pub use install::{
 };
 pub use installed::VerifiedNodeInstallation;
 pub(crate) use manager::NodePackageManager;
-pub(crate) use product::matches_current_product_archive;
+pub use product::{
+    CONNECTION_SEQUENCE_ACTION, CONNECTION_SEQUENCE_PACKAGE,
+    is_current_connection_sequence_archive, is_product_connection_sequence,
+};
 use serial_workbench_core::{
     Digest, HostError, HostResult, Id, NodePackageIntegrity, NodePackageManifest,
 };

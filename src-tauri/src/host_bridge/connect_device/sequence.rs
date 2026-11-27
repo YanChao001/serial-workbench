@@ -2,7 +2,20 @@ use super::{query, unpack};
 use crate::host_bridge::DesktopHostBridge;
 use serial_workbench_core::*;
 
-const CONNECT: &str = "swb.builtin.automation.connect";
+use serial_workbench_host::node_packages::{
+    CONNECTION_SEQUENCE_ACTION, CONNECTION_SEQUENCE_PACKAGE,
+    is_current_connection_sequence_archive, is_product_connection_sequence,
+};
+
+fn host_target(business: &AttachResult) -> HostResult<Target> {
+    Ok(Target {
+        host_id: business.host_id.clone(),
+        kind: ResourceKind::try_from("host")?,
+        id: business.host_id.clone(),
+        session_id: None,
+        session_epoch: None,
+    })
+}
 
 #[derive(serde::Deserialize, specta::Type)]
 #[serde(
@@ -43,7 +56,7 @@ fn fresh_session(
     };
     if root.execution_host_id != business.host_id
         || root.actor_id != business.actor_id
-        || root.action_id.as_str() != CONNECT
+        || !is_product_connection_sequence(root)
         || root.root_operation_id != root.operation_id
         || !matches!(root.admission, Admission::Request { .. })
         || !root.state.is_terminal()
@@ -100,10 +113,41 @@ impl DesktopHostBridge {
                 };
                 let request = query(
                     &business,
-                    CONNECT,
+                    CONNECTION_SEQUENCE_ACTION,
                     device.clone(),
                     serde_json::json!({ "configuration": configuration, "definition": definition }),
                 )?;
+                let package_id = NodePackageId::try_from(CONNECTION_SEQUENCE_PACKAGE)?;
+                let package_query = query(
+                    &business,
+                    "node.packages.runtime",
+                    host_target(&business)?,
+                    serde_json::json!({ "id": package_id }),
+                )?;
+                let RpcResult::Query(QueryResult::NodePackageRuntime(status)) = unpack(
+                    self.read_request_at_generation(
+                        window,
+                        generation,
+                        RpcRequest::Query(package_query),
+                    )
+                    .await?,
+                )?
+                else {
+                    return Err(HostError::new(
+                        "INTERNAL",
+                        "Invalid connection sequence runtime status",
+                    ));
+                };
+                if status.id != package_id
+                    || !status.archive_sha256.as_ref().is_some_and(|digest| {
+                        is_current_connection_sequence_archive(&status.id, digest)
+                    })
+                {
+                    return Err(HostError::new(
+                        "UNSUPPORTED_CAPABILITY",
+                        "Connection sequence requires the current signed product package",
+                    ));
+                }
                 self.grant_device_intent(
                     window,
                     generation,
@@ -149,6 +193,7 @@ impl DesktopHostBridge {
                     || operation.action_id != call.action_id
                     || operation.target != call.target
                     || operation.execution_mode != ExecutionMode::Independent
+                    || !is_product_connection_sequence(&operation)
                 {
                     return Err(HostError::new(
                         "INTERNAL",
@@ -212,17 +257,10 @@ impl DesktopHostBridge {
         business: &AttachResult,
         operation_id: Id,
     ) -> HostResult<Operation> {
-        let target = Target {
-            host_id: business.host_id.clone(),
-            kind: ResourceKind::try_from("host")?,
-            id: business.host_id.clone(),
-            session_id: None,
-            session_epoch: None,
-        };
         let request = query(
             business,
             "operation.get",
-            target,
+            host_target(business)?,
             serde_json::json!({ "operationId": operation_id, "requestContext": business.request_context }),
         )?;
         let RpcResult::Operation(result) = unpack(
@@ -245,22 +283,27 @@ mod tests {
 
     #[test]
     fn adoption_requires_the_owners_successful_fresh_direct_open() {
+        let descriptor: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../crates/host/resources/node-packages/automation.json"
+        ))
+        .unwrap();
         let business: AttachResult = serde_json::from_value(serde_json::json!({
             "hostId":"host", "instanceEpoch":"1", "protocolVersion":"1.0", "catalogVersion":"1",
             "actorId":"window", "clientId":"desktop", "requestContext":"context",
             "requestContextAcceptUntil":"2040-01-01T00:00:00Z",
             "limits":{"maxRequestBytes":"1024","maxPageItems":"32","maxBatchBytes":"1024",
-                "maxReaderQueueBytes":"1024","resultRetentionMs":"60000","maxLeaseTtlMs":"30000"}
+                "maxReaderQueueBytes":"1024","resultRetentionMs":"604800000","maxLeaseTtlMs":"30000"}
         }))
         .unwrap();
         let root: Operation = serde_json::from_value(serde_json::json!({
             "operationId":"root", "rootOperationId":"root", "executionHostId":"host", "actorId":"window",
             "requestId":"00000000-0000-4000-8000-000000000114",
             "admission":{"kind":"request","requestContextDigest":"0".repeat(64)},
-            "childHighWatermark":"1", "actionId":CONNECT, "target":{"hostId":"host","kind":"device","id":"port"},
+            "childHighWatermark":"1", "actionId":CONNECTION_SEQUENCE_ACTION, "target":{"hostId":"host","kind":"device","id":"port"},
+            "dependencies":[{"id":CONNECTION_SEQUENCE_PACKAGE,"version":descriptor["version"],"digest":descriptor["archiveSha256"]}],
             "executionMode":"independent", "state":"cancelled", "revision":"2",
             "revealTarget":{"pageId":"workbench"}, "acceptedAt":"2026-11-10T00:00:00Z",
-            "settledAt":"2026-11-10T00:00:01Z", "owner":{"kind":"host","id":"host"}
+            "settledAt":"2026-11-10T00:00:01Z", "owner":{"kind":"plugin","id":CONNECTION_SEQUENCE_PACKAGE}
         })).unwrap();
         let child: Operation = serde_json::from_value(serde_json::json!({
             "operationId":"opened", "rootOperationId":"root", "executionHostId":"host", "actorId":"window",
@@ -276,6 +319,10 @@ mod tests {
         assert_eq!(selected.id.as_str(), "session");
         assert_eq!(selected.session_epoch, Some(4.into()));
 
+        let mut unsigned = root.clone();
+        unsigned.dependencies.as_mut().unwrap()[0].digest =
+            Digest::try_from("0".repeat(64).as_str()).unwrap();
+        assert!(fresh_session(&business, &unsigned, &child).is_err());
         let mut other_window = business.clone();
         other_window.actor_id = Id::try_from("other-window").unwrap();
         assert!(fresh_session(&other_window, &root, &child).is_err());

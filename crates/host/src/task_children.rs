@@ -147,13 +147,12 @@ impl Host {
         let configuration = serde_json::to_vec(&accepted.call.params).map_err(|_| invalid())?;
         let configuration_digest =
             Digest::try_from(format!("{:x}", sha2::Sha256::digest(configuration)).as_str())?;
-        let connection_sequence = accepted.operation.action_id.as_str()
-            == "swb.builtin.automation.connect"
-            && binding.package().as_str() == "swb.builtin.automation"
-            && crate::node_packages::matches_current_product_archive(
-                binding.package(),
-                binding.archive_sha256(),
-            );
+        let connection_sequence =
+            crate::node_packages::is_product_connection_sequence(&accepted.operation)
+                && crate::node_packages::is_current_connection_sequence_archive(
+                    binding.package(),
+                    binding.archive_sha256(),
+                );
         let scope = Arc::new(TaskScope {
             actor: accepted.actor.clone(),
             operation: accepted.operation.clone(),

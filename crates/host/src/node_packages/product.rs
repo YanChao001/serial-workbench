@@ -298,10 +298,28 @@ fn previous_packages() -> &'static [ProductPackage; 16] {
     })
 }
 
-pub(crate) fn matches_current_product_archive(id: &NodePackageId, digest: &Digest) -> bool {
-    packages()
-        .iter()
-        .any(|package| package.id() == id && &package.descriptor.archive_sha256 == digest)
+pub const CONNECTION_SEQUENCE_ACTION: &str = "swb.builtin.automation.connect";
+pub const CONNECTION_SEQUENCE_PACKAGE: &str = "swb.builtin.automation";
+
+pub fn is_current_connection_sequence_archive(id: &NodePackageId, digest: &Digest) -> bool {
+    id.as_str() == CONNECTION_SEQUENCE_PACKAGE
+        && packages()
+            .iter()
+            .any(|package| package.id() == id && &package.descriptor.archive_sha256 == digest)
+}
+
+/// Validates the archive recorded by Host admission, including supported product predecessors.
+pub fn is_product_connection_sequence(operation: &serial_workbench_core::Operation) -> bool {
+    let Some([dependency]) = operation.dependencies.as_deref() else {
+        return false;
+    };
+    operation.action_id.as_str() == CONNECTION_SEQUENCE_ACTION
+        && operation.owner.kind == serial_workbench_core::OwnerKind::Plugin
+        && dependency.id.as_str() == CONNECTION_SEQUENCE_PACKAGE
+        && trusted_packages().any(|package| {
+            package.id().as_str() == CONNECTION_SEQUENCE_PACKAGE
+                && package.descriptor.archive_sha256 == dependency.digest
+        })
 }
 
 fn trusted_packages() -> impl Iterator<Item = &'static ProductPackage> {

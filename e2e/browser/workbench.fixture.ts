@@ -1432,7 +1432,8 @@ export async function seedWorkbenchFixture(
             const intent = args.intent as Record<string, unknown>;
             if (intent.kind === "adopt") {
               if (
-                intent.operationId !== automationOperation?.operationId ||
+                !automationOperation ||
+                intent.operationId !== automationOperation.operationId ||
                 intent.openedOperationId !== "open" ||
                 automationOperation.target.id !== openedSession.deviceId
               )

@@ -3464,9 +3464,84 @@ mod tests {
         let stopped = settle(running).await;
         assert_eq!(stopped.state, OperationState::Cancelled, "{stopped:?}");
         assert_eq!(stopped.child_high_watermark, 0.into());
+        let mut long_ready = send("CQ==");
+        long_ready["definition"]["steps"][1]["timeoutMs"] = serde_json::json!(5000);
+        let after_open = host
+            .invoke(&actor, call(&device, action, long_ready))
+            .await
+            .unwrap();
+        let wake_selector = OperationGetParams::ByChild {
+            parent_operation_id: after_open.operation_id.clone(),
+            child_key: PositiveU64::try_from(U64::from(3)).unwrap(),
+        };
+        let written = tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                if let Ok(child) = store.get_selected(&actor, &wake_selector)
+                    && child.state == OperationState::Succeeded
+                {
+                    assert_eq!(child.action_id.as_str(), "session.tx");
+                    break child;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let cancel_target = Target {
+            host_id: identity.host_id.clone(),
+            kind: ResourceKind::try_from("operation").unwrap(),
+            id: after_open.operation_id.clone(),
+            session_id: None,
+            session_epoch: None,
+        };
+        let request = host
+            .invoke(
+                &actor,
+                call(
+                    &cancel_target,
+                    "operation.cancel",
+                    serde_json::json!({"reason":"user"}),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(settle(request).await.state, OperationState::Succeeded);
+        assert_eq!(settle(after_open).await.state, OperationState::Cancelled);
+        let host_target = Target {
+            kind: ResourceKind::try_from("host").unwrap(),
+            id: identity.host_id.clone(),
+            ..device
+        };
+        let selector = OperationGetParams::ById {
+            operation_id: written.operation_id.clone(),
+            request_context: None,
+        };
+        let (redacted, _) = host
+            .inspect_operation(&actor, &host_target, selector.clone(), false)
+            .await
+            .unwrap();
+        assert_eq!(redacted.state, OperationState::Succeeded);
+        assert_eq!(redacted.operation_id, written.operation_id);
+        assert!(redacted.result.is_none());
+        assert!(
+            host.inspect_operation(&actor, &host_target, selector.clone(), true)
+                .await
+                .is_err()
+        );
+        let stranger = auth
+            .authenticate(&id("connection-sequence-stranger"), None)
+            .unwrap()
+            .actor;
+        assert!(
+            host.inspect_operation(&stranger, &host_target, selector, false)
+                .await
+                .is_err()
+        );
+        grant(&written.target);
+        assert_eq!(raw(written.target).await, ["AQID"]);
         host.shutdown().await.unwrap();
         eprintln!(
-            "connection_sequence rx=010203 successful_tail=04 timed_out_tail=none reused_write=none preopen_cancel_children=0"
+            "connection_sequence rx=010203 successful_tail=04 timed_out_tail=none reused_write=none preopen_cancel_children=0 post_wake_cancel_metadata_only=true cancel_tail=none"
         );
     }
 

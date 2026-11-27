@@ -84,6 +84,7 @@ function taskFixture({
   reused = false,
   receive = true,
   earlyReady = false,
+  readyOnReset = false,
   disconnect = false,
   signal,
 } = {}) {
@@ -141,6 +142,14 @@ function taskFixture({
           case "lease.release":
             return receipt("lease", { leaseId: "lease", state: "released" });
           case "session.control":
+            if (
+              readyOnReset &&
+              call.params.line === "dtr" &&
+              call.params.value
+            ) {
+              append("O");
+              append("K");
+            }
             return receipt("control", {
               line: call.params.line,
               requested: call.params.value,
@@ -295,6 +304,29 @@ test("a reused port and a timed out ready wait admit no later step", async () =>
       .map(({ params }) => params.bytesBase64),
     ["pQ=="],
   );
+});
+
+test("a reset without wake bytes retains ready RX delivered while DTR settles", async () => {
+  const f = taskFixture({ readyOnReset: true });
+  const report = await createConnectionSequence(f.clock)(
+    connectionCall({
+      ...definition,
+      steps: definition.steps.filter(({ kind }) => kind !== "send"),
+    }),
+    f.task,
+  );
+  assert.equal(report.outcome, "completed");
+  assert.deepEqual(report.steps.at(-1).source, {
+    hostId: "host",
+    sessionId: "session",
+    sessionEpoch: "4",
+    direction: "rx",
+    eventStart: "1",
+    eventEnd: "3",
+    byteStart: "0",
+    byteEnd: "2",
+  });
+  assert.ok(f.calls.every(({ actionId }) => actionId !== "session.tx"));
 });
 
 test("a disconnect stops the remaining control and TX steps", async () => {

@@ -408,7 +408,7 @@ export function createConnectionSequence(
           );
           if (afterControl.kind !== "tail")
             return finishConnected("session_changed");
-          cursor = afterControl.cursor;
+          cursor = current.cursor;
           wake = undefined;
         }
       }
