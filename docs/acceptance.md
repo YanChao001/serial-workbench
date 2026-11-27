@@ -363,6 +363,16 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 带固定 Node 布局的生产 Host 使用本章的 `e2e/paired-browser.mjs`。在配对浏览器武装规则后关闭面板，确认放弃未保存的定义。向 Virtual Echo 发送带起始换行的 `RULE:BENCH` 行，重开面板查看同一任务和命令序列回执。用 CLI 核对两个操作的共同根、会话代次、规则命中的 11 字节来源，以及序列一次写出并匹配的 `RULE:ACK`。将 `workspace.save` 设为规则效果，核对 420 像素宽窗提示目标不支持，武装按钮不可用，WebSocket 没有发送该规则，工作区内容和修订保持一致。浏览器夹具还验证未登记和保留动作的提示、精确会话参数的 Host 预检、拒权后保留草稿，以及修正定义时清除旧反馈。`receipt.json` 的 `ruleCommand` 保留配对证据。单独的写库插件、实机对端和发行安装仍按本项验收。
 
+### 连接时序编排（CONN-10）
+
+在未连接串口的参数窗打开「连接时序」。核对设备与配置，编辑打开前等待和打开后的线路、延时、发送、就绪步骤。用错误的 HEX 和被硬件流控占用的线路检查确认不可用。重排步骤与改变时间后核对同一序列，显式点击「连接并运行」。观察共享任务的接纳、执行、停止及真实终态。关闭并重开查看原回执，从成功结果定位同一会话代次。
+
+用 `node --test scripts/connection-sequence.test.mjs scripts/reference-repeat-send.test.mjs scripts/product-automation.test.mjs` 核对输入、匹配、取消与签名包。将 `SWB_NODE_RUNTIME_TEST_ROOT` 指向验证过的固定 Node 运行时根目录，运行 `cargo test --locked -p serial-workbench-host --lib native_node_connection_sequence_owns_fresh_session_and_stops_before_tail -- --ignored --nocapture --test-threads=1`。Windows 本机隔离 Host 使用实际首方签名包和 Virtual Echo，核对就绪原始范围、超时后尾步跳过、已打开端口无新增写入、会话换代和打开前取消零子操作。唤醒后取消时核对只留下已接纳的唤醒字节。发起者只能查看已结算 TX 子操作的状态，读取写入结果、输入和 Raw 仍需要会话权限。
+
+运行 `cargo test --locked -p serial-workbench-host --lib node_packages::product::tests` 核对签名与受信前驱升级的启用、停用及卸载状态。运行 `cargo test --locked -p serial-workbench --lib adoption_requires_the_owners_successful_fresh_direct_open` 核对查看会话时使用同一窗口业务身份、首方签名依赖、直接新开子回执与原代次。
+
+实际接线验收时以可独立观察的对端确认 DTR/RTS 低高顺序、复位间隔和完整唤醒帧。将就绪串分成两次交付，再分场景断开、超时或停止，并核对收据保留的实际前缀。其他适用平台和正式签名安装依阶段安排复验。 [界面草稿](./ui-design.md#连接时序编排草稿conn-10)
+
 ### 日历定时任务（AUTO-08）
 
 按工具窗内容宽度分列。定点模式保留时间和字节输入，cron 模式宽窗两列排日期条件，窄窗依序纵排。UTC 预览与有效性提示置于操作之前。观察区使用统一反馈和等宽数字，长收据按文字边界换行，在有界列表中可用键盘滚动。显式武装时将初始状态带入可见范围，后续状态更新保持当前滚动位置。

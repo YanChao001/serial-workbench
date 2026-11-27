@@ -58,6 +58,8 @@ import type { SendSourceMetadata } from "@/providers/host-context";
 import { WorkbenchDialog, WorkbenchPanels } from "./workbench-dialog";
 import { WorkbenchConnection } from "./workbench-connection";
 import { supportsSessionTemplates } from "./session-templates";
+import type { ConnectionSequenceDevice } from "./connection-sequence-tool";
+import { builtinConnectionSequenceAction } from "../../../packages/plugin-sdk/examples/reference-automation/connection-sequence-model";
 import type { SessionTemplateConnection } from "./session-template-tool";
 import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
@@ -215,6 +217,7 @@ export type WorkbenchHost = Pick<
   | "send"
   | "waitForOperation"
   | "readOperationSummary"
+  | "connectionSequenceIntent"
   | "takeover"
   | "watchSession"
   | "setReceiveIdleMs"
@@ -228,6 +231,7 @@ export type WorkbenchHost = Pick<
 export type WorkbenchTool =
   | "workspace"
   | "sessionTemplates"
+  | "connectionSequence"
   | "parameters"
   | "controls"
   | "devices"
@@ -266,6 +270,7 @@ function activityPanel(
   switch (panel) {
     case "workspace":
     case "sessionTemplates":
+    case "connectionSequence":
     case "parameters":
     case "controls":
     case "devices":
@@ -314,8 +319,14 @@ export type WorkbenchToolContext = {
   configurationKey: string;
   configurationDisabled?: boolean;
   templateConnection?: SessionTemplateConnection;
+  connectionSequence?: {
+    device?: ConnectionSequenceDevice;
+    canOpen: boolean;
+    inspectSession(target: Target, snapshot?: SessionSnapshot): void;
+  };
+  openConnectionSequence?: () => void;
   broadcastMemory?: BroadcastMemory;
-  replayOperationId?: string;
+  revealedOperationId?: string;
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
@@ -406,6 +417,7 @@ export type WorkspaceLayoutProps = {
         | "framing"
         | "liveComparison"
         | "sessionTemplates"
+        | "connectionSequence"
         | "repeatSend"
         | "broadcastSend"
         | "calendarSchedule"
@@ -429,6 +441,7 @@ export type WorkspaceLayoutProps = {
     framing?: string;
     liveComparison?: string;
     sessionTemplates?: string;
+    connectionSequence?: string;
     repeatSend?: string;
     broadcastSend?: string;
     replayTransmit?: string;
@@ -759,7 +772,7 @@ export function WorkspaceLayout({
     );
   }, [selected, workspaceKey, state.devices]);
   const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
-  const [replayOperationId, setReplayOperationId] = useState<string>();
+  const [revealedOperationId, setRevealedOperationId] = useState<string>();
   const suiteSessions = useContext(TestSuiteSessionsContext);
   const [suiteDraft, setSuiteDraft] = useState<TestSuiteWorkspace["draft"]>({
     definition: "",
@@ -1462,13 +1475,16 @@ export function WorkspaceLayout({
       );
       const { pageId, panelId } = activity.revealTarget;
       const panel = activityPanel(pageId, panelId);
-      const replayOperationId =
-        panel === "replayTransmit" && activity.actionId === "replay.transmit"
+      const revealedOperationId =
+        (panel === "replayTransmit" &&
+          activity.actionId === "replay.transmit") ||
+        (panel === "connectionSequence" &&
+          activity.actionId === builtinConnectionSequenceAction)
           ? activity.operationId
           : undefined;
       if (
         !session &&
-        !replayOperationId &&
+        !revealedOperationId &&
         (id ||
           activity.actionId === "device.open" ||
           activity.actionId === "replay.open" ||
@@ -1479,7 +1495,7 @@ export function WorkspaceLayout({
         session,
         pageId,
         panel,
-        replayOperationId,
+        revealedOperationId,
         canLocate: !!session || !!panel || pageId !== "workbench",
       };
     },
@@ -1525,7 +1541,7 @@ export function WorkspaceLayout({
     (
       next: WorkbenchPanel,
       returnPoint?: HTMLElement | null,
-      replayOperationId?: string,
+      revealedOperationId?: string,
     ) => {
       if (returnPoint?.isConnected) dialogTrigger.current = returnPoint;
       else if (dialog === null) {
@@ -1533,7 +1549,7 @@ export function WorkspaceLayout({
         dialogTrigger.current = active instanceof HTMLElement ? active : null;
       }
       setSequenceRecording(undefined);
-      setReplayOperationId(replayOperationId);
+      setRevealedOperationId(revealedOperationId);
       setDialog(next);
     },
     [dialog],
@@ -1543,7 +1559,7 @@ export function WorkspaceLayout({
       if (location.session) showObservedSession(location.session);
       revealActivityPage?.(location.pageId);
       if (location.panel)
-        showDialog(location.panel, undefined, location.replayOperationId);
+        showDialog(location.panel, undefined, location.revealedOperationId);
       else setDialog(null);
     },
     [revealActivityPage, showDialog, showObservedSession],
@@ -1925,6 +1941,16 @@ export function WorkspaceLayout({
   );
   const connectionConfiguration =
     connectionSession?.configuration ?? requestedConfiguration(deviceId);
+  const canConnectionSequence =
+    !disabled &&
+    !state.devicesStale &&
+    supportsSessionTemplates(device?.fingerprint.transport) &&
+    (host.connectionSequenceIntent !== undefined ||
+      state.catalog.some(
+        (action) =>
+          action.actionId === builtinConnectionSequenceAction &&
+          action.targetKinds.includes("device"),
+      ));
   const connectionHostId = device?.hostId;
   const connectionSessionId = connectionSession?.sessionId;
   const connectionEpoch = connectionSession?.sessionEpoch;
@@ -2652,6 +2678,7 @@ export function WorkspaceLayout({
         }
         canReplay={!disabled && !choosing && !!onOpenReplay}
         canReplayTransmit={!disabled && canReplayTransmit}
+        canConnectionSequence={canConnectionSequence}
         toolsAvailable={draftsReady && !!renderTool}
         onDeviceChange={(id) => {
           focusRevision.current++;
@@ -3337,7 +3364,7 @@ export function WorkspaceLayout({
                     : session,
                 beforeReplace,
                 snapshotWorkspace,
-                replayOperationId,
+                revealedOperationId,
                 sequenceRecording:
                   dialog === "commandSequence" ? sequenceRecording : undefined,
                 testSuiteWorkspace:
@@ -3357,6 +3384,37 @@ export function WorkspaceLayout({
                 configuration: connectionConfiguration,
                 configurationKey: configurationKeyFor(deviceId),
                 configurationDisabled: !device || disabled,
+                openConnectionSequence: canConnectionSequence
+                  ? () => showDialog("connectionSequence")
+                  : undefined,
+                connectionSequence:
+                  dialog === "connectionSequence"
+                    ? {
+                        device,
+                        canOpen:
+                          canConnectionSequence &&
+                          opening === null &&
+                          !connectionSession,
+                        inspectSession: (target, snapshot) => {
+                          const opened =
+                            snapshot ??
+                            state.sessions.find(
+                              (item) =>
+                                item.sessionId === target.sessionId &&
+                                item.sessionEpoch === target.sessionEpoch,
+                            );
+                          if (
+                            !opened ||
+                            target.hostId !== host.connection?.attachment.hostId
+                          )
+                            return;
+                          focusRevision.current++;
+                          setFollowing(false);
+                          showObservedSession(opened);
+                          setDialog(null);
+                        },
+                      }
+                    : undefined,
                 templateConnection:
                   dialog === "sessionTemplates"
                     ? {

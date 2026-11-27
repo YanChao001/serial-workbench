@@ -83,6 +83,10 @@ const AUTOMATION_0_1_6_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.6.zip");
 const AUTOMATION_0_1_6_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.6.json");
+const AUTOMATION_0_1_7_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.7.zip");
+const AUTOMATION_0_1_7_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.7.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
@@ -218,8 +222,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 15] {
-    static PREVIOUS: OnceLock<[ProductPackage; 15]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 16] {
+    static PREVIOUS: OnceLock<[ProductPackage; 16]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -271,6 +275,11 @@ fn previous_packages() -> &'static [ProductPackage; 15] {
                 AUTOMATION_MARKER,
             ),
             ProductPackage::new(
+                AUTOMATION_0_1_7_DESCRIPTOR,
+                AUTOMATION_0_1_7_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
                 PREVIOUS_RFC2217_DESCRIPTOR,
                 PREVIOUS_RFC2217_ARCHIVE,
                 RFC2217_MARKER,
@@ -287,6 +296,60 @@ fn previous_packages() -> &'static [ProductPackage; 15] {
             ),
         ]
     })
+}
+
+pub(crate) const CONNECTION_SEQUENCE_ACTION: &str = "swb.builtin.automation.connect";
+const CONNECTION_SEQUENCE_PACKAGE: &str = "swb.builtin.automation";
+
+pub(crate) fn is_current_connection_sequence_archive(id: &NodePackageId, digest: &Digest) -> bool {
+    id.as_str() == CONNECTION_SEQUENCE_PACKAGE
+        && packages()
+            .iter()
+            .any(|package| package.id() == id && &package.descriptor.archive_sha256 == digest)
+}
+
+pub(crate) fn is_connection_sequence_device_scope(
+    scope: &serial_workbench_core::NodeHostApiScope,
+) -> bool {
+    matches!(scope.target_kinds.as_slice(), [kind] if kind.as_str() == "device")
+        && scope.permissions.as_slice() == ["metadata.read", "device.modify"]
+}
+
+pub(super) fn retains_execution_permissions(
+    previous: &InstalledNodePackage,
+    next: &VerifiedNodePackage,
+) -> bool {
+    if previous.manifest.permissions == next.manifest().permissions {
+        return true;
+    }
+    // This signed upgrade adds one scope owned by the pinned connection action.
+    // The Host enforces activation of that scope separately for each task.
+    if next.manifest().version.as_str() != "0.1.8"
+        || !is_current_connection_sequence_archive(&next.manifest().id, next.archive_sha256())
+    {
+        return false;
+    }
+    let mut existing_permissions = next.manifest().permissions.clone();
+    let count_before = existing_permissions.host_api.len();
+    existing_permissions
+        .host_api
+        .retain(|scope| !is_connection_sequence_device_scope(scope));
+    existing_permissions.host_api.len() + 1 == count_before
+        && existing_permissions == previous.manifest.permissions
+}
+
+/// Validates the archive recorded by Host admission, including supported product predecessors.
+pub(crate) fn is_product_connection_sequence(operation: &serial_workbench_core::Operation) -> bool {
+    let Some([dependency]) = operation.dependencies.as_deref() else {
+        return false;
+    };
+    operation.action_id.as_str() == CONNECTION_SEQUENCE_ACTION
+        && operation.owner.kind == serial_workbench_core::OwnerKind::Plugin
+        && dependency.id.as_str() == CONNECTION_SEQUENCE_PACKAGE
+        && trusted_packages().any(|package| {
+            package.id().as_str() == CONNECTION_SEQUENCE_PACKAGE
+                && package.descriptor.archive_sha256 == dependency.digest
+        })
 }
 
 fn trusted_packages() -> impl Iterator<Item = &'static ProductPackage> {
@@ -349,6 +412,7 @@ mod tests {
             rule_automation,
             calendar_automation,
             response_automation,
+            loopback_automation,
             old_rfc2217,
             old_modbus,
             old_modbus_slave,
@@ -358,13 +422,14 @@ mod tests {
         check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.7");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.7");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.7");
-        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.7");
-        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.7");
-        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.7");
-        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.7");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.8");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.8");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.8");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.8");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.8");
+        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.8");
+        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.8");
+        check_predecessor_upgrade(loopback_automation, "0.1.7", "0.1.8");
         check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus_slave, "0.1.0", "0.1.1");
@@ -420,7 +485,9 @@ mod tests {
             let migrated = installer.snapshot().unwrap();
             assert_eq!(
                 migrated.packages.first().map(|package| package.enabled),
-                expected_enabled
+                expected_enabled,
+                "{} {old_version} → {next_version}",
+                old.id().as_str()
             );
             if let Some(package) = migrated.packages.first() {
                 assert_eq!(package.manifest.version.as_str(), next_version);
@@ -439,24 +506,29 @@ mod tests {
     fn product_archive_matches_signature_and_descriptor() {
         let limits = NodePackageLimits::default();
         let cancel = AtomicBool::new(false);
-        let package = verify(FRAMING_ARCHIVE.to_vec(), &limits, &cancel).unwrap();
-        assert_eq!(package.manifest().id.as_str(), "swb.reference.framing");
-        let raw: serde_json::Value = serde_json::from_str(FRAMING_DESCRIPTOR).unwrap();
-        assert_eq!(
-            Some(package.manifest().version.as_str()),
-            raw["version"].as_str()
-        );
-        for (path, field) in [
-            ("dist/main.mjs", "compiledModuleSha256"),
-            ("manifest.json", "manifestSha256"),
+        for (archive, descriptor) in [
+            (FRAMING_ARCHIVE, FRAMING_DESCRIPTOR),
+            (AUTOMATION_ARCHIVE, AUTOMATION_DESCRIPTOR),
         ] {
-            let entry = package
-                .integrity()
-                .files
-                .iter()
-                .find(|entry| entry.path.as_str() == path)
-                .unwrap();
-            assert_eq!(Some(entry.sha256.as_str()), raw[field].as_str());
+            let package = verify(archive.to_vec(), &limits, &cancel).unwrap();
+            let raw: serde_json::Value = serde_json::from_str(descriptor).unwrap();
+            assert_eq!(Some(package.manifest().id.as_str()), raw["id"].as_str());
+            assert_eq!(
+                Some(package.manifest().version.as_str()),
+                raw["version"].as_str()
+            );
+            for (path, field) in [
+                ("dist/main.mjs", "compiledModuleSha256"),
+                ("manifest.json", "manifestSha256"),
+            ] {
+                let entry = package
+                    .integrity()
+                    .files
+                    .iter()
+                    .find(|entry| entry.path.as_str() == path)
+                    .unwrap();
+                assert_eq!(Some(entry.sha256.as_str()), raw[field].as_str(), "{path}");
+            }
         }
         let mut modified = FRAMING_ARCHIVE.to_vec();
         modified[0] ^= 1;

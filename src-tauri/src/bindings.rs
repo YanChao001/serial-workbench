@@ -23,6 +23,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             host_bridge::host_attachment,
             host_bridge::host_local_attachment,
             host_bridge::host_connect_device,
+            host_bridge::host_connection_sequence_intent,
             host_bridge::browser_access::host_browser_access,
             host_bridge::lan::host_lan_access,
             host_bridge::lan::host_select_lan_route,

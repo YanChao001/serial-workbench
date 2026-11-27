@@ -48,6 +48,8 @@ import type {
   LocalDocumentIntent_Deserialize,
   LocalBrowserAccess,
   LocalNodeIntent_Deserialize,
+  ConnectionSequenceIntent,
+  ConnectionSequenceIntentResult_Serialize,
 } from "./generated/bindings";
 
 export type {
@@ -69,6 +71,8 @@ export type {
   SelectedFileResource,
   MediaResolution,
   LocalNodeIntent_Deserialize as LocalNodeIntent,
+  ConnectionSequenceIntent,
+  ConnectionSequenceIntentResult_Serialize as ConnectionSequenceIntentResult,
 } from "./generated/bindings";
 
 export function readClientState(): Promise<ClientStateSnapshot> {
@@ -143,6 +147,15 @@ export async function mediaRelease(
 ): Promise<void> {
   await callHost((commands) => commands.mediaRelease(ticket, generation));
 }
+export function hostConnectionSequenceIntent(
+  generation: U64,
+  intent: ConnectionSequenceIntent,
+): Promise<ConnectionSequenceIntentResult_Serialize> {
+  return callHost((commands) =>
+    commands.hostConnectionSequenceIntent(generation, intent),
+  );
+}
+
 export function hostConnectDevice(
   generation: U64,
   deviceId: string,

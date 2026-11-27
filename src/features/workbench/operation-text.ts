@@ -64,6 +64,7 @@ export function operationText(
       "replay.peer.close": t("workbench.closeSession"),
       "replay.transmit": t("workbench.replayTransmit.title"),
       "swb.builtin.automation.loopback": t("loopback.title"),
+      "swb.builtin.automation.connect": t("connectionSequence.title"),
       "operation.cancel": t("workbench.cancel"),
     },
     states: {
@@ -128,7 +129,8 @@ export function isBusinessTask(actionId: string): boolean {
   return (
     isTransfer(actionId) ||
     actionId.startsWith("capture.") ||
-    actionId === "replay.open"
+    actionId === "replay.open" ||
+    actionId === "swb.builtin.automation.connect"
   );
 }
 export function isBackgroundOperation(actionId: string): boolean {

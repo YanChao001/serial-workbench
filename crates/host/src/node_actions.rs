@@ -91,6 +91,11 @@ impl Host {
             return Err(request_conflict());
         }
         let saved = self.inner.store.plugin_operation(&previous.operation_id)?;
+        if previous.action_id.as_str() == crate::node_packages::CONNECTION_SEQUENCE_ACTION
+            && !crate::node_packages::is_product_connection_sequence(&previous)
+        {
+            return Err(request_conflict());
+        }
         let (_, retained_params) = self
             .inner
             .store
@@ -127,6 +132,17 @@ impl Host {
         mut call: Call,
     ) -> HostResult<PreparedExtension> {
         let binding = self.inner.registry.runtime.resolve(&call.action_id)?;
+        if call.action_id.as_str() == crate::node_packages::CONNECTION_SEQUENCE_ACTION
+            && !crate::node_packages::is_current_connection_sequence_archive(
+                binding.package(),
+                binding.archive_sha256(),
+            )
+        {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "Connection sequence requires the current signed product package",
+            ));
+        }
         if binding.spec().kind != ActionKind::Action {
             return Err(invalid());
         }

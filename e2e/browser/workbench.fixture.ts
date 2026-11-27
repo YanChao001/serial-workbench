@@ -323,6 +323,7 @@ export async function seedWorkbenchFixture(
       calendarInitiallyQueued?: boolean;
       delaySecondCalendarCheck?: boolean;
       sequenceRetry?: boolean;
+      connectionReport?: { steps: unknown[]; [key: string]: unknown };
       sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
     extraActions?: ActionSpec[];
@@ -1421,6 +1422,59 @@ export async function seedWorkbenchFixture(
         },
         unregisterCallback: (id: number) => callbacks.delete(id),
         async invoke(command: string, args: Record<string, unknown> = {}) {
+          const nativeSequence = command === "host_connection_sequence_intent";
+          if (nativeSequence) {
+            if (
+              !automation?.connectionReport ||
+              args.generation !== hostAttachment.generation
+            )
+              throw new Error("Unexpected native connection sequence intent");
+            const intent = args.intent as Record<string, unknown>;
+            if (intent.kind === "adopt") {
+              if (
+                !automationOperation ||
+                intent.operationId !== automationOperation.operationId ||
+                intent.openedOperationId !== "open" ||
+                automationOperation.target.id !== openedSession.deviceId
+              )
+                throw new Error(
+                  "Unexpected connection sequence opening receipt",
+                );
+              return { kind: "session", value: openedSession };
+            }
+            if (intent.kind !== "start")
+              throw new Error("Expected connection sequence start");
+            const {
+              hostId,
+              instanceEpoch,
+              actorId,
+              requestContext,
+              protocolVersion,
+            } = hostAttachment.attachment;
+            command = "host_request";
+            args = {
+              generation: args.generation,
+              request: {
+                method: "action.invoke",
+                params: {
+                  hostId,
+                  instanceEpoch,
+                  actorId,
+                  requestContext,
+                  protocolVersion,
+                  requestId: crypto.randomUUID(),
+                  actionId: automation.action.actionId,
+                  target: { hostId, kind: "device", id: intent.deviceId },
+                  revealTarget: { pageId: "workbench" },
+                  executionMode: "independent",
+                  params: {
+                    configuration: intent.configuration,
+                    definition: intent.definition,
+                  },
+                },
+              },
+            };
+          }
           switch (command) {
             case "plugin:event|listen":
               if (
@@ -2052,6 +2106,7 @@ export async function seedWorkbenchFixture(
                 const rule = call.actionId.endsWith(".rule");
                 const calendar = call.actionId.endsWith(".calendar");
                 const loopback = call.actionId.endsWith(".loopback");
+                const connection = call.actionId.endsWith(".connect");
                 const waitingToArm =
                   calendar && automation.calendarInitiallyQueued;
                 const retry = sequence && automation.sequenceRetry;
@@ -2060,15 +2115,17 @@ export async function seedWorkbenchFixture(
                   : undefined;
                 const failed = suite?.[suiteCase] === "failed";
                 const written = suite?.[suiteCase] === "written";
-                const count = rule
-                  ? 1
-                  : sequence
-                    ? retry || suite
-                      ? 1
-                      : 4
-                    : calendar
-                      ? (call.params.count ?? 1)
-                      : call.params.count;
+                const count = connection
+                  ? (automation.connectionReport?.steps.length ?? 1)
+                  : rule
+                    ? 1
+                    : sequence
+                      ? retry || suite
+                        ? 1
+                        : 4
+                      : calendar
+                        ? (call.params.count ?? 1)
+                        : call.params.count;
                 if (typeof count !== "number")
                   throw new Error("Expected automation count");
                 const id = suite
@@ -2085,7 +2142,9 @@ export async function seedWorkbenchFixture(
                           : "fixture-calendar-" + calendarRuns
                         : loopback
                           ? "fixture-loopback"
-                          : "fixture-repeat";
+                          : connection
+                            ? "fixture-connection-sequence"
+                            : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
@@ -2115,7 +2174,7 @@ export async function seedWorkbenchFixture(
                           ? "slots"
                           : rule
                             ? "matches"
-                            : sequence
+                            : sequence || connection
                               ? "steps"
                               : loopback
                                 ? "frames"
@@ -2186,6 +2245,8 @@ export async function seedWorkbenchFixture(
                         ),
                       },
                 );
+                if (connection && automation.connectionReport)
+                  automationFile = JSON.stringify(automation.connectionReport);
                 if (loopback) {
                   const size = Number(call.params.frameBytes);
                   automationFile = JSON.stringify({
@@ -2286,6 +2347,15 @@ export async function seedWorkbenchFixture(
                   });
                 }
                 if (rule) await holdRuleReply("admission");
+                if (nativeSequence)
+                  return {
+                    kind: "accepted",
+                    value: {
+                      ...automationOperation,
+                      state: "queued",
+                      result: undefined,
+                    },
+                  };
                 return {
                   ok: true,
                   result: {

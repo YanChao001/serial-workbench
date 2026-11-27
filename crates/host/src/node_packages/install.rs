@@ -480,7 +480,7 @@ impl NodePackageInstaller {
             let retained_product_trust = lifecycle.product_upgrade.is_some()
                 && previous.is_some_and(|installed| {
                     installed.execution_trust.is_some()
-                        && installed.manifest.permissions == package.manifest().permissions
+                        && product::retains_execution_permissions(installed, &package)
                 });
             let execution_trust = if product_initial || retained_product_trust {
                 Some(NodeExecutionTrust {

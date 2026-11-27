@@ -9,15 +9,50 @@ use crate::{
     },
 };
 
+use std::sync::OnceLock;
+
 pub(super) struct TaskScope {
     actor: AuthenticatedActor,
     operation: Operation,
     binding: Arc<RegisteredHandler>,
     authority: Arc<ActionAuthority>,
+    host_api: Vec<NodeHostApiScope>,
     instance_epoch: U64,
     configuration_digest: Digest,
+    connection_session: Option<OnceLock<Target>>,
 }
 impl TaskScope {
+    fn remember_connection_session(&self, opened: &Operation) -> HostResult<()> {
+        let Some(slot) = &self.connection_session else {
+            return Ok(());
+        };
+        if opened.action_id.as_str() != "device.open"
+            || opened.target != self.operation.target
+            || opened.root_operation_id != self.operation.root_operation_id
+            || opened.actor_id != self.operation.actor_id
+            || opened.execution_host_id != self.operation.execution_host_id
+            || opened.state != OperationState::Succeeded
+            || !matches!(
+                &opened.admission,
+                Admission::Child { parent_operation_id, .. }
+                    if parent_operation_id == &self.operation.operation_id
+            )
+        {
+            return Ok(());
+        }
+        if let Some(ActionResult::Opened(result)) = &opened.result
+            && !result.reused
+        {
+            let _ = slot.set(Target {
+                host_id: self.operation.execution_host_id.clone(),
+                kind: ResourceKind::try_from("session")?,
+                id: result.session_id.clone(),
+                session_id: Some(result.session_id.clone()),
+                session_epoch: Some(result.session_epoch),
+            });
+        }
+        Ok(())
+    }
     fn check_reader(self: &Arc<Self>, host: &Host) -> HostResult<()> {
         let current = host
             .inner
@@ -61,7 +96,12 @@ impl TaskScope {
             owner_instance: self.binding.instance_id().clone(),
             execution_mode: self.operation.execution_mode,
             scope: self.operation.target.clone(),
-            host_api: self.binding.host_api().to_vec(),
+            opened_session: self
+                .connection_session
+                .as_ref()
+                .and_then(OnceLock::get)
+                .cloned(),
+            host_api: self.host_api.clone(),
             inherited: self.actor.task().cloned(),
             admission_queued,
             check,
@@ -108,13 +148,31 @@ impl Host {
         let configuration = serde_json::to_vec(&accepted.call.params).map_err(|_| invalid())?;
         let configuration_digest =
             Digest::try_from(format!("{:x}", sha2::Sha256::digest(configuration)).as_str())?;
+        let signed_automation = crate::node_packages::is_current_connection_sequence_archive(
+            binding.package(),
+            binding.archive_sha256(),
+        );
+        let connection_sequence = signed_automation
+            && crate::node_packages::is_product_connection_sequence(&accepted.operation);
+        let host_api = binding
+            .host_api()
+            .iter()
+            .filter(|scope| {
+                !signed_automation
+                    || connection_sequence
+                    || !crate::node_packages::is_connection_sequence_device_scope(scope)
+            })
+            .cloned()
+            .collect();
         let scope = Arc::new(TaskScope {
             actor: accepted.actor.clone(),
             operation: accepted.operation.clone(),
             binding,
             authority,
+            host_api,
             instance_epoch: accepted.call.instance_epoch,
             configuration_digest,
+            connection_session: connection_sequence.then(OnceLock::new),
         });
         self.inner
             .tasks
@@ -523,10 +581,11 @@ impl Host {
                                     .node_test_gates
                                     .task_operation_read_ready
                                     .arrive();
-                                scope.check_reader(&verify)
+                                scope.check_reader(&verify)?;
+                                scope.remember_connection_session(&value.operation)?;
+                                Ok(value.operation)
                             })
-                            .await?;
-                            Ok(value.operation)
+                            .await
                         }
                         .await;
                         let _ = sent.send(result);

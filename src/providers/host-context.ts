@@ -3,6 +3,8 @@ import type { HostConnection } from "@/lib/host-client";
 import type { BrowserFileProgress } from "@/lib/browser-file-transfer";
 import type { ReceiveIdleMs } from "@/lib/receive-history";
 import type {
+  ConnectionSequenceIntent,
+  ConnectionSequenceIntentResult,
   FileResourceRole,
   SelectedFileResource,
   TransferDrop,
@@ -148,6 +150,10 @@ export type CommandLibraryAccess = {
 
 export type HostContextValue = {
   commandLibrary?: CommandLibraryAccess;
+  connectionSequenceIntent?(
+    intent: ConnectionSequenceIntent,
+    signal: AbortSignal,
+  ): Promise<ConnectionSequenceIntentResult>;
   state: HostState;
   connection?: HostConnection;
   browserFile?: {

@@ -1,4 +1,4 @@
-//! Retained operation inspection uses current resource read rights, never creator identity.
+//! Retained operation inspection follows current resource rights with a limited owner-only view for connection receipts.
 use super::*;
 
 impl Host {
@@ -82,7 +82,7 @@ impl Host {
                 auth.require(&reader, "metadata.read", source)?;
                 auth.require(&reader, "content.read", source)?;
             }
-            authorize_inspection(
+            if let Err(error) = authorize_inspection(
                 &auth,
                 &files,
                 &reader,
@@ -90,7 +90,18 @@ impl Host {
                 params.as_ref(),
                 replay,
                 include_input,
-            )?;
+            ) {
+                if include_input
+                    || error.code != "PERMISSION_DENIED"
+                    || !allows_connection_sequence_tx_state(&auth, &store, &reader, &operation)?
+                {
+                    return Err(error);
+                }
+                operation.result = None;
+                operation.error = None;
+                operation.progress = None;
+                operation.reveal_target.result_ref = None;
+            }
             let input = if include_input {
                 typed_input(&operation, params.as_ref())
             } else {
@@ -106,6 +117,43 @@ impl Host {
         })
         .await
     }
+}
+
+// The owner can identify a settled send in their signed connection task even
+// while the fresh session stays private. TX input and content use the normal session ACL.
+fn allows_connection_sequence_tx_state(
+    auth: &AuthService,
+    store: &Store,
+    actor: &AuthenticatedActor,
+    child: &Operation,
+) -> HostResult<bool> {
+    let Admission::Child {
+        parent_operation_id,
+        ..
+    } = &child.admission
+    else {
+        return Ok(false);
+    };
+    if child.action_id.as_str() != "session.tx"
+        || child.actor_id != *actor.id()
+        || child.target.kind.as_str() != "session"
+        || child.root_operation_id != *parent_operation_id
+        || !child.state.is_terminal()
+    {
+        return Ok(false);
+    }
+    let snapshot = auth.snapshot(actor)?;
+    if snapshot.is_lan_peer() || snapshot.require("metadata.read", &child.target).is_err() {
+        return Ok(false);
+    }
+    let (parent, _) = store.retained_operation(parent_operation_id)?;
+    Ok(parent.actor_id == child.actor_id
+        && parent.execution_host_id == child.execution_host_id
+        && parent.root_operation_id == parent.operation_id
+        && parent.target.kind.as_str() == "device"
+        && parent.state.is_terminal()
+        && crate::node_packages::is_product_connection_sequence(&parent)
+        && snapshot.require("metadata.read", &parent.target).is_ok())
 }
 
 pub(super) fn redact_error_details(operation: &mut Operation) {
