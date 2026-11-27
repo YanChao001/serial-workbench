@@ -356,6 +356,7 @@ impl BuiltinAction {
             | Self::StartupConfigGet
             | Self::ReplayClose
             | Self::ReplayPeerState
+            | Self::ReplayPeerClose
             | Self::DeviceRefresh
             | Self::RecentList
             | Self::StreamCursor

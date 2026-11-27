@@ -3,7 +3,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serial_workbench_core::*;
 use std::collections::HashMap;
 
-const MAX_RECORDS: usize = 4096;
+pub(super) const MAX_RECORDS: usize = 4096;
 const MAX_BYTES: usize = 512 * 1024;
 
 type Source = (Id, U64, Id, U64);
@@ -271,9 +271,9 @@ fn ineligible() -> HostError {
     )
 }
 
-fn limit() -> HostError {
+pub(super) fn limit() -> HostError {
     HostError::new(
-        "LIMIT_EXCEEDED",
+        "REPLAY_PEER_LIMIT",
         "Recorded peer source exceeds the matching budget",
     )
 }

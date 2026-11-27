@@ -1284,6 +1284,11 @@ export const en = {
   "workbench.configuration.importContents": "Configuration package contents",
   "workbench.configuration.commandCount": "Quick commands to add ({count})",
   "workbench.replayPeer.open": "Simulate recorded peer",
+  "workbench.replayPeer.closed": "The simulated peer is closed.",
+  "workbench.replayPeer.ineligible":
+    "Simulation needs a complete raw recording of one byte stream with confirmed writes. Use Open replay to inspect this recording.",
+  "workbench.replayPeer.tooLarge":
+    "This recording exceeds the simulation size limit. Use Open replay to inspect it.",
   "workbench.replayPeer.title": "Recorded peer",
   "workbench.replayPeer.sourceUnavailable":
     "The recording is unavailable to this simulated session.",

@@ -197,6 +197,14 @@ fn authorize_inspection(
             file_read(&input.capture_ref)?;
         }
         "replay.control" | "replay.close" | "replay.peer.submit" => {} // Current rights on the persisted source were checked above.
+        "replay.peer.close" => {
+            if actor.id() != &operation.actor_id {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "The recorded peer belongs to another actor",
+                ));
+            }
+        }
         "workspace.commands.export" => {
             auth.require(actor, "metadata.read", &operation.target)?;
             auth.require(actor, "content.read", &operation.target)?;

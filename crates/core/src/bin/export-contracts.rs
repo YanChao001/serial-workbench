@@ -1809,6 +1809,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ReplayPeerSubmitParams,
         ReplayPeerResponse,
         ReplayPeerProgress,
+        ReplayPeerClosed,
         ReplayPeerState,
         ReplayReadParams,
         ReplayReadResult,

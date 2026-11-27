@@ -1687,10 +1687,11 @@ mod capture_tail;
 async fn recorded_peer_replays_confirmed_bytes_only_in_its_own_simulated_session() {
     let f = Fixture::new().await;
     let live_device = f.open().await;
+    let raw = f.user.connect_raw().await.unwrap();
     let read_live_cursor = || async {
         let request = f.query(&f.user, "stream.cursor", live_device.clone(), json!({}));
         let RpcResult::Query(QueryResult::StreamCursor(value)) =
-            success(f.user.request(RpcRequest::Query(request)).await.unwrap())
+            success(raw.request(RpcRequest::Query(request)).await.unwrap())
         else {
             panic!("independent live cursor expected");
         };
@@ -1713,6 +1714,16 @@ async fn recorded_peer_replays_confirmed_bytes_only_in_its_own_simulated_session
         "{transmitted:?}"
     );
     f.wait_written(&live, 3).await;
+    let second = f
+        .action(
+            &f.user,
+            "session.tx",
+            live_device.clone(),
+            json!({"bytesBase64":"BAU=","writeWaitMs":"100"}),
+        )
+        .await;
+    assert_eq!(second.state, OperationState::Succeeded, "{second:?}");
+    f.wait_written(&live, 6).await;
     let verified = f.stop_capture(&owner, &live).await;
     let source = verified.capture_ref;
     let real_cursor = read_live_cursor().await;
@@ -1821,28 +1832,66 @@ async fn recorded_peer_replays_confirmed_bytes_only_in_its_own_simulated_session
     assert_eq!(state().await.progress.revision, 2.into());
     let old = action(submit(1, "AgM=")).await;
     assert_eq!(old.error.unwrap().code, "REVISION_CONFLICT");
-    let final_match = action(submit(2, "AgM=")).await;
+    let first_match = submit(2, "AgM=");
+    let first_turn = action(first_match.clone()).await;
+    let Some(ActionResult::ReplayPeerProgress(first_progress)) = &first_turn.result else {
+        panic!("first turn progress")
+    };
+    assert!(!first_progress.at_end);
+    assert_eq!(first_progress.response_start, 0.into());
+    assert!(first_progress.response_count.get() > 0);
+    let second_partial = action(submit(3, "BA==")).await;
+    assert_eq!(second_partial.state, OperationState::Succeeded);
+    let prior = action(first_match).await;
+    assert_eq!(prior.result, first_turn.result);
+    let retained = state().await;
+    let first_response = retained
+        .responses
+        .iter()
+        .take(first_progress.response_count.get() as usize)
+        .flat_map(|response| STANDARD.decode(response.bytes_base64.as_str()).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(first_response, [1, 2, 3]);
+    let final_match = action(submit(4, "BQ==")).await;
     assert!(
-        matches!(final_match.result, Some(ActionResult::ReplayPeerProgress(progress)) if progress.at_end)
+        matches!(final_match.result, Some(ActionResult::ReplayPeerProgress(progress)) if progress.at_end && progress.response_start == first_progress.response_count)
     );
     let completed = state().await;
-    assert_eq!(completed.progress.revision, 3.into());
+    assert_eq!(completed.progress.revision, 5.into());
     let bytes = completed
         .responses
         .iter()
         .flat_map(|response| STANDARD.decode(response.bytes_base64.as_str()).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(bytes, [1, 2, 3]);
+    assert_eq!(bytes, [1, 2, 3, 4, 5]);
+    assert!(
+        completed
+            .responses
+            .windows(2)
+            .all(|pair| pair[0].record_ordinal < pair[1].record_ordinal)
+    );
     assert_eq!(read_live_cursor().await, real_cursor);
+    drop(raw);
 
-    let manifest = f.dir.path().join(source_name).join("manifest.json");
+    let directory = f.dir.path().join(source_name);
+    let excess = directory.join("excess.bin");
+    std::fs::File::create(&excess)
+        .unwrap()
+        .set_len(8 * 1024 * 1024)
+        .unwrap();
+    assert_eq!(
+        failure(f.user.request(state_request(&f.user)).await.unwrap()).code,
+        "REPLAY_PEER_LIMIT"
+    );
+    std::fs::remove_file(excess).unwrap();
+    let manifest = directory.join("manifest.json");
     let saved = std::fs::read(&manifest).unwrap();
     let mut changed = saved.clone();
     changed.push(b' ');
     std::fs::write(&manifest, changed).unwrap();
     assert_eq!(
         failure(f.user.request(state_request(&f.user)).await.unwrap()).code,
-        "REFERENCE_CHANGED"
+        "SOURCE_CHANGED"
     );
     std::fs::write(&manifest, saved).unwrap();
     f.auth
@@ -1859,25 +1908,43 @@ async fn recorded_peer_replays_confirmed_bytes_only_in_its_own_simulated_session
         failure(f.user.request(state_request(&f.user)).await.unwrap()).code,
         "PERMISSION_DENIED"
     );
-    f.auth
-        .authorize(
-            &f.operator,
-            AuthorizeParams {
-                client_id: f.user.attachment().client_id.clone(),
-                permissions: vec!["content.read".into()],
-                targets: vec![f.host()],
-                expires_at: None,
-            },
-        )
-        .unwrap();
-
-    let closed = f
-        .action(&f.user, "replay.close", peer.clone(), json!({}))
-        .await;
-    assert_eq!(closed.state, OperationState::Succeeded);
+    let observer_close = f.call(&f.observer, "replay.peer.close", peer.clone(), json!({}));
     assert_eq!(
-        failure(f.user.request(state_request(&f.user)).await.unwrap()).code,
-        "BACKEND_DISCONNECTED"
+        failure(
+            f.observer
+                .request(RpcRequest::Invoke(observer_close))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED"
+    );
+    let closed = f
+        .action(&f.user, "replay.peer.close", peer.clone(), json!({}))
+        .await;
+    assert_eq!(closed.state, OperationState::Succeeded, "{closed:?}");
+    let id = &closed.operation_id;
+    let query = f.query(
+        &f.user,
+        "operation.get",
+        f.target("operation", id.as_str()),
+        json!({"operationId":id}),
+    );
+    let RpcResult::Operation(replay_close) = success(
+        f.user
+            .request(RpcRequest::OperationGet(query))
+            .await
+            .unwrap(),
+    ) else {
+        panic!("peer teardown receipt")
+    };
+    assert_eq!(
+        replay_close.operation.result,
+        Some(ActionResult::ReplayPeerClosed(ReplayPeerClosed {
+            session_id: peer.id.clone(),
+            session_epoch: 1.into(),
+            revision: 6.into()
+        }))
     );
     f.finish().await;
 }

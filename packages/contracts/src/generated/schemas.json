@@ -2204,6 +2204,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -2216,6 +2232,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -2224,6 +2246,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -3298,6 +3322,20 @@
             },
             "value": {
               "$ref": "#/definitions/ReplayPeerProgress"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "replay_peer_closed",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/ReplayPeerClosed"
             }
           },
           "required": ["kind", "value"],
@@ -19483,6 +19521,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "file_metadata",
                   "type": "string"
                 },
@@ -25883,6 +25935,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -25895,6 +25963,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -25903,6 +25977,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -32957,6 +33033,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "file_metadata",
                   "type": "string"
                 },
@@ -35495,6 +35585,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -35507,6 +35613,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -35515,6 +35627,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -38654,6 +38768,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "file_metadata",
                   "type": "string"
                 },
@@ -41290,6 +41418,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -41302,6 +41446,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -41310,6 +41460,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -43381,6 +43533,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/ReplayPeerProgress"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
                 }
               },
               "required": ["kind", "value"],
@@ -48132,6 +48298,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -48144,6 +48326,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -48152,6 +48340,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -53040,6 +53230,34 @@
       "title": "ReplayOpenParams",
       "type": "object"
     },
+    "ReplayPeerClosed": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "revision": {
+          "$ref": "#/definitions/U64"
+        },
+        "sessionEpoch": {
+          "$ref": "#/definitions/U64"
+        },
+        "sessionId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": ["sessionId", "sessionEpoch", "revision"],
+      "title": "ReplayPeerClosed",
+      "type": "object"
+    },
     "ReplayPeerOpenParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -53104,6 +53322,12 @@
         "remainingRequestBytes": {
           "$ref": "#/definitions/U64"
         },
+        "responseCount": {
+          "$ref": "#/definitions/U64"
+        },
+        "responseStart": {
+          "$ref": "#/definitions/U64"
+        },
         "revision": {
           "$ref": "#/definitions/U64"
         }
@@ -53112,6 +53336,8 @@
         "revision",
         "completedTurns",
         "remainingRequestBytes",
+        "responseStart",
+        "responseCount",
         "atEnd"
       ],
       "title": "ReplayPeerProgress",
@@ -53166,6 +53392,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -53174,6 +53406,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -55728,6 +55962,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/ReplayPeerProgress"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
                 }
               },
               "required": ["kind", "value"],
@@ -61488,6 +61736,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -61500,6 +61764,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -61508,6 +61778,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -65366,6 +65638,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "file_metadata",
                   "type": "string"
                 },
@@ -71117,6 +71403,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -71129,6 +71431,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -71137,6 +71445,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"
@@ -79344,6 +79654,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "replay_peer_closed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReplayPeerClosed"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "file_metadata",
                   "type": "string"
                 },
@@ -86073,6 +86397,22 @@
           "required": ["state", "attempts"],
           "type": "object"
         },
+        "ReplayPeerClosed": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision"],
+          "type": "object"
+        },
         "ReplayPeerProgress": {
           "additionalProperties": false,
           "properties": {
@@ -86085,6 +86425,12 @@
             "remainingRequestBytes": {
               "$ref": "#/definitions/U64"
             },
+            "responseCount": {
+              "$ref": "#/definitions/U64"
+            },
+            "responseStart": {
+              "$ref": "#/definitions/U64"
+            },
             "revision": {
               "$ref": "#/definitions/U64"
             }
@@ -86093,6 +86439,8 @@
             "revision",
             "completedTurns",
             "remainingRequestBytes",
+            "responseStart",
+            "responseCount",
             "atEnd"
           ],
           "type": "object"

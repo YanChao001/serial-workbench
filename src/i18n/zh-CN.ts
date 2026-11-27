@@ -1194,6 +1194,11 @@ export const zhCN = {
   "workbench.configuration.importContents": "配置包内容",
   "workbench.configuration.commandCount": "将追加 {count} 条快捷命令",
   "workbench.replayPeer.open": "模拟录制对端",
+  "workbench.replayPeer.closed": "模拟对端已关闭。",
+  "workbench.replayPeer.ineligible":
+    "交互模拟需要一份连续的单流原始录制，且写入已全部确认。可用「打开回放」查看这份录制。",
+  "workbench.replayPeer.tooLarge":
+    "当前录制超过交互模拟的容量上限。可用「打开回放」查看这份录制。",
   "workbench.replayPeer.title": "录制对端",
   "workbench.replayPeer.sourceUnavailable": "当前模拟会话无法读取这份录制。",
   "workbench.replayPeer.loading": "正在检查录制对端…",

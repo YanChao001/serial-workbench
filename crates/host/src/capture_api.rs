@@ -188,6 +188,13 @@ impl CaptureApi {
                 session_target(target, &params.session_id, params.session_epoch)?;
                 self.require_replay(target, actor, "content.read").await
             }
+            BuiltinAction::ReplayPeerClose => {
+                let _: EmptyParams = decode(params)?;
+                let replays = self.replays.clone();
+                let target = target.clone();
+                let actor = actor.clone();
+                blocking(move || replays.authorize_peer_close(&target, &actor)).await
+            }
             BuiltinAction::ReplayClose | BuiltinAction::SessionClose => {
                 let _: EmptyParams = decode(params)?;
                 self.require_replay(target, actor, "content.read").await
@@ -428,6 +435,30 @@ impl CaptureApi {
             });
         };
         let outcome = self.run(action, accepted, &owner, publication).await;
+        if matches!(
+            action,
+            BuiltinAction::ReplayPeerOpen
+                | BuiltinAction::ReplayPeerSubmit
+                | BuiltinAction::ReplayPeerClose
+        ) {
+            return Ok(match outcome {
+                Ok(result) => Settlement {
+                    state: OperationState::Succeeded,
+                    result: Some(result),
+                    error: None,
+                },
+                Err(error) if error.code == "CANCELLED" => Settlement {
+                    state: OperationState::Cancelled,
+                    result: None,
+                    error: None,
+                },
+                Err(error) => Settlement {
+                    state: OperationState::Failed,
+                    result: None,
+                    error: Some(error),
+                },
+            });
+        }
         let store = self.store.clone();
         let actor = accepted.actor.clone();
         let operation_id = owner.operation_id;
@@ -510,7 +541,12 @@ impl CaptureApi {
                 .map(ActionResult::Opened),
             BuiltinAction::ReplayPeerOpen => self
                 .replays
-                .open_peer(decode(&call.params)?, actor, &self.auth)
+                .open_peer(
+                    decode(&call.params)?,
+                    actor,
+                    &self.auth,
+                    self.peer_cancellation(actor, owner),
+                )
                 .await
                 .map(ActionResult::Opened),
             BuiltinAction::ReplayPeerSubmit => self
@@ -521,9 +557,15 @@ impl CaptureApi {
                     decode(&call.params)?,
                     actor,
                     &self.auth,
+                    self.peer_cancellation(actor, owner),
                 )
                 .await
                 .map(ActionResult::ReplayPeerProgress),
+            BuiltinAction::ReplayPeerClose => self
+                .replays
+                .close_peer(&call.target, actor, self.peer_cancellation(actor, owner))
+                .await
+                .map(ActionResult::ReplayPeerClosed),
             BuiltinAction::ReplayControl => self
                 .replays
                 .control(decode(&call.params)?, actor)
@@ -535,6 +577,24 @@ impl CaptureApi {
                 .await
                 .map(ActionResult::Session),
             _ => Err(invalid()),
+        }
+    }
+    fn peer_cancellation(
+        &self,
+        actor: &AuthenticatedActor,
+        owner: &Operation,
+    ) -> impl FnOnce() -> HostResult<()> + use<> {
+        let store = self.store.clone();
+        let actor = actor.clone();
+        let id = owner.operation_id.clone();
+        move || {
+            if store.get(&actor, &id)?.state == OperationState::CancelRequested {
+                return Err(HostError::new(
+                    "CANCELLED",
+                    "Recorded peer operation was cancelled before committing",
+                ));
+            }
+            Ok(())
         }
     }
     async fn status(
@@ -600,9 +660,9 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
             normalized::<ReplayPeerSubmitParams>(&call.params)
         }
         BuiltinAction::ReplayControl => normalized::<ReplayControlParams>(&call.params),
-        BuiltinAction::ReplayClose | BuiltinAction::SessionClose => {
-            normalized::<EmptyParams>(&call.params)
-        }
+        BuiltinAction::ReplayClose
+        | BuiltinAction::SessionClose
+        | BuiltinAction::ReplayPeerClose => normalized::<EmptyParams>(&call.params),
         _ => Err(invalid()),
     }
 }

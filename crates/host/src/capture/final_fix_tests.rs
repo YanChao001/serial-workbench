@@ -948,6 +948,75 @@ async fn redacted_host_append_preserves_pause_gap_and_rejects_another_policy() {
 }
 
 #[tokio::test]
+async fn recorded_peer_checks_cancellation_at_open_submit_and_close_boundaries() {
+    let f = Fixture::new(CaptureLimits::default()).await;
+    let (owner, live) = f.start(false).await;
+    f.tx("AQID").await;
+    f.written(&live, 3).await;
+    let (_, finished) = f.stop(&owner, &live).await;
+    let params = ReplayPeerOpenParams {
+        capture_ref: fixed(&finished),
+    };
+    let replay = crate::capture::replay::ReplayService::new(
+        f.h.host.inner.files.clone(),
+        f.h.store.identity().unwrap(),
+        f.h.clock.clone(),
+    );
+    fn cancelled() -> HostResult<()> {
+        Err(HostError::new(
+            "CANCELLED",
+            "cancel requested before simulated effect",
+        ))
+    }
+    let actor = &f.h.actor;
+    let auth = &f.h.auth;
+    for _ in 0..16 {
+        let error = replay
+            .open_peer(params.clone(), actor, auth, cancelled)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "CANCELLED");
+    }
+    let opened = replay
+        .open_peer(params, actor, auth, || Ok(()))
+        .await
+        .unwrap();
+    let target = Target {
+        host_id: f.h.host_id.clone(),
+        kind: ResourceKind::try_from("session").unwrap(),
+        id: opened.session_id.clone(),
+        session_id: Some(opened.session_id),
+        session_epoch: Some(opened.session_epoch),
+    };
+    let input = ReplayPeerSubmitParams {
+        bytes_base64: Bytes::try_from("AQID").unwrap(),
+    };
+    let error = replay
+        .submit_peer(&target, 1.into(), input.clone(), actor, auth, cancelled)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "CANCELLED");
+    let before = replay.peer_state(&target, actor).await.unwrap();
+    assert_eq!(before.progress.revision, 1.into());
+    assert_eq!(before.progress.remaining_request_bytes, 3.into());
+    assert!(before.responses.is_empty());
+
+    let error = replay
+        .close_peer(&target, actor, cancelled)
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, "CANCELLED");
+    let matched = replay
+        .submit_peer(&target, 1.into(), input, actor, auth, || Ok(()))
+        .await
+        .unwrap();
+    assert!(matched.at_end);
+    assert_eq!(matched.revision, 2.into());
+    replay.close_peer(&target, actor, || Ok(())).await.unwrap();
+    f.h.host.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn final_fix_historical_capture_operations_keep_authority_across_append() {
     let f = Fixture::new(CaptureLimits::default()).await;
     let (owner, live) = f.start(false).await;

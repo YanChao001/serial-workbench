@@ -238,6 +238,7 @@ import type {
   RegisterFileParams,
   ReplayControlParams,
   ReplayOpenParams,
+  ReplayPeerClosed,
   ReplayPeerOpenParams,
   ReplayPeerProgress,
   ReplayPeerResponse,
@@ -960,6 +961,9 @@ export declare function validateReplayControlParams(
 export declare function validateReplayOpenParams(
   value: unknown,
 ): value is ReplayOpenParams;
+export declare function validateReplayPeerClosed(
+  value: unknown,
+): value is ReplayPeerClosed;
 export declare function validateReplayPeerOpenParams(
   value: unknown,
 ): value is ReplayPeerOpenParams;

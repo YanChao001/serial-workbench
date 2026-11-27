@@ -686,20 +686,30 @@ impl FileService {
             } else {
                 "content.read"
             },
+            None,
         )
+    }
+    pub(crate) fn resolve_replay_source(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+        bytes: u64,
+    ) -> HostResult<PathGuard> {
+        self.resolve_authorized(reference, actor, "content.read", Some(bytes))
     }
     pub(crate) fn resolve_metadata(
         &self,
         reference: &ObjectRef,
         actor: &AuthenticatedActor,
     ) -> HostResult<PathGuard> {
-        self.resolve_authorized(reference, actor, "metadata.read")
+        self.resolve_authorized(reference, actor, "metadata.read", None)
     }
     fn resolve_authorized(
         &self,
         reference: &ObjectRef,
         actor: &AuthenticatedActor,
         permission: &str,
+        capture_budget: Option<u64>,
     ) -> HostResult<PathGuard> {
         let d = self.document(reference, actor, permission)?;
         let write = permission == "workspace.modify";
@@ -718,12 +728,14 @@ impl FileService {
                 return Err(changed());
             }
             if reference.revision.is_some()
-                && crate::capture::format::fingerprint(&d.path)? != d.fingerprint
+                && crate::capture::format::fingerprint_with_budget(&d.path, capture_budget)?
+                    != d.fingerprint
             {
                 return Err(changed());
             }
         } else if d.purpose == FilePurpose::CaptureSource
-            && crate::capture::format::fingerprint(&d.path)? != d.fingerprint
+            && crate::capture::format::fingerprint_with_budget(&d.path, capture_budget)?
+                != d.fingerprint
         {
             return Err(changed());
         }

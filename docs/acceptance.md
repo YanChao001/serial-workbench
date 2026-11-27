@@ -634,9 +634,9 @@ Ubuntu 手动 CI 在联网安装/构建后运行 `scripts/test-host-offline.mjs`
 
 ### 录制交互模拟（LOG-09）
 
-先封存一份连续单流 Raw 录制。在工作区菜单用「打开回放」检查被动查看，再用「模拟录制对端」选择同一录制。分别输入匹配前缀、包含错误字节的片段和正确的余下字节。核对前缀后的进度、错误位置及重试、匹配后的 RX 原始字节和录制序号。模拟标签单独显示输入与响应，关闭命令以模拟会话为目标。每次完整匹配返回该请求后的响应记录。初始状态可以包含首笔请求前的 RX。互动模拟接受完整、未脱敏和未恢复的单来源字节流，最多 4,096 条记录、512 KiB 原始请求与响应字节及 4 MiB 编码记录。超限和无法确认连续性时使用被动回放查看已有记录。
+先封存一份连续单流 Raw 录制。在工作区菜单用「打开回放」检查被动查看，再用「模拟录制对端」选择同一录制。分别输入匹配前缀、包含错误字节的片段和正确的余下字节。核对前缀后的进度、错误位置及重试、匹配后的 RX 原始字节和录制序号。模拟标签单独显示输入与响应，关闭命令以模拟会话为目标。每次完整匹配返回该请求后的响应记录。初始状态可以包含首笔请求前的 RX。互动模拟接受完整、未脱敏和未恢复的单来源字节流，最多 4,096 条记录、512 KiB 原始请求与响应字节、4 MiB 编码记录及 8 MiB 录制目录。超限和无法确认连续性时使用被动回放查看已有记录。
 
-Host 专项用 `cargo test --locked -p serial-workbench-host --lib recorded_peer` 和 `cargo test --locked -p serial-workbench-host --test capture_api_host recorded_peer -- --test-threads=1`。用 Virtual Echo 的已确认 TX 与实际 RX 封存录制。用普通 `operation.get` 重查匹配、失败位置和幂等回执，对照 `replay.peer.state` 的字节、录制序号和修订。核对第二调用者、旧修订、源文件变化、撤权、关闭，以及普通发送拒绝和原设备 Raw 游标保持。工作台用 `pnpm test:ui e2e/browser/replay-layout.spec.ts e2e/browser/capture-tail.spec.ts --workers=1`，覆盖宽窄窗、错误输入保留、模拟动作目标和撤权后移除响应。
+Host 专项用 `cargo test --locked -p serial-workbench-host --lib recorded_peer` 和 `cargo test --locked -p serial-workbench-host --test capture_api_host recorded_peer -- --test-threads=1`。用 Virtual Echo 的已确认 TX 与实际 RX 封存录制。用普通 `operation.get` 重查匹配、失败位置和幂等回执，对照 `replay.peer.state` 的累计字节和录制序号。提交多轮后用旧进度回执的范围重新核对早先的响应。核对第二调用者、旧修订、源文件变化和撤权。源内容撤权后由原所有者关闭并查询清理回执。取消先于效果提交时保留原位置并释放预留名额。普通发送须被拒绝，原设备 Raw 游标保持原值。工作台用 `pnpm test:ui e2e/browser/replay-layout.spec.ts e2e/browser/capture-tail.spec.ts --workers=1`，覆盖宽窄窗、错误输入保留、模拟动作目标和撤权后移除响应。
 
 独立环境用已接线设备录制已知请求和响应，记录原始 TX/RX、来源序号和实际对端日志。断开真实设备后，从原生文件选取打开两种模式，重现同样的请求和响应。各适用平台保留原生工作台收据。正式签名安装包在独立环境复验同一封存录制的打开、交互、关闭和普通会话隔离。 [工作台草稿](./ui-design.md#录制交互模拟草稿log-09)
 

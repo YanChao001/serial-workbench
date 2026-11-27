@@ -291,6 +291,29 @@ export function createHostWorkspace(
       });
     }
     if (
+      operation.actionId === "replay.peer.close" &&
+      operation.state === "succeeded" &&
+      operation.result?.kind === "replay_peer_closed"
+    ) {
+      const closed = operation.result.value;
+      const session = state.sessions.find(
+        (item) =>
+          item.sessionId === closed.sessionId &&
+          item.sessionEpoch === closed.sessionEpoch,
+      );
+      if (
+        session &&
+        operation.target.id === closed.sessionId &&
+        operation.target.sessionEpoch === closed.sessionEpoch
+      )
+        updateSession({
+          ...session,
+          revision: closed.revision,
+          state: "closed",
+          txGate: "closing",
+        });
+    }
+    if (
       (operation.actionId === "replay.open" ||
         operation.actionId === "replay.peer.open") &&
       operation.state === "succeeded" &&

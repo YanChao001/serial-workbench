@@ -12,5 +12,6 @@ pub(crate) fn is_stop(action: &str) -> bool {
             | "host.shutdown"
             | "capture.stop"
             | "replay.close"
+            | "replay.peer.close"
     )
 }

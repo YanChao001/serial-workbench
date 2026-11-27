@@ -183,6 +183,7 @@ pub enum BuiltinAction {
     ReplayPeerOpen,
     ReplayPeerState,
     ReplayPeerSubmit,
+    ReplayPeerClose,
     ReplayRead,
     ReplaySearch,
     ReplayControl,
@@ -249,7 +250,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 122] = [
+    pub const ALL: [Self; 123] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::WorkspaceConfigurationInspect,
@@ -308,6 +309,7 @@ impl BuiltinAction {
         Self::ReplayPeerOpen,
         Self::ReplayPeerState,
         Self::ReplayPeerSubmit,
+        Self::ReplayPeerClose,
         Self::ReplayRead,
         Self::ReplaySearch,
         Self::ReplayControl,
@@ -404,6 +406,7 @@ impl BuiltinAction {
             Self::ReplayPeerOpen => "replay.peer.open",
             Self::ReplayPeerState => "replay.peer.state",
             Self::ReplayPeerSubmit => "replay.peer.submit",
+            Self::ReplayPeerClose => "replay.peer.close",
             Self::ReplayRead => "replay.read",
             Self::ReplaySearch => "replay.search",
             Self::ReplayControl => "replay.control",
@@ -535,6 +538,7 @@ impl BuiltinAction {
                 | Self::ReplayPeerOpen
                 | Self::ReplayPeerState
                 | Self::ReplayPeerSubmit
+                | Self::ReplayPeerClose
                 | Self::ReplayRead
                 | Self::ReplaySearch
                 | Self::ReplayControl
@@ -642,7 +646,8 @@ impl BuiltinAction {
             | Self::ReplayControl
             | Self::ReplayClose
             | Self::ReplayPeerState
-            | Self::ReplayPeerSubmit => &["session"],
+            | Self::ReplayPeerSubmit
+            | Self::ReplayPeerClose => &["session"],
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
             Self::FileMetadata => &["file", "capture", "plugin_result"],
             Self::FileRead => &["file", "capture_record", "plugin_result"],
@@ -1023,6 +1028,9 @@ impl BuiltinAction {
                 ReplayPeerSubmitParams,
                 ReplayPeerProgress,
             >(meta, dialect),
+            Self::ReplayPeerClose => {
+                ActionSpec::of_with_dialect::<EmptyParams, ReplayPeerClosed>(meta, dialect)
+            }
             Self::ReplaySearch => {
                 ActionSpec::of_with_dialect::<ReplaySearchParams, ReplaySearchResult>(meta, dialect)
             }

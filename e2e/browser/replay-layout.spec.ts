@@ -1538,7 +1538,11 @@ test("keeps interactive recorded sends on the simulated peer and clears response
       )
         throw new Error("Missing recorded peer fixture");
       const invoke = native.invoke;
-      const fixture = { allowed: true, invocations: [] as unknown[] };
+      const fixture = {
+        allowed: true,
+        eligible: true,
+        invocations: [] as unknown[],
+      };
       Reflect.set(window, "recordedPeerFixture", fixture);
       const source = {
         hostId: "workbench-gui-host",
@@ -1550,6 +1554,8 @@ test("keeps interactive recorded sends on the simulated peer and clears response
         revision: "1",
         completedTurns: "0",
         remainingRequestBytes: "3",
+        responseStart: "0",
+        responseCount: "0",
         atEnd: false,
       };
       let responses: { recordOrdinal: string; bytesBase64: string }[] = [];
@@ -1588,16 +1594,19 @@ test("keeps interactive recorded sends on the simulated peer and clears response
               if (
                 call.actionId === "action.check" &&
                 object(call.params) &&
-                call.params.actionId === "replay.peer.state"
+                (call.params.actionId === "replay.peer.state" ||
+                  call.params.actionId === "replay.peer.close")
               )
                 return {
                   ok: true,
                   result: {
                     kind: "action_check",
                     value: {
-                      actionId: "replay.peer.state",
+                      actionId: call.params.actionId,
                       target,
-                      allowed: fixture.allowed,
+                      allowed:
+                        call.params.actionId === "replay.peer.close" ||
+                        fixture.allowed,
                     },
                   },
                 };
@@ -1618,7 +1627,8 @@ test("keeps interactive recorded sends on the simulated peer and clears response
             if (
               request.method === "action.invoke" &&
               (call.actionId === "replay.peer.open" ||
-                call.actionId === "replay.peer.submit")
+                call.actionId === "replay.peer.submit" ||
+                call.actionId === "replay.peer.close")
             ) {
               fixture.invocations.push({
                 actionId: call.actionId,
@@ -1642,6 +1652,21 @@ test("keeps interactive recorded sends on the simulated peer and clears response
                   sessionId: snapshot.sessionId,
                 },
               };
+              if (call.actionId === "replay.peer.open" && !fixture.eligible)
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      state: "failed",
+                      error: {
+                        code: "REPLAY_PEER_INELIGIBLE",
+                        message: "Incomplete recorded source",
+                        retryable: false,
+                      },
+                    },
+                  },
+                };
               if (call.actionId === "replay.peer.open")
                 return {
                   ok: true,
@@ -1660,12 +1685,31 @@ test("keeps interactive recorded sends on the simulated peer and clears response
                     },
                   },
                 };
+              if (call.actionId === "replay.peer.close")
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      result: {
+                        kind: "replay_peer_closed",
+                        value: {
+                          sessionId: snapshot.sessionId,
+                          sessionEpoch: snapshot.sessionEpoch,
+                          revision: "4",
+                        },
+                      },
+                    },
+                  },
+                };
               const data = object(call.params) ? call.params.bytesBase64 : null;
               if (data === "AQ==" && call.expectedRevision === "1") {
                 progress = {
                   revision: "2",
                   completedTurns: "0",
                   remainingRequestBytes: "2",
+                  responseStart: "0",
+                  responseCount: "0",
                   atEnd: false,
                 };
               } else if (data === "AgM=" && call.expectedRevision === "2") {
@@ -1673,6 +1717,8 @@ test("keeps interactive recorded sends on the simulated peer and clears response
                   revision: "3",
                   completedTurns: "1",
                   remainingRequestBytes: "0",
+                  responseStart: "0",
+                  responseCount: "1",
                   atEnd: true,
                 };
                 responses = [{ recordOrdinal: "8", bytesBase64: "3q0=" }];
@@ -1795,4 +1841,41 @@ test("keeps interactive recorded sends on the simulated peer and clears response
   await expect(peer.getByRole("status")).toContainText(
     "recording is unavailable",
   );
+  await page
+    .getByRole("button", { name: "Close session", exact: true })
+    .click();
+  await expect(peer.getByRole("status")).toContainText(
+    "simulated peer is closed",
+  );
+  const closed: unknown = await page.evaluate(() =>
+    Reflect.get(Reflect.get(window, "recordedPeerFixture"), "invocations").at(
+      -1,
+    ),
+  );
+  expect(closed).toEqual(
+    expect.objectContaining({
+      actionId: "replay.peer.close",
+      target: expect.objectContaining({
+        id: "replay-peer-demo",
+        sessionEpoch: "1",
+      }),
+    }),
+  );
+  await page.evaluate(() =>
+    Reflect.set(Reflect.get(window, "recordedPeerFixture"), "eligible", false),
+  );
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Open replay", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "Simulate recorded peer", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Use Open replay to inspect this recording" }),
+  ).toBeVisible();
 });

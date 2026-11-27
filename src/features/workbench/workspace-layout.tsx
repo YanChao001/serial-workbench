@@ -1244,6 +1244,7 @@ export function WorkspaceLayout({
   }
   const isReplay = !!sessionId && replayIds.has(sessionId);
   const isReplayPeer = isReplay && sessionId?.startsWith("replay-peer-");
+  const closeActionId = isReplayPeer ? "replay.peer.close" : "session.close";
   const receiveRemapOwner =
     state.status === "ready" &&
     labelHost &&
@@ -1591,6 +1592,14 @@ export function WorkspaceLayout({
       operation.state === "cancel_requested"
     ) {
       return;
+    }
+    if (operation.actionId === "replay.peer.open" && operation.error) {
+      setError({
+        code: operation.error.code,
+        occurrence: ++lastFailure.current,
+        module: "connection",
+        eventKey: operation.operationId,
+      });
     }
     setPendingReplay(undefined);
   }, [pendingReplay, state.operations, state.sessions, showObservedSession]);
@@ -1986,11 +1995,17 @@ export function WorkspaceLayout({
             writeWaitMs: checkedWriteWaitMs,
           },
         });
-      values.push({ actionId: "session.close", target, params: {} });
+      values.push({ actionId: closeActionId, target, params: {} });
     }
     if (connectionCloseInput) values.push(connectionCloseInput);
     return values;
-  }, [target, checkedWriteWaitMs, checkBytes, connectionCloseInput]);
+  }, [
+    target,
+    checkedWriteWaitMs,
+    checkBytes,
+    connectionCloseInput,
+    closeActionId,
+  ]);
   useEffect(() => {
     setAvailability([]);
     let active = true;
@@ -2467,12 +2482,12 @@ export function WorkspaceLayout({
         catalog={state.catalog}
         bindings={[
           {
-            actionId: "session.close",
+            actionId: closeActionId,
             label: labels.closeSession,
             target,
             available:
               draftsReady &&
-              allowed("session.close") &&
+              allowed(closeActionId) &&
               !!onCloseSession &&
               !!session &&
               session.state !== "closed",
@@ -2595,9 +2610,7 @@ export function WorkspaceLayout({
           draftsReady &&
           !!onCloseSession &&
           (isReplayPeer
-            ? !!session &&
-              session.state === "open" &&
-              mayAttempt("session.close")
+            ? !!session && session.state === "open" && mayAttempt(closeActionId)
             : !isCapture &&
               !!connectionCloseInput &&
               mayAttempt("session.close", connectionCloseInput) &&
@@ -2724,6 +2737,7 @@ export function WorkspaceLayout({
               ])}
               target={target}
               recordingName={selectedTab?.recordingName ?? labels.replay}
+              closed={session?.state === "closed"}
               access={replayPeer}
             />
           </Suspense>

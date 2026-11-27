@@ -6,6 +6,8 @@ use super::{
 use serial_workbench_core::*;
 use std::path::{Path, PathBuf};
 
+const PEER_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
+
 #[path = "search.rs"]
 mod search;
 #[path = "replay_search_service.rs"]
@@ -104,17 +106,31 @@ impl Playback {
 
 impl ReplayReader {
     pub fn open(path: &Path, mode: ReplayMode) -> HostResult<Self> {
+        Self::open_with_budget(path, mode, None)
+    }
+    fn open_with_budget(
+        path: &Path,
+        mode: ReplayMode,
+        interactive_budget: Option<u64>,
+    ) -> HostResult<Self> {
         let guard = crate::files::references::PathGuard::new(path)?;
-        let scan = index_replay_directory(path)?;
+        let scan = index_replay_directory(path, interactive_budget)?;
         if !scan.report.container_complete
             || !(scan.manifest.state == CaptureState::Complete
                 || scan.manifest.state == CaptureState::Incomplete
                     && scan.manifest.recovered_from.is_some())
         {
-            return Err(HostError::new(
-                "CAPTURE_INCOMPLETE",
-                "Recover the verified prefix before replay",
-            ));
+            return Err(if interactive_budget.is_some() {
+                HostError::new(
+                    "REPLAY_PEER_INELIGIBLE",
+                    "Interactive replay requires a complete single-source raw recording",
+                )
+            } else {
+                HostError::new(
+                    "CAPTURE_INCOMPLETE",
+                    "Recover the verified prefix before replay",
+                )
+            });
         }
         if mode == ReplayMode::OriginalTiming
             && scan.format == CaptureFormat::Legacy
@@ -166,12 +182,7 @@ impl ReplayReader {
         for entry in &self.archive.index.records {
             encoded_bytes_left = encoded_bytes_left
                 .checked_sub(entry.length.get())
-                .ok_or_else(|| {
-                    HostError::new(
-                        "LIMIT_EXCEEDED",
-                        "Interactive recording exceeds the encoded size limit",
-                    )
-                })?;
+                .ok_or_else(super::recorded_peer::limit)?;
         }
         self.archive.ensure_directory()?;
         let peer =
@@ -576,8 +587,13 @@ impl ReplayService {
         reference: &ObjectRef,
         actor: &AuthenticatedActor,
         mode: ReplayMode,
+        budget: Option<u64>,
     ) -> HostResult<(ObjectRef, ReplayReader)> {
-        let guard = self.files.resolve(reference, actor, false)?;
+        let guard = if let Some(budget) = budget {
+            self.files.resolve_replay_source(reference, actor, budget)?
+        } else {
+            self.files.resolve(reference, actor, false)?
+        };
         let fixed = self.files.metadata(reference, actor)?.file_ref;
         if fixed.revision.is_none() {
             return Err(HostError::new(
@@ -585,7 +601,7 @@ impl ReplayService {
                 "Capture has not published a fixed content revision",
             ));
         }
-        let reader = ReplayReader::open(guard.checked_path(), mode)?;
+        let reader = ReplayReader::open_with_budget(guard.checked_path(), mode, budget)?;
         Ok((fixed, reader))
     }
 
@@ -598,7 +614,8 @@ impl ReplayService {
         let service = self.clone();
         let actor = actor.clone();
         super::blocking(move || {
-            let (source, reader) = service.read_source(&params.capture_ref, &actor, params.mode)?;
+            let (source, reader) =
+                service.read_source(&params.capture_ref, &actor, params.mode, None)?;
             service.publish_session(
                 source,
                 &actor,
@@ -616,6 +633,7 @@ impl ReplayService {
         params: ReplayPeerOpenParams,
         actor: &AuthenticatedActor,
         auth: &crate::auth::AuthService,
+        check_cancelled: impl FnOnce() -> HostResult<()> + Send + 'static,
     ) -> HostResult<OpenResult> {
         let slot = self.reserve()?;
         let service = self.clone();
@@ -623,11 +641,18 @@ impl ReplayService {
         let auth = auth.clone();
         super::blocking(move || {
             let stamp = auth.capture_grants(&actor)?;
-            let (source, reader) =
-                service.read_source(&params.capture_ref, &actor, ReplayMode::Fastest)?;
+            let (source, reader) = service.read_source(
+                &params.capture_ref,
+                &actor,
+                ReplayMode::Fastest,
+                Some(PEER_SOURCE_BYTES),
+            )?;
             let peer = reader.recorded_peer()?;
-            service.files.resolve(&source, &actor, false)?;
+            service
+                .files
+                .resolve_replay_source(&source, &actor, PEER_SOURCE_BYTES)?;
             let publish = || {
+                check_cancelled()?;
                 service.publish_session(
                     source,
                     &actor,
@@ -661,6 +686,8 @@ impl ReplayService {
                     revision: 1.into(),
                     completed_turns: 0.into(),
                     remaining_request_bytes: (matcher.initial_request_bytes() as u64).into(),
+                    response_start: 0.into(),
+                    response_count: (matcher.preamble().len() as u64).into(),
                     at_end: false,
                 };
                 let responses = matcher.preamble().to_vec();
@@ -757,13 +784,11 @@ impl ReplayService {
             .cloned()
             .ok_or_else(|| HostError::new("NOT_FOUND", "Replay session was not found"))
     }
-    fn authorize(
-        &self,
+    fn require_session_scope(
         session: &ReplaySession,
         target: &Target,
         actor: &AuthenticatedActor,
-        permission: &str,
-    ) -> HostResult<Target> {
+    ) -> HostResult<()> {
         if target.session_epoch != Some(session.snapshot.session_epoch) {
             return Err(HostError::new(
                 "EPOCH_MISMATCH",
@@ -780,6 +805,16 @@ impl ReplayService {
                 "The recorded peer belongs to another actor",
             ));
         }
+        Ok(())
+    }
+    fn authorize(
+        &self,
+        session: &ReplaySession,
+        target: &Target,
+        actor: &AuthenticatedActor,
+        permission: &str,
+    ) -> HostResult<Target> {
+        Self::require_session_scope(session, target, actor)?;
         self.files
             .authorization_target(&session.source, actor, permission)
     }
@@ -826,7 +861,9 @@ impl ReplayService {
                     peer_mode_required()
                 }
             })?;
-            service.files.resolve(&session.source, &actor, false)?;
+            service
+                .files
+                .resolve_replay_source(&session.source, &actor, PEER_SOURCE_BYTES)?;
             Ok(ReplayPeerState {
                 session_id: session.snapshot.session_id.clone(),
                 session_epoch: session.snapshot.session_epoch,
@@ -844,6 +881,7 @@ impl ReplayService {
         params: ReplayPeerSubmitParams,
         actor: &AuthenticatedActor,
         auth: &crate::auth::AuthService,
+        check_cancelled: impl FnOnce() -> HostResult<()> + Send + 'static,
     ) -> HostResult<ReplayPeerProgress> {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
         let bytes = STANDARD
@@ -864,7 +902,9 @@ impl ReplayService {
             let session = service.find(&target)?;
             let mut session = session.lock().map_err(|_| replay_busy())?;
             service.authorize(&session, &target, &actor, "content.read")?;
-            service.files.resolve(&session.source, &actor, false)?;
+            service
+                .files
+                .resolve_replay_source(&session.source, &actor, PEER_SOURCE_BYTES)?;
             if session.snapshot.revision != revision {
                 return Err(HostError::new(
                     "REVISION_CONFLICT",
@@ -872,16 +912,19 @@ impl ReplayService {
                 ));
             }
             let next = revision.checked_next()?;
-            let mut apply = || {
+            let apply = || {
+                check_cancelled()?;
                 let peer = session.peer.as_mut().ok_or_else(replay_closed)?;
                 let matched = peer.matcher.submit(&bytes)?;
                 let progress = ReplayPeerProgress {
                     revision: next,
                     completed_turns: (matched.completed_turns as u64).into(),
                     remaining_request_bytes: (matched.remaining_request_bytes as u64).into(),
+                    response_start: (peer.responses.len() as u64).into(),
+                    response_count: (matched.responses.len() as u64).into(),
                     at_end: matched.at_end,
                 };
-                peer.responses = matched.responses.to_vec();
+                peer.responses.extend_from_slice(matched.responses);
                 peer.progress = progress.clone();
                 session.snapshot.revision = next;
                 Ok(progress)
@@ -990,6 +1033,49 @@ impl ReplayService {
         })
         .await
     }
+    fn require_peer_owner(
+        session: &ReplaySession,
+        target: &Target,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<()> {
+        Self::require_session_scope(session, target, actor)?;
+        if session.peer_owner.is_none() {
+            return Err(peer_mode_required());
+        }
+        Ok(())
+    }
+    pub(crate) fn authorize_peer_close(
+        &self,
+        target: &Target,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<()> {
+        let session = self.find(target)?;
+        let session = session.lock().map_err(|_| replay_busy())?;
+        Self::require_peer_owner(&session, target, actor)
+    }
+    pub(crate) async fn close_peer(
+        &self,
+        target: &Target,
+        actor: &AuthenticatedActor,
+        check_cancelled: impl FnOnce() -> HostResult<()> + Send + 'static,
+    ) -> HostResult<ReplayPeerClosed> {
+        let service = self.clone();
+        let target = target.clone();
+        let actor = actor.clone();
+        super::blocking(move || {
+            let session = service.find(&target)?;
+            let mut session = session.lock().map_err(|_| replay_busy())?;
+            Self::require_peer_owner(&session, &target, &actor)?;
+            check_cancelled()?;
+            service.release_session(&target.id, &mut session)?;
+            Ok(ReplayPeerClosed {
+                session_id: session.snapshot.session_id.clone(),
+                session_epoch: session.snapshot.session_epoch,
+                revision: session.snapshot.revision,
+            })
+        })
+        .await
+    }
     pub async fn close(
         &self,
         target: &Target,
@@ -1002,19 +1088,23 @@ impl ReplayService {
             let session = service.find(&target)?;
             let mut session = session.lock().map_err(|_| replay_busy())?;
             service.authorize(&session, &target, &actor, "content.read")?;
-            if session.slot.is_some() {
-                let revision = session.snapshot.revision.checked_next()?;
-                service.searches.release_session(&target.id)?;
-                session.reader.take();
-                session.peer.take();
-                session.snapshot.state = SessionState::Closed;
-                session.snapshot.tx_gate = TxGate::Closing;
-                session.snapshot.revision = revision;
-                session.slot.take();
-            }
+            service.release_session(&target.id, &mut session)?;
             Ok(session.snapshot.clone())
         })
         .await
+    }
+    fn release_session(&self, id: &Id, session: &mut ReplaySession) -> HostResult<()> {
+        if session.slot.is_some() {
+            let revision = session.snapshot.revision.checked_next()?;
+            self.searches.release_session(id)?;
+            session.reader.take();
+            session.peer.take();
+            session.snapshot.state = SessionState::Closed;
+            session.snapshot.tx_gate = TxGate::Closing;
+            session.snapshot.revision = revision;
+            session.slot.take();
+        }
+        Ok(())
     }
     pub fn shutdown(&self) -> HostResult<()> {
         let sessions = self.sessions.lock().map_err(|_| replay_busy())?.clone();

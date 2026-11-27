@@ -346,6 +346,17 @@ pub fn open_read(path: &Path) -> HostResult<File> {
 }
 pub fn hash_file(file: &mut File) -> HostResult<Digest> {
     file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    hash_read(file)
+}
+pub(super) fn hash_file_bounded(file: &mut File, length: u64) -> HostResult<Digest> {
+    file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    let digest = hash_read((&mut *file).take(length + 1))?;
+    if file.metadata().map_err(io_error)?.len() != length {
+        return Err(changed());
+    }
+    Ok(digest)
+}
+fn hash_read(mut file: impl Read) -> HostResult<Digest> {
     let mut hash = Sha256::new();
     let mut bytes = [0; 65536];
     loop {
@@ -406,11 +417,28 @@ pub fn sync_directory(path: &Path) -> HostResult<()> {
     Ok(())
 }
 pub fn fingerprint(path: &Path) -> HostResult<Digest> {
+    fingerprint_with_budget(path, None)
+}
+
+pub(crate) fn fingerprint_with_budget(
+    path: &Path,
+    mut bytes_left: Option<u64>,
+) -> HostResult<Digest> {
     crate::files::references::validate_path(path, false)?;
+    const PEER_MAX_FILES: usize = 4098;
+    let entry_limit = if bytes_left.is_some() {
+        PEER_MAX_FILES + 1
+    } else {
+        usize::MAX
+    };
     let mut names = fs::read_dir(path)
         .map_err(io_error)?
+        .take(entry_limit)
         .map(|e| e.map(|e| e.path()).map_err(io_error))
         .collect::<HostResult<Vec<_>>>()?;
+    if bytes_left.is_some() && names.len() > PEER_MAX_FILES {
+        return Err(peer_directory_limit());
+    }
     names.sort();
     let mut hash = Sha256::new();
     hash.update(crate::files::references::directory_identity(path)?.as_bytes());
@@ -425,11 +453,27 @@ pub fn fingerprint(path: &Path) -> HostResult<Digest> {
         let mut file = open_read(&name)?;
         hash.update(file_name.as_bytes());
         hash.update(crate::files::references::file_identity(&file)?.as_bytes());
-        hash.update(file.metadata().map_err(io_error)?.len().to_le_bytes());
-        hash.update(hash_file(&mut file)?.as_str().as_bytes());
+        let length = file.metadata().map_err(io_error)?.len();
+        hash.update(length.to_le_bytes());
+        let digest = if let Some(remaining) = &mut bytes_left {
+            *remaining = remaining
+                .checked_sub(length)
+                .ok_or_else(peer_directory_limit)?;
+            hash_file_bounded(&mut file, length)?
+        } else {
+            hash_file(&mut file)?
+        };
+        hash.update(digest.as_str().as_bytes());
     }
     Digest::try_from(format!("{:x}", hash.finalize()).as_str())
 }
+fn peer_directory_limit() -> HostError {
+    HostError::new(
+        "REPLAY_PEER_LIMIT",
+        "Interactive recording exceeds the source size limit",
+    )
+}
+
 pub fn record_time(record: &CaptureRecord) -> Option<u64> {
     if let CaptureEntry::Event(event) = &record.entry {
         Some(event.time.source_mono_ns.get())

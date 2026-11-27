@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   ContractValidationError,
   type ReplayPeerState,
@@ -30,10 +30,12 @@ export type ReplayPeerAccess = Pick<
 export function ReplayPeerPanel({
   target,
   recordingName,
+  closed,
   access,
 }: {
   target: Target;
   recordingName: string;
+  closed: boolean;
   access: ReplayPeerAccess;
 }) {
   const { t } = useI18n();
@@ -50,10 +52,12 @@ export function ReplayPeerPanel({
   }>();
   useEffect(
     () =>
-      watchActions(inputs, ([availability]) =>
-        setObserved({ inputs, watchActions, availability }),
-      ),
-    [inputs, watchActions],
+      closed
+        ? undefined
+        : watchActions(inputs, ([availability]) =>
+            setObserved({ inputs, watchActions, availability }),
+          ),
+    [closed, inputs, watchActions],
   );
 
   const availability =
@@ -74,7 +78,11 @@ export function ReplayPeerPanel({
           {recordingName}
         </p>
       </header>
-      {allowed ? (
+      {closed ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t("workbench.replayPeer.closed")}
+        </p>
+      ) : allowed ? (
         <PeerExchange access={access} target={target} />
       ) : (
         <p role="status" className="text-sm text-muted-foreground">
@@ -106,9 +114,18 @@ function PeerExchange({
   const id = useId();
   const [input, setInput] = useState("");
   const [current, setCurrent] = useState<
-    { value: ReplayPeerState } | { error: string }
+    { value: ReplayPeerState } | { error: unknown }
   >();
-  const action = useToolAction((error) => {
+  const updateState = useCallback((value: ReplayPeerState) => {
+    setCurrent((previous) =>
+      previous &&
+      "value" in previous &&
+      BigInt(previous.value.progress.revision) > BigInt(value.progress.revision)
+        ? previous
+        : { value },
+    );
+  }, []);
+  function failureText(error: unknown) {
     const code = nativeErrorCode(error);
     if (code === "REPLAY_PEER_MISMATCH") {
       const offset =
@@ -121,22 +138,29 @@ function PeerExchange({
     }
     if (code === "REPLAY_PEER_COMPLETE")
       return t("workbench.replayPeer.complete");
+    if (
+      code === "PERMISSION_DENIED" ||
+      code === "SOURCE_CHANGED" ||
+      code === "REFERENCE_CHANGED"
+    )
+      return t("workbench.replayPeer.sourceUnavailable");
     return nativeErrorText(error, t);
-  });
+  }
+  const action = useToolAction(failureText);
   const { read, invoke, waitForOperation } = access;
   useEffect(() => {
     const controller = new AbortController();
     void read(target, controller.signal).then(
       (value) => {
-        if (!controller.signal.aborted) setCurrent({ value });
+        if (!controller.signal.aborted) updateState(value);
       },
       (error: unknown) => {
         if (!controller.signal.aborted)
-          setCurrent({ error: nativeErrorText(error, t) });
+          setCurrent((previous) => previous ?? { error });
       },
     );
     return () => controller.abort();
-  }, [read, target, t]);
+  }, [read, target, updateState]);
 
   const state = current && "value" in current ? current.value : undefined;
   const bytes = useMemo(() => parseInput(input), [input]);
@@ -169,26 +193,31 @@ function PeerExchange({
               const receipt = await waitForOperation(accepted, signal);
               const latest = await read(target, signal);
               signal.throwIfAborted();
-              setCurrent({ value: latest });
+              if (receipt.result?.kind !== "replay_peer_progress")
+                throw new ContractValidationError();
+              const progress = receipt.result.value;
               if (
-                receipt.result?.kind !== "replay_peer_progress" ||
-                receipt.result.value.revision !== latest.progress.revision
+                BigInt(progress.revision) > BigInt(latest.progress.revision) ||
+                BigInt(progress.responseStart) +
+                  BigInt(progress.responseCount) >
+                  BigInt(latest.responses.length)
               )
-                throw new ContractValidationError(
-                  "Recorded peer revision changed after submission",
-                );
+                throw new ContractValidationError();
+              updateState(latest);
               setInput("");
             } catch (error: unknown) {
               signal.throwIfAborted();
               const code = nativeErrorCode(error);
-              if (code === "PERMISSION_DENIED" || code === "REFERENCE_CHANGED")
-                setCurrent({
-                  error: t("workbench.replayPeer.sourceUnavailable"),
-                });
+              if (
+                code === "PERMISSION_DENIED" ||
+                code === "SOURCE_CHANGED" ||
+                code === "REFERENCE_CHANGED"
+              )
+                setCurrent({ error });
               else if (code === "REVISION_CONFLICT") {
                 const value = await read(target, signal);
                 signal.throwIfAborted();
-                setCurrent({ value });
+                updateState(value);
               }
               throw error;
             }
@@ -227,9 +256,9 @@ function PeerExchange({
             {action.error}
           </p>
         )}
-        {current && "error" in current && (
+        {!action.error && current && "error" in current && (
           <p role="alert" className="text-sm text-destructive">
-            {current.error}
+            {failureText(current.error)}
           </p>
         )}
         {!current && (
