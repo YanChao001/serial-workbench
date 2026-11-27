@@ -298,10 +298,10 @@ fn previous_packages() -> &'static [ProductPackage; 16] {
     })
 }
 
-pub const CONNECTION_SEQUENCE_ACTION: &str = "swb.builtin.automation.connect";
-pub const CONNECTION_SEQUENCE_PACKAGE: &str = "swb.builtin.automation";
+pub(crate) const CONNECTION_SEQUENCE_ACTION: &str = "swb.builtin.automation.connect";
+const CONNECTION_SEQUENCE_PACKAGE: &str = "swb.builtin.automation";
 
-pub fn is_current_connection_sequence_archive(id: &NodePackageId, digest: &Digest) -> bool {
+pub(crate) fn is_current_connection_sequence_archive(id: &NodePackageId, digest: &Digest) -> bool {
     id.as_str() == CONNECTION_SEQUENCE_PACKAGE
         && packages()
             .iter()
@@ -339,7 +339,7 @@ pub(super) fn retains_execution_permissions(
 }
 
 /// Validates the archive recorded by Host admission, including supported product predecessors.
-pub fn is_product_connection_sequence(operation: &serial_workbench_core::Operation) -> bool {
+pub(crate) fn is_product_connection_sequence(operation: &serial_workbench_core::Operation) -> bool {
     let Some([dependency]) = operation.dependencies.as_deref() else {
         return false;
     };

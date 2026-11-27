@@ -2,10 +2,36 @@ use super::{query, unpack};
 use crate::host_bridge::DesktopHostBridge;
 use serial_workbench_core::*;
 
-use serial_workbench_host::node_packages::{
-    CONNECTION_SEQUENCE_ACTION, CONNECTION_SEQUENCE_PACKAGE,
-    is_current_connection_sequence_archive, is_product_connection_sequence,
-};
+const CONNECTION_SEQUENCE_ACTION: &str = "swb.builtin.automation.connect";
+const AUTOMATION_DESCRIPTOR: &str =
+    include_str!("../../../../crates/host/resources/node-packages/automation.json");
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BundledAutomation {
+    id: NodePackageId,
+    version: String,
+    archive_sha256: Digest,
+}
+
+fn bundled_automation() -> &'static BundledAutomation {
+    static BUNDLE: std::sync::OnceLock<BundledAutomation> = std::sync::OnceLock::new();
+    BUNDLE.get_or_init(|| {
+        serde_json::from_str(AUTOMATION_DESCRIPTOR).expect("compiled automation descriptor")
+    })
+}
+
+fn is_product_connection_sequence(operation: &Operation) -> bool {
+    let Some([dependency]) = operation.dependencies.as_deref() else {
+        return false;
+    };
+    let bundle = bundled_automation();
+    operation.action_id.as_str() == CONNECTION_SEQUENCE_ACTION
+        && operation.owner.kind == OwnerKind::Plugin
+        && dependency.id.as_str() == bundle.id.as_str()
+        && dependency.version == bundle.version
+        && dependency.digest == bundle.archive_sha256
+}
 
 fn host_target(business: &AttachResult) -> HostResult<Target> {
     Ok(Target {
@@ -117,12 +143,12 @@ impl DesktopHostBridge {
                     device.clone(),
                     serde_json::json!({ "configuration": configuration, "definition": definition }),
                 )?;
-                let package_id = NodePackageId::try_from(CONNECTION_SEQUENCE_PACKAGE)?;
+                let bundle = bundled_automation();
                 let package_query = query(
                     &business,
                     "node.packages.runtime",
                     host_target(&business)?,
-                    serde_json::json!({ "id": package_id }),
+                    serde_json::json!({ "id": bundle.id }),
                 )?;
                 let RpcResult::Query(QueryResult::NodePackageRuntime(status)) = unpack(
                     self.read_request_at_generation(
@@ -138,11 +164,9 @@ impl DesktopHostBridge {
                         "Invalid connection sequence runtime status",
                     ));
                 };
-                if status.id != package_id
+                if status.id != bundle.id
                     || status.phase != NodePackageRuntimePhase::Active
-                    || !status.archive_sha256.as_ref().is_some_and(|digest| {
-                        is_current_connection_sequence_archive(&status.id, digest)
-                    })
+                    || status.archive_sha256.as_ref() != Some(&bundle.archive_sha256)
                 {
                     return Err(HostError::new(
                         "UNSUPPORTED_CAPABILITY",
@@ -284,10 +308,7 @@ mod tests {
 
     #[test]
     fn adoption_requires_the_owners_successful_fresh_direct_open() {
-        let descriptor: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../crates/host/resources/node-packages/automation.json"
-        ))
-        .unwrap();
+        let bundle = bundled_automation();
         let business: AttachResult = serde_json::from_value(serde_json::json!({
             "hostId":"host", "instanceEpoch":"1", "protocolVersion":"1.0", "catalogVersion":"1",
             "actorId":"window", "clientId":"desktop", "requestContext":"context",
@@ -301,10 +322,10 @@ mod tests {
             "requestId":"00000000-0000-4000-8000-000000000114",
             "admission":{"kind":"request","requestContextDigest":"0".repeat(64)},
             "childHighWatermark":"1", "actionId":CONNECTION_SEQUENCE_ACTION, "target":{"hostId":"host","kind":"device","id":"port"},
-            "dependencies":[{"id":CONNECTION_SEQUENCE_PACKAGE,"version":descriptor["version"],"digest":descriptor["archiveSha256"]}],
+            "dependencies":[{"id":bundle.id,"version":bundle.version,"digest":bundle.archive_sha256}],
             "executionMode":"independent", "state":"cancelled", "revision":"2",
             "revealTarget":{"pageId":"workbench"}, "acceptedAt":"2026-11-10T00:00:00Z",
-            "settledAt":"2026-11-10T00:00:01Z", "owner":{"kind":"plugin","id":CONNECTION_SEQUENCE_PACKAGE}
+            "settledAt":"2026-11-10T00:00:01Z", "owner":{"kind":"plugin","id":bundle.id}
         })).unwrap();
         let child: Operation = serde_json::from_value(serde_json::json!({
             "operationId":"opened", "rootOperationId":"root", "executionHostId":"host", "actorId":"window",
