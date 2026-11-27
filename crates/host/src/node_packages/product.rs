@@ -487,7 +487,7 @@ mod tests {
                 migrated.packages.first().map(|package| package.enabled),
                 expected_enabled,
                 "{} {old_version} → {next_version}",
-                old.id()
+                old.id().as_str()
             );
             if let Some(package) = migrated.packages.first() {
                 assert_eq!(package.manifest.version.as_str(), next_version);
