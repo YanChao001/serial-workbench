@@ -131,7 +131,28 @@ try {
     reply("live-visible", { line: command.line });
     command = await receive();
   }
-  assert.equal(command.kind, "archive");
+  assert.equal(command.kind, "live-retention");
+  stage = "check the live retained range";
+  await log.press("Home");
+  const oldestPayload = log
+    .locator(".workbench-payload")
+    .filter({ hasText: /^SWB\d{7}/ })
+    .first();
+  await expect(oldestPayload).toBeInViewport();
+  const oldest = (await oldestPayload.textContent()).match(/^SWB(\d{7})/);
+  assert.ok(oldest);
+  const firstRetained = Number(oldest[1]);
+  await log.press("End");
+  await expect(
+    log.getByText(lineText(fixture.records), { exact: true }),
+  ).toBeInViewport();
+  const liveRetention = {
+    firstRetained,
+    lastRetained: fixture.records,
+    trimmedLines: firstRetained - 1,
+  };
+  reply("retention", liveRetention);
+  command = await receive("archive");
   stage = "open the sealed archive";
   await locateOperation(command.operationId);
   const captureTool = page.getByRole("dialog", {
@@ -159,6 +180,14 @@ try {
     expect(
       receiveLog.getByText(lineText(line), { exact: true }),
     ).toBeInViewport();
+  async function scrollTo(key, line) {
+    const before = performance.now();
+    await receiveLog.press(key);
+    await visible(line);
+    const sample = { key, line, latencyMs: performance.now() - before };
+    scroll.push(sample);
+    return sample;
+  }
   async function readRange({ first, last } = {}) {
     const pattern = new RegExp(
       `^(${first ?? "\\d+"})–(${last ?? "\\d+"}) / ${fixture.records}$`,
@@ -202,10 +231,7 @@ try {
       ["End", last],
       ["Home", first],
     ]) {
-      const before = performance.now();
-      await receiveLog.press(key);
-      await visible(line);
-      scroll.push({ key, line, latencyMs: performance.now() - before });
+      await scrollTo(key, line);
     }
     assert.ok(
       (await receiveLog.locator("[data-stream-row-index]").count()) <= 100,
@@ -218,7 +244,29 @@ try {
   await panel.getByRole("button", { name: "Previous archive page" }).click();
   const previous = await readRange({ last: tailStart - 1 });
   await visible(previous.first);
-  reply("scroll-done", { scroll, seeks, firstPage: initial, previous });
+  stage = "keep the view scrolling through a verified durable write";
+  const firstVisible = await scrollTo("End", previous.last);
+  reply("scroll-probe-ready", { firstVisible });
+  let verified = false;
+  const proof = receive("scroll-proof-complete").then(() => {
+    verified = true;
+  });
+  let probeSamples = 1;
+  while (!verified) {
+    await scrollTo("Home", previous.first);
+    await scrollTo("End", previous.last);
+    probeSamples += 2;
+  }
+  await proof;
+  const lastVisible = await scrollTo("Home", previous.first);
+  reply("scroll-done", {
+    scroll,
+    seeks,
+    firstPage: initial,
+    previous,
+    lastVisible,
+    probeSamples: probeSamples + 1,
+  });
 
   stage = "find original byte ranges while Host records";
   reply("search-start");
@@ -261,6 +309,7 @@ try {
         viewport: { width: 1240, height: 760 },
         browser: browser.version(),
         live,
+        liveRetention,
         scroll,
         seeks,
         searches,

@@ -1097,9 +1097,9 @@ $env:SWB_MILLION_ROWS_OUTPUT = Join-Path (Get-Location).Path ('artifacts/million
 cargo test --locked -p serial-workbench-host --test capture_api_host paired_browser_million_rows_search_scroll_and_record_together -- --ignored --nocapture --test-threads=1
 ```
 
-在已核验的百万条录制上打开回放，并在同一设备会话上录制序列后续数据。浏览器逐次验证首段、中段、末页、反向翻页和原始字节搜索。滚动与搜索各记录同期持续增长的已写水位。滚动期间还从同一 Host 的独立 Raw 连接执行精确字节搜索，核对查找和滚动的时间交叠。独立 Node 读者逐卷核对两个录制的分卷索引、序号、原字节范围、连续性及 SHA-256。配置 `SWB_MILLION_ROWS_PILOT` 可以先试跑指定行数。
+在已核验的百万条录制上打开回放，并在同一设备会话上录制序列后续数据。浏览器逐次验证首段、中段、末页、反向翻页和原始字节搜索。滚动从首个可见位置开始连续操作。独立 Raw 连接在这段窗口中持续执行字节搜索，记录同步水位的实际增长，之后再滚动一次并确认目标可见。浏览器深处搜索另保留同时录制的水位。独立 Node 读者逐卷核对两个录制的分卷索引、序号、原字节范围、连续性及 SHA-256。配置 `SWB_MILLION_ROWS_PILOT` 可以先试跑指定行数。
 
-`host-receipt.json` 保留输入尾条至可见、已写和已同步水位的观测样本，以及 Host RSS、源流、读者和录制队列峰值。`browser-receipt.json` 保留滚动至目标可见及搜索至命中的耗时、采样的挂载行数和 Chromium 进程 RSS。两个 `*-readback.json` 保留独立读回的字节范围和摘要。观测延迟包含采样轮询和测试进程间转发。登记运行候选、平台、浏览器版本、样本数量和分位数，并记录源流留存裁剪与取证范围。
+`host-receipt.json` 保留输入尾条至可见、已写和已同步水位的观测样本，以及承载隔离 Host 的 Rust 集成进程 RSS、源流、读者和录制队列峰值。`browser-receipt.json` 保留滚动至目标可见及搜索至命中的耗时、采样的挂载行数和 Chromium 进程 RSS。两个 `*-readback.json` 保留独立读回的字节范围和摘要。观测延迟包含采样轮询和测试进程间转发。登记运行候选、平台、浏览器版本、样本数量和分位数。留存从 Host 的 Raw 历史游标和浏览器 Home／End 实际可见的记录核对。
 
 ### 发送历史（IO-06）
 

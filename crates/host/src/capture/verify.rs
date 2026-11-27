@@ -556,7 +556,7 @@ impl<'a> SearchVolumeReader<'a> {
 
     pub(super) fn verify(self) -> HostResult<()> {
         for (path, identity, stamp) in &self.touched {
-            let file = open_read(path)?;
+            let file = open_read(path).map_err(|_| changed())?;
             if file_identity(&file)? != *identity || change_stamp(&file)? != *stamp {
                 return Err(changed());
             }

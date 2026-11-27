@@ -551,7 +551,13 @@ mod tests {
     }
 
     #[test]
-    fn replacing_a_volume_already_buffered_in_the_current_page_rejects_it() {
+    fn changing_the_path_of_a_buffered_volume_rejects_the_uncommitted_page() {
+        for replace in [false, true] {
+            reject_changed_buffered_volume(replace);
+        }
+    }
+
+    fn reject_changed_buffered_volume(replace: bool) {
         let (directory, reader) =
             recording([rx("primary", 1, 1, 0, b"AB"), rx("primary", 2, 1, 2, b"CD")]);
         let volume = reader.archive.path.join(volume_name(1));
@@ -564,7 +570,9 @@ mod tests {
                 checks += 1;
                 if checks == 3 {
                     fs::rename(&volume, directory.path().join("old-volume")).unwrap();
-                    fs::write(&volume, &bytes).unwrap();
+                    if replace {
+                        fs::write(&volume, &bytes).unwrap();
+                    }
                 }
                 Ok(())
             })

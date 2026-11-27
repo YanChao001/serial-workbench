@@ -217,8 +217,12 @@ struct RawSearchMeasurement {
     pages: u64,
 }
 
-async fn search_during_scroll(host: &Fixture, target: &Target, line: u64) -> RawSearchMeasurement {
-    let raw = host.user.connect_raw().await.unwrap();
+async fn search_during_scroll(
+    host: &Fixture,
+    raw: &serial_workbench_client::RawConnection,
+    target: &Target,
+    line: u64,
+) -> RawSearchMeasurement {
     let text = format!("SWB{line:07}");
     let search_id = RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap();
     let encoded = STANDARD.encode(&text);
@@ -267,13 +271,134 @@ async fn search_during_scroll(host: &Fixture, target: &Target, line: u64) -> Raw
         };
     };
     let matched = Instant::now();
-    raw.close().await.unwrap();
+    let stop = host.query(
+        &host.user,
+        "replay.search",
+        target.clone(),
+        json!({
+            "sessionId":target.session_id,
+            "sessionEpoch":target.session_epoch,
+            "command": ReplaySearchCommand::Stop { search_id }
+        }),
+    );
+    let RpcResult::Query(QueryResult::ReplaySearch(ReplaySearchResult::Stopped {
+        stopped: true,
+        ..
+    })) = success(raw.request(RpcRequest::Query(stop)).await.unwrap())
+    else {
+        panic!("Expected Raw search cursor release");
+    };
     RawSearchMeasurement {
         started,
         matched,
         hit,
         pages,
     }
+}
+
+async fn confirm_joint_scroll(
+    host: &Fixture,
+    capture: &Capture,
+    replay: &Target,
+    browser: &mut Browser,
+    line: u64,
+) -> Value {
+    let first_scroll = browser.receive("scroll-probe-ready", PHASE_TIMEOUT).await;
+    let window = Instant::now();
+    let raw = host.user.connect_raw().await.unwrap();
+    let (started, raw_started) = oneshot::channel();
+    let (durable, durability) = tokio::sync::watch::channel(None::<Instant>);
+    let search = async {
+        started.send(()).unwrap();
+        let mut first_search = None;
+        let mut pages = 0;
+        let mut matches = 0;
+        loop {
+            let measured = search_during_scroll(host, &raw, replay, line).await;
+            let first = *first_search.get_or_insert(measured.started);
+            pages += measured.pages;
+            matches += 1;
+            if durability
+                .borrow()
+                .is_some_and(|observed| measured.matched >= observed)
+            {
+                return (first, measured, pages, matches);
+            }
+        }
+    };
+    let observe = async {
+        raw_started.await.unwrap();
+        let before = capture.status(host).await.summary.watermarks.synced;
+        let before_at = Instant::now();
+        let after = loop {
+            let synced = capture.status(host).await.summary.watermarks.synced;
+            if synced > before {
+                break synced;
+            }
+            sleep(Duration::from_millis(10)).await;
+        };
+        let after_at = Instant::now();
+        durable.send_replace(Some(after_at));
+        (before, before_at, after, after_at)
+    };
+    let ((search_started, last, pages, matches), (before, before_at, after, after_at)) =
+        timeout(PHASE_TIMEOUT, async { tokio::join!(search, observe) })
+            .await
+            .expect("Expected durable recording progress during the scroll and Raw search window");
+    assert!(search_started <= before_at && before_at <= after_at && after_at <= last.matched);
+    raw.close().await.unwrap();
+    browser.send(json!({"kind":"scroll-proof-complete"})).await;
+    let micros = |instant: Instant| instant.duration_since(window).as_micros() as u64;
+    json!({
+        "firstVisible":first_scroll["firstVisible"],
+        "syncedBefore":before, "syncedAfter":after,
+        "syncedBeforeUs":micros(before_at), "syncedAfterUs":micros(after_at),
+        "rawStartedUs":micros(search_started), "rawMatchedUs":micros(last.matched),
+        "rawPages":pages, "rawMatches":matches, "lastRawHit":last.hit,
+    })
+}
+
+async fn source_retention(host: &Fixture, session: &Target) -> Value {
+    let raw = host.user.connect_raw().await.unwrap();
+    let request = |start: u64| {
+        RpcRequest::Query(host.query(
+            &host.user,
+            "stream.read",
+            session.clone(),
+            json!({
+                "sessionId":session.session_id, "sessionEpoch":session.session_epoch,
+                "startEventSeq":start.to_string(), "maxEvents":"1", "maxBytes":"65536",
+            }),
+        ))
+    };
+    let first = raw.request(request(1)).await.unwrap();
+    let (expired, reply) = match first {
+        RpcReply::Failure { error, .. } if error.code == "CURSOR_EXPIRED" => {
+            let details = serde_json::to_value(&error.details).unwrap();
+            let cursor = details["oldestCursor"]["position"]
+                .as_str()
+                .unwrap()
+                .parse::<u64>()
+                .unwrap();
+            (
+                Some(cursor),
+                raw.request(request(cursor + 1)).await.unwrap(),
+            )
+        }
+        reply => (None, reply),
+    };
+    let RpcResult::Query(QueryResult::StreamRead(page)) = success(reply) else {
+        panic!("Expected Raw source retention");
+    };
+    let [event] = page.events.as_slice() else {
+        panic!("Expected one retained source record");
+    };
+    let first_byte = match &event.payload {
+        RawPayload::Rx(rx) => Some(rx.byte_start),
+        _ => None,
+    };
+    raw.close().await.unwrap();
+    json!({"firstEvent":event.event_seq,"firstRxByte":first_byte,"expiredThroughEvent":expired})
 }
 
 async fn metrics(host: &Fixture) -> HostMetrics {
@@ -416,6 +541,9 @@ async fn run(host: &Fixture, input: &Input, output: &Path, records: u64) {
     let mut last = 0;
     while last < records {
         last = (last + BURST).min(records);
+        if last.is_multiple_of(8192) {
+            eprintln!("recording progress: requesting line {last}/{records}");
+        }
         if last >= next_sample || last == records {
             browser
                 .send(json!({"kind":"live-sample","line":last}))
@@ -442,6 +570,9 @@ async fn run(host: &Fixture, input: &Input, output: &Path, records: u64) {
         }
     }
     let live_ms = live_started.elapsed().as_millis() as u64;
+    browser.send(json!({"kind":"live-retention"})).await;
+    let live_retention = browser.receive("retention", QUERY_TIMEOUT).await;
+    let raw_retention = source_retention(host, &session_target).await;
     let archive_authority = host.reference_target(&archive.destination);
     let sealed = archive.stop(host, records).await;
     host.auth
@@ -497,43 +628,35 @@ async fn run(host: &Fixture, input: &Input, output: &Path, records: u64) {
             let before = concurrent.status(host).await.summary.watermarks.written;
             let started_at = Instant::now();
             browser.send(json!({"kind":"continue","stage":stage})).await;
-            let browser_finished = async {
-                let reply = browser
-                    .receive(&format!("{stage}-done"), PHASE_TIMEOUT)
-                    .await;
-                let finished_at = Instant::now();
-                let after = concurrent.status(host).await.summary.watermarks.written;
-                assert!(
-                    after > before,
-                    "Recorder did not advance during browser {stage}"
-                );
-                (reply, after, finished_at)
+            let joint = if stage == "scroll" {
+                Some(
+                    confirm_joint_scroll(
+                        host,
+                        &concurrent,
+                        &replay_target,
+                        &mut browser,
+                        (records / 4).max(17),
+                    )
+                    .await,
+                )
+            } else {
+                None
             };
-            let raw_search = async {
-                if stage == "scroll" {
-                    let line = (records / 4).max(17);
-                    Some(search_during_scroll(host, &replay_target, line).await)
-                } else {
-                    None
-                }
-            };
-            let ((reply, after, finished_at), raw_search) =
-                tokio::join!(browser_finished, raw_search);
-            let search = raw_search.map(|measured| {
-                assert!(measured.started < finished_at && measured.matched > started_at);
-                json!({
-                    "hit": measured.hit,
-                    "pages": measured.pages,
-                    "queryStartedAfterStageUs": measured.started.duration_since(started_at).as_micros() as u64,
-                    "matchedAfterStageUs": measured.matched.duration_since(started_at).as_micros() as u64,
-                })
-            });
+            let reply = browser
+                .receive(&format!("{stage}-done"), PHASE_TIMEOUT)
+                .await;
+            let finished_at = Instant::now();
+            let after = concurrent.status(host).await.summary.watermarks.written;
+            assert!(
+                after > before,
+                "Recorder did not advance during browser {stage}"
+            );
             ranges.push(json!({
                 "stage":stage,
                 "writtenBefore":before,
                 "writtenAfter":after,
                 "browserStageUs":finished_at.duration_since(started_at).as_micros() as u64,
-                "rawSearch":search,
+                "jointDurableWindow":joint,
                 "browser":reply,
             }));
         }
@@ -582,6 +705,11 @@ async fn run(host: &Fixture, input: &Input, output: &Path, records: u64) {
         "source": session_target,
         "sealed": sealed,
         "concurrentSealed": concurrent_sealed,
+        "hostRssScope": "Host and Rust integration harness in one process",
+        "platform": std::env::consts::OS,
+        "architecture": std::env::consts::ARCH,
+        "liveRetention": live_retention,
+        "rawSourceRetention": raw_retention,
         "liveCaptureMs": live_ms,
         "liveDisplayUs": live_display,
         "writtenBurstTailUs": written,
