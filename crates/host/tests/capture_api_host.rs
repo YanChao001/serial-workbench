@@ -1883,9 +1883,35 @@ async fn recorded_peer_replays_confirmed_bytes_only_in_its_own_simulated_session
         failure(f.user.request(state_request(&f.user)).await.unwrap()).code,
         "REPLAY_PEER_LIMIT"
     );
+    let registration = |purpose: &'static str| {
+        f.action(
+            &f.control,
+            "file.register",
+            f.host(),
+            json!({"path":directory,"purpose":purpose}),
+        )
+    };
+    let denied_registration = registration("capture_peer_source").await;
+    assert_eq!(denied_registration.error.unwrap().code, "REPLAY_PEER_LIMIT");
+    let passive_registration = registration("capture_source").await;
+    assert_eq!(passive_registration.state, OperationState::Succeeded);
     std::fs::remove_file(excess).unwrap();
+    let accepted_registration = registration("capture_peer_source").await;
+    assert!(
+        matches!(accepted_registration.result, Some(ActionResult::FileMetadata(ref item)) if item.purpose == FilePurpose::CaptureSource)
+    );
     let manifest = directory.join("manifest.json");
     let saved = std::fs::read(&manifest).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&manifest)
+        .unwrap()
+        .set_len(8 * 1024 * 1024 + 1)
+        .unwrap();
+    assert_eq!(
+        failure(f.user.request(state_request(&f.user)).await.unwrap()).code,
+        "REPLAY_PEER_LIMIT"
+    );
     let mut changed = saved.clone();
     changed.push(b' ');
     std::fs::write(&manifest, changed).unwrap();

@@ -66,7 +66,10 @@ export function createWorkbenchFileActions(
   ) {
     signal?.throwIfAborted();
     const host = current();
-    const selected = await host.pickFile("captureSource", signal);
+    const selected = await host.pickFile(
+      actionId === "replay.peer.open" ? "capturePeerSource" : "captureSource",
+      signal,
+    );
     signal?.throwIfAborted();
     if (!selected) return;
     const latest = current();

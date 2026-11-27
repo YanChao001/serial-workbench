@@ -6,8 +6,6 @@ use super::{
 use serial_workbench_core::*;
 use std::path::{Path, PathBuf};
 
-const PEER_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
-
 #[path = "search.rs"]
 mod search;
 #[path = "replay_search_service.rs"]
@@ -645,12 +643,12 @@ impl ReplayService {
                 &params.capture_ref,
                 &actor,
                 ReplayMode::Fastest,
-                Some(PEER_SOURCE_BYTES),
+                Some(REPLAY_PEER_SOURCE_BYTES),
             )?;
             let peer = reader.recorded_peer()?;
             service
                 .files
-                .resolve_replay_source(&source, &actor, PEER_SOURCE_BYTES)?;
+                .resolve_replay_source(&source, &actor, REPLAY_PEER_SOURCE_BYTES)?;
             let publish = || {
                 check_cancelled()?;
                 service.publish_session(
@@ -861,9 +859,11 @@ impl ReplayService {
                     peer_mode_required()
                 }
             })?;
-            service
-                .files
-                .resolve_replay_source(&session.source, &actor, PEER_SOURCE_BYTES)?;
+            service.files.resolve_replay_source(
+                &session.source,
+                &actor,
+                REPLAY_PEER_SOURCE_BYTES,
+            )?;
             Ok(ReplayPeerState {
                 session_id: session.snapshot.session_id.clone(),
                 session_epoch: session.snapshot.session_epoch,
@@ -902,9 +902,11 @@ impl ReplayService {
             let session = service.find(&target)?;
             let mut session = session.lock().map_err(|_| replay_busy())?;
             service.authorize(&session, &target, &actor, "content.read")?;
-            service
-                .files
-                .resolve_replay_source(&session.source, &actor, PEER_SOURCE_BYTES)?;
+            service.files.resolve_replay_source(
+                &session.source,
+                &actor,
+                REPLAY_PEER_SOURCE_BYTES,
+            )?;
             if session.snapshot.revision != revision {
                 return Err(HostError::new(
                     "REVISION_CONFLICT",

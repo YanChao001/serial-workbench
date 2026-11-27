@@ -27067,7 +27067,12 @@
         "additionalProperties": false,
         "definitions": {
           "FilePurpose": {
-            "enum": ["read_file", "capture_source", "capture_target"],
+            "enum": [
+              "read_file",
+              "capture_source",
+              "capture_peer_source",
+              "capture_target"
+            ],
             "type": "string"
           }
         },
@@ -27093,7 +27098,12 @@
             "type": "string"
           },
           "FilePurpose": {
-            "enum": ["read_file", "capture_source", "capture_target"],
+            "enum": [
+              "read_file",
+              "capture_source",
+              "capture_peer_source",
+              "capture_target"
+            ],
             "type": "string"
           },
           "Id": {
@@ -27213,7 +27223,12 @@
             "type": "string"
           },
           "FilePurpose": {
-            "enum": ["read_file", "capture_source", "capture_target"],
+            "enum": [
+              "read_file",
+              "capture_source",
+              "capture_peer_source",
+              "capture_target"
+            ],
             "type": "string"
           },
           "Id": {
@@ -35170,7 +35185,12 @@
             "type": "object"
           },
           "FilePurpose": {
-            "enum": ["read_file", "capture_source", "capture_target"],
+            "enum": [
+              "read_file",
+              "capture_source",
+              "capture_peer_source",
+              "capture_target"
+            ],
             "type": "string"
           },
           "FileTransferResult": {

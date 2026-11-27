@@ -100,7 +100,8 @@ fn scan_directory(
     interactive_budget: Option<u64>,
 ) -> HostResult<VerifiedCapture> {
     let before = fingerprint_with_budget(path, interactive_budget)?;
-    let value: serde_json::Value = read_json(&path.join("manifest.json"))?;
+    let value: serde_json::Value =
+        read_json_with_budget(&path.join("manifest.json"), interactive_budget)?;
     let format = CaptureFormat::from_version(value.get("formatVersion").and_then(|v| v.as_str()))?;
     let manifest: Manifest = serde_json::from_value(value).map_err(|_| corrupt())?;
     if manifest.mode != format.mode()

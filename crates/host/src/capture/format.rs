@@ -12,6 +12,7 @@ pub const TIMED_MAGIC: &[u8; 7] = b"SWBR02\n";
 const REDACTED_MAGIC: &[u8; 7] = b"SWBR03\n";
 pub const MAX_RECORD: usize = 1024 * 1024;
 pub(super) const MAX_CAPTURE_RECORDS: usize = 100_000;
+pub(crate) const REPLAY_PEER_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -324,20 +325,36 @@ pub fn no_clobber(error: std::io::Error) -> HostError {
     }
 }
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> HostResult<T> {
-    let file = open_read(path)?;
-    if file.metadata().map_err(io_error)?.len() > MAX_METADATA {
-        return Err(corrupt());
-    }
-    read_json_content(file)
+    read_json_with_budget(path, None)
 }
-fn read_json_content<T: serde::de::DeserializeOwned>(reader: impl Read) -> HostResult<T> {
+pub(crate) fn read_json_with_budget<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    budget: Option<u64>,
+) -> HostResult<T> {
+    let file = open_read(path)?;
+    let maximum = budget.unwrap_or(MAX_METADATA).min(MAX_METADATA);
+    let exceeded = if budget.is_some() {
+        peer_directory_limit
+    } else {
+        corrupt
+    };
+    if file.metadata().map_err(io_error)?.len() > maximum {
+        return Err(exceeded());
+    }
+    read_json_content(file, maximum, exceeded)
+}
+fn read_json_content<T: serde::de::DeserializeOwned>(
+    reader: impl Read,
+    maximum: u64,
+    exceeded: fn() -> HostError,
+) -> HostResult<T> {
     let mut data = Vec::new();
     reader
-        .take(MAX_METADATA + 1)
+        .take(maximum + 1)
         .read_to_end(&mut data)
         .map_err(io_error)?;
-    if data.len() as u64 > MAX_METADATA {
-        return Err(corrupt());
+    if data.len() as u64 > maximum {
+        return Err(exceeded());
     }
     serde_json::from_slice(&data).map_err(|_| corrupt())
 }
@@ -529,14 +546,25 @@ mod tests {
     #[test]
     fn metadata_growth_is_bounded_by_actual_read_bytes() {
         let mut growing = GrowingMetadata { consumed: 0 };
-        let result: HostResult<serde_json::Value> = read_json_content(&mut growing);
+        let result: HostResult<serde_json::Value> =
+            read_json_content(&mut growing, MAX_METADATA, corrupt);
         assert_eq!(result.unwrap_err().code, "CAPTURE_CORRUPT");
         assert_eq!(growing.consumed, MAX_METADATA + 1);
+        growing.consumed = 0;
+        let budget = 128;
+        let result: HostResult<serde_json::Value> =
+            read_json_content(&mut growing, budget, peer_directory_limit);
+        assert_eq!(result.unwrap_err().code, "REPLAY_PEER_LIMIT");
+        assert_eq!(growing.consumed, budget + 1);
     }
     #[test]
     fn metadata_content_accepts_valid_json() {
-        let result: serde_json::Value =
-            read_json_content(b"{\"formatVersion\":\"1\"}".as_slice()).unwrap();
+        let result: serde_json::Value = read_json_content(
+            b"{\"formatVersion\":\"1\"}".as_slice(),
+            MAX_METADATA,
+            corrupt,
+        )
+        .unwrap();
         assert_eq!(result["formatVersion"], "1");
     }
 }

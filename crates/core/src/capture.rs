@@ -253,6 +253,7 @@ pub struct RecoverPrefixParams {
 pub enum FilePurpose {
     ReadFile,
     CaptureSource,
+    CapturePeerSource,
     CaptureTarget,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]

@@ -412,11 +412,17 @@ impl FileService {
                 session_epoch: None,
             },
         )?;
+        let bounded = params.purpose == FilePurpose::CapturePeerSource;
+        let purpose = if bounded {
+            FilePurpose::CaptureSource
+        } else {
+            params.purpose
+        };
         let path = selected_path(Path::new(&params.path))?;
-        validate_path(&path, params.purpose == FilePurpose::CaptureTarget)?;
+        validate_path(&path, purpose == FilePurpose::CaptureTarget)?;
         let guard = PathGuard::new(&path)?;
         let parent_identity = directory_identity(path.parent().ok_or_else(invalid)?)?;
-        let (identity, length, fingerprint) = if params.purpose == FilePurpose::ReadFile {
+        let (identity, length, fingerprint) = if purpose == FilePurpose::ReadFile {
             let mut file = open_regular(&path)?;
             let length = file.metadata().map_err(io_error)?.len();
             if length > MAX_FILE {
@@ -431,14 +437,17 @@ impl FileService {
             if !fs::metadata(&path).map_err(io_error)?.is_dir() {
                 return Err(invalid());
             }
-            if params.purpose == FilePurpose::CaptureSource {
+            if purpose == FilePurpose::CaptureSource {
                 // Identify a container without rejecting a damaged recoverable prefix.
                 guard.child("manifest.json")?.open_file()?;
             }
             (
                 directory_identity(&path)?,
                 0,
-                crate::capture::format::fingerprint(&path)?,
+                crate::capture::format::fingerprint_with_budget(
+                    &path,
+                    bounded.then_some(crate::capture::format::REPLAY_PEER_SOURCE_BYTES),
+                )?,
             )
         } else {
             (String::new(), 0, zero_digest())
@@ -446,7 +455,7 @@ impl FileService {
         let document = FileDocument {
             format_version: "0.1".into(),
             path: guard.checked_path().to_path_buf(),
-            purpose: params.purpose,
+            purpose,
             fingerprint,
             identity,
             parent_identity,
@@ -721,7 +730,7 @@ impl FileService {
             return Err(changed());
         }
         if let Some(capture_id) = &d.capture_id {
-            if manifest_id(&d.path)? != *capture_id {
+            if manifest_id_with_budget(&d.path, capture_budget)? != *capture_id {
                 return Err(revision_changed());
             }
             if guard.directory_identity()? != d.identity {
@@ -1050,7 +1059,11 @@ impl FileService {
     }
 }
 fn manifest_id(path: &Path) -> HostResult<Id> {
-    let value: serde_json::Value = crate::capture::format::read_json(&path.join("manifest.json"))?;
+    manifest_id_with_budget(path, None)
+}
+fn manifest_id_with_budget(path: &Path, budget: Option<u64>) -> HostResult<Id> {
+    let value: serde_json::Value =
+        crate::capture::format::read_json_with_budget(&path.join("manifest.json"), budget)?;
     crate::capture::format::CaptureFormat::from_version(
         value
             .get("formatVersion")

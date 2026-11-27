@@ -2025,7 +2025,8 @@ export type FileMetadata_Serialize = {
   fingerprint: Digest;
 };
 
-export type FilePurpose = "read_file" | "capture_source" | "capture_target";
+export type FilePurpose =
+  "read_file" | "capture_source" | "capture_peer_source" | "capture_target";
 
 export type FileReadParams =
   FileReadParams_Serialize | FileReadParams_Deserialize;

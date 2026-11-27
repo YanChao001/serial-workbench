@@ -211,7 +211,8 @@ function PeerExchange({
               if (
                 code === "PERMISSION_DENIED" ||
                 code === "SOURCE_CHANGED" ||
-                code === "REFERENCE_CHANGED"
+                code === "REFERENCE_CHANGED" ||
+                code === "REPLAY_PEER_LIMIT"
               )
                 setCurrent({ error });
               else if (code === "REVISION_CONFLICT") {

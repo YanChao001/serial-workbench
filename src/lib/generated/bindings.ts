@@ -2262,7 +2262,8 @@ export type FileMetadata_Serialize = {
   fingerprint: Digest;
 };
 
-export type FilePurpose = "read_file" | "capture_source" | "capture_target";
+export type FilePurpose =
+  "read_file" | "capture_source" | "capture_peer_source" | "capture_target";
 
 export type FileReadResult =
   FileReadResult_Serialize | FileReadResult_Deserialize;
@@ -2293,6 +2294,7 @@ export type FileResourceRole =
   | "media"
   | "captureTarget"
   | "captureSource"
+  | "capturePeerSource"
   | "exportCsvTarget"
   | "exportJsonlTarget"
   | "commandArchiveSource"

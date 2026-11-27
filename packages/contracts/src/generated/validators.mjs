@@ -14309,7 +14309,12 @@ function validate496(
   return errors === 0;
 }
 var schema133 = {
-  enum: ["read_file", "capture_source", "capture_target"],
+  enum: [
+    "read_file",
+    "capture_source",
+    "capture_peer_source",
+    "capture_target",
+  ],
   type: "string",
 };
 function validate505(
@@ -14336,6 +14341,7 @@ function validate505(
   if (!(
     data === "read_file" ||
     data === "capture_source" ||
+    data === "capture_peer_source" ||
     data === "capture_target"
   )) {
     const err1 = {

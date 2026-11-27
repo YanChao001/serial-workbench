@@ -16,6 +16,7 @@ pub enum FileResourceRole {
     Media,
     CaptureTarget,
     CaptureSource,
+    CapturePeerSource,
     ExportCsvTarget,
     ExportJsonlTarget,
     CommandArchiveSource,
@@ -30,6 +31,7 @@ impl FileResourceRole {
             | Self::ExportJsonlTarget
             | Self::CommandArchiveTarget => FilePurpose::CaptureTarget,
             Self::CaptureSource => FilePurpose::CaptureSource,
+            Self::CapturePeerSource => FilePurpose::CapturePeerSource,
             Self::Source
             | Self::ProtocolDefinitionSource
             | Self::Media
@@ -606,7 +608,9 @@ pub async fn choose_file_resource(
                         .add_filter("Command library archive", &["jsonl"])
                         .set_file_name("command-library.swb-commands.jsonl")
                         .blocking_save_file(),
-                    FileResourceRole::CaptureSource => dialog.blocking_pick_folder(),
+                    FileResourceRole::CaptureSource | FileResourceRole::CapturePeerSource => {
+                        dialog.blocking_pick_folder()
+                    }
                 };
                 selected
                     .map(|path| path.into_path().map_err(|_| invalid()))
@@ -870,12 +874,26 @@ mod tests {
         )
         .await
         .is_err();
+        let excess = valid.join("excess.bin");
+        std::fs::File::create(&excess)
+            .unwrap()
+            .set_len(8 * 1024 * 1024)
+            .unwrap();
+        let oversized = choose_with_picker(
+            &bridge,
+            "main",
+            attachment.generation,
+            FileResourceRole::CapturePeerSource,
+            || async { Ok(Some(valid.clone())) },
+        )
+        .await;
+        std::fs::remove_file(excess).unwrap();
         let unchanged = auth.current_revision().unwrap() == before;
         let selected = choose_with_picker(
             &bridge,
             "main",
             attachment.generation,
-            FileResourceRole::CaptureSource,
+            FileResourceRole::CapturePeerSource,
             || async { Ok(Some(valid)) },
         )
         .await;
@@ -925,6 +943,13 @@ mod tests {
         running.await.unwrap().unwrap();
         assert!(cancelled.unwrap().is_none());
         assert!(file_rejected && directory_rejected);
+        assert_eq!(
+            oversized
+                .err()
+                .expect("oversized peer source must be rejected")
+                .code,
+            "REPLAY_PEER_LIMIT"
+        );
         assert!(
             unchanged,
             "cancel/invalid selection must not grant permissions"

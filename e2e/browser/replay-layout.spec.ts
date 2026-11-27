@@ -1541,6 +1541,7 @@ test("keeps interactive recorded sends on the simulated peer and clears response
       const fixture = {
         allowed: true,
         eligible: true,
+        tooLarge: false,
         invocations: [] as unknown[],
       };
       Reflect.set(window, "recordedPeerFixture", fixture);
@@ -1565,7 +1566,7 @@ test("keeps interactive recorded sends on the simulated peer and clears response
         async (command: string, args: Record<string, unknown> = {}) => {
           if (
             command === "choose_file_resource" &&
-            args.role === "captureSource"
+            args.role === "capturePeerSource"
           ) {
             return {
               reference: source,
@@ -1702,6 +1703,21 @@ test("keeps interactive recorded sends on the simulated peer and clears response
                     },
                   },
                 };
+              if (fixture.tooLarge)
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      state: "failed",
+                      error: {
+                        code: "REPLAY_PEER_LIMIT",
+                        message: "Recording grew",
+                        retryable: false,
+                      },
+                    },
+                  },
+                };
               const data = object(call.params) ? call.params.bytesBase64 : null;
               if (data === "AQ==" && call.expectedRevision === "1") {
                 progress = {
@@ -1716,10 +1732,10 @@ test("keeps interactive recorded sends on the simulated peer and clears response
                 progress = {
                   revision: "3",
                   completedTurns: "1",
-                  remainingRequestBytes: "0",
+                  remainingRequestBytes: "1",
                   responseStart: "0",
                   responseCount: "1",
-                  atEnd: true,
+                  atEnd: false,
                 };
                 responses = [{ recordOrdinal: "8", bytesBase64: "3q0=" }];
               } else {
@@ -1834,6 +1850,15 @@ test("keeps interactive recorded sends on the simulated peer and clears response
   expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
     [],
   );
+  await page.evaluate(() =>
+    Reflect.set(Reflect.get(window, "recordedPeerFixture"), "tooLarge", true),
+  );
+  await input.fill("04");
+  await send.click();
+  await expect(peer.getByRole("alert")).toContainText(
+    "exceeds the simulation size limit",
+  );
+  await expect(peer.getByText("DE AD", { exact: true })).toBeHidden();
   await page.evaluate(() =>
     Reflect.set(Reflect.get(window, "recordedPeerFixture"), "allowed", false),
   );
