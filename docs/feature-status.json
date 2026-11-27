@@ -1202,7 +1202,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
+        "status": "passed",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/53",
           "https://github.com/YanChao001/serial-workbench/pull/73"
