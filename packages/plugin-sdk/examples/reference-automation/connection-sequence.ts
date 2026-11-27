@@ -37,6 +37,7 @@ const monotonicClock: ConnectionClock = {
 
 type Cursor = { nextEventSeq: string; remainder?: ReceiveEvent };
 type ReadyStep = Extract<ConnectionSequenceStep, { kind: "ready" }>;
+type WakeWrite = { operationId: string; bytesBase64: string };
 type ScanResult =
   | { kind: "tail"; cursor: Cursor }
   | { kind: "matched"; cursor: Cursor; source: SourceRange }
@@ -80,10 +81,13 @@ async function scanSource(
   writes: ReadonlySet<string>,
   clock: ConnectionClock,
   ready?: ReadyStep,
+  wake?: WakeWrite,
 ): Promise<ScanResult> {
   const deadline = ready ? clock.now() + ready.timeoutMs : undefined;
   let nextEventSeq = cursor.nextEventSeq;
   let found: ReceiveMatch | undefined;
+  let wakeStarted = !wake;
+  let wakeSettled = !wake;
   const observe = ready
     ? observePattern(Buffer.from(ready.bytesBase64, "base64"), (match) => {
         found = match;
@@ -93,11 +97,11 @@ async function scanSource(
     kind: "matched",
     source: match.source,
     cursor: {
-      nextEventSeq,
+      nextEventSeq: match.source.eventEnd,
       ...(match.remainder ? { remainder: match.remainder } : {}),
     },
   });
-  if (cursor.remainder && observe) {
+  if (cursor.remainder && observe && !wake) {
     if (observe(cursor.remainder) === "source_changed")
       return { kind: "session_changed" };
     if (found) return foundResult(found);
@@ -105,7 +109,7 @@ async function scanSource(
   let pages = 0;
   while (true) {
     if (deadline !== undefined && clock.now() >= deadline)
-      return { kind: "ready_timeout" };
+      return { kind: wakeSettled ? "ready_timeout" : "session_changed" };
     const page = await readSession(task, session, nextEventSeq).catch(
       (error: unknown) => {
         if (!rawSourceEnded(error)) throw error;
@@ -130,14 +134,35 @@ async function scanSource(
       )
         return { kind: "session_changed" };
       nextEventSeq = String(BigInt(event.eventSeq) + 1n);
-      if (event.kind === "rx" && observe) {
+      if (
+        wake &&
+        (event.kind === "tx_intent" || event.kind === "tx") &&
+        event.payload.operationId === wake.operationId
+      ) {
+        if (event.payload.bytesBase64 !== wake.bytesBase64)
+          return { kind: "session_changed" };
+        if (event.kind === "tx_intent") {
+          if (wakeStarted) return { kind: "session_changed" };
+          wakeStarted = true;
+        } else {
+          if (
+            !wakeStarted ||
+            wakeSettled ||
+            event.payload.outcome !== "accepted" ||
+            event.payload.unknownRanges.length !== 0
+          )
+            return { kind: "session_changed" };
+          wakeSettled = true;
+        }
+      }
+      if (event.kind === "rx" && observe && wakeStarted && !found) {
         if (observe(event) === "source_changed")
           return { kind: "session_changed" };
-        if (found) {
-          if (deadline !== undefined && clock.now() >= deadline)
-            return { kind: "ready_timeout" };
-          return foundResult(found);
-        }
+      }
+      if (found && wakeSettled) {
+        if (deadline !== undefined && clock.now() >= deadline)
+          return { kind: "ready_timeout" };
+        return foundResult(found);
       }
     }
     if (page.nextEventSeq !== nextEventSeq) return { kind: "session_changed" };
@@ -183,14 +208,13 @@ export function createConnectionSequence(
     ];
     const total = String(kinds.length);
     const receipts: StepReceipt[] = [];
-    let session: Session | undefined;
     const progress = () =>
       task.progress.report({
         completed: String(receipts.length),
         total,
         unit: "steps",
       });
-    const finish = (outcome: Outcome): ConnectionReport => ({
+    const finish = (outcome: Outcome, session?: Session): ConnectionReport => ({
       outcome,
       ...(session ? { session } : {}),
       steps: [
@@ -255,14 +279,14 @@ export function createConnectionSequence(
       sessionId,
       sessionEpoch,
     };
-    session = connected;
+    const finishConnected = (outcome: Outcome) => finish(outcome, connected);
     receipts.push({
       kind: "open",
       state: "succeeded",
       operationId: open.operationId,
     });
     progress();
-    if (!plan.steps.length) return finish("completed");
+    if (!plan.steps.length) return finishConnected("completed");
 
     const lease = await acquireTransaction(
       task,
@@ -271,8 +295,9 @@ export function createConnectionSequence(
       revision,
     ).catch(() => undefined);
     task.signal.throwIfAborted();
-    if (!lease) return finish("session_changed");
+    if (!lease) return finishConnected("session_changed");
     let cursor: Cursor = { nextEventSeq: "1" };
+    let wake: WakeWrite | undefined;
     const writes = new Set<string>();
     let operationId: string | undefined;
     let released = true;
@@ -287,7 +312,7 @@ export function createConnectionSequence(
           writes,
           clock,
         );
-        if (current.kind !== "tail") return finish("session_changed");
+        if (current.kind !== "tail") return finishConnected("session_changed");
         let source: SourceRange | undefined;
         switch (step.kind) {
           case "delay":
@@ -297,7 +322,7 @@ export function createConnectionSequence(
                 .kind !== "tail"
             ) {
               stepFailed(step.kind);
-              return finish("session_changed");
+              return finishConnected("session_changed");
             }
             break;
           case "line": {
@@ -318,7 +343,7 @@ export function createConnectionSequence(
               control.value.actual !== step.value
             ) {
               stepFailed(step.kind, operationId);
-              return finish("step_failed");
+              return finishConnected("step_failed");
             }
             break;
           }
@@ -333,9 +358,13 @@ export function createConnectionSequence(
             operationId = sent.operationId;
             if (!sent.confirmed) {
               stepFailed(step.kind, operationId);
-              return finish("step_failed");
+              return finishConnected("step_failed");
             }
             writes.add(sent.operationId);
+            wake = {
+              operationId: sent.operationId,
+              bytesBase64: step.bytesBase64,
+            };
             break;
           }
           case "ready": {
@@ -346,16 +375,18 @@ export function createConnectionSequence(
               writes,
               clock,
               step,
+              wake,
             );
             if (observed.kind !== "matched") {
               stepFailed(step.kind);
-              return finish(
+              return finishConnected(
                 observed.kind === "ready_timeout"
                   ? "ready_timeout"
                   : "session_changed",
               );
             }
             ({ cursor, source } = observed);
+            wake = undefined;
             break;
           }
         }
@@ -367,8 +398,21 @@ export function createConnectionSequence(
           ...(source ? { source } : {}),
         });
         progress();
+        if (step.kind === "line") {
+          const afterControl = await scanSource(
+            task,
+            connected,
+            current.cursor,
+            writes,
+            clock,
+          );
+          if (afterControl.kind !== "tail")
+            return finishConnected("session_changed");
+          cursor = afterControl.cursor;
+          wake = undefined;
+        }
       }
-      return finish("completed");
+      return finishConnected("completed");
     };
     let report: ConnectionReport;
     try {
@@ -377,7 +421,7 @@ export function createConnectionSequence(
       task.signal.throwIfAborted();
       const next = kinds[receipts.length];
       if (next !== undefined) stepFailed(next, operationId);
-      report = finish(
+      report = finishConnected(
         rawSourceEnded(error) ? "session_changed" : "step_failed",
       );
     } finally {

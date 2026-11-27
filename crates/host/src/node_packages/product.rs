@@ -364,6 +364,7 @@ mod tests {
             rule_automation,
             calendar_automation,
             response_automation,
+            loopback_automation,
             old_rfc2217,
             old_modbus,
             old_modbus_slave,
@@ -373,13 +374,14 @@ mod tests {
         check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.7");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.7");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.7");
-        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.7");
-        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.7");
-        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.7");
-        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.7");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.8");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.8");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.8");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.8");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.8");
+        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.8");
+        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.8");
+        check_predecessor_upgrade(loopback_automation, "0.1.7", "0.1.8");
         check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus_slave, "0.1.0", "0.1.1");

@@ -117,6 +117,13 @@ export const commands = {
     typedError<SessionSnapshot_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_connect_device", { generation, deviceId, params }),
     ),
+  hostConnectionSequenceIntent: (
+    generation: U64,
+    intent: ConnectionSequenceIntent,
+  ) =>
+    typedError<ConnectionSequenceIntentResult_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_connection_sequence_intent", { generation, intent }),
+    ),
   hostBrowserAccess: (generation: U64, intent: LocalBrowserAccess) =>
     typedError<BrowserAccessState, HostError_Serialize>(
       __TAURI_INVOKE("host_browser_access", { generation, intent }),
@@ -1837,6 +1844,27 @@ export type ConnectionDefault_Serialize = {
   configuration: SerialConfiguration;
   writeWaitMode?: WriteWaitMode;
 };
+
+export type ConnectionSequenceIntent =
+  | {
+      kind: "start";
+      deviceId: Id;
+      configuration: SerialConfiguration;
+      definition: { [key in string]: JsonValue };
+    }
+  | { kind: "adopt"; operationId: Id; openedOperationId: Id };
+
+export type ConnectionSequenceIntentResult =
+  | ConnectionSequenceIntentResult_Serialize
+  | ConnectionSequenceIntentResult_Deserialize;
+
+export type ConnectionSequenceIntentResult_Deserialize =
+  | { kind: "accepted"; value: Operation_Deserialize }
+  | { kind: "session"; value: SessionSnapshot_Deserialize };
+
+export type ConnectionSequenceIntentResult_Serialize =
+  | { kind: "accepted"; value: Operation_Serialize }
+  | { kind: "session"; value: SessionSnapshot_Serialize };
 
 export type ContextToken = string;
 

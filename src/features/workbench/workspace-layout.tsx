@@ -217,6 +217,7 @@ export type WorkbenchHost = Pick<
   | "send"
   | "waitForOperation"
   | "readOperationSummary"
+  | "connectionSequenceIntent"
   | "takeover"
   | "watchSession"
   | "setReceiveIdleMs"
@@ -321,7 +322,7 @@ export type WorkbenchToolContext = {
   connectionSequence?: {
     device?: ConnectionSequenceDevice;
     canOpen: boolean;
-    inspectSession(target: Target): void;
+    inspectSession(target: Target, snapshot?: SessionSnapshot): void;
   };
   openConnectionSequence?: () => void;
   broadcastMemory?: BroadcastMemory;
@@ -1944,11 +1945,12 @@ export function WorkspaceLayout({
     !disabled &&
     !state.devicesStale &&
     supportsSessionTemplates(device?.fingerprint.transport) &&
-    state.catalog.some(
-      (action) =>
-        action.actionId === builtinConnectionSequenceAction &&
-        action.targetKinds.includes("device"),
-    );
+    (host.connectionSequenceIntent !== undefined ||
+      state.catalog.some(
+        (action) =>
+          action.actionId === builtinConnectionSequenceAction &&
+          action.targetKinds.includes("device"),
+      ));
   const connectionHostId = device?.hostId;
   const connectionSessionId = connectionSession?.sessionId;
   const connectionEpoch = connectionSession?.sessionEpoch;
@@ -3393,12 +3395,14 @@ export function WorkspaceLayout({
                           canConnectionSequence &&
                           opening === null &&
                           !connectionSession,
-                        inspectSession: (target) => {
-                          const opened = state.sessions.find(
-                            (item) =>
-                              item.sessionId === target.sessionId &&
-                              item.sessionEpoch === target.sessionEpoch,
-                          );
+                        inspectSession: (target, snapshot) => {
+                          const opened =
+                            snapshot ??
+                            state.sessions.find(
+                              (item) =>
+                                item.sessionId === target.sessionId &&
+                                item.sessionEpoch === target.sessionEpoch,
+                            );
                           if (
                             !opened ||
                             target.hostId !== host.connection?.attachment.hostId

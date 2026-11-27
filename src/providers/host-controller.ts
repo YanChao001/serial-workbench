@@ -53,6 +53,7 @@ import { createHostActionObserver } from "./host-action-observer";
 import { readReplayRecord as readRecord } from "@/lib/host-reader";
 import {
   hostConnectDevice,
+  hostConnectionSequenceIntent,
   chooseFileResource,
   claimTransferDrop,
   hostApplyDocumentIntent,
@@ -100,6 +101,7 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 }
 type HostUserActions = {
   connectDevice: typeof hostConnectDevice;
+  connectionSequenceIntent?: typeof hostConnectionSequenceIntent;
   chooseFile: typeof chooseFileResource;
   claimDrop?: typeof claimTransferDrop;
   applyDocumentIntent: typeof hostApplyDocumentIntent;
@@ -125,6 +127,7 @@ export function createHostWorkspace(
   connection: HostConnection,
   userActions: HostUserActions | null = {
     connectDevice: hostConnectDevice,
+    connectionSequenceIntent: hostConnectionSequenceIntent,
     chooseFile: chooseFileResource,
     claimDrop: claimTransferDrop,
     applyDocumentIntent: hostApplyDocumentIntent,
@@ -1605,6 +1608,35 @@ export function createHostWorkspace(
     }
     return waitForHost(pending, waiting);
   }
+  const runConnectionSequenceIntent = connection.lanRoute
+    ? undefined
+    : userActions?.connectionSequenceIntent;
+  const connectionSequenceIntent: HostContextValue["connectionSequenceIntent"] =
+    runConnectionSequenceIntent &&
+    ((intent, signal) => {
+      const waiting = AbortSignal.any([signal, lifetime.signal]);
+      waiting.throwIfAborted();
+      const pending = (async () => {
+        const result = await runConnectionSequenceIntent(
+          connection.generation,
+          intent,
+        ).finally(() => {
+          if (!lifetime.signal.aborted) invalidateActions();
+        });
+        lifetime.signal.throwIfAborted();
+        if (result.kind === "accepted") {
+          updateOperation(result.value);
+        } else {
+          updateSession(result.value);
+          readers.retryAuthorized(result.value);
+          void syncProjections().catch((error: unknown) => {
+            if (!lifetime.signal.aborted) report(error);
+          });
+        }
+        return result;
+      })();
+      return waitForHost(pending, waiting);
+    });
   async function fileMetadata(reference: ObjectRef, signal?: AbortSignal) {
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
@@ -2189,6 +2221,7 @@ export function createHostWorkspace(
     pickFile,
     pickDroppedFile,
     trustedConnect,
+    connectionSequenceIntent,
     readFile,
     fileMetadata,
     readReplayRecord,

@@ -1422,6 +1422,58 @@ export async function seedWorkbenchFixture(
         },
         unregisterCallback: (id: number) => callbacks.delete(id),
         async invoke(command: string, args: Record<string, unknown> = {}) {
+          const nativeSequence = command === "host_connection_sequence_intent";
+          if (nativeSequence) {
+            if (
+              !automation?.connectionReport ||
+              args.generation !== hostAttachment.generation
+            )
+              throw new Error("Unexpected native connection sequence intent");
+            const intent = args.intent as Record<string, unknown>;
+            if (intent.kind === "adopt") {
+              if (
+                intent.operationId !== automationOperation?.operationId ||
+                intent.openedOperationId !== "open" ||
+                automationOperation.target.id !== openedSession.deviceId
+              )
+                throw new Error(
+                  "Unexpected connection sequence opening receipt",
+                );
+              return { kind: "session", value: openedSession };
+            }
+            if (intent.kind !== "start")
+              throw new Error("Expected connection sequence start");
+            const {
+              hostId,
+              instanceEpoch,
+              actorId,
+              requestContext,
+              protocolVersion,
+            } = hostAttachment.attachment;
+            command = "host_request";
+            args = {
+              generation: args.generation,
+              request: {
+                method: "action.invoke",
+                params: {
+                  hostId,
+                  instanceEpoch,
+                  actorId,
+                  requestContext,
+                  protocolVersion,
+                  requestId: crypto.randomUUID(),
+                  actionId: automation.action.actionId,
+                  target: { hostId, kind: "device", id: intent.deviceId },
+                  revealTarget: { pageId: "workbench" },
+                  executionMode: "independent",
+                  params: {
+                    configuration: intent.configuration,
+                    definition: intent.definition,
+                  },
+                },
+              },
+            };
+          }
           switch (command) {
             case "plugin:event|listen":
               if (
@@ -2294,6 +2346,15 @@ export async function seedWorkbenchFixture(
                   });
                 }
                 if (rule) await holdRuleReply("admission");
+                if (nativeSequence)
+                  return {
+                    kind: "accepted",
+                    value: {
+                      ...automationOperation,
+                      state: "queued",
+                      result: undefined,
+                    },
+                  };
                 return {
                   ok: true,
                   result: {

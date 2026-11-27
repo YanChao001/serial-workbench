@@ -78,6 +78,10 @@ impl TaskAuthority {
             Ok(())
         }
     }
+    pub(super) fn opened_device(&self, target: &Target) -> Option<&Target> {
+        (self.opened_session.as_ref() == Some(target)).then_some(&self.scope)
+    }
+
     pub(crate) fn normalized(&self, call: &Call) -> HostResult<ChildCall> {
         let source = self.child()?;
         if call.actor_id != source.actor_id

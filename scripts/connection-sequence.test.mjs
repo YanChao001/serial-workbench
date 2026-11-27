@@ -83,6 +83,7 @@ const session = {
 function taskFixture({
   reused = false,
   receive = true,
+  earlyReady = false,
   disconnect = false,
   signal,
 } = {}) {
@@ -146,11 +147,30 @@ function taskFixture({
               actual: call.params.value,
               status: "confirmed",
             });
-          case "session.tx":
+          case "session.tx": {
+            const write = {
+              operationId,
+              bytesBase64: call.params.bytesBase64,
+            };
+            const appendWrite = (kind, payload) => {
+              events.push({
+                ...session,
+                kind,
+                eventSeq: String(events.length + 1),
+                payload,
+              });
+            };
+            if (earlyReady) append("OK");
+            appendWrite("tx_intent", write);
             if (receive && call.params.bytesBase64 === "pQ==") {
               append("xO");
               append("K!");
             }
+            appendWrite("tx", {
+              ...write,
+              outcome: "accepted",
+              unknownRanges: [],
+            });
             if (disconnect) {
               events.push({
                 ...session,
@@ -166,6 +186,7 @@ function taskFixture({
               bytesBase64: call.params.bytesBase64,
               outcome: "accepted",
             });
+          }
           default:
             throw new Error(`Unexpected action ${call.actionId}`);
         }
@@ -239,8 +260,8 @@ test("opens after the pre-open wait and holds one lease through reset, wake and 
     sessionId: "session",
     sessionEpoch: "4",
     direction: "rx",
-    eventStart: "1",
-    eventEnd: "3",
+    eventStart: "2",
+    eventEnd: "4",
     byteStart: "1",
     byteEnd: "3",
   });
@@ -258,7 +279,7 @@ test("a reused port and a timed out ready wait admit no later step", async () =>
     ["device.open"],
   );
 
-  const timeout = taskFixture({ receive: false });
+  const timeout = taskFixture({ receive: false, earlyReady: true });
   const result = await createConnectionSequence(timeout.clock)(
     connectionCall({
       ...definition,
@@ -317,4 +338,36 @@ test("cancellation before opening produces no child operation", async () => {
     name: "AbortError",
   });
   assert.deepEqual(fixture.calls, []);
+});
+
+test("cancellation after a confirmed wake leaves its original child and admits no tail", async () => {
+  const abort = new AbortController();
+  const f = taskFixture({ signal: abort.signal });
+  const run = createConnectionSequence({
+    ...f.clock,
+    async wait(_milliseconds, signal) {
+      abort.abort();
+      signal.throwIfAborted();
+    },
+  });
+  await assert.rejects(
+    run(
+      connectionCall({
+        version: 1,
+        beforeOpenMs: 0,
+        steps: [
+          { kind: "send", bytesBase64: "pQ==" },
+          { kind: "delay", milliseconds: 100 },
+          { kind: "send", bytesBase64: "Aw==" },
+        ],
+      }),
+      f.task,
+    ),
+    { name: "AbortError" },
+  );
+  assert.deepEqual(
+    f.calls.map(({ actionId }) => actionId),
+    ["device.open", "lease.acquire", "session.tx"],
+  );
+  assert.equal(f.calls.at(-1).params.bytesBase64, "pQ==");
 });

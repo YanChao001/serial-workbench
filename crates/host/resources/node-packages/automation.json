@@ -1,16 +1,16 @@
 {
   "id": "swb.builtin.automation",
   "version": "0.1.8",
-  "archiveSha256": "8bbdb0860b90ae24ca2e635a0b7351ebb9b8999f811898922f2cee27457e7301",
-  "compiledModuleSha256": "8f04b91a4533d458879a1f98a538a71fea953fb9ca052615140e37c29b2ca075",
-  "manifestSha256": "e8d94bd3d56439258292b6ebee17d216bc9ead406f38b7afaf67596c1b633afd",
+  "archiveSha256": "bb449242e8e60dfab2520f3989bc3d92966d500b95672037b685fedec7a6332f",
+  "compiledModuleSha256": "4605399f98053095471fb22b680fa3587452be38b9c32a224d6d4864fcb44f9d",
+  "manifestSha256": "137311ef3736bdc949a57ced1eeb0292c417d207e4091411b7c18869a2fd9426",
   "sourceApproval": {
     "keyId": "built-in-automation-0.1.8",
     "publicKey": [
-      31, 102, 51, 156, 1, 27, 137, 184, 14, 188, 255, 10, 114, 146, 113, 56,
-      138, 87, 24, 74, 32, 144, 74, 177, 38, 39, 239, 215, 230, 52, 210, 68
+      154, 91, 166, 24, 202, 254, 68, 54, 85, 19, 57, 66, 221, 31, 239, 201,
+      200, 11, 172, 217, 163, 189, 179, 124, 101, 68, 46, 68, 10, 208, 195, 156
     ],
-    "publicKeySha256": "67e49e82a9ad841303749b38ce558116905685c04c50c36f42ec42d35e3dd848",
+    "publicKeySha256": "6fbdfdd6055f977165bb81ddff966119366c44d468a3201de3d8d0bb4abae906",
     "source": "swb.product"
   }
 }

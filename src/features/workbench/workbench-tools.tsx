@@ -370,11 +370,8 @@ export function WorkbenchTools({
           revealedOperationId={context.revealedOperationId}
           device={context.connectionSequence.device}
           canOpen={context.connectionSequence.canOpen}
-          inspectSession={(target) => {
-            void context.beforeReplace().then((allowed) => {
-              if (allowed) context.connectionSequence?.inspectSession(target);
-            });
-          }}
+          beforeInspect={context.beforeReplace}
+          inspectSession={context.connectionSequence.inspectSession}
         />
       </Suspense>
     );

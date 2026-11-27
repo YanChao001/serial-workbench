@@ -28,6 +28,8 @@ impl TaskScope {
         if opened.action_id.as_str() != "device.open"
             || opened.target != self.operation.target
             || opened.root_operation_id != self.operation.root_operation_id
+            || opened.actor_id != self.operation.actor_id
+            || opened.execution_host_id != self.operation.execution_host_id
             || opened.state != OperationState::Succeeded
             || !matches!(
                 &opened.admission,

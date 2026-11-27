@@ -50,9 +50,11 @@ test("connection parameters can preview, confirm and reopen one ordered startup 
     automation: { action, state: "ready", connectionReport },
   });
   await page.goto("./#/");
-  await page.getByRole("button", { name: "Parameters", exact: true }).click();
   await page
-    .getByRole("dialog", { name: "Parameters", exact: true })
+    .getByRole("button", { name: "Connection parameters", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Connection parameters", exact: true })
     .getByRole("button", { name: "Connection sequence", exact: true })
     .click();
 
@@ -136,5 +138,11 @@ test("connection parameters can preview, confirm and reopen one ordered startup 
   await expect(
     receipts.getByText("Connection sequence completed."),
   ).toBeVisible();
+  expect(await invocations()).toHaveLength(1);
+  await tool.getByRole("button", { name: "Show session", exact: true }).click();
+  await expect(tool).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Close session", exact: true }),
+  ).toBeEnabled();
   expect(await invocations()).toHaveLength(1);
 });

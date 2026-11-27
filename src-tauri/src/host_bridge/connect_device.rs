@@ -3,6 +3,7 @@ use super::DesktopHostBridge;
 use serial_workbench_core::*;
 use sha2::Digest as _;
 
+pub(super) mod sequence;
 mod stage_trace;
 use stage_trace::ConnectTrace;
 

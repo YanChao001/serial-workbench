@@ -52,7 +52,7 @@ test("the built-in automation matches the locked archive and the reference actio
     hostApi: [
       ...reference.permissions.hostApi,
       {
-        permissions: ["metadata.read", "device.modify"],
+        permissions: ["metadata.read", "content.read", "device.modify"],
         targetKinds: ["device"],
       },
     ],

@@ -881,6 +881,15 @@ impl AuthorizationSnapshot {
             target,
             self.lan_sessions.as_deref(),
         )
+        .or_else(|| {
+            // 首方连接任务可在自己打开的代次复用所选设备的显式授权。
+            // 精确会话拒绝仍优先，普通窗口和 LAN 调用沿用原有规则。
+            if self.is_lan_peer() || !matches!(permission, "content.read" | "device.modify") {
+                return None;
+            }
+            let device = self.actor.task()?.opened_device(target)?;
+            matching_rule(grants.record(), permission, device)
+        })
         .ok_or_else(denied)?;
         if let Some(deadline) = rule.deadline_ns
             && (rule.epoch != Some(self.identity.instance_epoch)

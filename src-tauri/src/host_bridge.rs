@@ -2542,6 +2542,20 @@ pub(crate) async fn host_connect_device(
 
 #[tauri::command]
 #[specta::specta]
+pub(crate) async fn host_connection_sequence_intent(
+    window: tauri::WebviewWindow,
+    generation: serial_workbench_core::U64,
+    intent: connect_device::sequence::ConnectionSequenceIntent,
+    state: tauri::State<'_, DesktopHostBridge>,
+) -> HostResult<connect_device::sequence::ConnectionSequenceIntentResult> {
+    state.bind_window(&window)?;
+    state
+        .connection_sequence_intent(window.label(), generation, intent)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub(crate) async fn host_attachment(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, DesktopHostBridge>,

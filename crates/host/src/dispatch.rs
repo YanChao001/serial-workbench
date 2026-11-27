@@ -3190,17 +3190,24 @@ mod tests {
         let credential =
             serial_workbench_client::read_user_control_credential(profile.path()).unwrap();
         let auth = server.auth();
-        let actor = auth
+        let client = id("connection-sequence-business");
+        let actor = auth.authenticate(&client, None).unwrap().actor;
+        let operator = auth
             .authenticate_user_control(&id("connection-sequence-operator"), &credential)
             .unwrap();
         let store = server.store();
         let identity = store.identity().unwrap();
         let host = Host::initialize(
             store.clone(),
-            auth,
+            auth.clone(),
             Arc::new(crate::clock::SystemClock::new().unwrap()),
             DeviceSource::Opener(crate::device::DeviceService::virtual_opener()),
-            None,
+            Some(StartupConfigSnapshot {
+                profile_reference: StartupProfileReference::HostProfile,
+                profile_source: StartupConfigSource::Argument,
+                log_level: StartupLogLevel::Info,
+                log_level_source: StartupConfigSource::Default,
+            }),
             Some(runtime),
         )
         .await
@@ -3242,6 +3249,8 @@ mod tests {
                 page_id: id("workbench"),
                 panel_id: None,
                 session_id: None,
+                workspace_id: None,
+                result_ref: None,
             },
             expected_revision: None,
             lease_id: None,
@@ -3303,6 +3312,27 @@ mod tests {
             })
         };
         let action = "swb.builtin.automation.connect";
+        let grant = |target: &Target| {
+            auth.authorize(
+                &operator,
+                AuthorizeParams {
+                    client_id: client.clone(),
+                    permissions: ["metadata.read", "device.modify", "content.read"]
+                        .into_iter()
+                        .map(Into::into)
+                        .collect(),
+                    targets: vec![target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        };
+        assert!(
+            host.invoke(&actor, call(&device, action, send("AQID")))
+                .await
+                .is_err()
+        );
+        grant(&device);
         let good = host
             .invoke(&actor, call(&device, action, send("AQID")))
             .await
@@ -3350,6 +3380,15 @@ mod tests {
                     .collect::<Vec<_>>()
             }
         };
+        assert!(
+            host.invoke(
+                &actor,
+                call(&session, "session.close", serde_json::json!({}))
+            )
+            .await
+            .is_err()
+        );
+        grant(&session);
         assert_eq!(raw(session.clone()).await, ["AQID", "BA=="]);
 
         let close = host
@@ -3372,6 +3411,12 @@ mod tests {
             next.session_epoch.unwrap(),
             session.session_epoch.unwrap().checked_next().unwrap()
         );
+        assert!(
+            host.invoke(&actor, call(&next, "session.close", serde_json::json!({})))
+                .await
+                .is_err()
+        );
+        grant(&next);
         assert_eq!(raw(next.clone()).await, ["AQID"]);
         let close = host
             .invoke(&actor, call(&next, "session.close", serde_json::json!({})))
