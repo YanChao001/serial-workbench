@@ -3377,7 +3377,10 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/76",
+          "https://github.com/YanChao001/serial-workbench/pull/108"
+        ]
       },
       "hardware": {
         "status": "not-started",

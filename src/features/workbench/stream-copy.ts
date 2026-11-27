@@ -11,6 +11,7 @@ import {
   readStreamByteSelection,
   type StreamByteRow,
 } from "./stream-byte-selection";
+import { streamEventBookmark, type StreamBookmark } from "./stream-location";
 
 export const STREAM_COPY_LIMIT = 65_536;
 export const STREAM_COPY_FORMATS = [
@@ -32,11 +33,15 @@ export type StreamCopySample = {
   parts: TimedPart[];
 };
 
+export type LocatedStreamCopySample = StreamCopySample & {
+  anchor: StreamBookmark;
+};
+
 export function readStreamCopySample(
   rows: readonly (StreamByteRow & { itemIndexes: number[] })[],
   projected: readonly { item: StreamItem; itemIndex: number }[],
   selection: StreamHexSelection,
-): StreamCopySample | undefined {
+): LocatedStreamCopySample | undefined {
   const raw = readStreamByteSelection(rows, selection, STREAM_COPY_LIMIT);
   if (!raw) return;
   const items = new Map(
@@ -44,6 +49,7 @@ export function readStreamCopySample(
   );
   const parts: TimedPart[] = [];
   let direction: StreamCopySample["direction"] | undefined;
+  let anchor: StreamBookmark | undefined;
   for (const segment of raw.segments) {
     let position = segment.start;
     for (const index of rows[segment.rowIndex]!.itemIndexes) {
@@ -64,6 +70,7 @@ export function readStreamCopySample(
       if (end <= position) continue;
       if (start > position) return;
       const stop = end < segment.end ? end : segment.end;
+      anchor ??= streamEventBookmark(event);
       parts.push({
         start: Number(position - raw.offset),
         end: Number(stop - raw.offset),
@@ -74,8 +81,8 @@ export function readStreamCopySample(
     }
     if (position !== segment.end) return;
   }
-  if (!direction) return;
-  return { bytes: raw.bytes, offset: raw.offset, direction, parts };
+  if (!direction || !anchor) return;
+  return { bytes: raw.bytes, offset: raw.offset, direction, parts, anchor };
 }
 
 export function formatStreamCopy(

@@ -123,24 +123,26 @@ async function checkSelectionDownloads(page, first, second) {
     );
   await expect(hex(first)).toBeVisible();
   await expect(hex(second)).toBeVisible();
-  await terminal.evaluate(
-    (root, { firstStart, secondStart, from }) => {
-      const row = (offset) =>
-        root.querySelector(
-          `[data-direction="rx"] [data-hex-source][data-hex-byte-start="${offset}"]`,
-        )?.firstChild;
-      const head = row(firstStart);
-      const tail = row(secondStart);
-      if (!head || !tail)
-        throw new Error("Missing original RX selection nodes");
-      document.getSelection()?.setBaseAndExtent(head, from, tail, 5);
-    },
-    {
-      firstStart: first.payload.byteStart,
-      secondStart: second.payload.byteStart,
-      from: (firstBytes.length - 2) * 3,
-    },
-  );
+  const selectBytes = () =>
+    terminal.evaluate(
+      (root, { firstStart, secondStart, from }) => {
+        const row = (offset) =>
+          root.querySelector(
+            `[data-direction="rx"] [data-hex-source][data-hex-byte-start="${offset}"]`,
+          )?.firstChild;
+        const head = row(firstStart);
+        const tail = row(secondStart);
+        if (!head || !tail)
+          throw new Error("Missing original RX selection nodes");
+        document.getSelection()?.setBaseAndExtent(head, from, tail, 5);
+      },
+      {
+        firstStart: first.payload.byteStart,
+        secondStart: second.payload.byteStart,
+        from: (firstBytes.length - 2) * 3,
+      },
+    );
+  await selectBytes();
   await terminal.getByRole("button", { name: title }).click();
   await expect(panel).toContainText("RX · 4 B");
 
@@ -195,6 +197,51 @@ async function checkSelectionDownloads(page, first, second) {
   });
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
+
+  const txCount = () =>
+    frames.filter(({ action }) => action === "session.tx").length;
+  const beforePreview = txCount();
+  const browserContext = page.context();
+  await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+  const log = terminal.getByRole("log");
+  const context = page.getByRole("menu", {
+    name: /^(Receive actions|接收区操作)$/,
+  });
+  await selectBytes();
+  await log.press("Shift+F10");
+  await context
+    .getByRole("menuitem", { name: /^(Copy as|复制为)$/ })
+    .press("ArrowRight");
+  await page.getByRole("menuitem", { name: "HEX", exact: true }).click();
+  const expectedHex = "3C 26 3E 22";
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(expectedHex);
+  await browserContext.clearPermissions();
+  await selectBytes();
+  await log.press("Shift+F10");
+  const previewTitle = /^(Preview send selection|预览发送选区)$/;
+  await context.getByRole("menuitem", { name: previewTitle }).click();
+  const preview = page.getByRole("dialog", { name: previewTitle });
+  await expect(preview.locator("pre")).toHaveText(expectedHex);
+  await expect(
+    preview.locator('[data-slot="dialog-description"]'),
+  ).toContainText(new RegExp("(?:Event|事件) " + first.eventSeq + "$"));
+  await page.screenshot({
+    path: join(output, "receive-context-preview.png"),
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(preview).toHaveCount(0);
+  await expect(log).toBeFocused();
+  assert.equal(
+    txCount(),
+    beforePreview,
+    "Preview sent bytes without confirmation",
+  );
+
   if (initialViewport) await page.setViewportSize(initialViewport);
   await chooseDirection(/^(Both directions|收发双向)$/);
   await terminal
@@ -208,6 +255,7 @@ async function checkSelectionDownloads(page, first, second) {
     end: String(end),
     html,
     svg,
+    context: { event: first.eventSeq, hex: expectedHex, unconfirmedTx: 0 },
   };
 }
 
