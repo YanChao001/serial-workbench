@@ -1081,15 +1081,18 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/49"]
+        "status": "passed",
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/71"
+        ]
       },
       "hardware": {
-        "status": "not-started",
+        "status": "blocked",
         "evidence": []
       },
       "release": {
-        "status": "not-started",
+        "status": "blocked",
         "evidence": []
       }
     },
