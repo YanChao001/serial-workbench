@@ -235,6 +235,10 @@ test("Wayland hotkeys run in a targeted preflight or in the same selected full c
   assert.match(wayland, /runs-on: ubuntu-26\.04/);
   assert.match(wayland, /bash scripts\/ci-linux-deps\.sh wayland/);
   assert.equal([...wayland.matchAll(/pnpm e2e:build\n/g)].length, 1);
+  assert.match(
+    wayland,
+    /\/usr\/bin\/python3 -B e2e\/wayland-desktop\.test\.py/,
+  );
   assert.match(wayland, /bash e2e\/run-wayland\.sh/);
   assert.match(wayland, /sha256sum --check/);
   assert.match(wayland, /bash e2e\/run-wayland\.sh --portal-v1/);

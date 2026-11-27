@@ -101,6 +101,8 @@ cargo fmt --all -- --check
 
 缺少 GlobalShortcuts 的场景在独立配置中禁用该接口，先从真实门户的 D-Bus 接口清单确认 Settings 可用且 GlobalShortcuts 缺失。工作台应显示不可注册，前台辅助窗口收到按键且 Raw 无写入，随后从编辑器主动发送同一草稿并核对回环。重载场景将旧连接发出的请求关闭和会话关闭与新文档、弹窗消失及零写入一并留证。 [门户配置](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
 
+Wayland 作业在构建前用 `python3 -B e2e/wayland-desktop.test.py` 验证观察探针遇到空节点时重扫，避免误报弹窗关闭或按钮缺失。KWin 的实际重载和门户关闭仍由后续桌面场景验证。
+
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。
