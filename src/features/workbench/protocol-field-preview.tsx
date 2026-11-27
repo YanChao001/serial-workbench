@@ -33,6 +33,7 @@ import {
 } from "./protocol-definition-file";
 import { useToolAction } from "./transfer-capture-actions";
 import { ProtocolByteMap } from "./protocol-byte-map";
+import { LiveFieldTable, type LiveFieldInput } from "./live-field-table";
 
 type FieldCodec = ReturnType<typeof compileProtocolFieldDocument>["codec"];
 type FieldEditor = {
@@ -75,6 +76,7 @@ export default function ProtocolFieldPreview({
   frames,
   fileAccess,
   inspection,
+  liveFields,
   readOnly = false,
   replaySession,
   sourceSelection,
@@ -83,6 +85,7 @@ export default function ProtocolFieldPreview({
   frames: readonly FramingFrame[];
   fileAccess?: ProtocolDefinitionFileAccess;
   inspection?: FramingInspection;
+  liveFields?: LiveFieldInput;
   readOnly?: boolean;
   replaySession?: Pick<SessionSnapshot, "sessionId" | "sessionEpoch">;
   sourceSelection?: ChartSourceSelection;
@@ -460,6 +463,20 @@ export default function ProtocolFieldPreview({
           ) : null}
         </div>
       </div>
+      {liveFields && (
+        <LiveFieldTable
+          key={JSON.stringify([
+            definition,
+            format,
+            liveFields.subscription,
+            liveFields.anchor,
+          ])}
+          source={liveFields}
+          definition={definition}
+          format={format}
+          onRevealSource={onRevealSource}
+        />
+      )}
       {construction ? (
         <form className="space-y-2" onSubmit={generate}>
           <fieldset className="space-y-2">

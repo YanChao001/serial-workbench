@@ -23,6 +23,7 @@ import {
   runModbusTransaction,
   type ModbusTransactionAccess,
 } from "./modbus-transaction";
+import { StructuredFieldTable } from "./structured-field-table";
 import { useToolAction } from "./transfer-capture-actions";
 
 const transports = ["rtu", "ascii", "tcp"] as const;
@@ -60,6 +61,7 @@ export default function ModbusRegisterTool({
   const [draft, setDraft] = useState(initialRegisterDraft);
   const [writeAddress, setWriteAddress] = useState<string>();
   const [writeValue, setWriteValue] = useState("");
+  const writeValueInput = useRef<HTMLInputElement>(null);
   const [confirmed, setConfirmed] = useState<number[]>();
   const [last, setLast] = useState<{
     result: ReturnType<typeof registerResult>;
@@ -355,6 +357,7 @@ export default function ModbusRegisterTool({
                 <label className="grid gap-1">
                   {t("workbench.registers.writeValue")}
                   <Input
+                    ref={writeValueInput}
                     value={writeValue}
                     onChange={(event) =>
                       setWriteValue(event.currentTarget.value)
@@ -433,33 +436,46 @@ export default function ModbusRegisterTool({
             </p>
           ) : null}
           {range && confirmed ? (
-            <div className="max-h-72 overflow-auto">
-              <table className="w-full text-left">
-                <caption className="pb-1 text-left">
-                  {t("workbench.registers.lastRead")}
-                </caption>
-                <thead>
-                  <tr className="border-b">
-                    <th scope="col">{t("workbench.registers.address")}</th>
-                    <th scope="col">{t("workbench.registers.words")}</th>
-                    <th scope="col">{t("workbench.registers.value")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: range.count }, (_, index) => {
-                    const offset = index * range.width;
-                    const words = confirmed.slice(offset, offset + range.width);
-                    const address = range.address + range.base + offset;
-                    return (
-                      <tr key={address} className="border-b font-mono">
-                        <th scope="row">{address}</th>
-                        <td>{words.map(wordText).join(" ")}</td>
-                        <td>{valueText(decodeRegisterValue(words, draft))}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-1">
+              <p>{t("workbench.registers.lastRead")}</p>
+              <StructuredFieldTable
+                caption={t("workbench.registers.lastRead")}
+                nameLabel={t("workbench.registers.address")}
+                detailsLabel={t("workbench.registers.words")}
+                actions={draft.table === "holding"}
+                rows={Array.from({ length: range.count }, (_, index) => {
+                  const offset = index * range.width;
+                  const words = confirmed.slice(offset, offset + range.width);
+                  const address = String(range.address + range.base + offset);
+                  return {
+                    id: address,
+                    name: address,
+                    value: valueText(decodeRegisterValue(words, draft)),
+                    quality: t(
+                      last?.result.words && !last.write && !action.error
+                        ? "workbench.fieldTable.confirmed"
+                        : "workbench.fieldTable.previous",
+                    ),
+                    details: words.map(wordText).join(" "),
+                    action:
+                      draft.table === "holding" ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={action.busy}
+                          onClick={() => {
+                            if (address !== targetAddress) setWriteValue("");
+                            setWriteAddress(address);
+                            writeValueInput.current?.focus();
+                          }}
+                        >
+                          {t("workbench.fieldTable.writeRegister", { address })}
+                        </Button>
+                      ) : undefined,
+                  };
+                })}
+              />
             </div>
           ) : null}
         </div>

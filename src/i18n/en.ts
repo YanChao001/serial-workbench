@@ -2211,6 +2211,29 @@ export const en = {
   "workbench.frameTemplate.invalidFrame":
     "Check the HEX and the size of the complete frame.",
   "workbench.fields.title": "Protocol fields",
+  "workbench.fieldTable.title": "Live field table",
+  "workbench.fieldTable.follow": "Follow frames",
+  "workbench.fieldTable.stop": "Stop following",
+  "workbench.fieldTable.anchor":
+    "Verify a fixed-length frame in the active session to start following.",
+  "workbench.fieldTable.widthMismatch":
+    "Match the definition length to the verified frame length.",
+  "workbench.fieldTable.sourceChanged":
+    "The receive source changed. Verify a new fixed-length frame to resume.",
+  "workbench.fieldTable.notRetained": "The frame has left receive history.",
+  "workbench.fieldTable.reveal": "Show frame in HEX",
+  "workbench.fieldTable.waiting": "Waiting for the next complete frame.",
+  "workbench.fieldTable.decodeFailed":
+    "The current frame could not be decoded.",
+  "workbench.fieldTable.unit": "Unit",
+  "workbench.fieldTable.quality": "Quality",
+  "workbench.fieldTable.actions": "Actions",
+  "workbench.fieldTable.complete": "Complete",
+  "workbench.fieldTable.checksumFailed": "Checksum failed",
+  "workbench.fieldTable.unmapped": "Outside calibration table",
+  "workbench.fieldTable.confirmed": "Read confirmed",
+  "workbench.fieldTable.previous": "Previous read",
+  "workbench.fieldTable.writeRegister": "Edit write {address}",
   "workbench.fields.calibrationUnmapped":
     "Raw code outside the calibration table",
   "workbench.fields.calibrationOrigin": "Raw {raw} · calibration {revision}",

@@ -915,6 +915,14 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 运行 `node --test scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对位宽、浮点、严格 UTF-8、独立物理位、64 位精确往返、校验依赖、定义错误、取消及归档来源。使用 `pnpm test:ui e2e/browser/framing-tool.spec.ts` 核对分帧结果上的字段值、原始字节绝对偏移、数值构造及 YAML 行列。用同一原生启动用例对照两个独立包的重启登记、会话授权、真实操作终态和文件结果。
 
+### 结构化表格（DISP-18）
+
+在工作台的协议分帧范围验证固定帧起点，使用含数值、带单位字段、校验和标定的定义开始跟随。在已确认的帧头前放入噪声，拆分同一帧横跨两个 RX 事件，随后连续送入多帧。另用转义头尾、跨事件帧头和源静默验证拆帧。核对表格只显示最新完整帧，并能按原始绝对字节范围定位。制造坏校验、标定表外值、读者缺口和源配置变更。检查质量文字、无完整值时的状态以及来源失效后不沿用旧数据。切换会话、关闭重开或编辑定义后需要重新对准，历史和构造预览继续独立使用。
+
+在寄存器监视读取保持表，观察连续读回的值与质量。从第二行进入写入，检查确认前保持零发送、地址与线上的字一致，确认后显示真正匹配的设备应答。设备拒绝或超时按原状态显示，输入寄存器保持只读。宽窄窗核对表头、滚动和焦点。 [设计草稿](./ui-design.md#结构化表格草稿disp-18)
+
+本地软件回归使用 `node --test scripts/reference-framing.test.mjs scripts/product-framing.test.mjs scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 对照参考分帧处理器和字段管线。`pnpm test:ui e2e/browser/framing-tool.spec.ts --workers=1` 核对 420 × 460 和 1240 × 760 窗口、绝对字节回查，以及模拟对端返回的匹配写回应答和设备异常。实物用 Modbus 对端核对选址、写回应答与独立读回。独立原生窗口及正式安装后复跑该场景和 T10 的带单位金样。 [验收方案与功能映射](./requirements.md#附件验收方案与功能映射)
+
 ### 帧模板（IO-14）
 
 从工作台「协议分帧」展开「帧模板」，以线上顺序查看帧头、长度、序号、负载、校验和帧尾。模板可调整无符号字段宽度和端序，给序号和负载命名，选择 HEX 或 UTF-8 负载，以及指定长度和校验覆盖范围。整帧上限为 4,096 字节。可从「模板 JSON」读取或应用版本为字符串 `"1"` 的定义。无效或未来版本应保留当前定义和待修正文本。

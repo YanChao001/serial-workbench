@@ -31,6 +31,7 @@ import type { ProtocolDefinitionFileAccess } from "./protocol-definition-file";
 import type { ModbusTransactionAccess } from "./modbus-transaction";
 import type { ModbusSlaveAccess } from "./modbus-server-tool";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
+import { fixedFramingRules } from "./live-fixed-framing";
 import type { FramingInspection } from "./framing-anomalies-model";
 import { WorkbenchNotice } from "./workbench-notice";
 import type { ChartSourceSelection } from "./stream-chart-selection";
@@ -45,6 +46,7 @@ const modes: readonly [FramingMode, MessageKey][] = [
 
 export function FramingTool({
   items,
+  rawSourceKey,
   target,
   sourceName,
   invoke,
@@ -57,6 +59,7 @@ export function FramingTool({
   onRevealSource,
 }: {
   items: readonly StreamItem[];
+  rawSourceKey?: string;
   target: Target;
   sourceName?: string;
   invoke: HostContextValue["invoke"];
@@ -76,12 +79,18 @@ export function FramingTool({
   const [applied, setApplied] = useState(draft);
   const [result, setResult] = useState<{
     params: Call["params"];
+    sourceKey?: string;
     page: FramingPage;
     inspection: FramingInspection;
   }>();
   const action = useToolAction((reason) => nativeErrorText(reason, t));
   const params = framingParams(draft);
   const dirty = JSON.stringify(draft) !== JSON.stringify(applied);
+  const liveFraming =
+    !dirty && rawSourceKey !== undefined && result?.sourceKey === rawSourceKey
+      ? fixedFramingRules(result.params)
+      : undefined;
+  const liveAnchor = liveFraming && result?.page.frames.at(-1);
   useUnsavedWork({
     id,
     label: t("workbench.tools.framing"),
@@ -145,6 +154,7 @@ export function FramingTool({
       setApplied(snapshot);
       setResult((previous) => ({
         params: query,
+        sourceKey: rawSourceKey,
         page,
         inspection: {
           target,
@@ -369,6 +379,15 @@ export function FramingTool({
       <ProtocolFieldsTool
         frames={result?.page.frames ?? []}
         inspection={result?.inspection}
+        liveFields={{
+          items,
+          target,
+          subscription: rawSourceKey,
+          anchor:
+            liveAnchor && liveFraming
+              ? { frame: liveAnchor, framing: liveFraming }
+              : undefined,
+        }}
         fileAccess={definitionFileAccess}
         modbusTimeline={modbusTimeline}
         modbusSlave={modbusSlave}
