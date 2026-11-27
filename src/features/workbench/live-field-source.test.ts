@@ -145,3 +145,106 @@ test("live fields reject a mismatched anchor and permanently clear on gaps or co
     kind: "source_changed",
   });
 });
+
+test("marked live frames pass over noise, escaped headers and escaped footers", () => {
+  const anchor = {
+    hex: "AA 01 CC",
+    byteStart: byte(0),
+    byteEnd: byte(3),
+    eventStart: "10",
+    eventEnd: "11",
+  };
+  const start = rx(10, 0, [0xaa, 1, 0xcc]);
+  const live = beginLiveFieldSource([start], target, anchor, {
+    width: 3,
+    header: Uint8Array.of(0xaa),
+    footer: Uint8Array.of(0xcc),
+    escape: 0x7d,
+  });
+  expect(live?.update([start, rx(11, 3, [0, 0x7d])])).toEqual({
+    kind: "frame",
+    frame: anchor,
+    pending: 0,
+  });
+  expect(
+    live?.update([
+      rx(12, 5, [0xaa, 0, 0xcc, 0, 0xaa, 0x20, 0xcc, 0xaa, 0x7d, 0xcc]),
+    ]),
+  ).toEqual({
+    kind: "frame",
+    frame: {
+      hex: "AA 20 CC",
+      byteStart: byte(9),
+      byteEnd: byte(12),
+      eventStart: "12",
+      eventEnd: "13",
+    },
+    pending: 0,
+  });
+});
+
+test("a header and frame can begin in one RX event and complete in the next", () => {
+  const start = rx(10, 0, [0xaa, 0xbb, 1, 0xcc]);
+  const anchor = {
+    hex: "AA BB 01 CC",
+    byteStart: byte(0),
+    byteEnd: byte(4),
+    eventStart: "10",
+    eventEnd: "11",
+  };
+  const live = beginLiveFieldSource([start], target, anchor, {
+    width: 4,
+    header: Uint8Array.of(0xaa, 0xbb),
+    footer: Uint8Array.of(0xcc),
+  });
+  const prefix = rx(11, 4, [0, 0xaa]);
+  expect(live?.update([prefix])).toEqual({
+    kind: "frame",
+    frame: anchor,
+    pending: 1,
+  });
+  expect(live?.update([prefix, rx(12, 6, [0xbb, 2, 0xcc])])).toEqual({
+    kind: "frame",
+    frame: {
+      hex: "AA BB 02 CC",
+      byteStart: byte(5),
+      byteEnd: byte(9),
+      eventStart: "11",
+      eventEnd: "13",
+    },
+    pending: 0,
+  });
+});
+
+test("source idle time discards incomplete bytes before a new fixed frame", () => {
+  const start = rx(10, 0, [0, 1, 1, 9]);
+  const anchor = {
+    hex: "00 01 01",
+    byteStart: byte(0),
+    byteEnd: byte(3),
+    eventStart: "10",
+    eventEnd: "11",
+  };
+  const live = beginLiveFieldSource([start], target, anchor, {
+    width: 3,
+    idleMs: 1,
+  });
+  expect(live?.update([start])).toEqual({
+    kind: "frame",
+    frame: anchor,
+    pending: 1,
+  });
+  const next = rx(11, 4, [0, 22, 22]);
+  next.event.time.sourceMonoNs = "1010000";
+  expect(live?.update([next])).toEqual({
+    kind: "frame",
+    frame: {
+      hex: "00 16 16",
+      byteStart: byte(4),
+      byteEnd: byte(7),
+      eventStart: "11",
+      eventEnd: "12",
+    },
+    pending: 0,
+  });
+});

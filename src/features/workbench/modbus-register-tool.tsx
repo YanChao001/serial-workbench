@@ -465,6 +465,7 @@ export default function ModbusRegisterTool({
                           variant="outline"
                           disabled={action.busy}
                           onClick={() => {
+                            if (address !== targetAddress) setWriteValue("");
                             setWriteAddress(address);
                             writeValueInput.current?.focus();
                           }}

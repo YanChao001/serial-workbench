@@ -4,6 +4,10 @@ import { streamSourceKey } from "@/lib/stream-source";
 import { parseU64, U64_MAX } from "@/lib/u64";
 import { retainedSource } from "./field-chart-model";
 import type { FramingFrame } from "./framing-model";
+import {
+  scanMarkedFixedFrames,
+  type FixedFramingRules,
+} from "./live-fixed-framing";
 import { sliceRawBytes } from "./stream-model";
 import {
   retainedChartSelection,
@@ -29,6 +33,7 @@ export function beginLiveFieldSource(
   items: readonly StreamItem[],
   target: Target,
   anchor: FramingFrame,
+  framing?: FixedFramingRules,
 ) {
   const first = parseU64(anchor.eventStart);
   const after = parseU64(anchor.eventEnd);
@@ -62,7 +67,13 @@ export function beginLiveFieldSource(
   const bytes = parseHex(anchor.hex);
   const width = bytes.length;
   const last = events.get(after - 1n);
-  if (!width || width > maxFrameBytes || last?.kind !== "rx") return;
+  if (
+    !width ||
+    width > maxFrameBytes ||
+    last?.kind !== "rx" ||
+    (framing && framing.width !== width)
+  )
+    return;
   const anchorSource = retainedSource(anchor, bytes, events);
   if (!anchorSource) return;
   const { key, revision, clock } = anchorSource;
@@ -71,6 +82,9 @@ export function beginLiveFieldSource(
   let nextByte = byteEnd;
   let tail: Uint8Array = new Uint8Array();
   let tailEvent = "";
+  let markedParts: Array<{ end: bigint; event: string }> = [];
+  let escapedBefore = false;
+  let previousTime = last.time;
   let frame = anchor;
   let snapshot: Snapshot = { kind: "frame", frame, pending: 0 };
 
@@ -80,6 +94,38 @@ export function beginLiveFieldSource(
       event.configurationRevision === revision &&
       event.time.clockId === clock
     );
+  }
+
+  function scanMarked(
+    bytes: Uint8Array,
+    start: bigint,
+    end: bigint,
+    event: string,
+  ) {
+    if (!framing) return false;
+    const joinedStart = start - BigInt(tail.length);
+    const joined = join(tail, bytes);
+    markedParts.push({ end, event });
+    const result = scanMarkedFixedFrames(joined, framing, escapedBefore);
+    if (result.latest) {
+      const absoluteStart = joinedStart + BigInt(result.latest.start);
+      const absoluteEnd = joinedStart + BigInt(result.latest.end);
+      const first = markedParts.find((part) => part.end > absoluteStart);
+      const last = markedParts.find((part) => part.end >= absoluteEnd);
+      if (!first || !last || last.event !== event) return false;
+      frame = {
+        hex: formatHex(joined.subarray(result.latest.start, result.latest.end)),
+        byteStart: String(absoluteStart),
+        byteEnd: String(absoluteEnd),
+        eventStart: first.event,
+        eventEnd: String(sequence + 1n),
+      };
+    }
+    tail = joined.slice(result.pendingFrom);
+    const pendingStart = joinedStart + BigInt(result.pendingFrom);
+    markedParts = markedParts.filter((part) => part.end > pendingStart);
+    escapedBefore = result.escapedBefore;
+    return true;
   }
 
   function acceptRx(
@@ -103,9 +149,35 @@ export function beginLiveFieldSource(
     const offset = Number(dataStart - start);
     const length = Number(end - start);
     if (!Number.isSafeInteger(length) || sequence === U64_MAX) return false;
+    if (framing?.idleMs !== undefined && !allowOverlappingPrefix) {
+      const currentTime = event.time;
+      const elapsed =
+        BigInt(currentTime.sourceMonoNs) - BigInt(previousTime.sourceMonoNs);
+      if (
+        elapsed < 0n ||
+        elapsed >= BigInt(framing.idleMs) * 1_000_000n ||
+        currentTime.precision.source !== previousTime.precision.source ||
+        currentTime.precision.resolutionNs !==
+          previousTime.precision.resolutionNs
+      ) {
+        tail = new Uint8Array();
+        tailEvent = "";
+        markedParts = [];
+        escapedBefore = false;
+      }
+      previousTime = currentTime;
+    }
 
     function slice(from: number, to: number) {
       return sliceRawBytes(payload.bytesBase64, BigInt(length), from, to);
+    }
+
+    if (framing?.header || framing?.footer) {
+      const incoming = slice(offset, length);
+      if (!incoming || !scanMarked(incoming, dataStart, end, event.eventSeq))
+        return false;
+      nextByte = end;
+      return true;
     }
 
     const available = tail.length + length - offset;

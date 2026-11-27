@@ -10,6 +10,7 @@ import {
 import { ProtocolFieldError } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
 import type { FramingFrame } from "./framing-model";
 import { beginLiveFieldSource } from "./live-field-source";
+import type { FixedFramingRules } from "./live-fixed-framing";
 import type { ChartSourceSelection } from "./stream-chart-selection";
 import { StructuredFieldTable } from "./structured-field-table";
 
@@ -22,7 +23,7 @@ type Active = {
 
 export type LiveFieldInput = {
   subscription?: string;
-  anchor?: FramingFrame;
+  anchor?: { frame: FramingFrame; framing: FixedFramingRules };
   items: readonly StreamItem[];
   target: Target;
 };
@@ -104,14 +105,16 @@ export function LiveFieldTable({
     setRetentionIssue(undefined);
     try {
       const { codec } = compileProtocolFieldDocument(definition, format);
-      if (
-        BigInt(anchor.byteEnd) - BigInt(anchor.byteStart) !==
-        BigInt(codec.byteLength)
-      ) {
+      if (anchor.framing.width !== codec.byteLength) {
         setIssue(t("workbench.fieldTable.widthMismatch"));
         return;
       }
-      const reader = beginLiveFieldSource(items, target, anchor);
+      const reader = beginLiveFieldSource(
+        items,
+        target,
+        anchor.frame,
+        anchor.framing,
+      );
       if (!reader) {
         setIssue(t("workbench.fieldTable.sourceChanged"));
         return;

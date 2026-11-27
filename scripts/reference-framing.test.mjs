@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { register } from "../packages/plugin-sdk/examples/reference-framing/main.ts";
+import { scanMarkedFixedFrames } from "../src/features/workbench/live-fixed-framing.ts";
 
 function rx(eventSeq, byteStart, bytes) {
   return {
@@ -59,6 +60,105 @@ function scanPages(pages, options) {
   );
   return { result, cursors };
 }
+
+test("incremental fixed framing agrees with the Host scan on marked and escaped bytes", async () => {
+  const cases = [
+    {
+      width: 2,
+      header: [0xaa],
+      chunks: [
+        [0xff, 0xaa],
+        [0x10, 0x00, 0xaa, 0x20],
+      ],
+    },
+    {
+      width: 3,
+      header: [0xaa],
+      footer: [0xcc],
+      escape: 0x7d,
+      chunks: [
+        [0, 0x7d],
+        [0xaa, 0, 0xcc, 0, 0xaa],
+        [0x20, 0xcc, 0xaa, 0x7d, 0xcc],
+      ],
+    },
+    {
+      width: 3,
+      header: [0xaa],
+      footer: [0xcc],
+      escape: 0x7d,
+      chunks: [[0, 0x7d], [0x7d, 0xaa, 0x20], [0xcc]],
+    },
+    {
+      width: 4,
+      header: [0xaa, 0xbb],
+      footer: [0xcc],
+      chunks: [[0, 0xaa], [0xbb, 5], [0xcc]],
+    },
+    {
+      width: 3,
+      footer: [0xcc],
+      escape: 0x7d,
+      chunks: [[0xaa, 0x7d], [0xcc, 0x20], [0xcc]],
+    },
+  ];
+  for (const example of cases) {
+    const { width, header, footer, escape, chunks } = example;
+    let offset = 0;
+    const events = chunks.map((chunk, i) => {
+      const event = rx(10 + i, offset, chunk);
+      offset += chunk.length;
+      return event;
+    });
+    const host = await scanPages(
+      new Map([["10", { events, nextEventSeq: "13", hasMore: false }]]),
+      {
+        fixedLength: width,
+        ...(header && { headerBase64: Buffer.from(header).toString("base64") }),
+        ...(footer && { footerBase64: Buffer.from(footer).toString("base64") }),
+        ...(escape !== undefined && { escapeByte: escape }),
+      },
+    ).result;
+    let pending = Buffer.alloc(0);
+    let accepted;
+    let consumed = 0;
+    let escapedBefore = false;
+    for (const chunk of chunks) {
+      const bytes = Buffer.concat([pending, Buffer.from(chunk)]);
+      const result = scanMarkedFixedFrames(
+        bytes,
+        {
+          width,
+          header: header && Uint8Array.from(header),
+          footer: footer && Uint8Array.from(footer),
+          escape,
+        },
+        escapedBefore,
+      );
+      if (result.latest) {
+        accepted = {
+          bytesBase64: bytes.toString(
+            "base64",
+            result.latest.start,
+            result.latest.end,
+          ),
+          byteStart: String(consumed + result.latest.start),
+          byteEnd: String(consumed + result.latest.end),
+        };
+      }
+      pending = bytes.subarray(result.pendingFrom);
+      consumed += result.pendingFrom;
+      escapedBefore = result.escapedBefore;
+    }
+    const latest = host.frames.at(-1);
+    assert.ok(latest, "The reference must contain a complete frame");
+    assert.deepEqual(accepted, {
+      bytesBase64: latest.bytesBase64,
+      byteStart: latest.source.byteStart,
+      byteEnd: latest.source.byteEnd,
+    });
+  }
+});
 
 test("fixed-length scans preserve exact raw bytes and locations across paged RX", async () => {
   const pages = new Map([

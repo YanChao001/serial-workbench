@@ -32,43 +32,49 @@ test("structured field table follows verified frames, reports quality and drops 
   );
   if (!action || sample?.kind !== "source")
     throw new Error("Missing framing and RX fixtures");
+  const { hostId, sessionId, sessionEpoch } = sample.event;
   const fileRef = {
-    hostId: sample.event.hostId,
+    hostId,
     kind: "plugin_result",
     id: "live-field-anchor",
     revision: "1",
   };
-  const frames = [
-    {
-      bytesBase64: Buffer.from([24, 24]).toString("base64"),
-      source: {
-        hostId: fileRef.hostId,
-        sessionId: sample.event.sessionId,
-        sessionEpoch: sample.event.sessionEpoch,
-        direction: "rx",
-        eventStart: "3",
-        eventEnd: "4",
-        byteStart: "0",
-        byteEnd: "2",
+  function anchorPage(
+    id: string,
+    sequence: number,
+    offset: number,
+    bytes: number[],
+  ) {
+    const frames = [
+      {
+        bytesBase64: Buffer.from(bytes).toString("base64"),
+        source: {
+          hostId: fileRef.hostId,
+          sessionId,
+          sessionEpoch,
+          direction: "rx",
+          eventStart: String(sequence),
+          eventEnd: String(sequence + 1),
+          byteStart: String(offset),
+          byteEnd: String(offset + bytes.length),
+        },
       },
-    },
-  ];
-  const body = Buffer.from(JSON.stringify({ frames, incompleteBytes: 0 }));
+    ];
+    const body = Buffer.from(JSON.stringify({ frames, incompleteBytes: 0 }));
+    return {
+      fileRef: { ...fileRef, id },
+      offset: "0",
+      nextOffset: String(body.length),
+      totalBytes: String(body.length),
+      bytesBase64: body.toString("base64"),
+      fingerprint: createHash("sha256").update(body).digest("hex"),
+      atEnd: true,
+    };
+  }
   await page.setViewportSize({ width: 420, height: 460 });
   await seedWorkbenchFixture(page, {
     language: "en",
-    framing: {
-      action,
-      page: {
-        fileRef,
-        offset: "0",
-        nextOffset: String(body.length),
-        totalBytes: String(body.length),
-        bytesBase64: body.toString("base64"),
-        fingerprint: createHash("sha256").update(body).digest("hex"),
-        atEnd: true,
-      },
-    },
+    framing: { action, page: anchorPage(fileRef.id, 3, 0, [0xaa, 24, 24]) },
   });
   await page.goto("./#/");
   await page
@@ -101,12 +107,12 @@ test("structured field table follows verified frames, reports quality and drops 
       ),
     ).toBe(1);
   };
-  await emit([rx(3, 0, [24, 24])]);
+  await emit([rx(3, 0, [0xaa, 24, 24])]);
   await page
     .getByRole("region", { name: "Receive", exact: true })
     .getByRole("radio", { name: "HEX", exact: true })
     .click();
-  await expect(page.getByRole("log")).toContainText("18 18");
+  await expect(page.getByRole("log")).toContainText("AA 18 18");
   await page.getByRole("button", { name: en["workbench.tools.more"] }).click();
   await page
     .getByRole("menuitem", { name: en["workbench.tools.framing"] })
@@ -119,23 +125,26 @@ test("structured field table follows verified frames, reports quality and drops 
   );
   await dialog
     .getByLabel(en["workbench.framing.fixedLength"], { exact: true })
-    .fill("2");
+    .fill("3");
+  await dialog
+    .getByLabel(en["workbench.framing.header"], { exact: true })
+    .fill("AA");
   await dialog
     .getByRole("button", { name: en["workbench.framing.scan"] })
     .click();
   await expect(
     dialog.getByRole("region", { name: en["workbench.framing.results"] }),
-  ).toContainText("18 18");
+  ).toContainText("AA 18 18");
   const definition = dialog.getByLabel(en["workbench.fields.definition"]);
   await definition.fill(
     JSON.stringify({
       version: "1",
-      byteLength: 2,
+      byteLength: 3,
       fields: [
         {
           id: "temperature",
           kind: "integer",
-          byteOffset: 0,
+          byteOffset: 1,
           width: 1,
           order: "big",
           unit: "°C",
@@ -152,11 +161,11 @@ test("structured field table follows verified frames, reports quality and drops 
         {
           id: "sum",
           kind: "checksum",
-          byteOffset: 1,
+          byteOffset: 2,
           order: "big",
           algorithm: "sum",
-          coverageStart: 0,
-          coverageEnd: 1,
+          coverageStart: 1,
+          coverageEnd: 2,
         },
       ],
     }),
@@ -179,19 +188,19 @@ test("structured field table follows verified frames, reports quality and drops 
     path: info.outputPath("structured-fields-narrow.png"),
   });
 
-  await emit([rx(4, 2, [73])]);
+  await emit([rx(4, 3, [0x00, 0xaa, 73])]);
   await expect(
     dialog.getByText(en["workbench.fieldTable.waiting"]),
   ).toBeVisible();
   await expect(row).toContainText("24.6");
-  await emit([rx(5, 3, [73])]);
+  await emit([rx(5, 6, [73])]);
   await expect(row).toContainText("73.1");
-  await emit([rx(6, 4, [43, 43])]);
+  await emit([rx(6, 7, [0xaa, 43, 43])]);
   await expect(row).toContainText(en["workbench.fieldTable.unmapped"]);
-  await emit([rx(7, 6, [24, 25])]);
+  await emit([rx(7, 10, [0xaa, 24, 25])]);
   await expect(row).toContainText(en["workbench.fieldTable.checksumFailed"]);
   await expect(
-    dialog.getByText("RX Bytes [6, 8)", { exact: true }),
+    dialog.getByText("RX Bytes [10, 13)", { exact: true }),
   ).toBeVisible();
   await page.setViewportSize({ width: 1240, height: 760 });
   await table.scrollIntoViewIfNeeded();
@@ -211,7 +220,7 @@ test("structured field table follows verified frames, reports quality and drops 
         missingEventRange: { start: "8", end: "9" },
       },
     },
-    rx(9, 8, [73, 73]),
+    rx(9, 13, [0xaa, 73, 73]),
   ]);
   await expect(table).toHaveCount(0);
   await expect(
@@ -226,6 +235,35 @@ test("structured field table follows verified frames, reports quality and drops 
       action.actionId,
     ),
   ).toBe(1);
+
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    anchorPage("live-field-after-gap", 9, 13, [0xaa, 73, 73]),
+  );
+  await dialog
+    .getByLabel(en["workbench.framing.start"], { exact: true })
+    .fill("9");
+  await dialog
+    .getByLabel(en["workbench.framing.end"], { exact: true })
+    .fill("10");
+  await dialog
+    .getByRole("button", { name: en["workbench.framing.scan"] })
+    .click();
+  await expect(
+    dialog.getByRole("region", { name: en["workbench.framing.results"] }),
+  ).toContainText("AA 49 49");
+  await follow.click();
+  await expect(row).toContainText("73.1");
+  await dialog
+    .getByRole("button", { name: en["workbench.fieldTable.reveal"] })
+    .click();
+  await page
+    .getByRole("button", { name: en["workbench.tools.discard"], exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => document.getSelection()?.toString().trim()))
+    .toBe("AA 49 49");
 });
 
 test("Modbus registers watch confirmed values and write the selected register words", async ({
@@ -419,6 +457,10 @@ test("Modbus registers watch confirmed values and write the selected register wo
       quantity: 2,
     }),
   );
+  const value = view.getByRole("textbox", {
+    name: en["workbench.registers.writeValue"],
+  });
+  await value.fill("99");
   await data
     .getByRole("button", { name: "Edit write 103", exact: true })
     .click();
@@ -427,10 +469,8 @@ test("Modbus registers watch confirmed values and write the selected register wo
       name: en["workbench.registers.writeAddress"],
     }),
   ).toHaveValue("103");
-  const value = view.getByRole("textbox", {
-    name: en["workbench.registers.writeValue"],
-  });
   await expect(value).toBeFocused();
+  await expect(value).toHaveValue("");
   await value.fill("305419896");
   expect((await transactions()).length).toBe(settledCount);
   await expect(
@@ -450,6 +490,32 @@ test("Modbus registers watch confirmed values and write the selected register wo
       Buffer.from(String(written.params.requestBase64), "base64"),
     ).packet.pdu,
   ).toEqual({ functionCode: 16, address: 102, values: [0x5678, 0x1234] });
+
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    fixtureResult("register-reread", {
+      functionCode: 3,
+      values: [0x5678, 0x1234, 1, 0],
+    }),
+  );
+  await view.getByRole("button", { name: "Read once · FC03" }).click();
+  await data
+    .getByRole("button", { name: "Edit write 101", exact: true })
+    .click();
+  await value.fill("8");
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    fixtureResult(
+      "register-refused-write",
+      { functionCode: 16, exceptionCode: 3 },
+      3,
+    ),
+  );
+  await view.getByRole("button", { name: "Write value · FC16" }).click();
+  await expect(view.getByRole("status")).toContainText(/Device exception.*3/);
+  await expect(
+    view.getByText(en["workbench.registers.writeConfirmed"], { exact: false }),
+  ).toHaveCount(0);
 
   await page.evaluate(
     (result) => window.workbenchFixture.setFramingResult(result),

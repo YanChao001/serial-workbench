@@ -31,6 +31,7 @@ import type { ProtocolDefinitionFileAccess } from "./protocol-definition-file";
 import type { ModbusTransactionAccess } from "./modbus-transaction";
 import type { ModbusSlaveAccess } from "./modbus-server-tool";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
+import { fixedFramingRules } from "./live-fixed-framing";
 import type { FramingInspection } from "./framing-anomalies-model";
 import { WorkbenchNotice } from "./workbench-notice";
 import type { ChartSourceSelection } from "./stream-chart-selection";
@@ -85,6 +86,11 @@ export function FramingTool({
   const action = useToolAction((reason) => nativeErrorText(reason, t));
   const params = framingParams(draft);
   const dirty = JSON.stringify(draft) !== JSON.stringify(applied);
+  const liveFraming =
+    !dirty && rawSourceKey !== undefined && result?.sourceKey === rawSourceKey
+      ? fixedFramingRules(result.params)
+      : undefined;
+  const liveAnchor = liveFraming && result?.page.frames.at(-1);
   useUnsavedWork({
     id,
     label: t("workbench.tools.framing"),
@@ -378,11 +384,8 @@ export function FramingTool({
           target,
           subscription: rawSourceKey,
           anchor:
-            !dirty &&
-            rawSourceKey !== undefined &&
-            result?.sourceKey === rawSourceKey &&
-            typeof result.params.fixedLength === "number"
-              ? result.page.frames.at(-1)
+            liveAnchor && liveFraming
+              ? { frame: liveAnchor, framing: liveFraming }
               : undefined,
         }}
         fileAccess={definitionFileAccess}
