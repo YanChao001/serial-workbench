@@ -1336,11 +1336,14 @@ export const zhCN = {
   "workbench.tools.preview": "实际发送字节",
   "workbench.tools.sendFile": "发送文件",
   "workbench.tools.invalidRange": "请输入所选文件内的有效范围",
+  "workbench.tools.invalidTransferOptions":
+    "请检查分块大小、速率、块间隔和写入等待时间。",
   "workbench.tools.browserFile.unavailable":
     "浏览器发送文件需要当前会话的写入权限。",
   "workbench.tools.browserFile.invalidFile":
     "请选择一个非空且不超过 1 GiB 的文件。",
   "workbench.tools.browserFile.sample": "选区开头字节",
+  "workbench.tools.browserFile.samplePending": "正在读取选区字节…",
   "workbench.tools.browserFile.sampleUnavailable": "无法预览选区字节。",
   "workbench.tools.browserFile.upload": "正在交接给 Host",
   "workbench.tools.browserFile.submitting": "正在等待 Host 接纳发送…",

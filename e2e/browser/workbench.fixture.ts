@@ -2802,6 +2802,43 @@ export async function seedWorkbenchFixture(
                     value: { operation: framingOperation },
                   },
                 };
+              if (
+                transferSource &&
+                query.actionId === "file.read" &&
+                query.target.id === transferSource.reference.id
+              ) {
+                const bytes = [0, 0xfe, 0x23, 0xff, 1, 2, 3, 4, 5, 6];
+                const offset = Number(query.params.offset);
+                const limit = Number(query.params.maxBytes);
+                if (
+                  command !== "host_raw_request" ||
+                  !Number.isSafeInteger(offset) ||
+                  offset < 0 ||
+                  offset >= bytes.length ||
+                  !Number.isSafeInteger(limit) ||
+                  limit < 1 ||
+                  limit > 16
+                )
+                  throw new Error("Unexpected transfer sample request");
+                const end = Math.min(offset + limit, bytes.length);
+                return {
+                  ok: true,
+                  result: {
+                    kind: "file_read",
+                    value: {
+                      fileRef: transferSource.reference,
+                      offset: String(offset),
+                      nextOffset: String(end),
+                      totalBytes: String(bytes.length),
+                      fingerprint: "a".repeat(64),
+                      atEnd: end === bytes.length,
+                      bytesBase64: btoa(
+                        String.fromCharCode(...bytes.slice(offset, end)),
+                      ),
+                    },
+                  },
+                };
+              }
               const framingResult = framingResults.get(query.target.id);
               if (framingResult && query.actionId === "file.read") {
                 if (

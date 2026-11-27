@@ -88,6 +88,11 @@ impl Drops {
 #[derive(Default)]
 pub(crate) struct TransferDrops(Mutex<Drops>);
 
+fn physical_drop_position(x: f64, y: f64, logical_scale: Option<f64>) -> (f64, f64) {
+    let scale = logical_scale.unwrap_or(1.0);
+    (x * scale, y * scale)
+}
+
 pub(crate) fn on_drop(webview: &Webview, event: &WebviewEvent) {
     let WebviewEvent::DragDrop(DragDropEvent::Drop {
         paths, position, ..
@@ -111,7 +116,16 @@ pub(crate) fn on_drop(webview: &Webview, event: &WebviewEvent) {
         .expect("transfer drops")
         .note(&label, instance, paths);
     let Some(ticket) = ticket else { return };
-    let (x, y) = (position.x, position.y);
+    // GTK 和 WKWebView 提供逻辑坐标，WebView2 提供物理像素。
+    let logical_scale = if cfg!(any(target_os = "linux", target_os = "macos")) {
+        let Ok(scale) = window.scale_factor() else {
+            return;
+        };
+        Some(scale)
+    } else {
+        None
+    };
+    let (x, y) = physical_drop_position(position.x, position.y, logical_scale);
     tauri::async_runtime::spawn(async move {
         let Ok(attachment) = bridge.attachment_for_instance(&label, instance).await else {
             return;
@@ -169,6 +183,19 @@ pub(crate) async fn claim_transfer_drop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logical_drop_points_use_backing_scale_and_physical_pixels_stay_exact() {
+        assert_eq!(
+            physical_drop_position(160.0, 84.0, Some(2.0)),
+            (320.0, 168.0)
+        );
+        assert_eq!(
+            physical_drop_position(160.0, 84.0, Some(1.5)),
+            (240.0, 126.0)
+        );
+        assert_eq!(physical_drop_position(240.0, 126.0, None), (240.0, 126.0));
+    }
 
     #[test]
     fn drop_is_owned_by_its_native_window_document_and_host_generation() {

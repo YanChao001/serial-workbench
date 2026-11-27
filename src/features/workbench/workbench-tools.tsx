@@ -680,6 +680,7 @@ export function WorkbenchTools({
             : (signal) => host.pickFile("source", signal)
         }
         pickDroppedSource={host.pickDroppedFile}
+        readSource={host.readFile}
         onTransfer={
           context.target && !host.browserFile
             ? (params, signal) =>

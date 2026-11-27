@@ -10,11 +10,23 @@
 
 按依赖顺序只推进队列中的当前任务。工作区和分支按[主工作区与单任务](./conventions.md#主工作区与单任务)管理，完成[合入与清理](./conventions.md#合入与清理)后接续下一项。
 
-1. M4 文件拖放发送（IO-18）。复核文件交接和命令槽的软件证据，按独立桌面条件验真实系统拖放命中、预览和确认。 [专项验收](./acceptance.md#文件拖放发送io-18)
+1. 当前接续任务是会话配置保存与加载（CONN-06）。先从工作区导入、导出和重开核对版本、依赖、凭据引用及修订冲突。IO-18 继续等待当前产品树的独立原生桌面、三平台门禁、物理对端和正式发行验收。 [IO-18 专项](./acceptance.md#文件拖放发送io-18)
 2. M4 余项。按需求账本完成可在软件环境验证的缺口，物理设备、长稳和正式发行按专项归属安排验收。
 3. M5 专业分析与市场。独立市场签名目录工具已交付，宿主接续市场检索、包来源核验、安装和同来源相容升级。正式目录发布、评分数据来源及其余专业任务按账本推进。
 
 ### 本轮交付与验收
+
+- IO-18 交付候选 `acab79f` 在 Windows 本机通过 10 项文件传输组件测试、14 项无头 Chromium 用例及 3 项桌面票据单测。真实配对 Chromium 与隔离 Host 确认选区偏移 1、长度 2，独立 Raw 核对 `FE 23`，命令槽保存重开为 `09 FF 00 41`。历史候选 `3dfdc24` 的 Windows、两种 macOS 及 X11 四份原生收据均复现选区回显和命令槽收据。X11 完整作业在后续主题与焦点用例失败。账本保持软件待补齐，当前产品树的原生复验、物理串口和发行按专项取证。 [交付 PR #98](https://github.com/YanChao001/serial-workbench/pull/98) · [历史原生收据](https://github.com/YanChao001/serial-workbench/actions/runs/45946239044) · [专项验收](./acceptance.md#文件拖放发送io-18)
+
+- IO-18 在 `main@383bf53` 复验文件交接与命令槽。5 项无头用例覆盖预览、确认、边界尺寸与迟到读取。隔离 Host 的真实配对浏览器核对选区偏移 1、长度 2 的 `FE 23` 写入，命令槽保存并重开仍为 `09 FF 00 41`。2 项桌面库单测核对票据按窗口、文档及 Host 代次归属，以及一次性和失效规则。系统文件拖入原生窗口的命中、预览和确认继续等待独立桌面场景，软件保持验收中。 [文件拖放专项](./acceptance.md#文件拖放发送io-18)
+
+- IO-18 的本地候选补齐桌面十六进制样本，复用现有文件引用与 Host 读取权限。12 项组件测试和 2 项无头浏览器回归通过，覆盖 16 字节上限、精确偏移、迟到样本、420×540 窄窗和点击后才提交。已接入隔离 X11 测试，待实跑系统文件拖入源字段和命令正文，采集确认前静默、确认后回显及命令保存重开的收据。真实桌面、物理对端和发行结果按各自证据登记。 [桌面草稿](./ui-design.md#桌面文件拖放发送草稿) · [文件拖放专项](./acceptance.md#文件拖放发送io-18)
+
+- 候选 `78c0c38` 在隔离 X11 实际拖入文件。偏移 1、长度 2 的样本为 `FE 23`，确认前 Raw 无写入，确认后一次接纳并精确回显。作业随后因弹窗关闭控件的测试定位失败，命令槽没有执行。下一批修正定位，统一高缩放落点单位，采用 Wry 0.57.1 处理 macOS 逐项文件 URL，并用同一原生预检覆盖其余桌面目标。 [X11 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45943296148/job/140322208274) · [预览截图和失败现场](https://github.com/YanChao001/serial-workbench/actions/runs/45943296148/artifacts/15174350372)
+
+- 候选 `e5be906` 的 X11（设备像素比 2）与 macOS arm64/x64 原生收据都确认样本 `FE 23`、一次接纳和同字节回显。命令槽步骤在列表初始化时找不到新建编辑器。夹具改为等待新建动作可用，并在关闭前等待 Host 保存后回读到的命令。同一候选的真实配对 Chromium 通过文件交接，命令保存后重开为 `09 FF 00 41`，收据和宽窄截图位于本机 `.cache/io18/e5be906-paired-browser/`。文件引用的 14 项桌面库测试通过，覆盖引用归属、撤权和不重新授权。 [原生预检](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174056960) · [macOS arm64 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174133513) · [macOS x64 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174468748)
+
+- 同一候选的 Windows 系统拖放已进入源文件初始样本。修改偏移时原范围暂时无效，输出节点被移除，测试继续读取旧节点得到 `null`。夹具改为重新查找渲染的范围与样本。无头回归覆盖无效期间移除旧范围和样本，以及合法范围重新显示。Windows 的确认发送和命令槽原生收据待复验。 [Windows 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/job/140325537497) · [失败现场](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174900233)
 
 - IO-17 软件验收通过。4 项单元测试和 1 项无头浏览器回归通过。同源 Host、CLI、MCP 与工作台在固定 Node 和无头 Chromium 实际配对。TCP 未接入时 Virtual Echo 回显 `00 A5 FF 0A`，TCP 零接纳、零未确认。接入后两路各确认 `00 FF 0D 0A 80`。独立 CLI 持有 TCP 事务租约时，Virtual Echo 先完成 `43 00 54`，TCP 路接纳意图后由工作台单独停止，原始及公开查询回执均为零接纳、零未确认。重开查看保持「已停止」和原操作 ID；释放租约后对端仍未收到被停止的帧。双物理对端和正式签名安装待验。 [多端口广播专项](./acceptance.md#多端口广播io-17)
 

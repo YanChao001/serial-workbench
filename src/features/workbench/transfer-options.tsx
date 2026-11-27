@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatByteSize } from "./metric-format";
 import { nativeErrorCode } from "@/lib/native-error";
 import { parseU64, U64_MAX } from "@/lib/u64";
+import { decodeBytes } from "./stream-model";
 import { WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { OperationText } from "./operation-text";
@@ -37,6 +38,8 @@ import { useToolActionAvailability } from "./use-tool-action-availability";
 import { useTransferFileDrop } from "./use-transfer-file-drop";
 import { useBrowserFileDrop } from "./use-browser-file-drop";
 
+const TRANSFER_SAMPLE_BYTES = 16n;
+
 export type TransferOptionsLabels = Record<
   | "transferOptions"
   | "selectSource"
@@ -51,6 +54,7 @@ export type TransferOptionsLabels = Record<
   | "preview"
   | "sendFile"
   | "invalidRange"
+  | "invalidTransferOptions"
   | "transferEvidence"
   | "unavailable"
   | "draft"
@@ -67,6 +71,7 @@ export type TransferOptionsLabels = Record<
     unavailable: string;
     invalidFile: string;
     sample: string;
+    samplePending: string;
     sampleUnavailable: string;
     upload: string;
     submitting: string;
@@ -102,6 +107,7 @@ export type TransferOptionsProps = {
   browserTransferAvailable?: boolean;
   pickSource?: (signal?: AbortSignal) => Promise<SelectedFileResource | null>;
   pickDroppedSource?: HostContextValue["pickDroppedFile"];
+  readSource?: HostContextValue["readFile"];
   onTransfer?: (
     params: FileTransferParams,
     signal?: AbortSignal,
@@ -119,6 +125,7 @@ function TransferOptionsForm({
   initialDraft,
   pickSource,
   pickDroppedSource,
+  readSource,
   onTransfer,
   onSaveDraft,
   onCancel,
@@ -188,13 +195,14 @@ function TransferOptionsForm({
     ? String(browserSource.size)
     : source?.length;
   const total = sourceLength ? parseU64(sourceLength) : undefined;
-  const valid =
+  const validRange =
     offset !== undefined &&
     length !== undefined &&
     total !== undefined &&
     (!isBrowser || length > 0n) &&
     offset + length <= total &&
-    offset + length <= U64_MAX &&
+    offset + length <= U64_MAX;
+  const validOptions =
     chunk !== undefined &&
     chunk > 0n &&
     rate !== undefined &&
@@ -202,6 +210,19 @@ function TransferOptionsForm({
     interval !== undefined &&
     wait !== undefined &&
     wait > 0n;
+  const desktopSample = useDesktopTransferSample(
+    source,
+    validRange ? offset : undefined,
+    validRange ? length : undefined,
+    readSource,
+  );
+  const desktopSampleLoading = Boolean(
+    source &&
+    readSource &&
+    validRange &&
+    length > 0n &&
+    desktopSample === undefined,
+  );
   const locked = Boolean(disabled || action.busy || active);
   const needsReceipt = browserFile?.hasPending() ?? false;
   const browserInputs = useMemo<HostActionCheckInput[]>(
@@ -219,7 +240,7 @@ function TransferOptionsForm({
   );
   const desktopInputs = useMemo<HostActionCheckInput[]>(
     () =>
-      target && source && valid
+      target && source && validRange && validOptions
         ? [
             {
               actionId: "transfer.file",
@@ -228,7 +249,7 @@ function TransferOptionsForm({
             },
           ]
         : [],
-    [target, source, valid, draft],
+    [target, source, validRange, validOptions, draft],
   );
   const inputs = isBrowser ? browserInputs : desktopInputs;
   const allowed = useToolActionAvailability(inputs, watchActions)(inputs[0]);
@@ -236,11 +257,13 @@ function TransferOptionsForm({
   const canSend =
     !locked &&
     allowed &&
-    valid &&
+    validRange &&
+    validOptions &&
     (isBrowser
       ? Boolean(browserSource && target && !needsReceipt)
       : Boolean(
           onTransfer &&
+          !desktopSampleLoading &&
           source?.reference.kind === "file" &&
           source.reference.revision,
         ));
@@ -356,7 +379,7 @@ function TransferOptionsForm({
       </label>
     ));
   }
-  const range = valid ? (
+  const range = validRange ? (
     <output
       aria-label={labels.preview}
       data-surface={isBrowser ? "transparent" : undefined}
@@ -366,10 +389,26 @@ function TransferOptionsForm({
           : undefined
       }
     >
-      [{draft.offset}, {(offset! + length!).toString()}) / {sourceLength}
+      [{draft.offset}, {(offset + length).toString()}) / {sourceLength}
     </output>
   ) : (
     sourceName && <p role="status">{labels.invalidRange}</p>
+  );
+  const desktopPreview = source && (
+    <div className="mt-2 grid min-w-0 gap-2">
+      {range}
+      {desktopSampleLoading && (
+        <p role="status">{browserLabels.samplePending}</p>
+      )}
+      {validRange && desktopSample !== undefined && (
+        <TransferSample
+          hex={desktopSample}
+          offset={String(offset)}
+          truncated={length > TRANSFER_SAMPLE_BYTES}
+          labels={browserLabels}
+        />
+      )}
+    </div>
   );
   return (
     <section
@@ -468,7 +507,7 @@ function TransferOptionsForm({
               </div>
             )}
           </div>
-          {isBrowser && (
+          {isBrowser ? (
             <>
               {selectionError && (
                 <p role="alert">{browserLabels.invalidFile}</p>
@@ -485,7 +524,7 @@ function TransferOptionsForm({
                 </div>
               </fieldset>
               {range}
-              {browserSource && valid && (
+              {browserSource && validRange && (
                 <BrowserTransferPreview
                   file={browserSource}
                   offset={Number(offset)}
@@ -494,6 +533,8 @@ function TransferOptionsForm({
                 />
               )}
             </>
+          ) : (
+            desktopPreview
           )}
         </TabsContent>
         <TabsContent value="advanced" className="workbench-tool-page">
@@ -521,7 +562,10 @@ function TransferOptionsForm({
               )}
             </div>
           </fieldset>
-          {!isBrowser && range}
+          {sourceName && !validOptions && (
+            <p role="status">{labels.invalidTransferOptions}</p>
+          )}
+          {!isBrowser && desktopPreview}
         </TabsContent>
       </Tabs>
       {current && (
@@ -630,6 +674,65 @@ function TransferOptionsForm({
   );
 }
 
+function useDesktopTransferSample(
+  source: SelectedFileResource | undefined,
+  offset: bigint | undefined,
+  length: bigint | undefined,
+  readSource: TransferOptionsProps["readSource"],
+) {
+  const request = useMemo(
+    () => ({ source, offset, length, readSource }),
+    [source, offset, length, readSource],
+  );
+  const [sample, setSample] = useState<{
+    request: typeof request;
+    hex: string | null;
+  }>();
+  const pending = useRef(Promise.resolve());
+  useEffect(() => {
+    const { source, offset, length, readSource } = request;
+    if (!source || !readSource || offset === undefined || !length) return;
+    let current = true;
+    // 旧请求可能仍在 Host 核对文件，等它结束再读取新选区。
+    pending.current = pending.current.then(async () => {
+      if (!current) return;
+      let hex: string | null = null;
+      try {
+        const reference = source.reference;
+        const maxBytes =
+          length < TRANSFER_SAMPLE_BYTES ? length : TRANSFER_SAMPLE_BYTES;
+        const page = await readSource({
+          fileRef: reference,
+          offset: String(offset),
+          maxBytes: String(maxBytes),
+        });
+        const nextOffset = String(offset + maxBytes);
+        if (
+          page.fileRef.hostId === reference.hostId &&
+          page.fileRef.kind === reference.kind &&
+          page.fileRef.id === reference.id &&
+          page.fileRef.revision === reference.revision &&
+          page.offset === String(offset) &&
+          page.nextOffset === nextOffset &&
+          page.totalBytes === source.length &&
+          page.atEnd === (nextOffset === source.length) &&
+          page.bytesBase64.length === 4 * Math.ceil(Number(maxBytes) / 3)
+        ) {
+          const bytes = decodeBytes(page.bytesBase64);
+          if (bytes.length === Number(maxBytes)) hex = formatHex(bytes);
+        }
+      } catch {
+        // 样本读取失败时保留已选范围，发送仍由 Host 核对授权。
+      }
+      if (current) setSample({ request, hex });
+    });
+    return () => {
+      current = false;
+    };
+  }, [request]);
+  return sample?.request === request ? sample.hex : undefined;
+}
+
 function BrowserTransferPreview({
   file,
   offset,
@@ -650,7 +753,7 @@ function BrowserTransferPreview({
   useEffect(() => {
     let active = true;
     void file
-      .slice(offset, offset + Math.min(length, 16))
+      .slice(offset, offset + Math.min(length, Number(TRANSFER_SAMPLE_BYTES)))
       .arrayBuffer()
       .then(
         (bytes) => {
@@ -676,8 +779,28 @@ function BrowserTransferPreview({
     sample.length !== length
   )
     return null;
-  if (sample.hex === null)
-    return <p role="status">{labels.sampleUnavailable}</p>;
+  return (
+    <TransferSample
+      hex={sample.hex}
+      offset={String(offset)}
+      truncated={length > Number(TRANSFER_SAMPLE_BYTES)}
+      labels={labels}
+    />
+  );
+}
+
+function TransferSample({
+  hex,
+  offset,
+  truncated,
+  labels,
+}: {
+  hex: string | null;
+  offset: string;
+  truncated: boolean;
+  labels: TransferOptionsLabels["browserFile"];
+}) {
+  if (hex === null) return <p role="status">{labels.sampleUnavailable}</p>;
   return (
     <div className="grid min-w-0 gap-1 text-sm">
       <span>{labels.sample}</span>
@@ -686,8 +809,8 @@ function BrowserTransferPreview({
         data-surface="reading"
         className="min-w-0 rounded-md border px-2 py-1.5 font-mono wrap-anywhere"
       >
-        {offset}: {sample.hex}
-        {length > 16 ? " …" : ""}
+        {offset}: {hex}
+        {truncated ? " …" : ""}
       </output>
     </div>
   );
