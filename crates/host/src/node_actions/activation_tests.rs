@@ -661,6 +661,31 @@ async fn native_node_workspace_startup_pins_revision_package_and_receipt() {
         "REQUEST_CONFLICT",
     );
 
+    {
+        let mut boundary = fixture
+            .host
+            .inner
+            .node_test_gates
+            .action_before_accept
+            .arm();
+        let pending = user.request(RpcRequest::Invoke(launch(2.into())));
+        tokio::pin!(pending);
+        tokio::select! {
+            reply = &mut pending => panic!("Expected action to await grant commit: {reply:?}"),
+            () = boundary.entered() => {}
+        }
+        let revoked = fixture.invoke(&fixture.user, fixture.call(&fixture.user, &fixture.target, "auth.revoke", json!({"actorId":user.attachment().actor_id,"permissions":["workspace.modify"],"targets":[workspace]}))).await;
+        assert_eq!(
+            fixture
+                .wait(&fixture.user, &revoked.operation_id)
+                .await
+                .state,
+            OperationState::Succeeded
+        );
+        boundary.release();
+        rejected(pending.await.unwrap(), "PERMISSION_DENIED");
+    }
+
     use sha2::{Digest as _, Sha256};
     let public_key = ed25519_dalek::SigningKey::from_bytes(&[7; 32])
         .verifying_key()

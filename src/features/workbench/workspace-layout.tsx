@@ -20,7 +20,6 @@ import {
 import { defaults } from "@serial-workbench/contracts";
 import type {
   ActivitySummary,
-  DeviceDescriptor,
   SerialConfiguration,
   Operation,
   OpenParams,
@@ -597,7 +596,7 @@ export function WorkspaceLayout({
   if (openedHere.current.key !== nativeOwnershipKey)
     openedHere.current = { key: nativeOwnershipKey, sessions: new Map() };
   const existingLocalConnection = useCallback(
-    (binding: Pick<DeviceDescriptor, "deviceId" | "hostId"> | undefined) => {
+    (binding: WorkspaceDocument["bindings"][number] | undefined) => {
       if (!binding) return;
       return state.sessions.find(
         (session) =>
@@ -620,17 +619,11 @@ export function WorkspaceLayout({
         const binding = document?.bindings.find(
           (item) => item.bindingId === tab.view?.bindingId,
         );
-        const device = resolveViewDevice(
-          binding,
-          state.devices,
-          state.devicesStale,
-          tab.view?.name,
-        );
-        const active = existingLocalConnection(device);
+        const active = existingLocalConnection(binding);
         return active ? { ...tab, sessionId: active.sessionId } : tab;
       });
     },
-    [existingLocalConnection, state.devices, state.devicesStale],
+    [existingLocalConnection],
   );
   const localDraftTabId = useRef<string | undefined>(undefined);
   const [{ tabs, selected }, setViews] = useState<{
@@ -782,9 +775,29 @@ export function WorkspaceLayout({
     workspaceSelection,
   ]);
   const startupWait = useRef<
-    | { controller: AbortController; deviceId: string; waiting: boolean }
+    | {
+        controller: AbortController;
+        deviceId: string;
+        waiting: boolean;
+        scope: string;
+      }
     | undefined
   >(undefined);
+  const stopWorkspaceStartupConnection = useCallback(() => {
+    const waiting = startupWait.current;
+    if (!waiting) return;
+    startupWait.current = undefined;
+    waiting.controller.abort();
+    if (waiting.waiting)
+      setOpening((current) => (current === waiting.deviceId ? null : current));
+  }, []);
+  useLayoutEffect(() => {
+    if (
+      startupWait.current &&
+      startupWait.current.scope !== startupConnectionScope
+    )
+      stopWorkspaceStartupConnection();
+  }, [startupConnectionScope, stopWorkspaceStartupConnection]);
   const activeStartupScope = useRef(startupConnectionScope);
   activeStartupScope.current = startupConnectionScope;
   const transportScope = JSON.stringify([
@@ -1313,27 +1326,28 @@ export function WorkspaceLayout({
           (deviceId ??
             state.sessions.find((value) => value.sessionId === id)?.deviceId),
       );
-      const matchesRestoredView =
-        fromStartup && device
-          ? (tab: SessionTab) => {
-              const view = savedWorkspace?.views.find(
-                ({ id }) => id === tab.id,
-              );
-              const binding = savedWorkspace?.bindings.find(
-                ({ bindingId }) => bindingId === view?.bindingId,
-              );
-              const resolved = resolveViewDevice(
-                binding,
-                state.devices,
-                state.devicesStale,
-                view?.name,
-              );
-              return (
-                resolved?.hostId === device.hostId &&
-                resolved.deviceId === device.deviceId
-              );
-            }
-          : undefined;
+      const restoredBindingIds = new Set<string>();
+      if (fromStartup && savedWorkspace) {
+        const preferred = savedWorkspace.views.find(
+          ({ id }) => id === preferredViewId,
+        );
+        const binding = savedWorkspace.bindings.find(
+          ({ bindingId }) => bindingId === preferred?.bindingId,
+        );
+        if (binding)
+          for (const related of savedWorkspace.bindings)
+            if (
+              related.hostId === binding.hostId &&
+              related.deviceId === binding.deviceId
+            )
+              restoredBindingIds.add(related.bindingId);
+      }
+      const matchesRestoredView = restoredBindingIds.size
+        ? (tab: SessionTab) => {
+            const view = savedWorkspace?.views.find(({ id }) => id === tab.id);
+            return view !== undefined && restoredBindingIds.has(view.bindingId);
+          }
+        : undefined;
       const connected = connectSessionTabs(
         tabs,
         initialWorkspace,
@@ -1400,7 +1414,6 @@ export function WorkspaceLayout({
       initialWorkspace,
       savedWorkspace,
       state.devices,
-      state.devicesStale,
       state.sessions,
       tabs,
       draftStore,
@@ -1682,15 +1695,6 @@ export function WorkspaceLayout({
         ?.systemName,
     };
   }
-  function stopWorkspaceStartupConnection() {
-    const waiting = startupWait.current;
-    if (!waiting) return;
-    startupWait.current = undefined;
-    waiting.controller.abort();
-    if (waiting.waiting)
-      setOpening((current) => (current === waiting.deviceId ? null : current));
-  }
-
   async function open(
     deviceId: string,
     transportParams?: OpenParams["transportParams"],
@@ -3375,6 +3379,7 @@ export function WorkspaceLayout({
                             controller,
                             deviceId: id,
                             waiting: false,
+                            scope: startupConnectionScope,
                           };
                           void open(id, undefined, undefined, undefined, {
                             viewId,

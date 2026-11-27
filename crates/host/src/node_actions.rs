@@ -274,24 +274,31 @@ impl Host {
                 .try_acquire_owned()
                 .map_err(|_| busy())?;
             let permit = Arc::new(permit);
-            self.ensure_extension_active(
-                actor,
-                &call_query(&raw_call),
-                ActionKind::Action,
-                raw_call
-                    .workspace_startup
-                    .as_ref()
-                    .map(|selection| &selection.reference),
-                permit.clone(),
-            )
-            .await?;
+            let activation = self
+                .ensure_extension_active(
+                    actor,
+                    &call_query(&raw_call),
+                    ActionKind::Action,
+                    raw_call
+                        .workspace_startup
+                        .as_ref()
+                        .map(|selection| &selection.reference),
+                    permit.clone(),
+                )
+                .await;
             let host = self.clone();
             let caller = actor.clone();
             let call = raw_call.clone();
             let preparation_budget = permit.clone();
             prepared = blocking(move || {
                 let _budget = preparation_budget;
-                host.prepare_extension_request(&caller, call)
+                match activation {
+                    Ok(()) => host.prepare_extension_request(&caller, call),
+                    Err(error) => host
+                        .replay_extension_call(&caller, &call)?
+                        .map(|operation| ExtensionRequest::Existing(Box::new(operation)))
+                        .ok_or(error),
+                }
             })
             .await?;
             activation_permit = Some(permit);
@@ -361,6 +368,12 @@ impl Host {
                 let gates = host.inner.node_test_gates.clone();
                 let accepted = blocking(move || {
                     let attempt = (|| {
+                        let auth = &replay_host.inner.auth;
+                        let stamp = if accept_call.workspace_startup.is_some() {
+                            auth.capture_grants(&accept_actor)?
+                        } else {
+                            None
+                        };
                         check.check()?;
                         active.current()?;
                         let startup_revisions = if accept_call.workspace_startup.is_some() {
@@ -375,13 +388,20 @@ impl Host {
                         };
                         #[cfg(test)]
                         gates.action_before_accept.arrive();
-                        store.accept_plugin(
-                            &accept_actor,
-                            &accept_call,
-                            &canonical_digest(&accept_call)?,
-                            &plugin,
-                            startup_revisions,
-                        )
+                        let digest = canonical_digest(&accept_call)?;
+                        let commit = || {
+                            store.accept_plugin(
+                                &accept_actor,
+                                &accept_call,
+                                &digest,
+                                &plugin,
+                                startup_revisions,
+                            )
+                        };
+                        match stamp {
+                            Some(stamp) => auth.commit_grant_stamp(&stamp, commit),
+                            None => commit(),
+                        }
                     })();
                     let acceptance = match attempt {
                         Ok(Acceptance::New(operation)) => Acceptance::New(operation),

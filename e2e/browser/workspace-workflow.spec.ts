@@ -956,7 +956,6 @@ test("reopens saved views and starts only the explicitly selected connection or 
   workspace.bindings.push({
     ...binding,
     bindingId: "same-port",
-    deviceId: "prior-com5",
     portName: "COM5",
   });
   workspace.views.push({
@@ -964,6 +963,18 @@ test("reopens saved views and starts only the explicitly selected connection or 
     id: "same-port-view",
     name: "COM5 monitor",
     bindingId: "same-port",
+  });
+  workspace.bindings.push({
+    ...binding,
+    bindingId: "different-port-identity",
+    deviceId: "another-prior-device",
+    portName: "COM5",
+  });
+  workspace.views.push({
+    ...workspace.views[0]!,
+    id: "different-port-view",
+    name: "Independent COM5 binding",
+    bindingId: "different-port-identity",
   });
   const connectedSession = {
     ...session("startup-com5"),
@@ -1161,6 +1172,12 @@ test("reopens saved views and starts only the explicitly selected connection or 
       },
     ]);
   await expect(dialog.getByText("Connected", { exact: true })).toHaveCount(2);
+  await expect(
+    dialog.getByRole("button", {
+      name: "Connect Independent COM5 binding",
+      exact: true,
+    }),
+  ).toBeEnabled();
   await expect(
     dialog.getByRole("button", { name: "Connect Virtual serial", exact: true }),
   ).toBeEnabled();
