@@ -891,6 +891,8 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 定向脚本测试使用 `node --test scripts/frame-template.test.mjs scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs`。界面用 `pnpm test:ui e2e/browser/framing-tool.spec.ts`，在窄短窗和宽窗核对共享尺寸、对齐、结果表独立滚动、修改后清除过期预览，以及错误字段与原字节定位。 [宽窄草稿](./ui-design.md#帧模板草稿io-14)
 
+此项实机验收不适用。构造和反解都对显式提供的完整字节运行，工作台预览和随包编解码动作均不驱动串口。T07 中涉及实时来源与线路的场景按相应分帧和传输条目验收。正式签名包在独立环境断网安装后，核对随包字段包自动登记、重启可用及同一金样的构造和反解。
+
 ### CRC 识别与验证（PROTO-03）
 
 在工作台的「协议分帧」内展开「CRC 识别」。分别填写参与计算的 HEX 字节和从实物或样本读取的校验字节。可限定目录中的位宽或校验字节序，也可自动寻找同字节长度的候选。非整字节位宽右对齐填写。输入 `31 32 33 34 35 36 37 38 39` 与 `37 4B`，选择 16 位，核对列出低位字节在前的 CRC-16/MODBUS，并仍提示补充样本。重复该输入时不同样本计数保持为 1，给相同报文输入不同校验值时显示冲突。
