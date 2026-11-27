@@ -139,6 +139,7 @@ impl DesktopHostBridge {
                     ));
                 };
                 if status.id != package_id
+                    || status.phase != NodePackageRuntimePhase::Active
                     || !status.archive_sha256.as_ref().is_some_and(|digest| {
                         is_current_connection_sequence_archive(&status.id, digest)
                     })
