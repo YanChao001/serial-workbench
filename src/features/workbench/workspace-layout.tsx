@@ -1,3 +1,4 @@
+import type { ReplayPeerAccess } from "./replay-peer-panel";
 import type { StreamHighlightRule } from "./stream-highlight";
 import type { CharacterRemapRules } from "./character-remap";
 import type { SendPreprocessQuery } from "./send-preprocess";
@@ -148,6 +149,9 @@ import {
 import "./workbench.css";
 
 const ReplayComparisonDialog = lazy(() => import("./replay-comparison-dialog"));
+const ReplayPeerPanel = lazy(async () => ({
+  default: (await import("./replay-peer-panel")).ReplayPeerPanel,
+}));
 const LiveSessionComparison = lazy(() => import("./live-session-comparison"));
 
 const transportForms = [
@@ -463,6 +467,8 @@ export type WorkspaceLayoutProps = {
   onOpenReplay?: (
     signal?: AbortSignal,
   ) => Promise<(Operation & { recordingName?: string }) | undefined>;
+  onOpenReplayPeer?: WorkspaceLayoutProps["onOpenReplay"];
+  replayPeer?: ReplayPeerAccess;
   onCloseSession?: (
     sessionId: string,
     signal?: AbortSignal,
@@ -518,6 +524,8 @@ export function WorkspaceLayout({
   readCaptureStatus,
   readOperationInput,
   onOpenReplay,
+  onOpenReplayPeer,
+  replayPeer,
   onCloseSession,
   onCancelOperation,
   replay,
@@ -1221,7 +1229,8 @@ export function WorkspaceLayout({
   }, [tabs, tabNameSources, retainRetiredNames]);
   const replayIds = new Set(
     state.operations.flatMap((operation) =>
-      operation.actionId === "replay.open" &&
+      (operation.actionId === "replay.open" ||
+        operation.actionId === "replay.peer.open") &&
       operation.result?.kind === "opened"
         ? [operation.result.value.sessionId]
         : [],
@@ -1234,6 +1243,7 @@ export function WorkspaceLayout({
       replayIds.add(active.sessionId);
   }
   const isReplay = !!sessionId && replayIds.has(sessionId);
+  const isReplayPeer = isReplay && sessionId?.startsWith("replay-peer-");
   const receiveRemapOwner =
     state.status === "ready" &&
     labelHost &&
@@ -1446,7 +1456,8 @@ export function WorkspaceLayout({
         !session &&
         (id ||
           activity.actionId === "device.open" ||
-          activity.actionId === "replay.open")
+          activity.actionId === "replay.open" ||
+          activity.actionId === "replay.peer.open")
       )
         return;
       const { pageId, panelId } = activity.revealTarget;
@@ -1843,12 +1854,12 @@ export function WorkspaceLayout({
     choosingResource.current = false;
     if (!aborted) setChoosing(false);
   }
-  function openReplay() {
-    if (!onOpenReplay) return;
+  function openReplay(opener = onOpenReplay) {
+    if (!opener) return;
     const focus = ++focusRevision.current;
     setFollowing(false);
     void choose(async (signal) => {
-      const operation = await onOpenReplay(signal);
+      const operation = await opener(signal);
       if (operation && !signal.aborted && focus === focusRevision.current)
         setPendingReplay({
           operationId: operation.operationId,
@@ -2520,7 +2531,7 @@ export function WorkspaceLayout({
             onEmptyFocus={focusConnection}
             tabs={tabs}
             selected={selected}
-            canDuplicate={!disabled && !isCapture && !!session}
+            canDuplicate={!disabled && !isCapture && !isReplayPeer && !!session}
             labels={labels}
             onClose={closeView}
             name={(tab) => {
@@ -2532,6 +2543,15 @@ export function WorkspaceLayout({
                 !tab.sessionId
               )
                 return labels.draft;
+              if (
+                tab.sessionId?.startsWith("replay-peer-") &&
+                replayIds.has(tab.sessionId)
+              ) {
+                const name = t("workbench.replayPeer.title");
+                return tab.recordingName
+                  ? `${name} · ${tab.recordingName}`
+                  : name;
+              }
               if (tab.view?.name.trim()) return tab.view.name;
               const source = tabNameSources.get(tab);
               return (
@@ -2567,16 +2587,21 @@ export function WorkspaceLayout({
         }
         configuration={connectionConfiguration}
         opening={opening}
+        recordedPeer={isReplayPeer}
         readOnly={isCapture}
         disabled={disabled || isCapture}
         devicesStale={state.devicesStale}
         canClose={
           draftsReady &&
-          !isCapture &&
-          !!connectionCloseInput &&
-          mayAttempt("session.close", connectionCloseInput) &&
           !!onCloseSession &&
-          connectionSession?.state !== "closed"
+          (isReplayPeer
+            ? !!session &&
+              session.state === "open" &&
+              mayAttempt("session.close")
+            : !isCapture &&
+              !!connectionCloseInput &&
+              mayAttempt("session.close", connectionCloseInput) &&
+              connectionSession?.state !== "closed")
         }
         canRestoreAccess={draftsReady && canRestoreAccess}
         canControl={
@@ -2606,20 +2631,29 @@ export function WorkspaceLayout({
         }}
         onTool={showDialog}
         onOpen={() => void open(deviceId)}
-        onClose={() =>
-          connectionSession &&
-          onCloseSession &&
-          void act(
-            (signal) => onCloseSession(connectionSession.sessionId, signal),
-            "connection",
-          )
+        onClose={
+          isReplayPeer
+            ? closeSession
+            : () =>
+                connectionSession &&
+                onCloseSession &&
+                void act(
+                  (signal) =>
+                    onCloseSession(connectionSession.sessionId, signal),
+                  "connection",
+                )
         }
         onSave={() => void saveWindowLayout()}
         onRefresh={() =>
           void act(() => host.refresh({ enumerateDevices: true }), "connection")
         }
         onUnavailableFocus={focusConnection}
-        onReplay={openReplay}
+        onReplay={() => openReplay()}
+        onReplayPeer={
+          !disabled && !choosing && onOpenReplayPeer
+            ? () => openReplay(onOpenReplayPeer)
+            : undefined
+        }
       />
 
       <WorkbenchNotice
@@ -2680,6 +2714,19 @@ export function WorkspaceLayout({
             terminalSettings={terminalSettings}
             presentationLabels={presentationLabels}
           />
+        ) : isReplayPeer && replayPeer && target ? (
+          <Suspense>
+            <ReplayPeerPanel
+              key={JSON.stringify([
+                nativeOwnershipKey,
+                target.id,
+                target.sessionEpoch,
+              ])}
+              target={target}
+              recordingName={selectedTab?.recordingName ?? labels.replay}
+              access={replayPeer}
+            />
+          </Suspense>
         ) : isReplay && replay && session ? (
           <ReplayPanel
             key={`${session.sessionId}:${session.sessionEpoch}`}
@@ -2840,163 +2887,170 @@ export function WorkspaceLayout({
           />
         )}
       </div>
-      <WorkspaceSendPanel
-        draftReadOnly={!draftsReady}
-        formatError={formatError}
-        deviceName={
-          state.devices.find((value) => value.deviceId === session?.deviceId)
-            ?.systemName
-        }
-        readOnly={isCapture}
-        disconnectedReason={
-          selectedTab?.view && !session && !boundDevice
-            ? labels.bindingUnavailable
-            : undefined
-        }
-        draftsDirty={dirty}
-        onSaveDrafts={
-          onSaveDrafts
-            ? () => void act((signal) => saveDrafts(signal))
-            : undefined
-        }
-        key={draftKey}
-        draftCaption={isCapture ? labels.unconnectedDraft : undefined}
-        commandLibrary={commandLibrary}
-        draftActions={
-          <>
-            {renderTool && toolLabels?.manualRecording && (
-              <ManualRecordingControls
-                labels={toolLabels.manualRecording}
-                recording={recording}
-                available={recordingScope !== undefined}
-                onReview={(definition, trigger) => {
-                  showDialog("commandSequence", trigger);
-                  setSequenceRecording({
-                    revision: ++recordingRevision.current,
-                    definition,
-                  });
-                  recording.discard();
-                }}
-              />
-            )}
-            {isCapture && (
-              <>
-                {(hasUnboundDraft ||
-                  !state.devices.length ||
-                  state.devicesStale) && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <WorkbenchIconButton
-                        label={
-                          hasUnboundDraft
-                            ? `${labels.unconnectedDraft} · ${toolLabels?.saveCurrentLayout ?? labels.saveDrafts} · ${labels.expand}`
-                            : `${labels.unconnectedDraft} · ${labels.expand}`
-                        }
-                        tooltip={
-                          hasUnboundDraft
-                            ? (unboundDraftMessage ?? labels.bindingUnavailable)
-                            : undefined
-                        }
+      {!isReplayPeer && (
+        <WorkspaceSendPanel
+          draftReadOnly={!draftsReady}
+          formatError={formatError}
+          deviceName={
+            state.devices.find((value) => value.deviceId === session?.deviceId)
+              ?.systemName
+          }
+          readOnly={isCapture}
+          disconnectedReason={
+            selectedTab?.view && !session && !boundDevice
+              ? labels.bindingUnavailable
+              : undefined
+          }
+          draftsDirty={dirty}
+          onSaveDrafts={
+            onSaveDrafts
+              ? () => void act((signal) => saveDrafts(signal))
+              : undefined
+          }
+          key={draftKey}
+          draftCaption={isCapture ? labels.unconnectedDraft : undefined}
+          commandLibrary={commandLibrary}
+          draftActions={
+            <>
+              {renderTool && toolLabels?.manualRecording && (
+                <ManualRecordingControls
+                  labels={toolLabels.manualRecording}
+                  recording={recording}
+                  available={recordingScope !== undefined}
+                  onReview={(definition, trigger) => {
+                    showDialog("commandSequence", trigger);
+                    setSequenceRecording({
+                      revision: ++recordingRevision.current,
+                      definition,
+                    });
+                    recording.discard();
+                  }}
+                />
+              )}
+              {isCapture && (
+                <>
+                  {(hasUnboundDraft ||
+                    !state.devices.length ||
+                    state.devicesStale) && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <WorkbenchIconButton
+                          label={
+                            hasUnboundDraft
+                              ? `${labels.unconnectedDraft} · ${toolLabels?.saveCurrentLayout ?? labels.saveDrafts} · ${labels.expand}`
+                              : `${labels.unconnectedDraft} · ${labels.expand}`
+                          }
+                          tooltip={
+                            hasUnboundDraft
+                              ? (unboundDraftMessage ??
+                                labels.bindingUnavailable)
+                              : undefined
+                          }
+                        >
+                          {hasUnboundDraft ? (
+                            <LockKeyholeIcon aria-hidden="true" />
+                          ) : (
+                            <InfoIcon aria-hidden="true" />
+                          )}
+                        </WorkbenchIconButton>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        aria-label={labels.unconnectedDraft}
+                        className="max-h-[min(24rem,var(--radix-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-auto"
                       >
-                        {hasUnboundDraft ? (
-                          <LockKeyholeIcon aria-hidden="true" />
-                        ) : (
-                          <InfoIcon aria-hidden="true" />
+                        <PopoverTitle>{labels.unconnectedDraft}</PopoverTitle>
+                        {hasUnboundDraft && (
+                          <p role="status">
+                            {unboundDraftMessage ?? labels.bindingUnavailable}
+                          </p>
                         )}
-                      </WorkbenchIconButton>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      aria-label={labels.unconnectedDraft}
-                      className="max-h-[min(24rem,var(--radix-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-auto"
-                    >
-                      <PopoverTitle>{labels.unconnectedDraft}</PopoverTitle>
-                      {hasUnboundDraft && (
-                        <p role="status">
-                          {unboundDraftMessage ?? labels.bindingUnavailable}
-                        </p>
-                      )}
-                      {!state.devices.length && (
-                        <p role="status">{labels.noDevices}</p>
-                      )}
-                      {state.devicesStale && (
-                        <p role="status">
-                          {toolLabels?.deviceListStale ?? labels.unavailable}
-                        </p>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </>
-            )}
-          </>
-        }
-        initialMode={selectedTab?.view?.sendMode}
-        mode={controlledSendMode}
-        onSendModeChange={(mode) =>
-          usesUnconnectedDraft
-            ? setUnboundSendMode(mode)
-            : changeViewFormat({ sendMode: mode })
-        }
-        encoding={sendEncoding}
-        onEncodingChange={(value) =>
-          usesUnconnectedDraft
-            ? setUnboundSendEncoding(value)
-            : changeViewFormat({ sendEncoding: value })
-        }
-        terminalSettings={terminalSettings}
-        presentationLabels={
-          toolLabels
-            ? {
-                customLineEnding: toolLabels.customLineEnding,
-                customLineEndingHex: toolLabels.customLineEndingHex,
-              }
-            : undefined
-        }
-        session={session}
-        permissionAllowed={sendAllowed}
-        onPreviewChange={setSendPermissionPreview}
-        drafts={draftStore}
-        draftKey={draftKey}
-        labels={labels}
-        operations={state.operations}
-        globalSendPreview={
-          allowed("session.tx") && !dialog && !promptDevice
-            ? sendPermissionPreview?.prepared
-            : undefined
-        }
-        preprocessDraftOwners={preprocessDraftOwners}
-        preprocessScope={nativeOwnershipKey}
-        preprocessQuery={preprocessQuery}
-        holdSend={
-          writableViewScope && target
-            ? { scope: writableViewScope, target, wait: host.waitForOperation }
-            : undefined
-        }
-        sendRemap={sendRules}
-        onClearSendRemap={() => setAppliedSend(undefined)}
-        onSend={(bytes, signal, source, expectedRevision) =>
-          submitManualBytes(
-            bytes,
-            signal,
-            expectedRevision ?? (source ? session?.revision : undefined),
-            source,
-          )
-        }
-        onSendFile={
-          onSendFile &&
-          !disabled &&
-          !isReplay &&
-          !isCapture &&
-          session?.state === "open"
-            ? () =>
-                void choose((signal) => onSendFile(session.sessionId, signal))
-            : undefined
-        }
-        fileBusy={choosing}
-        onOpenTransfer={renderTool ? () => showDialog("transfer") : undefined}
-        transferLabel={toolLabels?.transfer}
-      />
+                        {!state.devices.length && (
+                          <p role="status">{labels.noDevices}</p>
+                        )}
+                        {state.devicesStale && (
+                          <p role="status">
+                            {toolLabels?.deviceListStale ?? labels.unavailable}
+                          </p>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </>
+              )}
+            </>
+          }
+          initialMode={selectedTab?.view?.sendMode}
+          mode={controlledSendMode}
+          onSendModeChange={(mode) =>
+            usesUnconnectedDraft
+              ? setUnboundSendMode(mode)
+              : changeViewFormat({ sendMode: mode })
+          }
+          encoding={sendEncoding}
+          onEncodingChange={(value) =>
+            usesUnconnectedDraft
+              ? setUnboundSendEncoding(value)
+              : changeViewFormat({ sendEncoding: value })
+          }
+          terminalSettings={terminalSettings}
+          presentationLabels={
+            toolLabels
+              ? {
+                  customLineEnding: toolLabels.customLineEnding,
+                  customLineEndingHex: toolLabels.customLineEndingHex,
+                }
+              : undefined
+          }
+          session={session}
+          permissionAllowed={sendAllowed}
+          onPreviewChange={setSendPermissionPreview}
+          drafts={draftStore}
+          draftKey={draftKey}
+          labels={labels}
+          operations={state.operations}
+          globalSendPreview={
+            allowed("session.tx") && !dialog && !promptDevice
+              ? sendPermissionPreview?.prepared
+              : undefined
+          }
+          preprocessDraftOwners={preprocessDraftOwners}
+          preprocessScope={nativeOwnershipKey}
+          preprocessQuery={preprocessQuery}
+          holdSend={
+            writableViewScope && target
+              ? {
+                  scope: writableViewScope,
+                  target,
+                  wait: host.waitForOperation,
+                }
+              : undefined
+          }
+          sendRemap={sendRules}
+          onClearSendRemap={() => setAppliedSend(undefined)}
+          onSend={(bytes, signal, source, expectedRevision) =>
+            submitManualBytes(
+              bytes,
+              signal,
+              expectedRevision ?? (source ? session?.revision : undefined),
+              source,
+            )
+          }
+          onSendFile={
+            onSendFile &&
+            !disabled &&
+            !isReplay &&
+            !isCapture &&
+            session?.state === "open"
+              ? () =>
+                  void choose((signal) => onSendFile(session.sessionId, signal))
+              : undefined
+          }
+          fileBusy={choosing}
+          onOpenTransfer={renderTool ? () => showDialog("transfer") : undefined}
+          transferLabel={toolLabels?.transfer}
+        />
+      )}
       <WorkbenchDialog
         open={!!promptDevice}
         scopeKey={transportScope}
@@ -3103,7 +3157,7 @@ export function WorkspaceLayout({
                   isReplay ||
                   isCapture,
                 replayDisabled: disabled || choosing,
-                onOpenReplay: onOpenReplay ? openReplay : undefined,
+                onOpenReplay: onOpenReplay ? () => openReplay() : undefined,
                 onStart:
                   onStartCapture && sessionId
                     ? () =>

@@ -947,6 +947,24 @@ export default function Overview({
         onSendFile={files.send}
         onStartCapture={files.capture}
         onOpenReplay={files.replay}
+        onOpenReplayPeer={
+          host.readReplayPeer &&
+          host.state.catalog.some(
+            ({ actionId }) => actionId === "replay.peer.open",
+          )
+            ? files.replayPeer
+            : undefined
+        }
+        replayPeer={
+          host.readReplayPeer
+            ? {
+                read: host.readReplayPeer,
+                watchActions: host.watchActions,
+                invoke: host.invoke,
+                waitForOperation: host.waitForOperation,
+              }
+            : undefined
+        }
         replay={{
           read: host.readReplay,
           readRecord: host.readReplayRecord,

@@ -77,6 +77,7 @@ export function WorkbenchConnection({
   viewTabs,
   configuration,
   opening,
+  recordedPeer = false,
   readOnly = false,
   disabled,
   devicesStale,
@@ -94,6 +95,7 @@ export function WorkbenchConnection({
   onRefresh,
   onUnavailableFocus,
   onReplay,
+  onReplayPeer,
   onCloseOtherViews,
   onCloseAllViews,
 }: {
@@ -110,6 +112,7 @@ export function WorkbenchConnection({
   viewTabs?: ReactNode;
   configuration: SerialConfiguration;
   opening: string | null;
+  recordedPeer?: boolean;
   readOnly?: boolean;
   disabled: boolean;
   devicesStale: boolean;
@@ -130,6 +133,7 @@ export function WorkbenchConnection({
   onUnavailableFocus?: () => void;
   onRefresh: () => void;
   onReplay: () => void;
+  onReplayPeer?: () => void;
   onCloseOtherViews?: () => void;
   onCloseAllViews?: () => void;
 }) {
@@ -200,138 +204,155 @@ export function WorkbenchConnection({
       >
         <PanelsTopLeft aria-hidden="true" />
       </WorkbenchIconButton>
-      <Select
-        open={deviceListOpen && !disabled}
-        value={deviceId || (unmatchedDeviceName ? unmatchedSelection : "")}
-        onValueChange={onDeviceChange}
-        onOpenChange={(open) => {
-          setDeviceListOpen(open);
-          if (open) onRefresh();
-        }}
-        disabled={disabled}
-      >
-        <SelectTrigger
-          size="sm"
-          className="workbench-device-select"
-          data-lan={lan?.route ? "" : undefined}
-          aria-label={toolLabels?.chooseDevice ?? labels.devices}
-          aria-description={lan?.description}
-        >
-          <SelectValue
-            placeholder={
-              devices.length
-                ? (toolLabels?.chooseDevice ?? labels.devices)
-                : labels.noDevices
-            }
-          >
-            {unmatchedDeviceName
-              ? `${unmatchedDeviceName} · ${labels.bindingUnmatched}`
-              : deviceName(
-                  devices.find((value) => value.deviceId === deviceId),
-                )}
-          </SelectValue>
-          {lan?.route && (
-            <span className="text-xs text-muted-foreground">{lan.source}</span>
-          )}
-        </SelectTrigger>
-        <SelectContent
-          position="popper"
-          onCloseAutoFocus={(event) => {
-            if (disabled && onUnavailableFocus) {
-              event.preventDefault();
-              onUnavailableFocus();
-            }
-          }}
-        >
-          {unmatchedDeviceName && (
-            <SelectItem value={unmatchedSelection} disabled>
-              {unmatchedDeviceName} · {labels.bindingUnmatched}
-            </SelectItem>
-          )}
-          {devices.length === 0 && (
-            <p className="px-3 py-2 text-sm text-muted-foreground">
-              {labels.noDevices}
-            </p>
-          )}
-          {devices.map((value) => (
-            <SelectItem
-              className="workbench-port-option"
-              key={value.deviceId}
-              value={value.deviceId}
-            >
-              <span className="workbench-port-label" title={value.systemName}>
-                <span>{deviceName(value)}</span>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <WorkbenchIconButton
-        disabled={!toolsAvailable || readOnly}
-        label={parameterPurpose}
-        aria-description={parameterSummary}
-        tooltip={`${parameterPurpose}: ${parameterSummary}`}
-        onClick={(event) => onTool("parameters", event.currentTarget)}
-      >
-        <Settings2 aria-hidden="true" />
-      </WorkbenchIconButton>
-      {recovery ? (
-        <WorkbenchIconButton
-          variant="outline"
-          label={recovery.label}
-          disabled={recovery.busy}
-          aria-busy={recovery.busy}
-          onClick={recovery.onRetry}
-        >
-          <RotateCw aria-hidden="true" />
-        </WorkbenchIconButton>
-      ) : session?.state === "open" &&
-        session.deviceId === deviceId &&
-        session.sessionId === viewSessionId ? (
+      {recordedPeer ? (
         <WorkbenchIconButton
           label={labels.closeSession}
-          tooltip={labels.disconnect}
-          variant="default"
-          aria-pressed="true"
-          disabled={!canClose || opening !== null}
+          disabled={!canClose}
           onClick={onClose}
         >
-          <Unplug aria-hidden="true" />
+          <X aria-hidden="true" />
         </WorkbenchIconButton>
       ) : (
-        <WorkbenchIconButton
-          variant="outline"
-          aria-busy={opening === deviceId || undefined}
-          disabled={opening !== null || disabled || !device || devicesStale}
-          label={labels.open + " " + (deviceName(device) ?? "")}
-          tooltip={
-            opening
-              ? labels.opening
-              : !device
-                ? unmatchedDeviceName
-                  ? labels.bindingUnavailable
-                  : (toolLabels?.chooseDevice ?? labels.devices)
-                : labels.open
-          }
-          onClick={onOpen}
-        >
-          {opening === deviceId ? (
-            <LoaderCircle
-              aria-hidden="true"
-              className="animate-spin motion-reduce:animate-none"
-            />
+        <>
+          <Select
+            open={deviceListOpen && !disabled}
+            value={deviceId || (unmatchedDeviceName ? unmatchedSelection : "")}
+            onValueChange={onDeviceChange}
+            onOpenChange={(open) => {
+              setDeviceListOpen(open);
+              if (open) onRefresh();
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger
+              size="sm"
+              className="workbench-device-select"
+              data-lan={lan?.route ? "" : undefined}
+              aria-label={toolLabels?.chooseDevice ?? labels.devices}
+              aria-description={lan?.description}
+            >
+              <SelectValue
+                placeholder={
+                  devices.length
+                    ? (toolLabels?.chooseDevice ?? labels.devices)
+                    : labels.noDevices
+                }
+              >
+                {unmatchedDeviceName
+                  ? `${unmatchedDeviceName} · ${labels.bindingUnmatched}`
+                  : deviceName(
+                      devices.find((value) => value.deviceId === deviceId),
+                    )}
+              </SelectValue>
+              {lan?.route && (
+                <span className="text-xs text-muted-foreground">
+                  {lan.source}
+                </span>
+              )}
+            </SelectTrigger>
+            <SelectContent
+              position="popper"
+              onCloseAutoFocus={(event) => {
+                if (disabled && onUnavailableFocus) {
+                  event.preventDefault();
+                  onUnavailableFocus();
+                }
+              }}
+            >
+              {unmatchedDeviceName && (
+                <SelectItem value={unmatchedSelection} disabled>
+                  {unmatchedDeviceName} · {labels.bindingUnmatched}
+                </SelectItem>
+              )}
+              {devices.length === 0 && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  {labels.noDevices}
+                </p>
+              )}
+              {devices.map((value) => (
+                <SelectItem
+                  className="workbench-port-option"
+                  key={value.deviceId}
+                  value={value.deviceId}
+                >
+                  <span
+                    className="workbench-port-label"
+                    title={value.systemName}
+                  >
+                    <span>{deviceName(value)}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <WorkbenchIconButton
+            disabled={!toolsAvailable || readOnly}
+            label={parameterPurpose}
+            aria-description={parameterSummary}
+            tooltip={`${parameterPurpose}: ${parameterSummary}`}
+            onClick={(event) => onTool("parameters", event.currentTarget)}
+          >
+            <Settings2 aria-hidden="true" />
+          </WorkbenchIconButton>
+          {recovery ? (
+            <WorkbenchIconButton
+              variant="outline"
+              label={recovery.label}
+              disabled={recovery.busy}
+              aria-busy={recovery.busy}
+              onClick={recovery.onRetry}
+            >
+              <RotateCw aria-hidden="true" />
+            </WorkbenchIconButton>
+          ) : session?.state === "open" &&
+            session.deviceId === deviceId &&
+            session.sessionId === viewSessionId ? (
+            <WorkbenchIconButton
+              label={labels.closeSession}
+              tooltip={labels.disconnect}
+              variant="default"
+              aria-pressed="true"
+              disabled={!canClose || opening !== null}
+              onClick={onClose}
+            >
+              <Unplug aria-hidden="true" />
+            </WorkbenchIconButton>
           ) : (
-            <Plug aria-hidden="true" />
+            <WorkbenchIconButton
+              variant="outline"
+              aria-busy={opening === deviceId || undefined}
+              disabled={opening !== null || disabled || !device || devicesStale}
+              label={labels.open + " " + (deviceName(device) ?? "")}
+              tooltip={
+                opening
+                  ? labels.opening
+                  : !device
+                    ? unmatchedDeviceName
+                      ? labels.bindingUnavailable
+                      : (toolLabels?.chooseDevice ?? labels.devices)
+                    : labels.open
+              }
+              onClick={onOpen}
+            >
+              {opening === deviceId ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="animate-spin motion-reduce:animate-none"
+                />
+              ) : (
+                <Plug aria-hidden="true" />
+              )}
+            </WorkbenchIconButton>
           )}
-        </WorkbenchIconButton>
+          <WorkbenchIconButton
+            label={toolLabels?.controls ?? labels.receipt}
+            disabled={!toolsAvailable || !canControl}
+            onClick={(event) => onTool("controls", event.currentTarget)}
+          >
+            <Cable aria-hidden="true" />
+          </WorkbenchIconButton>
+        </>
       )}
-      <WorkbenchIconButton
-        label={toolLabels?.controls ?? labels.receipt}
-        disabled={!toolsAvailable || !canControl}
-        onClick={(event) => onTool("controls", event.currentTarget)}
-      >
-        <Cable aria-hidden="true" />
-      </WorkbenchIconButton>
       <WorkbenchIconButton
         disabled={!canSave}
         label={toolLabels?.saveCurrentLayout ?? labels.saveDrafts}
@@ -540,6 +561,12 @@ export function WorkbenchConnection({
             <Play aria-hidden="true" />
             {labels.openReplay}
           </DropdownMenuItem>
+          {onReplayPeer && (
+            <DropdownMenuItem onSelect={onReplayPeer}>
+              <Clapperboard aria-hidden="true" />
+              {t("workbench.replayPeer.open")}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             disabled={!onCloseOtherViews}
             onSelect={onCloseOtherViews}

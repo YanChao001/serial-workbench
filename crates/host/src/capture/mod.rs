@@ -1,4 +1,5 @@
 pub mod format;
+mod recorded_peer;
 pub mod recovery;
 pub(crate) mod redaction;
 pub mod replay;

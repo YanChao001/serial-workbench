@@ -1,5 +1,6 @@
 use super::{
     format::*,
+    recorded_peer::RecordedPeer,
     verify::{index_replay_directory, read_record_bytes},
 };
 use serial_workbench_core::*;
@@ -26,6 +27,7 @@ struct ReplayArchive {
     index: CaptureIndex,
     record_digests: Vec<[u8; 32]>,
     directory_identity: String,
+    peer_eligible: bool,
     _guard: crate::files::references::PathGuard,
 }
 
@@ -127,6 +129,10 @@ impl ReplayReader {
                 index: scan.index,
                 record_digests: scan.record_digests,
                 directory_identity: crate::files::references::directory_identity(path)?,
+                peer_eligible: scan.manifest.state == CaptureState::Complete
+                    && scan.manifest.recovered_from.is_none()
+                    && scan.manifest.streams.len() == 1
+                    && scan.format != CaptureFormat::Redacted,
                 _guard: guard,
             }),
             capture_id: scan.manifest.capture_id,
@@ -149,6 +155,35 @@ impl ReplayReader {
             },
         })
     }
+    fn recorded_peer(&self) -> HostResult<RecordedPeer> {
+        if !self.archive.peer_eligible {
+            return Err(HostError::new(
+                "REPLAY_PEER_INELIGIBLE",
+                "Interactive replay requires a complete single-source raw recording",
+            ));
+        }
+        let mut encoded_bytes_left = 4 * 1024 * 1024_u64;
+        for entry in &self.archive.index.records {
+            encoded_bytes_left = encoded_bytes_left
+                .checked_sub(entry.length.get())
+                .ok_or_else(|| {
+                    HostError::new(
+                        "LIMIT_EXCEEDED",
+                        "Interactive recording exceeds the encoded size limit",
+                    )
+                })?;
+        }
+        self.archive.ensure_directory()?;
+        let peer =
+            RecordedPeer::from_records((0..self.archive.index.records.len()).map(|position| {
+                self.archive
+                    .read_verified_record(position)
+                    .map(|(record, _, _)| record)
+            }))?;
+        self.archive.ensure_directory()?;
+        Ok(peer)
+    }
+
     pub fn read(&mut self, max: usize, now: u64) -> HostResult<ReplayReadResult> {
         self.read_limited(max, 256 * 1024, now)
     }
@@ -496,12 +531,23 @@ pub struct ReplayService {
 }
 struct ReplaySession {
     source: ObjectRef,
-    _actor_id: Id,
-    _client_id: Id,
+    peer_owner: Option<(Id, Id)>,
     snapshot: SessionSnapshot,
     reader: Option<ReplayReader>,
+    peer: Option<InteractiveReplay>,
     slot: Option<tokio::sync::OwnedSemaphorePermit>,
 }
+struct InteractiveReplay {
+    matcher: RecordedPeer,
+    progress: ReplayPeerProgress,
+    responses: Vec<ReplayPeerResponse>,
+}
+
+enum ReplayContent {
+    Passive(ReplayReader),
+    Interactive(RecordedPeer),
+}
+
 impl ReplayService {
     pub fn new(files: FileService, identity: HostIdentity, clock: Arc<dyn Clock>) -> Self {
         Self {
@@ -518,83 +564,175 @@ impl ReplayService {
             .lock()
             .is_ok_and(|sessions| sessions.contains_key(id))
     }
+    fn reserve(&self) -> HostResult<tokio::sync::OwnedSemaphorePermit> {
+        self.slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| HostError::new("LIMIT_EXCEEDED", "Replay session budget exhausted"))
+    }
+
+    fn read_source(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+        mode: ReplayMode,
+    ) -> HostResult<(ObjectRef, ReplayReader)> {
+        let guard = self.files.resolve(reference, actor, false)?;
+        let fixed = self.files.metadata(reference, actor)?.file_ref;
+        if fixed.revision.is_none() {
+            return Err(HostError::new(
+                "CAPTURE_INCOMPLETE",
+                "Capture has not published a fixed content revision",
+            ));
+        }
+        let reader = ReplayReader::open(guard.checked_path(), mode)?;
+        Ok((fixed, reader))
+    }
+
     pub async fn open(
         &self,
         params: ReplayOpenParams,
         actor: &AuthenticatedActor,
     ) -> HostResult<OpenResult> {
-        let slot = self
-            .slots
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| HostError::new("LIMIT_EXCEEDED", "Replay session budget exhausted"))?;
+        let slot = self.reserve()?;
         let service = self.clone();
         let actor = actor.clone();
         super::blocking(move || {
-            let guard = service.files.resolve(&params.capture_ref, &actor, false)?;
-            let fixed = service
-                .files
-                .metadata(&params.capture_ref, &actor)?
-                .file_ref;
-            if fixed.revision.is_none() {
-                return Err(HostError::new(
-                    "CAPTURE_INCOMPLETE",
-                    "Capture has not published a fixed content revision",
-                ));
-            }
-            let reader = ReplayReader::open(guard.checked_path(), params.mode)?;
-            let id = Id::try_from(format!("replay-{}", uuid::Uuid::new_v4()).as_str())?;
-            let snapshot = SessionSnapshot {
-                reconnect: None,
-                session_id: id.clone(),
-                device_id: reader.capture_id.clone(),
-                session_epoch: 1.into(),
-                revision: 1.into(),
-                configuration_revision: 1.into(),
-                state: SessionState::Open,
-                configuration: reader.configuration.clone(),
-                read_only: true,
-                tx_gate: TxGate::Ready,
-                control_state: ControlState::Clear,
-                capabilities: TransportCapabilities {
-                    semantics: TransportSemantics::Stream,
-                    configuration: false,
-                    dtr: false,
-                    rts: false,
-                    finite_break: false,
-                    queue_status: false,
-                    drain: false,
-                    purge_rx: false,
-                    purge_tx: false,
-                },
-                lease: None,
-            };
-            let opened = OpenResult {
-                session_id: id.clone(),
-                session_epoch: snapshot.session_epoch,
-                revision: snapshot.revision,
-                reused: false,
-                recent_error: None,
-            };
-            let mut sessions = service.sessions.lock().map_err(|_| replay_busy())?;
-            if sessions.len() >= 64 {
-                sessions.retain(|_, session| session.lock().is_ok_and(|s| s.reader.is_some()));
-            }
-            sessions.insert(
-                id,
-                Arc::new(Mutex::new(ReplaySession {
-                    source: fixed,
-                    _actor_id: actor.id().clone(),
-                    _client_id: actor.client_id().clone(),
-                    snapshot,
-                    reader: Some(reader),
-                    slot: Some(slot),
-                })),
-            );
-            Ok(opened)
+            let (source, reader) = service.read_source(&params.capture_ref, &actor, params.mode)?;
+            service.publish_session(
+                source,
+                &actor,
+                reader.capture_id.clone(),
+                reader.configuration.clone(),
+                ReplayContent::Passive(reader),
+                slot,
+            )
         })
         .await
     }
+
+    pub(crate) async fn open_peer(
+        &self,
+        params: ReplayPeerOpenParams,
+        actor: &AuthenticatedActor,
+        auth: &crate::auth::AuthService,
+    ) -> HostResult<OpenResult> {
+        let slot = self.reserve()?;
+        let service = self.clone();
+        let actor = actor.clone();
+        let auth = auth.clone();
+        super::blocking(move || {
+            let stamp = auth.capture_grants(&actor)?;
+            let (source, reader) =
+                service.read_source(&params.capture_ref, &actor, ReplayMode::Fastest)?;
+            let peer = reader.recorded_peer()?;
+            service.files.resolve(&source, &actor, false)?;
+            let publish = || {
+                service.publish_session(
+                    source,
+                    &actor,
+                    reader.capture_id,
+                    reader.configuration,
+                    ReplayContent::Interactive(peer),
+                    slot,
+                )
+            };
+            match stamp {
+                Some(stamp) => auth.commit_grant_stamp(&stamp, publish),
+                None => publish(),
+            }
+        })
+        .await
+    }
+
+    fn publish_session(
+        &self,
+        source: ObjectRef,
+        actor: &AuthenticatedActor,
+        capture_id: Id,
+        configuration: SerialConfiguration,
+        content: ReplayContent,
+        slot: tokio::sync::OwnedSemaphorePermit,
+    ) -> HostResult<OpenResult> {
+        let (suffix, owner, reader, peer) = match content {
+            ReplayContent::Passive(reader) => ("", None, Some(reader), None),
+            ReplayContent::Interactive(matcher) => {
+                let progress = ReplayPeerProgress {
+                    revision: 1.into(),
+                    completed_turns: 0.into(),
+                    remaining_request_bytes: (matcher.initial_request_bytes() as u64).into(),
+                    at_end: false,
+                };
+                let responses = matcher.preamble().to_vec();
+                (
+                    "peer-",
+                    Some((actor.id().clone(), actor.client_id().clone())),
+                    None,
+                    Some(InteractiveReplay {
+                        matcher,
+                        progress,
+                        responses,
+                    }),
+                )
+            }
+        };
+        let id = Id::try_from(format!("replay-{suffix}{}", uuid::Uuid::new_v4()).as_str())?;
+        let snapshot = SessionSnapshot {
+            reconnect: None,
+            session_id: id.clone(),
+            device_id: capture_id,
+            session_epoch: 1.into(),
+            revision: 1.into(),
+            configuration_revision: 1.into(),
+            state: SessionState::Open,
+            configuration,
+            read_only: true,
+            tx_gate: TxGate::Ready,
+            control_state: ControlState::Clear,
+            capabilities: TransportCapabilities {
+                semantics: TransportSemantics::Stream,
+                configuration: false,
+                dtr: false,
+                rts: false,
+                finite_break: false,
+                queue_status: false,
+                drain: false,
+                purge_rx: false,
+                purge_tx: false,
+            },
+            lease: None,
+        };
+        let opened = OpenResult {
+            session_id: id.clone(),
+            session_epoch: snapshot.session_epoch,
+            revision: snapshot.revision,
+            reused: false,
+            recent_error: None,
+        };
+        let mut sessions = self.sessions.lock().map_err(|_| replay_busy())?;
+        if sessions.len() >= 64 {
+            // Publication can hold the authorization lock. A submitting peer may
+            // own its session lock while waiting to commit under authorization.
+            sessions.retain(|_, session| match session.try_lock() {
+                Ok(session) => session.slot.is_some(),
+                Err(std::sync::TryLockError::WouldBlock) => true,
+                Err(std::sync::TryLockError::Poisoned(_)) => false,
+            });
+        }
+        sessions.insert(
+            id,
+            Arc::new(Mutex::new(ReplaySession {
+                source,
+                peer_owner: owner,
+                snapshot,
+                reader,
+                peer,
+                slot: Some(slot),
+            })),
+        );
+        Ok(opened)
+    }
+
     fn target(&self, id: &Id, epoch: U64) -> HostResult<Target> {
         Ok(Target {
             host_id: self.identity.host_id.clone(),
@@ -632,6 +770,16 @@ impl ReplayService {
                 "Replay session epoch differs",
             ));
         }
+        if session
+            .peer_owner
+            .as_ref()
+            .is_some_and(|(id, client)| id != actor.id() || client != actor.client_id())
+        {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "The recorded peer belongs to another actor",
+            ));
+        }
         self.files
             .authorization_target(&session.source, actor, permission)
     }
@@ -645,6 +793,107 @@ impl ReplayService {
         let session = session.lock().map_err(|_| replay_busy())?;
         self.authorize(&session, target, actor, permission)
     }
+    pub(crate) fn peer_authorization_target(
+        &self,
+        target: &Target,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<Target> {
+        let session = self.find(target)?;
+        let session = session.lock().map_err(|_| replay_busy())?;
+        let authority = self.authorize(&session, target, actor, "content.read")?;
+        if session.peer_owner.is_none() {
+            return Err(peer_mode_required());
+        }
+        Ok(authority)
+    }
+
+    pub(crate) async fn peer_state(
+        &self,
+        target: &Target,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<ReplayPeerState> {
+        let service = self.clone();
+        let target = target.clone();
+        let actor = actor.clone();
+        super::blocking(move || {
+            let session = service.find(&target)?;
+            let session = session.lock().map_err(|_| replay_busy())?;
+            service.authorize(&session, &target, &actor, "content.read")?;
+            let peer = session.peer.as_ref().ok_or_else(|| {
+                if session.peer_owner.is_some() {
+                    replay_closed()
+                } else {
+                    peer_mode_required()
+                }
+            })?;
+            service.files.resolve(&session.source, &actor, false)?;
+            Ok(ReplayPeerState {
+                session_id: session.snapshot.session_id.clone(),
+                session_epoch: session.snapshot.session_epoch,
+                progress: peer.progress.clone(),
+                responses: peer.responses.clone(),
+            })
+        })
+        .await
+    }
+
+    pub(crate) async fn submit_peer(
+        &self,
+        target: &Target,
+        revision: U64,
+        params: ReplayPeerSubmitParams,
+        actor: &AuthenticatedActor,
+        auth: &crate::auth::AuthService,
+    ) -> HostResult<ReplayPeerProgress> {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        let bytes = STANDARD
+            .decode(params.bytes_base64.as_str())
+            .map_err(|_| super::invalid())?;
+        if bytes.is_empty() || bytes.len() > TX_MAX_BYTES {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Invalid recorded peer input length",
+            ));
+        }
+        let service = self.clone();
+        let actor = actor.clone();
+        let auth = auth.clone();
+        let target = target.clone();
+        super::blocking(move || {
+            let stamp = auth.capture_grants(&actor)?;
+            let session = service.find(&target)?;
+            let mut session = session.lock().map_err(|_| replay_busy())?;
+            service.authorize(&session, &target, &actor, "content.read")?;
+            service.files.resolve(&session.source, &actor, false)?;
+            if session.snapshot.revision != revision {
+                return Err(HostError::new(
+                    "REVISION_CONFLICT",
+                    "Recorded peer state changed",
+                ));
+            }
+            let next = revision.checked_next()?;
+            let mut apply = || {
+                let peer = session.peer.as_mut().ok_or_else(replay_closed)?;
+                let matched = peer.matcher.submit(&bytes)?;
+                let progress = ReplayPeerProgress {
+                    revision: next,
+                    completed_turns: (matched.completed_turns as u64).into(),
+                    remaining_request_bytes: (matched.remaining_request_bytes as u64).into(),
+                    at_end: matched.at_end,
+                };
+                peer.responses = matched.responses.to_vec();
+                peer.progress = progress.clone();
+                session.snapshot.revision = next;
+                Ok(progress)
+            };
+            match stamp {
+                Some(stamp) => auth.commit_grant_stamp(&stamp, apply),
+                None => apply(),
+            }
+        })
+        .await
+    }
+
     pub async fn read(
         &self,
         params: ReplayReadParams,
@@ -753,10 +1002,11 @@ impl ReplayService {
             let session = service.find(&target)?;
             let mut session = session.lock().map_err(|_| replay_busy())?;
             service.authorize(&session, &target, &actor, "content.read")?;
-            if session.reader.is_some() {
+            if session.slot.is_some() {
                 let revision = session.snapshot.revision.checked_next()?;
                 service.searches.release_session(&target.id)?;
                 session.reader.take();
+                session.peer.take();
                 session.snapshot.state = SessionState::Closed;
                 session.snapshot.tx_gate = TxGate::Closing;
                 session.snapshot.revision = revision;
@@ -767,16 +1017,24 @@ impl ReplayService {
         .await
     }
     pub fn shutdown(&self) -> HostResult<()> {
-        for (id, session) in self.sessions.lock().map_err(|_| replay_busy())?.iter() {
+        let sessions = self.sessions.lock().map_err(|_| replay_busy())?.clone();
+        for (id, session) in sessions {
             let mut session = session.lock().map_err(|_| replay_busy())?;
             session.reader.take();
-            self.searches.release_session(id)?;
+            session.peer.take();
+            self.searches.release_session(&id)?;
             session.slot.take();
             session.snapshot.state = SessionState::Closed;
             session.snapshot.tx_gate = TxGate::Closing;
         }
         Ok(())
     }
+}
+fn peer_mode_required() -> HostError {
+    HostError::new(
+        "UNSUPPORTED_CAPABILITY",
+        "This operation requires an interactive recorded peer",
+    )
 }
 fn replay_busy() -> HostError {
     HostError::new("HOST_BUSY", "Replay state is unavailable")

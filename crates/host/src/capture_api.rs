@@ -156,6 +156,23 @@ impl CaptureApi {
                 self.require_file(&params.capture_ref, actor, "content.read")
                     .await
             }
+            BuiltinAction::ReplayPeerOpen => {
+                let params: ReplayPeerOpenParams = decode(params)?;
+                reference_target(target, &params.capture_ref)?;
+                self.require_file(&params.capture_ref, actor, "content.read")
+                    .await
+            }
+            BuiltinAction::ReplayPeerState | BuiltinAction::ReplayPeerSubmit => {
+                let replay = self.replays.clone();
+                let target = target.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    replay
+                        .peer_authorization_target(&target, &actor)
+                        .map(|_| ())
+                })
+                .await
+            }
             BuiltinAction::ReplayRead => {
                 let params: ReplayReadParams = decode(params)?;
                 session_target(target, &params.session_id, params.session_epoch)?;
@@ -259,6 +276,10 @@ impl CaptureApi {
             BuiltinAction::ReplayRead => {
                 QueryResult::ReplayRead(self.replays.read(decode(&query.params)?, actor).await?)
             }
+            BuiltinAction::ReplayPeerState => {
+                let _: EmptyParams = decode(&query.params)?;
+                QueryResult::ReplayPeerState(self.replays.peer_state(&query.target, actor).await?)
+            }
             BuiltinAction::ReplaySearch => {
                 let connection = connection.ok_or_else(invalid)?;
                 QueryResult::ReplaySearch(
@@ -302,9 +323,20 @@ impl CaptureApi {
             })
             .await
             .map(Some)
+        } else if action == BuiltinAction::ReplayPeerOpen {
+            let params: ReplayPeerOpenParams = decode(params)?;
+            let files = self.files.clone();
+            let actor = actor.clone();
+            blocking(move || {
+                files.authorization_target(&params.capture_ref, &actor, "content.read")
+            })
+            .await
+            .map(Some)
         } else if matches!(
             action,
-            BuiltinAction::ReplayControl | BuiltinAction::ReplayClose
+            BuiltinAction::ReplayControl
+                | BuiltinAction::ReplayClose
+                | BuiltinAction::ReplayPeerSubmit
         ) || (action == BuiltinAction::SessionClose && self.owns_replay(&target.id))
         {
             let replays = self.replays.clone();
@@ -363,7 +395,7 @@ impl CaptureApi {
         // Serialize publication with shutdown, but release before the long owner wait.
         let publication = if matches!(
             action,
-            BuiltinAction::CaptureStart | BuiltinAction::ReplayOpen
+            BuiltinAction::CaptureStart | BuiltinAction::ReplayOpen | BuiltinAction::ReplayPeerOpen
         ) {
             let admission = self.closing.read().await;
             if *admission {
@@ -476,6 +508,22 @@ impl CaptureApi {
                 .open(decode(&call.params)?, actor)
                 .await
                 .map(ActionResult::Opened),
+            BuiltinAction::ReplayPeerOpen => self
+                .replays
+                .open_peer(decode(&call.params)?, actor, &self.auth)
+                .await
+                .map(ActionResult::Opened),
+            BuiltinAction::ReplayPeerSubmit => self
+                .replays
+                .submit_peer(
+                    &call.target,
+                    call.expected_revision.ok_or_else(invalid)?,
+                    decode(&call.params)?,
+                    actor,
+                    &self.auth,
+                )
+                .await
+                .map(ActionResult::ReplayPeerProgress),
             BuiltinAction::ReplayControl => self
                 .replays
                 .control(decode(&call.params)?, actor)
@@ -544,6 +592,13 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
         BuiltinAction::CaptureRecover => normalized::<RecoverPrefixParams>(&call.params),
         BuiltinAction::CaptureExport => normalized::<TextExportParams>(&call.params),
         BuiltinAction::ReplayOpen => normalized::<ReplayOpenParams>(&call.params),
+        BuiltinAction::ReplayPeerOpen => normalized::<ReplayPeerOpenParams>(&call.params),
+        BuiltinAction::ReplayPeerSubmit => {
+            if call.expected_revision.is_none() {
+                return Err(invalid());
+            }
+            normalized::<ReplayPeerSubmitParams>(&call.params)
+        }
         BuiltinAction::ReplayControl => normalized::<ReplayControlParams>(&call.params),
         BuiltinAction::ReplayClose | BuiltinAction::SessionClose => {
             normalized::<EmptyParams>(&call.params)

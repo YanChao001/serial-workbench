@@ -92,6 +92,7 @@ pub enum ActionResult {
     CaptureStatus(CaptureStatusResult),
     CaptureVerification(VerificationReport),
     ReplayPosition(ReplayReadResult),
+    ReplayPeerProgress(ReplayPeerProgress),
     FileMetadata(FileMetadata),
     NodePackageInstalled(Box<NodePackageChangeResult>),
     NodePackageChanged(Box<NodePackageChangeResult>),

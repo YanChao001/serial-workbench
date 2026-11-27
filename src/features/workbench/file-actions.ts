@@ -5,6 +5,7 @@ import type {
   CaptureStartParams,
   FileTransferParams,
   ReplayOpenParams,
+  ReplayPeerOpenParams,
   Target,
 } from "@serial-workbench/contracts";
 export type FileActionHost = Pick<
@@ -59,34 +60,48 @@ export function createWorkbenchFileActions(
       throw new Error("HOST_MISMATCH");
     return { ...latest, selected };
   }
-  return {
-    async replay(signal?: AbortSignal) {
-      signal?.throwIfAborted();
-      const host = current();
-      const selected = await host.pickFile("captureSource", signal);
-      signal?.throwIfAborted();
-      if (!selected) return;
-      if (host.connection?.generation !== current().connection?.generation)
-        throw new Error("EPOCH_MISMATCH");
-      const params: ReplayOpenParams = {
-        captureRef: selected.reference,
-        mode: "original_timing",
-      };
-      const accepted = await current().invoke(
-        {
-          actionId: "replay.open",
-          target: {
-            hostId: selected.reference.hostId,
-            kind: selected.reference.kind,
-            id: selected.reference.id,
-          },
-          params,
-          executionMode: "independent",
+  async function openRecording(
+    actionId: "replay.open" | "replay.peer.open",
+    signal?: AbortSignal,
+  ) {
+    signal?.throwIfAborted();
+    const host = current();
+    const selected = await host.pickFile("captureSource", signal);
+    signal?.throwIfAborted();
+    if (!selected) return;
+    const latest = current();
+    if (
+      host.connection?.generation !== latest.connection?.generation ||
+      host.connection?.attachment.hostId !==
+        latest.connection?.attachment.hostId ||
+      host.connection?.attachment.instanceEpoch !==
+        latest.connection?.attachment.instanceEpoch
+    )
+      throw new Error("EPOCH_MISMATCH");
+    const params: ReplayOpenParams | ReplayPeerOpenParams = {
+      captureRef: selected.reference,
+      ...(actionId === "replay.open" ? { mode: "original_timing" } : {}),
+    };
+    const accepted = await latest.invoke(
+      {
+        actionId,
+        target: {
+          hostId: selected.reference.hostId,
+          kind: selected.reference.kind,
+          id: selected.reference.id,
         },
-        signal,
-      );
-      return { ...accepted, recordingName: selected.name };
-    },
+        params,
+        executionMode: "independent",
+      },
+      signal,
+    );
+    return { ...accepted, recordingName: selected.name };
+  }
+  return {
+    replay: (signal?: AbortSignal) => openRecording("replay.open", signal),
+    replayPeer: (signal?: AbortSignal) =>
+      openRecording("replay.peer.open", signal),
+
     async send(sessionId: string, signal?: AbortSignal) {
       const selection = await select(sessionId, "source", signal);
       if (!selection) return;

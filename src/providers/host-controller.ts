@@ -291,7 +291,8 @@ export function createHostWorkspace(
       });
     }
     if (
-      operation.actionId === "replay.open" &&
+      (operation.actionId === "replay.open" ||
+        operation.actionId === "replay.peer.open") &&
       operation.state === "succeeded" &&
       operation.result?.kind === "opened"
     ) {
@@ -1630,6 +1631,29 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
+  async function readReplayPeer(target: Target, signal: AbortSignal) {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    if (
+      target.hostId !== connection.attachment.hostId ||
+      target.kind !== "session" ||
+      target.id !== target.sessionId ||
+      !target.sessionEpoch
+    )
+      throw new ContractValidationError();
+    const result = await connection.client.query(
+      connection.buildQuery("replay.peer.state", target),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (
+      result.kind !== "replay_peer_state" ||
+      result.value.sessionId !== target.id ||
+      result.value.sessionEpoch !== target.sessionEpoch
+    )
+      throw new ContractValidationError();
+    return result.value;
+  }
   async function captureStatus(reference: ObjectRef, signal?: AbortSignal) {
     if (reference.hostId !== connection.attachment.hostId)
       throw new ContractValidationError();
@@ -2090,6 +2114,7 @@ export function createHostWorkspace(
     fileMetadata,
     readReplayRecord,
     captureStatus,
+    readReplayPeer,
     readCaptureTail,
     readFileReceipts,
     readTransferProgress,
