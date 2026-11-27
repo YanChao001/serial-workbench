@@ -178,7 +178,7 @@ volumeResults 项包含 volumeId、`status: verified|missing|corrupt` 和 verifi
 
 发送式回放使用 `replay.transmit.preview` 读取并校验固定录制与目标，返回当前目标修订、线路配置、TX 最终字节、速率、逐段 SourceRange 和 `previewDigest`。调用者可选一段明确的源范围，省略范围时使用录制内唯一有已确认 TX 的来源。字节来自同一 TX 意图及其结算的 `acceptedRanges`，未知区间保留在原始录制证据。范围支持最多 512 段，最终字节上限沿用单次手动 TX，速率以 `bytesPerSecond` 正十进制字符串传递。
 
-用户确认后用 `replay.transmit` 携带同一 `selection`、`previewDigest`、目标修订和独立执行方式。Host 重新校验文件指纹、当前源读取权、目标写入权和会话代次。在独占会话内分片发送，取消、源变更和不完整写入会停止后续分片。结果借用传输回执，`sourceOffset` 从零定位预览最终字节，分片回执保存该片的 `replaySpans`，可沿 `outputOffset` 和 SourceRange 反查录制。被动回放只读取原数据，交互模拟复用自己的 `replay.peer.*` 动作。
+用户确认后用 `replay.transmit` 携带同一 `selection`、`previewDigest`、目标修订和独立执行方式。Host 重新校验文件指纹、当前源读取权、目标写入权和会话代次。在独占会话内分片发送。每片提交前在后台复核固定录制，校验通过后使用该片的预览字节。随后发生的源变更在下一片复核时拒绝。取消、撤权、会话换代和非完整写入会停止后续分片。结果借用传输回执，`sourceOffset` 从零定位预览最终字节，分片回执保存该片的 `replaySpans`，可沿 `outputOffset` 和 SourceRange 反查录制。被动回放只读取原数据，交互模拟复用自己的 `replay.peer.*` 动作。
 
 ## 可迁为测试的验收向量
 

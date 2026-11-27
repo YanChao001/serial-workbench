@@ -642,7 +642,7 @@ Host 专项用 `cargo test --locked -p serial-workbench-host --lib recorded_peer
 
 ### 发送式回放保护（LOG-14）
 
-准备一份封存 Raw 录制和一个已经打开的可写流式会话。在工作区菜单打开「发送式回放」，选取录制和会话。生成预览并核对当前设备、线路配置、TX 方向、实际字节、速率与原录制位置。编辑任一字段后检查旧确认失效。撤销目标写权限时确认按钮停用，撤销源读取权限时移除预览。普通只读回放和交互模拟继续使用各自入口。
+准备一份封存 Raw 录制和一个已经打开的可写流式会话。在工作区菜单打开「发送式回放」，选取录制和会话。生成预览并核对当前设备、线路配置、TX 方向、实际字节、速率与原录制位置。编辑任一字段后检查旧确认失效。撤销目标写权限时确认按钮停用，撤销源读取权限时移除预览。独立发送运行时，若详情读取权撤销，允许查看摘要且有取消权限的操作者仍可请求停止。普通只读回放和交互模拟继续使用各自入口。
 
 用 `cargo test --locked -p serial-workbench-host --lib replay_transmit` 核对已确认前缀、未知尾段、源范围剪裁、多源歧义和相互冲突的证据。用 `cargo test --locked -p serial-workbench-host --test capture_api_host replay_transmit -- --test-threads=1` 打开隔离 Host 的 Virtual Echo。独立 Raw 游标确认预览、变速后旧摘要和源文件变化期间零写入。对一次显式任务核对实际 TX、幂等重查、分片范围与公开回执权限。以每秒 1 字节启动 24 字节回放，首笔接纳后停止。核对停止终态、已接纳前缀和再次查询的封存收据。用 `cargo test --locked -p serial-workbench-host --lib replay_source_changed_after_mailbox_submission_is_known_zero_write` 暂停设备 owner，在分片进入邮箱后暂停元数据复核，核对设备仍能响应队列状态。改变录制目录再继续，核对无后端写入、零未知字节，且目标会话仍可写。用 `cargo test --locked -p serial-workbench-host --test transfer_evidence_storage` 核对回放分片随原操作清理，运行中的回执仍可读。
 
