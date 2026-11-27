@@ -233,6 +233,7 @@ export type WorkbenchTool =
   | "devices"
   | "transfer"
   | "captureTools"
+  | "replayTransmit"
   | "framing"
   | "liveComparison"
   | "repeatSend"
@@ -270,6 +271,7 @@ function activityPanel(
     case "devices":
     case "transfer":
     case "captureTools":
+    case "replayTransmit":
     case "framing":
     case "liveComparison":
     case "repeatSend":
@@ -313,6 +315,7 @@ export type WorkbenchToolContext = {
   configurationDisabled?: boolean;
   templateConnection?: SessionTemplateConnection;
   broadcastMemory?: BroadcastMemory;
+  replayOperationId?: string;
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
@@ -428,6 +431,7 @@ export type WorkspaceLayoutProps = {
     sessionTemplates?: string;
     repeatSend?: string;
     broadcastSend?: string;
+    replayTransmit?: string;
     calendarSchedule?: string;
     commandSequence?: string;
     testSuite?: string;
@@ -469,6 +473,7 @@ export type WorkspaceLayoutProps = {
   ) => Promise<(Operation & { recordingName?: string }) | undefined>;
   onOpenReplayPeer?: WorkspaceLayoutProps["onOpenReplay"];
   replayPeer?: ReplayPeerAccess;
+  canReplayTransmit?: boolean;
   onCloseSession?: (
     sessionId: string,
     signal?: AbortSignal,
@@ -526,6 +531,7 @@ export function WorkspaceLayout({
   onOpenReplay,
   onOpenReplayPeer,
   replayPeer,
+  canReplayTransmit,
   onCloseSession,
   onCancelOperation,
   replay,
@@ -753,6 +759,7 @@ export function WorkspaceLayout({
     );
   }, [selected, workspaceKey, state.devices]);
   const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
+  const [replayOperationId, setReplayOperationId] = useState<string>();
   const suiteSessions = useContext(TestSuiteSessionsContext);
   const [suiteDraft, setSuiteDraft] = useState<TestSuiteWorkspace["draft"]>({
     definition: "",
@@ -1453,20 +1460,26 @@ export function WorkspaceLayout({
           session.sessionId === id &&
           (epoch === undefined || session.sessionEpoch === epoch),
       );
+      const { pageId, panelId } = activity.revealTarget;
+      const panel = activityPanel(pageId, panelId);
+      const replayOperationId =
+        panel === "replayTransmit" && activity.actionId === "replay.transmit"
+          ? activity.operationId
+          : undefined;
       if (
         !session &&
+        !replayOperationId &&
         (id ||
           activity.actionId === "device.open" ||
           activity.actionId === "replay.open" ||
           activity.actionId === "replay.peer.open")
       )
         return;
-      const { pageId, panelId } = activity.revealTarget;
-      const panel = activityPanel(pageId, panelId);
       return {
         session,
         pageId,
         panel,
+        replayOperationId,
         canLocate: !!session || !!panel || pageId !== "workbench",
       };
     },
@@ -1509,13 +1522,18 @@ export function WorkspaceLayout({
     [state.devices, state.sessions, draftStore, initialWorkspace],
   );
   const showDialog = useCallback(
-    (next: WorkbenchPanel, returnPoint?: HTMLElement | null) => {
+    (
+      next: WorkbenchPanel,
+      returnPoint?: HTMLElement | null,
+      replayOperationId?: string,
+    ) => {
       if (returnPoint?.isConnected) dialogTrigger.current = returnPoint;
       else if (dialog === null) {
         const active = document.activeElement;
         dialogTrigger.current = active instanceof HTMLElement ? active : null;
       }
       setSequenceRecording(undefined);
+      setReplayOperationId(replayOperationId);
       setDialog(next);
     },
     [dialog],
@@ -1524,7 +1542,8 @@ export function WorkspaceLayout({
     (location: NonNullable<ReturnType<typeof resolveActivity>>) => {
       if (location.session) showObservedSession(location.session);
       revealActivityPage?.(location.pageId);
-      if (location.panel) showDialog(location.panel);
+      if (location.panel)
+        showDialog(location.panel, undefined, location.replayOperationId);
       else setDialog(null);
     },
     [revealActivityPage, showDialog, showObservedSession],
@@ -2632,6 +2651,7 @@ export function WorkspaceLayout({
           !savingLayout
         }
         canReplay={!disabled && !choosing && !!onOpenReplay}
+        canReplayTransmit={!disabled && canReplayTransmit}
         toolsAvailable={draftsReady && !!renderTool}
         onDeviceChange={(id) => {
           focusRevision.current++;
@@ -3317,6 +3337,7 @@ export function WorkspaceLayout({
                     : session,
                 beforeReplace,
                 snapshotWorkspace,
+                replayOperationId,
                 sequenceRecording:
                   dialog === "commandSequence" ? sequenceRecording : undefined,
                 testSuiteWorkspace:

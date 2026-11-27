@@ -2120,11 +2120,13 @@ export type FileTransferReceipt =
 export type FileTransferReceipt_Deserialize = {
   sourceOffset: U64;
   receipt: TxReceipt_Deserialize;
+  replaySpans?: ReplayTransmitSpan_Deserialize[];
 };
 
 export type FileTransferReceipt_Serialize = {
   sourceOffset: U64;
   receipt: TxReceipt_Serialize;
+  replaySpans?: ReplayTransmitSpan_Serialize[];
 };
 
 export type FileTransferReceiptsParams =
@@ -4493,6 +4495,10 @@ export type QueryResult_Deserialize =
   | { kind: "capture_redaction_preview"; value: CaptureRedactionPreviewResult }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
   | { kind: "replay_peer_state"; value: ReplayPeerState }
+  | {
+      kind: "replay_transmit_preview";
+      value: ReplayTransmitPreview_Deserialize;
+    }
   | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
@@ -4554,6 +4560,7 @@ export type QueryResult_Serialize =
   | { kind: "capture_redaction_preview"; value: CaptureRedactionPreviewResult }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
   | { kind: "replay_peer_state"; value: ReplayPeerState }
+  | { kind: "replay_transmit_preview"; value: ReplayTransmitPreview_Serialize }
   | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
@@ -5051,6 +5058,78 @@ export type ReplaySearchResult =
       result: ReplaySearchPage;
     }
   | { kind: "stopped"; searchId: RequestId; stopped: boolean };
+
+export type ReplayTransmitParams =
+  ReplayTransmitParams_Serialize | ReplayTransmitParams_Deserialize;
+
+export type ReplayTransmitParams_Deserialize = {
+  selection: ReplayTransmitSelection_Deserialize;
+  previewDigest: Digest;
+};
+
+export type ReplayTransmitParams_Serialize = {
+  selection: ReplayTransmitSelection_Serialize;
+  previewDigest: Digest;
+};
+
+export type ReplayTransmitPreview =
+  ReplayTransmitPreview_Serialize | ReplayTransmitPreview_Deserialize;
+
+export type ReplayTransmitPreview_Deserialize = {
+  captureRef: ObjectRef_Deserialize;
+  target: Target_Deserialize;
+  targetRevision: U64;
+  configuration: SerialConfiguration;
+  direction: Direction;
+  bytesPerSecond: U64;
+  bytesBase64: Bytes;
+  spans: ReplayTransmitSpan_Deserialize[];
+  previewDigest: Digest;
+};
+
+export type ReplayTransmitPreview_Serialize = {
+  captureRef: ObjectRef_Serialize;
+  target: Target_Serialize;
+  targetRevision: U64;
+  configuration: SerialConfiguration;
+  direction: Direction;
+  bytesPerSecond: U64;
+  bytesBase64: Bytes;
+  spans: ReplayTransmitSpan_Serialize[];
+  previewDigest: Digest;
+};
+
+export type ReplayTransmitSelection =
+  ReplayTransmitSelection_Serialize | ReplayTransmitSelection_Deserialize;
+
+export type ReplayTransmitSelection_Deserialize = {
+  captureRef: ObjectRef_Deserialize;
+  direction: Direction;
+  bytesPerSecond: U64;
+  sourceRange?: SourceRange_Deserialize;
+};
+
+export type ReplayTransmitSelection_Serialize = {
+  captureRef: ObjectRef_Serialize;
+  direction: Direction;
+  bytesPerSecond: U64;
+  sourceRange?: SourceRange_Serialize;
+};
+
+export type ReplayTransmitSpan =
+  ReplayTransmitSpan_Serialize | ReplayTransmitSpan_Deserialize;
+
+export type ReplayTransmitSpan_Deserialize = {
+  recordOrdinal: U64;
+  source: SourceRange_Deserialize;
+  outputOffset: U64;
+};
+
+export type ReplayTransmitSpan_Serialize = {
+  recordOrdinal: U64;
+  source: SourceRange_Serialize;
+  outputOffset: U64;
+};
 
 export type RequestId = string;
 

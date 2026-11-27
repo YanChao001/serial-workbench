@@ -62,6 +62,7 @@ export function operationText(
       "replay.peer.open": t("workbench.replayPeer.open"),
       "replay.peer.submit": t("workbench.replayPeer.submit"),
       "replay.peer.close": t("workbench.closeSession"),
+      "replay.transmit": t("workbench.replayTransmit.title"),
       "swb.builtin.automation.loopback": t("loopback.title"),
       "operation.cancel": t("workbench.cancel"),
     },
@@ -116,7 +117,11 @@ export function operationProgress(
   return `${progress.completed}${progress.total === undefined ? "" : ` / ${progress.total}`}${unit ? ` ${unit}` : ""}`;
 }
 export function isTransfer(actionId: string) {
-  return actionId === "transfer.file" || actionId === "transfer.paste";
+  return (
+    actionId === "transfer.file" ||
+    actionId === "transfer.paste" ||
+    actionId === "replay.transmit"
+  );
 }
 
 export function isBusinessTask(actionId: string): boolean {

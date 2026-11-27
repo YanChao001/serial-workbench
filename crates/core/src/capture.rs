@@ -388,6 +388,51 @@ pub struct ReplayPeerState {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayTransmitSelection {
+    pub capture_ref: ObjectRef,
+    pub direction: Direction,
+    pub bytes_per_second: U64,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "SourceRange")]
+    #[specta(type = SourceRange, optional)]
+    pub source_range: Option<SourceRange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayTransmitParams {
+    pub selection: ReplayTransmitSelection,
+    pub preview_digest: Digest,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayTransmitSpan {
+    pub record_ordinal: U64,
+    pub source: SourceRange,
+    pub output_offset: U64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayTransmitPreview {
+    pub capture_ref: ObjectRef,
+    pub target: Target,
+    pub target_revision: U64,
+    pub configuration: SerialConfiguration,
+    pub direction: Direction,
+    pub bytes_per_second: U64,
+    pub bytes_base64: Bytes,
+    pub spans: Vec<ReplayTransmitSpan>,
+    pub preview_digest: Digest,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplayControlParams {
     pub session_id: Id,
     pub session_epoch: U64,

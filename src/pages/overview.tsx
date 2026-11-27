@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import type { ClientDraftStore } from "@/features/workbench/client-drafts";
 import { useClientDraftStore } from "@/providers/client-drafts-context";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
+import { isTauri } from "@/lib/tauri";
 import { requestOperationCancel } from "@/lib/operation-cancel";
 import { rpcJsonObject } from "@/lib/rpc-json";
 import { stateScopeKey } from "@/lib/host-scope";
@@ -959,6 +960,13 @@ export default function Overview({
           )
             ? files.replayPeer
             : undefined
+        }
+        canReplayTransmit={
+          isTauri() &&
+          !!host.previewReplayTransmit &&
+          host.state.catalog.some(
+            ({ actionId }) => actionId === "replay.transmit",
+          )
         }
         replayPeer={
           host.readReplayPeer

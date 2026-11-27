@@ -252,6 +252,10 @@ import type {
   ReplaySearchPage,
   ReplaySearchParams,
   ReplaySearchResult,
+  ReplayTransmitParams,
+  ReplayTransmitPreview,
+  ReplayTransmitSelection,
+  ReplayTransmitSpan,
   RequestId,
   ResourceKind,
   ResultReference,
@@ -1003,6 +1007,18 @@ export declare function validateReplaySearchParams(
 export declare function validateReplaySearchResult(
   value: unknown,
 ): value is ReplaySearchResult;
+export declare function validateReplayTransmitParams(
+  value: unknown,
+): value is ReplayTransmitParams;
+export declare function validateReplayTransmitPreview(
+  value: unknown,
+): value is ReplayTransmitPreview;
+export declare function validateReplayTransmitSelection(
+  value: unknown,
+): value is ReplayTransmitSelection;
+export declare function validateReplayTransmitSpan(
+  value: unknown,
+): value is ReplayTransmitSpan;
 export declare function validateRequestId(value: unknown): value is RequestId;
 export declare function validateResourceKind(
   value: unknown,

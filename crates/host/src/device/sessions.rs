@@ -3,7 +3,7 @@ use super::{
     serial::SerialHandoff,
 };
 use crate::{
-    auth::{AuthService, AuthenticatedActor, HostIdentity},
+    auth::{AuthService, AuthenticatedActor, GrantStamp, HostIdentity},
     state::ProjectionStore,
     storage::Store,
     stream::{SourceBoundary, SourceMeta, StreamHub, StreamKey, StreamSource},
@@ -19,7 +19,10 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use tokio::sync::oneshot;
+use tokio::{
+    runtime::Handle,
+    sync::{Semaphore, oneshot},
+};
 
 pub type TransportOpener =
     Arc<dyn Fn(&Id, &SerialConfiguration) -> BackendResult<Box<dyn Transport>> + Send + Sync>;
@@ -56,6 +59,7 @@ pub(crate) struct DeviceInner {
     opening: Mutex<HashMap<Id, Arc<OpeningOwner>>>,
     runtime: Mutex<Option<RuntimeAttachment>>,
     reconnect_jobs: Mutex<HashMap<Id, ReconnectJob>>,
+    replay_checks: Arc<Semaphore>,
     pub closing: AtomicBool,
     #[cfg(test)]
     owner_exit_gate: Mutex<Option<Arc<crate::test_support::Gate>>>,
@@ -160,8 +164,16 @@ impl TxDispatchFence {
     }
 }
 
+pub(crate) struct BackendReplaySource {
+    pub grants: Option<(AuthService, GrantStamp)>,
+    pub proof: crate::capture::format::ReplaySourceProof,
+    #[cfg(test)]
+    pub check_gate: Option<Arc<crate::test_support::Gate>>,
+}
+
 pub(crate) struct BackendAdmission {
     pub dispatch_fence: Option<TxDispatchFence>,
+    pub replay_source: Option<BackendReplaySource>,
     pub session_epoch: U64,
     pub actor_id: Id,
     pub lease_id: Option<Id>,
@@ -170,6 +182,22 @@ pub(crate) struct BackendAdmission {
 }
 impl BackendAdmission {
     fn begin(
+        &self,
+        snapshot: &Mutex<SessionSnapshot>,
+        clock: &dyn Clock,
+        asserting_break: bool,
+    ) -> HostResult<()> {
+        let admit = || self.begin_authorized(snapshot, clock, asserting_break);
+        if let Some((auth, stamp)) = self
+            .replay_source
+            .as_ref()
+            .and_then(|source| source.grants.as_ref())
+        {
+            return auth.commit_grant_stamp(stamp, admit);
+        }
+        admit()
+    }
+    fn begin_authorized(
         &self,
         snapshot: &Mutex<SessionSnapshot>,
         clock: &dyn Clock,
@@ -444,6 +472,7 @@ impl DeviceService {
                 opening: Mutex::new(HashMap::new()),
                 runtime: Mutex::new(None),
                 reconnect_jobs: Mutex::new(HashMap::new()),
+                replay_checks: Arc::new(Semaphore::new(4)),
                 closing: AtomicBool::new(false),
                 #[cfg(test)]
                 owner_exit_gate: Mutex::new(None),
@@ -744,6 +773,8 @@ impl DeviceService {
             opening.insert(target.id.clone(), owner.clone());
             #[cfg(test)]
             let owner_exit_gate = self.inner.owner_exit_gate.lock().unwrap().take();
+            let runtime = Handle::current();
+            let replay_checks = self.inner.replay_checks.clone();
             let join = thread::Builder::new()
                 .name(format!("device-{}", target.id.as_str()))
                 .spawn(move || {
@@ -779,6 +810,8 @@ impl DeviceService {
                             identity,
                             projections,
                             observability,
+                            runtime,
+                            replay_checks,
                         },
                         owner_closing,
                     );
@@ -1497,6 +1530,41 @@ impl Drop for Session {
         }
     }
 }
+struct PendingReplayWrite {
+    bytes: WritePayload,
+    wait: Duration,
+    admission: BackendAdmission,
+    reply: oneshot::Sender<BackendResult<BackendWrite>>,
+    ready: oneshot::Receiver<HostResult<BackendReplaySource>>,
+}
+
+impl PendingReplayWrite {
+    fn poll(&mut self, closing: bool) -> Option<HostResult<BackendReplaySource>> {
+        if closing {
+            return Some(Err(closing_error()));
+        }
+        if self.admission.cancelled.load(Ordering::SeqCst) {
+            return Some(Err(HostError::new(
+                "CANCELLED",
+                "Backend submission was cancelled",
+            )));
+        }
+        match self.ready.try_recv() {
+            Ok(result) => Some(result),
+            Err(oneshot::error::TryRecvError::Empty) => None,
+            Err(oneshot::error::TryRecvError::Closed) => Some(Err(unavailable())),
+        }
+    }
+}
+
+fn rejected_write(error: HostError) -> BackendWrite {
+    BackendWrite {
+        accepted_ranges: vec![],
+        unknown_ranges: vec![],
+        error: Some(error),
+    }
+}
+
 struct PendingWriteReply {
     job: Box<dyn PendingWrite>,
     reply: oneshot::Sender<BackendResult<BackendWrite>>,
@@ -1546,6 +1614,8 @@ struct OwnerContext {
     identity: HostIdentity,
     projections: ProjectionStore,
     observability: Arc<Mutex<SessionObservability>>,
+    runtime: Handle,
+    replay_checks: Arc<Semaphore>,
 }
 fn owner_loop(
     mut backend: Box<dyn Transport>,
@@ -1560,7 +1630,10 @@ fn owner_loop(
         identity,
         projections,
         observability,
+        runtime,
+        replay_checks,
     } = context;
+    let mut checking_replay: Option<PendingReplayWrite> = None;
     let mut writing: Option<PendingWriteReply> = None;
     let mut pending: Option<PendingDrainReply> = None;
     let mut line_control: Option<PendingLineControlReply> = None;
@@ -1695,6 +1768,7 @@ fn owner_loop(
             && pending.is_none()
             && writing.is_none()
             && line_control.is_none()
+            && checking_replay.is_none()
         {
             // 已接纳只读查询仍可结算；副作用命令在 admission 中因 Closing 拒绝。
             for _ in 0..8 {
@@ -1739,7 +1813,30 @@ fn owner_loop(
         } else {
             Duration::from_millis(1)
         };
-        match receiver.recv_timeout(mailbox_wait) {
+        let ready = checking_replay
+            .as_mut()
+            .and_then(|check| check.poll(closing.load(Ordering::SeqCst)));
+        let checked = ready.and_then(|result| {
+            let mut request = checking_replay.take().expect("pending replay proof");
+            match result {
+                Ok(source) => {
+                    request.admission.replay_source = Some(source);
+                    Some(BackendCommand::Write(
+                        request.bytes,
+                        request.wait,
+                        request.admission,
+                        request.reply,
+                    ))
+                }
+                Err(error) => {
+                    let _ = request.reply.send(Ok(rejected_write(error)));
+                    None
+                }
+            }
+        });
+        let replay_verified = checked.is_some();
+        let command = checked.map_or_else(|| receiver.recv_timeout(mailbox_wait), Ok);
+        match command {
             Ok(BackendCommand::SampleInputs(sample)) => {
                 sample.complete(backend.as_mut(), &snapshot, clock.as_ref(), &closing);
             }
@@ -1748,7 +1845,11 @@ fn owner_loop(
                 let cancelled = request.cancelled.clone();
                 let native_cancelled = Arc::new(AtomicBool::new(false));
                 request.cancelled = native_cancelled.clone();
-                let started = if pending.is_some() || writing.is_some() || line_control.is_some() {
+                let started = if pending.is_some()
+                    || writing.is_some()
+                    || line_control.is_some()
+                    || checking_replay.is_some()
+                {
                     Err(HostError::new("HOST_BUSY", "Drain is already pending").into())
                 } else {
                     admission
@@ -1775,17 +1876,57 @@ fn owner_loop(
                     }
                 }
             }
-            Ok(BackendCommand::Write(bytes, wait, admission, send)) => {
-                let cancelled = admission.cancelled.clone();
-                let native_cancelled = Arc::new(AtomicBool::new(false));
-                let deadline = backend_deadline(clock.as_ref(), wait);
-                let admitted = if pending.is_some() || writing.is_some() || line_control.is_some() {
-                    Err(HostError::new("HOST_BUSY", "Drain owns the TX boundary"))
+            Ok(BackendCommand::Write(bytes, wait, mut admission, send)) => {
+                let admitted = if closing.load(Ordering::SeqCst) {
+                    Err(closing_error())
+                } else if pending.is_some()
+                    || writing.is_some()
+                    || line_control.is_some()
+                    || checking_replay.is_some()
+                {
+                    Err(HostError::new(
+                        "HOST_BUSY",
+                        "Pending I/O owns the TX boundary",
+                    ))
                 } else {
                     admission.begin(&snapshot, clock.as_ref(), false)
                 };
+                if let Err(error) = admitted {
+                    // 后端尚未开始写入，拒绝时保留可确认的零接纳区间。
+                    let _ = send.send(Ok(rejected_write(error)));
+                    continue;
+                }
+                if !replay_verified && let Some(source) = admission.replay_source.take() {
+                    let Ok(permit) = replay_checks.clone().try_acquire_owned() else {
+                        let error = HostError::new("HOST_BUSY", "Replay source checks are busy");
+                        let _ = send.send(Ok(rejected_write(error)));
+                        continue;
+                    };
+                    let (done, ready) = oneshot::channel();
+                    // 邮箱接纳后，文件元数据复核也继续让出设备读写线程。
+                    runtime.spawn_blocking(move || {
+                        let _permit = permit;
+                        #[cfg(test)]
+                        if let Some(gate) = &source.check_gate {
+                            gate.hold();
+                        }
+                        let result = source.proof.check().map(|()| source);
+                        let _ = done.send(result);
+                    });
+                    checking_replay = Some(PendingReplayWrite {
+                        bytes,
+                        wait,
+                        admission,
+                        reply: send,
+                        ready,
+                    });
+                    continue;
+                }
+                let cancelled = admission.cancelled.clone();
+                let native_cancelled = Arc::new(AtomicBool::new(false));
+                let deadline = backend_deadline(clock.as_ref(), wait);
                 let length = bytes.len();
-                match admitted.map_err(BackendError::from).and_then(|()| {
+                let started = (|| {
                     let result =
                         backend.begin_write(bytes, wait, native_cancelled.clone(), closing.clone());
                     if let Err(error) = &result {
@@ -1795,7 +1936,8 @@ fn owner_loop(
                             .write_error(&error.error);
                     }
                     result
-                }) {
+                })();
+                match started {
                     Ok(job) => {
                         writing = Some(PendingWriteReply {
                             job,
@@ -1820,8 +1962,15 @@ fn owner_loop(
                 }
             }
             Ok(BackendCommand::Configure(config, admission, send, resumed)) => {
-                let result = if pending.is_some() || writing.is_some() || line_control.is_some() {
-                    Err(HostError::new("HOST_BUSY", "Drain owns the configuration boundary").into())
+                let result = if pending.is_some()
+                    || writing.is_some()
+                    || line_control.is_some()
+                    || checking_replay.is_some()
+                {
+                    Err(
+                        HostError::new("HOST_BUSY", "Pending I/O owns the configuration boundary")
+                            .into(),
+                    )
                 } else {
                     admission
                         .begin(&snapshot, clock.as_ref(), false)
@@ -1846,7 +1995,10 @@ fn owner_loop(
                     .as_ref()
                     .map(|admission| admission.cancelled.clone())
                     .unwrap_or_default();
-                let check = if (pending.is_some() || writing.is_some() || line_control.is_some())
+                let check = if (pending.is_some()
+                    || writing.is_some()
+                    || line_control.is_some()
+                    || checking_replay.is_some())
                     && !matches!(
                         command,
                         ControlCommand::QueueStatus | ControlCommand::ModemStatus
@@ -1950,6 +2102,9 @@ fn owner_loop(
             }
             _ => {}
         }
+    }
+    if let Some(request) = checking_replay.take() {
+        let _ = request.reply.send(Ok(rejected_write(unavailable())));
     }
     if let Some(PendingWriteReply { reply, length, .. }) = writing.take() {
         if let Ok(mut state) = snapshot.lock() {
@@ -2198,6 +2353,7 @@ mod mailbox_tests {
                 Duration::from_secs(1),
                 BackendAdmission {
                     dispatch_fence: None,
+                    replay_source: None,
                     session_epoch: target.session_epoch.unwrap(),
                     actor_id: h.actor.id().clone(),
                     lease_id: None,
@@ -2459,6 +2615,64 @@ mod mailbox_tests {
     }
 
     #[tokio::test]
+    async fn replay_source_changed_after_mailbox_submission_is_known_zero_write() {
+        use crate::{capture::format, files::references::PathGuard};
+
+        let h = support::Harness::new().await;
+        let target = h.open("replay-source-owner-fence").await;
+        let session = h.host.devices().session(&target).unwrap();
+        let recording = tempfile::tempdir().unwrap();
+        std::fs::write(recording.path().join("manifest.json"), b"before").unwrap();
+        let directory = PathGuard::new(recording.path()).unwrap();
+        let (_, proof) =
+            format::prove_replay_source(directory, format::REPLAY_PEER_SOURCE_BYTES).unwrap();
+        h.probe.steps.lock().unwrap().push_back(support::WriteStep {
+            accepted: 3,
+            unknown: false,
+            gate: None,
+            advance_ms: 0,
+        });
+        let read = hold_read(&h).await;
+        let check_gate = Arc::new(support::Gate::default());
+        let mut submitted = Box::pin(session.write(
+            WritePayload::owned(Arc::from([1, 2, 3])),
+            Duration::from_millis(100),
+            BackendAdmission {
+                dispatch_fence: None,
+                replay_source: Some(BackendReplaySource {
+                    grants: None,
+                    proof,
+                    check_gate: Some(check_gate.clone()),
+                }),
+                session_epoch: target.session_epoch.unwrap(),
+                actor_id: h.actor.id().clone(),
+                lease_id: None,
+                lease: Arc::new(Mutex::new(None)),
+                cancelled: Arc::new(AtomicBool::new(false)),
+            },
+        ));
+        poll_pending(submitted.as_mut()).await;
+        read.release();
+        check_gate.entered().await;
+        let service = TransmissionService::new(h.host.devices().clone());
+        let query =
+            tokio::time::timeout(Duration::from_secs(2), service.queue_status(&target)).await;
+        let changed = std::fs::write(recording.path().join("added.swbs"), b"new");
+        check_gate.release();
+        query
+            .expect("slow recording proof must not stall device queries")
+            .unwrap();
+        changed.unwrap();
+        let result = submitted.await.unwrap();
+        assert!(result.accepted_ranges.is_empty());
+        assert!(result.unknown_ranges.is_empty());
+        assert_eq!(result.error.unwrap().code, "SOURCE_CHANGED");
+        assert_eq!(h.probe.steps.lock().unwrap().len(), 1);
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::Ready);
+        h.host.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn write_deadline_requests_cancel_then_settles_without_advancing_domain_clock_again() {
         let h = support::Harness::new().await;
         let target = h.open("write-domain-deadline").await;
@@ -2473,6 +2687,7 @@ mod mailbox_tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
             dispatch_fence: None,
+            replay_source: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2533,6 +2748,7 @@ mod mailbox_tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
             dispatch_fence: None,
+            replay_source: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2593,6 +2809,7 @@ mod mailbox_tests {
         };
         let admission = BackendAdmission {
             dispatch_fence: None,
+            replay_source: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,

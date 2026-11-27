@@ -24,6 +24,7 @@ import type {
   Query,
   ReplayReadParams,
   ReplaySearchParams,
+  ReplayTransmitSelection,
   ReplayRecord,
   SerialConfiguration,
   SessionSnapshot,
@@ -1654,6 +1655,46 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
+  async function previewReplayTransmit(
+    target: Target,
+    selection: ReplayTransmitSelection,
+    signal: AbortSignal,
+  ) {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    if (
+      target.hostId !== connection.attachment.hostId ||
+      target.kind !== "session" ||
+      target.id !== target.sessionId ||
+      !target.sessionEpoch
+    )
+      throw new ContractValidationError();
+    const result = await connection.client.query(
+      connection.buildQuery(
+        "replay.transmit.preview",
+        target,
+        rpcJsonObject(selection),
+      ),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (
+      result.kind !== "replay_transmit_preview" ||
+      result.value.target.hostId !== target.hostId ||
+      result.value.target.kind !== target.kind ||
+      result.value.target.id !== target.id ||
+      result.value.target.sessionId !== target.sessionId ||
+      result.value.target.sessionEpoch !== target.sessionEpoch ||
+      result.value.captureRef.hostId !== selection.captureRef.hostId ||
+      result.value.captureRef.kind !== selection.captureRef.kind ||
+      result.value.captureRef.id !== selection.captureRef.id ||
+      result.value.captureRef.revision !== selection.captureRef.revision ||
+      result.value.bytesPerSecond !== selection.bytesPerSecond ||
+      result.value.direction !== selection.direction
+    )
+      throw new ContractValidationError();
+    return result.value;
+  }
   async function readReplayPeer(target: Target, signal: AbortSignal) {
     const waiting = AbortSignal.any([signal, lifetime.signal]);
     waiting.throwIfAborted();
@@ -1835,12 +1876,27 @@ export function createHostWorkspace(
       !(until === "running" && operation.state === "running")
     ) {
       await pause(pollIntervalMs, waiting);
-      const result = await connection.client.query(
-        connection.buildQuery("operation.get", connection.hostTarget, {
-          operationId: operation.operationId,
-        }),
-        waiting,
-      );
+      const id = operation.operationId;
+      const result = await connection.client
+        .query(
+          connection.buildQuery("operation.get", connection.hostTarget, {
+            operationId: id,
+          }),
+          waiting,
+        )
+        .catch((error: unknown) => {
+          if (
+            !waiting.aborted &&
+            error instanceof HostRequestError &&
+            error.code === "PERMISSION_DENIED"
+          )
+            change({
+              operations: state.operations.filter(
+                (candidate) => candidate.operationId !== id,
+              ),
+            });
+          throw error;
+        });
       waiting.throwIfAborted();
       if (
         result.kind !== "operation" ||
@@ -2138,6 +2194,7 @@ export function createHostWorkspace(
     readReplayRecord,
     captureStatus,
     readReplayPeer,
+    previewReplayTransmit,
     readCaptureTail,
     readFileReceipts,
     readTransferProgress,

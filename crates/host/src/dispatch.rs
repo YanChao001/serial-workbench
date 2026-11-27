@@ -593,6 +593,19 @@ impl Host {
             {
                 crate::documents::DocumentService::reference(&query.target)?;
             }
+            BuiltinAction::ReplayTransmitPreview | BuiltinAction::ReplayTransmit => {
+                let selection = if action == BuiltinAction::ReplayTransmitPreview {
+                    decode::<ReplayTransmitSelection>(&query.params)?
+                } else {
+                    decode::<ReplayTransmitParams>(&query.params)?.selection
+                };
+                let files = self.inner.files.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    files.require_reference(&selection.capture_ref, &actor, "content.read")
+                })
+                .await?;
+            }
             BuiltinAction::NodePackagesInstall => {
                 let manager = self.inner.node_packages.clone();
                 let actor = actor.clone();
@@ -1149,6 +1162,29 @@ impl Host {
                 // 阻塞快照之后再复核实际Node，避免把等待期间已退出的实例缓存带入回执。
                 metrics.node = self.inner.node_packages.metrics();
                 Ok(QueryResult::HostMetrics(metrics))
+            }
+            BuiltinAction::ReplayTransmitPreview => {
+                let snapshot = self.inner.devices.snapshot(&query.target).await?;
+                let result = self
+                    .inner
+                    .capture_api
+                    .replay_transmit_preview(
+                        decode(&query.params)?,
+                        &query.target,
+                        &snapshot,
+                        actor,
+                    )
+                    .await?;
+                let current = self.inner.devices.snapshot(&query.target).await?;
+                if current.revision != snapshot.revision
+                    || current.session_epoch != snapshot.session_epoch
+                {
+                    return Err(HostError::new(
+                        "REVISION_CONFLICT",
+                        "The preview target changed",
+                    ));
+                }
+                Ok(QueryResult::ReplayTransmitPreview(Box::new(result)))
             }
             action if action.is_capture_api() => {
                 if matches!(

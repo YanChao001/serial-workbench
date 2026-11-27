@@ -54,7 +54,7 @@ struct ReadProof {
     _lease: Option<ProofLease>,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct ChangeStamp {
+pub(crate) struct ChangeStamp {
     modified: i128,
     changed: i128,
 }
@@ -199,9 +199,20 @@ impl FileService {
         {
             return Err(revision_changed());
         }
-        self.auth
-            .require(actor, "content.read", &manifest.authority)?;
+        self.require_receipt_authority(&manifest, actor)?;
         Ok(manifest)
+    }
+    fn require_receipt_authority(
+        &self,
+        manifest: &ReceiptJournalManifest,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<()> {
+        let authorization = self.auth.snapshot(actor)?;
+        authorization.require("content.read", &manifest.authority)?;
+        if let Some(target) = &manifest.target_authority {
+            authorization.require("metadata.read", target)?;
+        }
+        Ok(())
     }
     pub fn authorize_receipts(
         &self,
@@ -233,8 +244,7 @@ impl FileService {
                     })
             })
             .transpose()?;
-        self.auth
-            .require(actor, "content.read", &manifest.authority)?;
+        self.require_receipt_authority(&manifest, actor)?;
         let mut receipts_ref = reference.clone();
         receipts_ref.revision = manifest.sealed.then_some(1.into());
         Ok(FileTransferReadProgress { receipts_ref, read })
@@ -302,8 +312,7 @@ impl FileService {
                 break;
             }
         }
-        self.auth
-            .require(actor, "content.read", &manifest.authority)?;
+        self.require_receipt_authority(&manifest, actor)?;
         Ok(result)
     }
     fn record_document(
@@ -706,6 +715,26 @@ impl FileService {
     ) -> HostResult<PathGuard> {
         self.resolve_authorized(reference, actor, "content.read", Some(bytes))
     }
+    pub(crate) fn prove_replay_source(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+        bytes: u64,
+    ) -> HostResult<crate::capture::format::ReplaySourceProof> {
+        let (document, guard) =
+            self.resolve_document_path(reference, actor, "content.read", Some(bytes))?;
+        if document.live
+            || reference.revision.is_none()
+            || (document.capture_id.is_none() && document.purpose != FilePurpose::CaptureSource)
+        {
+            return Err(changed());
+        }
+        let (fingerprint, proof) = crate::capture::format::prove_replay_source(guard, bytes)?;
+        if fingerprint != document.fingerprint {
+            return Err(changed());
+        }
+        Ok(proof)
+    }
     pub(crate) fn resolve_metadata(
         &self,
         reference: &ObjectRef,
@@ -720,6 +749,24 @@ impl FileService {
         permission: &str,
         capture_budget: Option<u64>,
     ) -> HostResult<PathGuard> {
+        let (document, guard) =
+            self.resolve_document_path(reference, actor, permission, capture_budget)?;
+        if ((document.capture_id.is_some() && reference.revision.is_some())
+            || (document.capture_id.is_none() && document.purpose == FilePurpose::CaptureSource))
+            && crate::capture::format::fingerprint_with_budget(&document.path, capture_budget)?
+                != document.fingerprint
+        {
+            return Err(changed());
+        }
+        Ok(guard)
+    }
+    fn resolve_document_path(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+        permission: &str,
+        capture_budget: Option<u64>,
+    ) -> HostResult<(FileDocument, PathGuard)> {
         let d = self.document(reference, actor, permission)?;
         let write = permission == "workspace.modify";
         if write && d.purpose != FilePurpose::CaptureTarget && d.capture_id.is_none() {
@@ -736,19 +783,8 @@ impl FileService {
             if guard.directory_identity()? != d.identity {
                 return Err(changed());
             }
-            if reference.revision.is_some()
-                && crate::capture::format::fingerprint_with_budget(&d.path, capture_budget)?
-                    != d.fingerprint
-            {
-                return Err(changed());
-            }
-        } else if d.purpose == FilePurpose::CaptureSource
-            && crate::capture::format::fingerprint_with_budget(&d.path, capture_budget)?
-                != d.fingerprint
-        {
-            return Err(changed());
         }
-        Ok(guard)
+        Ok((d, guard))
     }
     pub(crate) fn begin_capture(
         &self,
@@ -1191,7 +1227,7 @@ fn hash_reader_checked(
         blocks,
     ))
 }
-fn change_stamp(file: &File) -> HostResult<ChangeStamp> {
+pub(crate) fn change_stamp(file: &File) -> HostResult<ChangeStamp> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -1612,6 +1648,9 @@ impl PathGuard {
     }
     pub(crate) fn directory_identity(&self) -> HostResult<String> {
         file_identity(self.directory.as_ref().ok_or_else(changed)?)
+    }
+    pub(crate) fn directory_stamp(&self) -> HostResult<ChangeStamp> {
+        change_stamp(self.directory.as_ref().ok_or_else(changed)?)
     }
     pub(crate) fn sibling(&self, name: &std::ffi::OsStr) -> HostResult<Self> {
         if Path::new(name).components().count() != 1

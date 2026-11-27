@@ -1024,7 +1024,7 @@ impl Database {
             super::plugin_operations::prune(&transaction, &operation.operation_id)?;
             if matches!(
                 operation.action_id.as_str(),
-                "transfer.file" | "transfer.paste"
+                "transfer.file" | "transfer.paste" | "replay.transmit"
             ) {
                 prune_transfer_receipts(&transaction, &operation.operation_id)?;
             }

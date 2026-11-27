@@ -14,6 +14,7 @@ async fn configuration_boundary_guard_pauses_rx_until_publication_finishes() {
             SerialConfiguration::default(),
             BackendAdmission {
                 dispatch_fence: None,
+                replay_source: None,
                 session_epoch: target.session_epoch.unwrap(),
                 actor_id: h.actor.id().clone(),
                 lease_id: None,

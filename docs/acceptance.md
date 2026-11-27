@@ -640,6 +640,14 @@ Host 专项用 `cargo test --locked -p serial-workbench-host --lib recorded_peer
 
 独立环境用已接线设备录制已知请求和响应，记录原始 TX/RX、来源序号和实际对端日志。断开真实设备后，从原生文件选取打开两种模式，重现同样的请求和响应。各适用平台保留原生工作台收据。正式签名安装包在独立环境复验同一封存录制的打开、交互、关闭和普通会话隔离。 [工作台草稿](./ui-design.md#录制交互模拟草稿log-09)
 
+### 发送式回放保护（LOG-14）
+
+准备一份封存 Raw 录制和一个已经打开的可写流式会话。在工作区菜单打开「发送式回放」，选取录制和会话。生成预览并核对当前设备、线路配置、TX 方向、实际字节、速率与原录制位置。编辑任一字段后检查旧确认失效。撤销目标写权限时确认按钮停用，撤销源读取权限时移除预览。独立发送运行时，若详情读取权撤销，允许查看摘要且有取消权限的操作者仍可请求停止。普通只读回放和交互模拟继续使用各自入口。
+
+用 `cargo test --locked -p serial-workbench-host --lib replay_transmit` 核对已确认前缀、未知尾段、源范围剪裁、多源歧义和相互冲突的证据。用 `cargo test --locked -p serial-workbench-host --test capture_api_host replay_transmit -- --test-threads=1` 打开隔离 Host 的 Virtual Echo。独立 Raw 游标确认预览、变速后旧摘要、目标代次不匹配和源文件变化期间零写入。对一次显式任务核对实际 TX、幂等重查、分片范围与公开回执权限。以每秒 1 字节启动 24 字节回放，首笔接纳后停止。核对停止终态、已接纳前缀和再次查询的封存收据。用 `cargo test --locked -p serial-workbench-host --lib replay_source_changed_after_mailbox_submission_is_known_zero_write` 暂停设备 owner，在分片进入邮箱后暂停元数据复核，核对设备仍能响应队列状态。改变录制目录再继续，核对无后端写入、零未知字节，且目标会话仍可写。用 `cargo test --locked -p serial-workbench-host --test transfer_evidence_storage` 核对回放分片随原操作清理，运行中的回执仍可读。
+
+用 `pnpm test:ui e2e/browser/replay-transmit.spec.ts e2e/browser/replay-layout.spec.ts e2e/browser/capture-tail.spec.ts e2e/browser/broadcast-send.spec.ts --workers=1` 检查宽窄窗口、菜单按钮命中、范围和速率更新、源与目标权限变化、确认、关闭回放工具后在任务页查询和重开后恢复回执。独立环境进一步用接线设备和对应捕获样本核对实际方向、分段、限速、取消和换代，再按适用平台和正式安装候选取证。 [工作台草稿](./ui-design.md#发送式回放草稿log-14)
+
 ### 录制内搜索（LOG-10）
 
 回放搜索读层运行 `cargo test --locked -p serial-workbench-host --lib capture::replay::search::tests -- --test-threads=1`。由真实录制写入器生成可校验的卷及索引，核对跨页、重叠命中、跨源隔离、方向、缺口、配置修订和报文分片。密集命中跨页时，同一记录按字节偏移续查。通过阻断页末权限检查确认本页结果未提交，复查时从原偏移继续。已打开的回放游标保持在原位置，重开后用新搜索游标验证同样的命中。

@@ -1,4 +1,5 @@
 //! 录制卷编码与同步元数据。未知版本只读拒绝。
+use crate::files::references::{ChangeStamp, PathGuard, change_stamp, directory_identity};
 use serde::{Deserialize, Serialize};
 use serial_workbench_core::*;
 use sha2::{Digest as _, Sha256};
@@ -437,9 +438,54 @@ pub fn fingerprint(path: &Path) -> HostResult<Digest> {
     fingerprint_with_budget(path, None)
 }
 
-pub(crate) fn fingerprint_with_budget(
+pub(crate) fn fingerprint_with_budget(path: &Path, bytes: Option<u64>) -> HostResult<Digest> {
+    fingerprint_entries(path, bytes, None)
+}
+
+/// 指纹与文件句柄一起交给设备 owner，派发时仅复核身份与变更戳。
+pub(crate) struct ReplaySourceProof {
+    directory: PathGuard,
+    identity: String,
+    stamp: ChangeStamp,
+    files: Vec<(File, ChangeStamp)>,
+}
+
+impl ReplaySourceProof {
+    pub(crate) fn check(&self) -> HostResult<()> {
+        if directory_identity(self.directory.checked_path())? != self.identity
+            || self.directory.directory_stamp()? != self.stamp
+        {
+            return Err(changed());
+        }
+        for (file, stamp) in &self.files {
+            if change_stamp(file)? != *stamp {
+                return Err(changed());
+            }
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn prove_replay_source(
+    directory: PathGuard,
+    bytes: u64,
+) -> HostResult<(Digest, ReplaySourceProof)> {
+    let path = directory.checked_path().to_path_buf();
+    let mut proof = ReplaySourceProof {
+        identity: directory.directory_identity()?,
+        stamp: directory.directory_stamp()?,
+        directory,
+        files: Vec::new(),
+    };
+    let digest = fingerprint_entries(&path, Some(bytes), Some(&mut proof))?;
+    proof.check()?;
+    Ok((digest, proof))
+}
+
+fn fingerprint_entries(
     path: &Path,
     mut bytes_left: Option<u64>,
+    mut proof: Option<&mut ReplaySourceProof>,
 ) -> HostResult<Digest> {
     crate::files::references::validate_path(path, false)?;
     const PEER_MAX_FILES: usize = 4098;
@@ -458,7 +504,7 @@ pub(crate) fn fingerprint_with_budget(
     }
     names.sort();
     let mut hash = Sha256::new();
-    hash.update(crate::files::references::directory_identity(path)?.as_bytes());
+    hash.update(directory_identity(path)?.as_bytes());
     for name in names {
         let file_name = name
             .file_name()
@@ -467,7 +513,13 @@ pub(crate) fn fingerprint_with_budget(
         if file_name.starts_with('.') {
             continue;
         }
-        let mut file = open_read(&name)?;
+        let (mut file, stamp) = if let Some(proof) = &proof {
+            let file = proof.directory.child(file_name)?.open_pinned_file()?;
+            let stamp = change_stamp(&file)?;
+            (file, Some(stamp))
+        } else {
+            (open_read(&name)?, None)
+        };
         hash.update(file_name.as_bytes());
         hash.update(crate::files::references::file_identity(&file)?.as_bytes());
         let length = file.metadata().map_err(io_error)?.len();
@@ -481,6 +533,9 @@ pub(crate) fn fingerprint_with_budget(
             hash_file(&mut file)?
         };
         hash.update(digest.as_str().as_bytes());
+        if let (Some(proof), Some(stamp)) = (proof.as_deref_mut(), stamp) {
+            proof.files.push((file, stamp));
+        }
     }
     Digest::try_from(format!("{:x}", hash.finalize()).as_str())
 }

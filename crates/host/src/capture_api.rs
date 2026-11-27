@@ -311,6 +311,36 @@ impl CaptureApi {
         }
         Ok(result)
     }
+    pub(crate) async fn replay_transmit_preview(
+        &self,
+        selection: ReplayTransmitSelection,
+        target: &Target,
+        snapshot: &SessionSnapshot,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<ReplayTransmitPreview> {
+        let permit =
+            self.previews.clone().try_acquire_owned().map_err(|_| {
+                HostError::new("HOST_BUSY", "A recording preview is already running")
+            })?;
+        let files = self.files.clone();
+        let auth = self.auth.clone();
+        let actor = actor.clone();
+        let target = target.clone();
+        let snapshot = snapshot.clone();
+        blocking(move || {
+            let _permit = permit;
+            let stamp = auth.capture_grants(&actor)?;
+            auth.require(&actor, "metadata.read", &target)?;
+            let preview = crate::capture::replay::transmit_preview(
+                &files, &actor, &target, &snapshot, &selection,
+            )?;
+            if let Some(stamp) = stamp {
+                auth.validate_grants(&stamp)?;
+            }
+            Ok(preview)
+        })
+        .await
+    }
     pub(crate) fn release_search_connection(&self, id: &Id) {
         self.replays.release_search_connection(id);
     }
