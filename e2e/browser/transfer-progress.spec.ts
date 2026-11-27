@@ -124,7 +124,14 @@ test("a native drop previews one file at the source field and never submits unti
   await page.setViewportSize({ width: 420, height: 540 });
   await dialog.getByRole("tab", { name: "Advanced", exact: true }).click();
   await dialog.getByLabel("Byte offset", { exact: true }).fill("1");
+  await expect(dialog.getByLabel("Bytes to send", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(sample).toHaveCount(0);
   await dialog.getByLabel("Length (bytes)", { exact: true }).fill("2");
+  await expect(dialog.getByLabel("Bytes to send", { exact: true })).toHaveText(
+    "[1, 3) / 10",
+  );
   await expect(sample).toHaveText("1: FE 23");
   expect(await sample.evaluate((node) => node.scrollWidth)).toBe(
     await sample.evaluate((node) => node.clientWidth),

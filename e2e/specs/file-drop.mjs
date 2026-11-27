@@ -6,6 +6,7 @@ import { globalSendRawReader, rawRxBytes } from "../global-send.mjs";
 import { fileDropDriver } from "../file-drop-driver.mjs";
 
 const transferSource = "[role='dialog'] output[aria-label='Source file']";
+const transferRange = "[role=dialog] output[aria-label='Bytes to send']";
 const transferSample =
   "[role=dialog] output[aria-label='Beginning of selected bytes']";
 const commandBody = "[role='dialog'] textarea[id$='-body']";
@@ -14,6 +15,37 @@ const field = (caption, tag = "input") =>
   $(
     `//${tag}[@id=//label[normalize-space()='${caption}']/@for] | //label[normalize-space()='${caption}']//${tag}`,
   );
+
+async function dialogButton(label) {
+  return (await dialog()).$(`button=${label}`);
+}
+
+async function clickDialogButton(label) {
+  const button = await dialogButton(label);
+  await button.waitForDisplayed();
+  await button.waitForEnabled();
+  await button.click();
+}
+
+async function fillEditorName(name) {
+  const input = await field("Name");
+  await input.waitForDisplayed();
+  await input.setValue(name);
+}
+
+async function waitForPreviewText(selector, expected) {
+  // An invalid intermediate range removes the output and the next valid range creates a new one.
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (target, text) => document.querySelector(target)?.textContent === text,
+        selector,
+        expected,
+      ),
+    { timeoutMsg: `The file preview did not show "${expected}".` },
+  );
+  await (await $(selector)).scrollIntoView({ block: "nearest" });
+}
 
 async function closeDialog() {
   const current = await dialog();
@@ -80,17 +112,12 @@ export function fileDropChecks(openTool) {
     )
       .$(".//button[@role='tab' and normalize-space()='Advanced']")
       .click();
-    const range = await $("[role=dialog] output[aria-label='Bytes to send']");
-    assert.equal(await range.getText(), "[0, 4) / 4");
+    await waitForPreviewText(transferRange, "[0, 4) / 4");
     await (await field("Byte offset")).setValue("1");
     await (await field("Length (bytes)")).setValue("2");
-    assert.equal(await range.getText(), "[1, 3) / 4");
-    const preview = await $(transferSample);
-    await browser.waitUntil(
-      async () => (await preview.getText()) === "1: FE 23",
-    );
-    const sample = await preview.getText();
-    await preview.scrollIntoView({ block: "nearest" });
+    await waitForPreviewText(transferRange, "[1, 3) / 4");
+    await waitForPreviewText(transferSample, "1: FE 23");
+    const sample = await (await $(transferSample)).getText();
     await browser.saveScreenshot(join(directory, artifact("transfer.png")));
     assert.deepEqual(writes(await readTransfer()), []);
     const send = await (await dialog()).$("button=Send file");
@@ -134,15 +161,16 @@ export function fileDropChecks(openTool) {
     const launcher = await $("button[aria-label='Command library']");
     await launcher.waitForEnabled();
     await launcher.click();
-    await (await dialog()).$("button=New group").click();
-    await (await field("Name")).setValue("System file drop");
-    await (await dialog()).$("button=Save").click();
-    const group = await (await dialog()).$("button=System file drop");
-    await group.waitForDisplayed();
-    await group.click();
-    await (await dialog()).$("button=New command").click();
-    await (await field("Name")).setValue("IO-18 file command");
+    const groupName = "System file drop";
+    const commandName = "IO-18 file command";
+    await clickDialogButton("New group");
+    await fillEditorName(groupName);
+    await clickDialogButton("Save");
+    await clickDialogButton(groupName);
+    await clickDialogButton("New command");
+    await fillEditorName(commandName);
     const body = await $(commandBody);
+    await body.waitForDisplayed();
     await body.setValue("original");
     const commandPoint = await dropFiles(commandBody, [commandPath]);
     assert.equal(commandPoint.fileDataOffered, true);
@@ -154,18 +182,17 @@ export function fileDropChecks(openTool) {
     await browser.saveScreenshot(join(directory, artifact("command.png")));
     await replace.click();
     assert.equal(await body.getValue(), "09 FF 00 41");
-    const save = await (await dialog()).$("button=Save");
-    await save.click();
-    await save.waitForEnabled({ reverse: true });
+    await clickDialogButton("Save");
+    // The entry appears only after the save and the subsequent Host page read.
+    await (await dialogButton(commandName)).waitForDisplayed();
     await closeDialog();
+    await launcher.waitForEnabled();
     await launcher.click();
-    const reopenedGroup = await (await dialog()).$("button=System file drop");
-    await reopenedGroup.waitForDisplayed();
-    await reopenedGroup.click();
-    await (await dialog()).$("button=IO-18 file command").click();
-    await browser.waitUntil(
-      async () => (await (await $(commandBody)).getValue()) === "09 FF 00 41",
-    );
+    await clickDialogButton(groupName);
+    await clickDialogButton(commandName);
+    const reopenedBody = await $(commandBody);
+    await reopenedBody.waitForDisplayed();
+    assert.equal(await reopenedBody.getValue(), "09 FF 00 41");
     assert.deepEqual(writes(await readCommand()), []);
     await closeDialog();
 
