@@ -317,6 +317,26 @@ pub struct CaptureIndex {
     pub format_version: String,
     pub records: Vec<IndexEntry>,
 }
+#[cfg(test)]
+pub(super) fn replace_fixture_rx(original: &[u8]) -> Vec<u8> {
+    assert!(original.starts_with(CaptureFormat::Indexed.magic()));
+    let length_at = CaptureFormat::Indexed.magic().len();
+    let time_at = length_at + 4;
+    let json_at = time_at + 8;
+    let length = u32::from_le_bytes(original[length_at..time_at].try_into().unwrap()) as usize;
+    let digest_at = json_at + length;
+    let json = std::str::from_utf8(&original[json_at..digest_at])
+        .unwrap()
+        .replace("AQID", "CQID");
+    assert_eq!(json.len(), length);
+    assert_ne!(json.as_bytes(), &original[json_at..digest_at]);
+    let mut altered = original.to_vec();
+    altered[json_at..digest_at].copy_from_slice(json.as_bytes());
+    let checksum = Sha256::digest(&altered[time_at..digest_at]);
+    altered[digest_at..digest_at + 32].copy_from_slice(&checksum);
+    altered
+}
+
 pub fn volume_name(ordinal: u64) -> String {
     format!("volume-{ordinal:06}.swbr")
 }

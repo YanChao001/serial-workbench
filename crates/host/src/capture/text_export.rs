@@ -373,7 +373,6 @@ mod tests {
         verify::{CopyPhase, verify_directory},
         writer::{CaptureLimits, CaptureWriter},
     };
-    use sha2::{Digest as _, Sha256};
     #[test]
     fn copied_record_must_match_verified_snapshot_despite_source_restore() {
         let d = tempfile::tempdir().unwrap();
@@ -411,15 +410,7 @@ mod tests {
         let scan = verify_directory(&source).unwrap();
         let volume = source.join(volume_name(1));
         let original = std::fs::read(&volume).unwrap();
-        let mut altered = original.clone();
-        let len = u32::from_le_bytes(original[7..11].try_into().unwrap()) as usize;
-        let json = String::from_utf8(original[11..11 + len].to_vec())
-            .unwrap()
-            .replace("AQID", "CQID");
-        assert_eq!(json.len(), len);
-        assert_ne!(json.as_bytes(), &original[11..11 + len]);
-        altered[11..11 + len].copy_from_slice(json.as_bytes());
-        altered[11 + len..11 + len + 32].copy_from_slice(&Sha256::digest(json.as_bytes()));
+        let altered = replace_fixture_rx(&original);
         let observe = |phase| match phase {
             CopyPhase::BeforeRecord => {
                 std::fs::write(&volume, &altered).unwrap();

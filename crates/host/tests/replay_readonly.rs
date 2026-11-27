@@ -81,11 +81,15 @@ fn replay_detects_changed_content_instead_of_returning_new_bytes() {
     let volume = path.join(volume_name(1));
     let mut bytes = std::fs::read(&volume).unwrap();
     let length = u32::from_le_bytes(bytes[7..11].try_into().unwrap()) as usize;
-    let mut body = String::from_utf8(bytes[11..11 + length].to_vec()).unwrap();
-    body = body.replace("AQID", "CQID");
-    bytes[11..11 + length].copy_from_slice(body.as_bytes());
-    let hash: [u8; 32] = Sha256::digest(body.as_bytes()).into();
-    bytes[11 + length..].copy_from_slice(&hash);
+    let json_start = 19;
+    let json_end = json_start + length;
+    let body = std::str::from_utf8(&bytes[json_start..json_end])
+        .unwrap()
+        .replace("AQID", "CQID");
+    assert_ne!(body.as_bytes(), &bytes[json_start..json_end]);
+    bytes[json_start..json_end].copy_from_slice(body.as_bytes());
+    let hash = Sha256::digest(&bytes[11..json_end]);
+    bytes[json_end..].copy_from_slice(&hash);
     std::fs::write(&volume, &bytes).unwrap();
     assert_eq!(replay.read(1, 0).unwrap_err().code, "SOURCE_CHANGED");
 }
