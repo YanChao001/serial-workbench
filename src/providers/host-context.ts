@@ -51,6 +51,8 @@ import type {
   SerialConfiguration,
   WorkspaceDocument,
   WorkspaceDocumentResult,
+  WorkspaceConfigurationExportParams,
+  WorkspaceConfigurationInspection,
   WorkspaceListResult,
   Target,
 } from "@serial-workbench/contracts";
@@ -248,6 +250,22 @@ export type HostContextValue = {
     json: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceDocument>;
+  inspectWorkspaceConfiguration(
+    workspaceId: string,
+    json: string,
+    signal: AbortSignal,
+  ): Promise<WorkspaceConfigurationInspection>;
+  importWorkspaceConfiguration(
+    base: WorkspaceDocumentResult,
+    preview: WorkspaceConfigurationInspection,
+    json: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceDocumentResult>;
+  exportWorkspaceConfiguration(
+    workspaceId: string,
+    params: WorkspaceConfigurationExportParams,
+    signal: AbortSignal,
+  ): Promise<DocumentJsonResult>;
   waitForOperation(
     operation: Operation,
     signal?: AbortSignal,

@@ -148,6 +148,9 @@ fn builtin_specs(dialect: SchemaDialect) -> &'static [ActionSpec] {
 pub enum BuiltinAction {
     ActionCheck,
     WorkspaceImportPreview,
+    WorkspaceConfigurationInspect,
+    WorkspaceConfigurationImport,
+    WorkspaceConfigurationExport,
     ExperimentExport,
     ExperimentInspect,
     Client(ClientCapability),
@@ -242,9 +245,12 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 115] = [
+    pub const ALL: [Self; 118] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
+        Self::WorkspaceConfigurationInspect,
+        Self::WorkspaceConfigurationImport,
+        Self::WorkspaceConfigurationExport,
         Self::ExperimentExport,
         Self::ExperimentInspect,
         Self::Client(ClientCapability::WindowRead),
@@ -410,6 +416,9 @@ impl BuiltinAction {
             Self::SettingsImport => "settings.import",
             Self::ActionCheck => "action.check",
             Self::WorkspaceImportPreview => "workspace.importPreview",
+            Self::WorkspaceConfigurationInspect => "workspace.configuration.inspect",
+            Self::WorkspaceConfigurationImport => "workspace.configuration.import",
+            Self::WorkspaceConfigurationExport => "workspace.configuration.export",
             Self::ExperimentExport => "workspace.experiment.export",
             Self::ExperimentInspect => "workspace.experiment.inspect",
             Self::WorkspaceList => "workspace.list",
@@ -524,6 +533,7 @@ impl BuiltinAction {
                 | Self::SettingsImport
                 | Self::WorkspaceSave
                 | Self::WorkspaceImport
+                | Self::WorkspaceConfigurationImport
                 | Self::DeviceRebind
                 | Self::FavoritesSave
                 | Self::CommandLibraryChange
@@ -595,9 +605,12 @@ impl BuiltinAction {
                 "plugin",
                 "client",
             ],
-            Self::WorkspaceImportPreview | Self::ExperimentExport | Self::ExperimentInspect => {
-                &["workspace"]
-            }
+            Self::WorkspaceImportPreview
+            | Self::WorkspaceConfigurationInspect
+            | Self::WorkspaceConfigurationImport
+            | Self::WorkspaceConfigurationExport
+            | Self::ExperimentExport
+            | Self::ExperimentInspect => &["workspace"],
             Self::Client(_) => &["client"],
             Self::CaptureStart | Self::CaptureRecover => &["file"],
             Self::CaptureStop => &["capture"],
@@ -669,6 +682,9 @@ impl BuiltinAction {
             | Self::WorkspaceSave
             | Self::WorkspaceExport
             | Self::WorkspaceImport
+            | Self::WorkspaceConfigurationInspect
+            | Self::WorkspaceConfigurationImport
+            | Self::WorkspaceConfigurationExport
             | Self::CommandLibraryRead
             | Self::CommandLibraryChange
             | Self::CommandLibraryImport
@@ -718,6 +734,7 @@ impl BuiltinAction {
                     self,
                     Self::WorkspaceSave
                         | Self::WorkspaceImport
+                        | Self::WorkspaceConfigurationImport
                         | Self::DeviceRebind
                         | Self::FavoritesSave
                         | Self::CommandLibraryChange
@@ -811,6 +828,7 @@ impl BuiltinAction {
                 | Self::WorkspaceSave
                 | Self::WorkspaceExport
                 | Self::WorkspaceImport
+                | Self::WorkspaceConfigurationImport
                 | Self::DeviceRebind
                 | Self::FavoritesSave
         ) {
@@ -826,6 +844,8 @@ impl BuiltinAction {
             self,
             Self::ActionCheck
                 | Self::WorkspaceImportPreview
+                | Self::WorkspaceConfigurationInspect
+                | Self::WorkspaceConfigurationExport
                 | Self::ExperimentInspect
                 | Self::ExperimentExport
         ) {
@@ -1039,6 +1059,18 @@ impl BuiltinAction {
             Self::WorkspaceImportPreview => ActionSpec::of_with_dialect::<
                 DocumentImportParams,
                 WorkspaceDocument,
+            >(meta, dialect),
+            Self::WorkspaceConfigurationInspect => ActionSpec::of_with_dialect::<
+                DocumentImportParams,
+                WorkspaceConfigurationInspection,
+            >(meta, dialect),
+            Self::WorkspaceConfigurationImport => ActionSpec::of_with_dialect::<
+                WorkspaceConfigurationImportParams,
+                WorkspaceConfigurationImportResult,
+            >(meta, dialect),
+            Self::WorkspaceConfigurationExport => ActionSpec::of_with_dialect::<
+                WorkspaceConfigurationExportParams,
+                DocumentJsonResult,
             >(meta, dialect),
             Self::ExperimentExport => ActionSpec::of_with_dialect::<
                 ExperimentExportParams,

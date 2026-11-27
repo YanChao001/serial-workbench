@@ -379,6 +379,10 @@ export type ActionResult_Deserialize =
   | { kind: "file_transfer"; value: FileTransferResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
+  | {
+      kind: "workspace_configuration_import";
+      value: WorkspaceConfigurationImportResult_Deserialize;
+    }
   | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Deserialize }
@@ -410,6 +414,10 @@ export type ActionResult_Serialize =
   | { kind: "file_transfer"; value: FileTransferResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
+  | {
+      kind: "workspace_configuration_import";
+      value: WorkspaceConfigurationImportResult_Serialize;
+    }
   | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Serialize }
@@ -3572,6 +3580,12 @@ export type LocalDocumentIntent_Deserialize =
       params: WorkspaceSaveParams_Deserialize;
     }
   | {
+      kind: "workspaceConfigurationImport";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: WorkspaceConfigurationImportParams_Deserialize;
+    }
+  | {
       kind: "commandLibraryChange";
       workspaceId: Id;
       expectedRevision: U64;
@@ -3607,6 +3621,12 @@ export type LocalDocumentIntent_Serialize =
       workspaceId: Id;
       expectedRevision: U64;
       params: WorkspaceSaveParams_Serialize;
+    }
+  | {
+      kind: "workspaceConfigurationImport";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: WorkspaceConfigurationImportParams_Serialize;
     }
   | {
       kind: "commandLibraryChange";
@@ -4366,6 +4386,10 @@ export type QueryResult_Deserialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Deserialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Deserialize }
+  | {
+      kind: "workspace_configuration_inspection";
+      value: WorkspaceConfigurationInspection_Deserialize;
+    }
   | { kind: "experiment_package"; value: ExperimentPackage_Deserialize }
   | { kind: "experiment_inspection"; value: ExperimentInspection_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
@@ -4424,6 +4448,10 @@ export type QueryResult_Serialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Serialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Serialize }
+  | {
+      kind: "workspace_configuration_inspection";
+      value: WorkspaceConfigurationInspection_Serialize;
+    }
   | { kind: "experiment_package"; value: ExperimentPackage_Serialize }
   | { kind: "experiment_inspection"; value: ExperimentInspection_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
@@ -5620,6 +5648,81 @@ export type Workspace = {
   secondaryOpen: boolean;
 };
 
+export type WorkspaceConfiguration =
+  WorkspaceConfiguration_Serialize | WorkspaceConfiguration_Deserialize;
+
+export type WorkspaceConfigurationImportParams =
+  | WorkspaceConfigurationImportParams_Serialize
+  | WorkspaceConfigurationImportParams_Deserialize;
+
+export type WorkspaceConfigurationImportParams_Deserialize = {
+  json: string;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationImportParams_Serialize = {
+  json: string;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationImportResult =
+  | WorkspaceConfigurationImportResult_Serialize
+  | WorkspaceConfigurationImportResult_Deserialize;
+
+export type WorkspaceConfigurationImportResult_Deserialize = {
+  workspace: WorkspaceDocumentResult_Deserialize;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationImportResult_Serialize = {
+  workspace: WorkspaceDocumentResult_Serialize;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationInspection =
+  | WorkspaceConfigurationInspection_Serialize
+  | WorkspaceConfigurationInspection_Deserialize;
+
+export type WorkspaceConfigurationInspection_Deserialize = {
+  configuration: WorkspaceConfiguration_Deserialize;
+  workspaceRevision: U64;
+  commandRevision?: U64;
+  scriptStatuses: WorkspaceScriptStatus[];
+};
+
+export type WorkspaceConfigurationInspection_Serialize = {
+  configuration: WorkspaceConfiguration_Serialize;
+  workspaceRevision: U64;
+  commandRevision?: U64;
+  scriptStatuses: WorkspaceScriptStatus[];
+};
+
+export type WorkspaceConfiguration_Deserialize = {
+  format: string;
+  version: number;
+  workspace: WorkspaceDocument_Deserialize;
+  groups: CommandGroup[];
+  commands: CommandDraft_Deserialize[];
+  scripts: WorkspaceScriptReference[];
+  credentialRefs: WorkspaceCredentialReference[];
+};
+
+export type WorkspaceConfiguration_Serialize = {
+  format: string;
+  version: number;
+  workspace: WorkspaceDocument_Serialize;
+  groups: CommandGroup[];
+  commands: CommandDraft_Serialize[];
+  scripts: WorkspaceScriptReference[];
+  credentialRefs: WorkspaceCredentialReference[];
+};
+
+export type WorkspaceCredentialReference = {
+  slot: Id;
+  hostId: Id;
+  referenceId: Id;
+};
+
 export type WorkspaceDocument =
   WorkspaceDocument_Serialize | WorkspaceDocument_Deserialize;
 
@@ -5679,6 +5782,16 @@ export type WorkspaceSaveParams_Deserialize = {
 export type WorkspaceSaveParams_Serialize = {
   value: WorkspaceDocument_Serialize;
 };
+
+export type WorkspaceScriptReference = {
+  packageId: NodePackageId;
+  version: NodePackageVersion;
+  archiveSha256: Digest;
+  actionId: Id;
+};
+
+export type WorkspaceScriptStatus =
+  "matched" | "missing" | "changed" | "unavailable";
 
 export type WorkspaceSnapshot =
   WorkspaceSnapshot_Serialize | WorkspaceSnapshot_Deserialize;

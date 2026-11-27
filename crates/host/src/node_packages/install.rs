@@ -44,6 +44,14 @@ impl InstalledNodePackage {
     pub(crate) fn object_id(&self) -> uuid::Uuid {
         self.object_id
     }
+
+    pub(super) fn execution_approved(&self) -> bool {
+        self.execution_trust.as_ref().is_some_and(|trust| {
+            trust.archive_sha256 == self.archive_sha256
+                && trust.permissions == self.manifest.permissions
+                && trust.verified_source == self.verified_source
+        })
+    }
 }
 impl From<InstalledNodePackage> for NodePackageInstallation {
     fn from(package: InstalledNodePackage) -> Self {
@@ -59,17 +67,13 @@ impl From<InstalledNodePackage> for NodePackageInstallation {
 
 impl From<InstalledNodePackage> for NodePackageSummary {
     fn from(package: InstalledNodePackage) -> Self {
+        let execution_approved = package.execution_approved();
         let mut display_name = package.manifest.display_name;
         if let Some((boundary, _)) = display_name.char_indices().nth(96) {
             display_name.truncate(boundary);
             display_name.push('…');
         }
         let version = package.manifest.version.as_str();
-        let execution_approved = package.execution_trust.as_ref().is_some_and(|trust| {
-            trust.archive_sha256 == package.archive_sha256
-                && trust.permissions == package.manifest.permissions
-                && trust.verified_source == package.verified_source
-        });
         Self {
             id: package.manifest.id,
             display_name: Some(display_name),

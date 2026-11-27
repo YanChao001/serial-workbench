@@ -41,6 +41,17 @@ pub(crate) struct StagedCommandArchive {
     staging: Connection,
 }
 
+pub(crate) struct WorkspaceConfigurationCommit {
+    pub workspace_document_id: Id,
+    pub references_document_id: Id,
+    pub expected_workspace_revision: U64,
+    pub expected_references_revision: U64,
+    pub document: WorkspaceDocumentResult,
+    pub references: JsonObject,
+    pub commands: Option<(U64, StagedCommandArchive)>,
+    pub operation_id: Id,
+}
+
 fn invalid_archive() -> HostError {
     HostError::new(
         "INVALID_COMMAND_ARCHIVE",
@@ -103,6 +114,30 @@ impl StagedCommandArchive {
             }
             _ => return Err(invalid_archive()),
         }
+        Self::stage(|| read_record(reader, &mut bytes))
+    }
+
+    pub(crate) fn from_configuration(
+        groups: Vec<CommandGroup>,
+        commands: Vec<CommandDraft>,
+    ) -> HostResult<Self> {
+        let end = Record::End {
+            groups: (groups.len() as u64).into(),
+            commands: (commands.len() as u64).into(),
+        };
+        let mut records = groups
+            .into_iter()
+            .map(|group| Record::Group { group })
+            .chain(
+                commands
+                    .into_iter()
+                    .map(|command| Record::Command { command }),
+            )
+            .chain(std::iter::once(end));
+        Self::stage(|| Ok(records.next()))
+    }
+
+    fn stage(mut next_record: impl FnMut() -> HostResult<Option<Record>>) -> HostResult<Self> {
         // 空路径创建 SQLite 私有临时库。表可溢写到磁盘，随连接自动清理。
         let mut staging = Connection::open("").map_err(store_error)?;
         staging
@@ -129,7 +164,7 @@ impl StagedCommandArchive {
                 .prepare("INSERT INTO commands(id,group_id,command_json) VALUES(?1,?2,?3)")
                 .map_err(store_error)?;
             loop {
-                match read_record(reader, &mut bytes)?.ok_or_else(invalid_archive)? {
+                match next_record()?.ok_or_else(invalid_archive)? {
                     Record::Group { group } => {
                         group.validate().map_err(|_| invalid_archive())?;
                         add_group
@@ -153,7 +188,7 @@ impl StagedCommandArchive {
                     Record::End { groups, commands } => {
                         if groups != group_count
                             || commands != command_count
-                            || !reader.fill_buf().map_err(archive_io)?.is_empty()
+                            || next_record()?.is_some()
                         {
                             return Err(invalid_archive());
                         }
@@ -294,6 +329,62 @@ impl Store {
     pub(crate) fn command_library_revision(&self, workspace: Id) -> HostResult<U64> {
         self.request(move |db| revision(&db.connection, &workspace))
     }
+
+    pub(crate) fn commit_workspace_configuration(
+        &self,
+        write: WorkspaceConfigurationCommit,
+    ) -> HostResult<WorkspaceConfigurationImportResult> {
+        let mut document = write.document;
+        let (workspace_json, value) = crate::settings::encode(document.document.value)?;
+        document.document.value = value;
+        let result = self.request(move |db| {
+            let tx = db
+                .connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(store_error)?;
+            let workspace = &document.scope.target.id;
+            let command_revision = match write.commands {
+                Some((expected, archive)) => {
+                    let revision = next_library_revision(&tx, workspace, expected)?;
+                    archive.append_to(&tx, workspace)?;
+                    Some(revision)
+                }
+                None => None,
+            };
+            let workspace_revision = Database::write_document(
+                &tx,
+                &write.workspace_document_id,
+                write.expected_workspace_revision,
+                &workspace_json,
+            )?;
+            Database::update_workspace_directory(
+                &tx,
+                &write.workspace_document_id,
+                workspace,
+                false,
+            )?;
+            Database::write_document(
+                &tx,
+                &write.references_document_id,
+                write.expected_references_revision,
+                &write.references,
+            )?;
+            document.document.revision = workspace_revision;
+            let result = WorkspaceConfigurationImportResult {
+                workspace: document,
+                command_revision,
+            };
+            super::super::operations::record_result_evidence_in(
+                &tx,
+                &write.operation_id,
+                ActionResult::WorkspaceConfigurationImport(Box::new(result.clone())),
+            )?;
+            tx.commit().map_err(store_error)?;
+            Ok(result)
+        })?;
+        self.publish_operation_change();
+        Ok(result)
+    }
 }
 
 impl Database {
@@ -309,7 +400,14 @@ impl Database {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(store_error)?;
         let revision = next_library_revision(&tx, workspace, expected)?;
-        let staging = archive.staging;
+        archive.append_to(&tx, workspace)?;
+        record_library_commit(tx, revision, operation_id)
+    }
+}
+
+impl StagedCommandArchive {
+    fn append_to(self, tx: &rusqlite::Transaction<'_>, workspace: &Id) -> HostResult<()> {
+        let staging = self.staging;
         {
             let mut groups = staging
                 .prepare("SELECT id,name FROM groups ORDER BY rowid")
@@ -357,12 +455,12 @@ impl Database {
                     serde_json::from_str(&payload).map_err(|_| invalid_archive())?;
                 command.summary.group_id = Id::try_from(group.as_str())?;
                 command.summary.id = unused_id(command.summary.id.as_str(), "command", |id| {
-                    Ok(command_position(&tx, workspace, id)?.is_some())
+                    Ok(command_position(tx, workspace, id)?.is_some())
                 })?;
-                save_command(&tx, workspace, command)?;
+                save_command(tx, workspace, command)?;
             }
         }
-        record_library_commit(tx, revision, operation_id)
+        Ok(())
     }
 }
 

@@ -10,7 +10,7 @@ use super::{
 
 #[path = "command_archive.rs"]
 mod archive;
-pub(crate) use archive::StagedCommandArchive;
+pub(crate) use archive::{StagedCommandArchive, WorkspaceConfigurationCommit};
 
 const PAGE_SIZE: usize = 32;
 
@@ -75,6 +75,42 @@ impl Store {
         params: CommandLibraryReadParams,
     ) -> HostResult<CommandLibraryReadResult> {
         self.request(move |db| db.command_library_page(&workspace, params))
+    }
+
+    pub(crate) fn configuration_commands(
+        &self,
+        workspace: Id,
+        expected: U64,
+        command_ids: Vec<Id>,
+    ) -> HostResult<(Vec<CommandGroup>, Vec<CommandDraft>)> {
+        self.request(move |db| {
+            let conn = &db.connection;
+            if revision(conn, &workspace)? != expected {
+                return Err(changed());
+            }
+            let mut seen_groups = std::collections::HashSet::new();
+            let mut groups = Vec::new();
+            let mut commands = Vec::with_capacity(command_ids.len());
+            for id in command_ids {
+                let command = load_command(conn, &workspace, &id)?;
+                let group_id = &command.summary.group_id;
+                if seen_groups.insert(group_id.clone()) {
+                    let name = conn
+                        .query_row(
+                            "SELECT name FROM command_groups WHERE workspace=?1 AND id=?2",
+                            params![workspace.as_str(), group_id.as_str()],
+                            |row| row.get(0),
+                        )
+                        .map_err(store_error)?;
+                    groups.push(CommandGroup {
+                        id: group_id.clone(),
+                        name,
+                    });
+                }
+                commands.push(command);
+            }
+            Ok((groups, commands))
+        })
     }
 
     pub(crate) fn change_command_library(

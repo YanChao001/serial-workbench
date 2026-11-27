@@ -100,6 +100,7 @@ pub enum ActionResult {
     FileTransfer(FileTransferResult),
     Settings(SettingsDocumentResult),
     Workspace(WorkspaceDocumentResult),
+    WorkspaceConfigurationImport(Box<WorkspaceConfigurationImportResult>),
     CommandLibraryRevision(CommandLibraryRevision),
     ShutdownRequested(ShutdownRequested),
     Opened(OpenResult),

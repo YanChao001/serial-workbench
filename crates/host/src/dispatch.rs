@@ -17,6 +17,8 @@ mod operation_inspection;
 mod shutdown;
 #[path = "task_children.rs"]
 mod task_children;
+#[path = "workspace/configuration_api.rs"]
+mod workspace_configuration_api;
 use crate::{
     auth::{AuthService, AuthenticatedActor, GrantStamp},
     device::{DeviceService, TransportOpener},
@@ -581,6 +583,8 @@ impl Host {
                             | BuiltinAction::WorkspaceRead
                             | BuiltinAction::WorkspaceExport
                             | BuiltinAction::WorkspaceImportPreview
+                            | BuiltinAction::WorkspaceConfigurationInspect
+                            | BuiltinAction::WorkspaceConfigurationExport
                             | BuiltinAction::ExperimentExport
                             | BuiltinAction::ExperimentInspect
                             | BuiltinAction::CommandLibraryRead
@@ -943,6 +947,8 @@ impl Host {
                 action,
                 BuiltinAction::ActionCheck
                     | BuiltinAction::WorkspaceImportPreview
+                    | BuiltinAction::WorkspaceConfigurationInspect
+                    | BuiltinAction::WorkspaceConfigurationExport
                     | BuiltinAction::ExperimentExport
                     | BuiltinAction::ExperimentInspect
                     | BuiltinAction::SessionMetrics
@@ -990,6 +996,14 @@ impl Host {
                 .experiment_inspect(actor, query)
                 .await
                 .map(|preview| QueryResult::ExperimentInspection(Box::new(preview))),
+            BuiltinAction::WorkspaceConfigurationInspect => self
+                .inspect_workspace_configuration(actor, query)
+                .await
+                .map(|preview| QueryResult::WorkspaceConfigurationInspection(Box::new(preview))),
+            BuiltinAction::WorkspaceConfigurationExport => self
+                .export_workspace_configuration(actor, query)
+                .await
+                .map(QueryResult::DocumentJson),
             BuiltinAction::WorkspaceImportPreview => {
                 let documents = self.inner.documents.clone();
                 let actor = actor.clone();
@@ -2289,7 +2303,9 @@ impl Host {
                 // 命令库将结果证据和数据写入同一事务；其余文档沿用独立回执。
                 if !matches!(
                     action,
-                    BuiltinAction::CommandLibraryChange | BuiltinAction::CommandLibraryImport
+                    BuiltinAction::CommandLibraryChange
+                        | BuiltinAction::CommandLibraryImport
+                        | BuiltinAction::WorkspaceConfigurationImport
                 ) && let Some(result) = &outcome.result
                 {
                     store.record_result_evidence(&operation_id, result)?;

@@ -3062,6 +3062,19 @@
           "required": ["throughOperationId"],
           "type": "object"
         },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -3359,6 +3372,20 @@
             },
             "value": {
               "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "workspace_configuration_import",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/WorkspaceConfigurationImportResult"
             }
           },
           "required": ["kind", "value"],
@@ -19418,6 +19445,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "command_library_revision",
                   "type": "string"
                 },
@@ -24703,6 +24744,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_inspection",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationInspection"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "experiment_package",
                   "type": "string"
                 },
@@ -27525,6 +27580,107 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "type": "array"
+            },
+            "credentialRefs": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceCredentialReference"
+              },
+              "type": "array"
+            },
+            "format": {
+              "type": "string"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "type": "array"
+            },
+            "scripts": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptReference"
+              },
+              "type": "array"
+            },
+            "version": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "workspace",
+            "groups",
+            "commands",
+            "scripts",
+            "credentialRefs"
+          ],
+          "type": "object"
+        },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
+        "WorkspaceConfigurationInspection": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "configuration": {
+              "$ref": "#/definitions/WorkspaceConfiguration"
+            },
+            "scriptStatuses": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptStatus"
+              },
+              "type": "array"
+            },
+            "workspaceRevision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["configuration", "workspaceRevision", "scriptStatuses"],
+          "type": "object"
+        },
+        "WorkspaceCredentialReference": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "referenceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "slot": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["slot", "hostId", "referenceId"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -27617,6 +27773,29 @@
           },
           "required": ["value"],
           "type": "object"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        },
+        "WorkspaceScriptStatus": {
+          "enum": ["matched", "missing", "changed", "unavailable"],
+          "type": "string"
         },
         "WorkspaceSnapshot": {
           "additionalProperties": false,
@@ -32582,6 +32761,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "command_library_revision",
                   "type": "string"
                 },
@@ -35895,6 +36088,19 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -38205,6 +38411,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/WorkspaceDocumentResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
                 }
               },
               "required": ["kind", "value"],
@@ -41625,6 +41845,19 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -42876,6 +43109,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/WorkspaceDocumentResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
                 }
               },
               "required": ["kind", "value"],
@@ -48963,6 +49210,107 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "type": "array"
+            },
+            "credentialRefs": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceCredentialReference"
+              },
+              "type": "array"
+            },
+            "format": {
+              "type": "string"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "type": "array"
+            },
+            "scripts": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptReference"
+              },
+              "type": "array"
+            },
+            "version": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "workspace",
+            "groups",
+            "commands",
+            "scripts",
+            "credentialRefs"
+          ],
+          "type": "object"
+        },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
+        "WorkspaceConfigurationInspection": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "configuration": {
+              "$ref": "#/definitions/WorkspaceConfiguration"
+            },
+            "scriptStatuses": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptStatus"
+              },
+              "type": "array"
+            },
+            "workspaceRevision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["configuration", "workspaceRevision", "scriptStatuses"],
+          "type": "object"
+        },
+        "WorkspaceCredentialReference": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "referenceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "slot": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["slot", "hostId", "referenceId"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -49055,6 +49403,29 @@
           },
           "required": ["value"],
           "type": "object"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        },
+        "WorkspaceScriptStatus": {
+          "enum": ["matched", "missing", "changed", "unavailable"],
+          "type": "string"
         },
         "WorkspaceSnapshot": {
           "additionalProperties": false,
@@ -49183,6 +49554,20 @@
             },
             "value": {
               "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "workspace_configuration_inspection",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/WorkspaceConfigurationInspection"
             }
           },
           "required": ["kind", "value"],
@@ -54746,6 +55131,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "command_library_revision",
                   "type": "string"
                 },
@@ -59399,6 +59798,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/WorkspaceDocument"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_configuration_inspection",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationInspection"
                 }
               },
               "required": ["kind", "value"],
@@ -61847,6 +62260,107 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "type": "array"
+            },
+            "credentialRefs": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceCredentialReference"
+              },
+              "type": "array"
+            },
+            "format": {
+              "type": "string"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "type": "array"
+            },
+            "scripts": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptReference"
+              },
+              "type": "array"
+            },
+            "version": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "workspace",
+            "groups",
+            "commands",
+            "scripts",
+            "credentialRefs"
+          ],
+          "type": "object"
+        },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
+        "WorkspaceConfigurationInspection": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "configuration": {
+              "$ref": "#/definitions/WorkspaceConfiguration"
+            },
+            "scriptStatuses": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptStatus"
+              },
+              "type": "array"
+            },
+            "workspaceRevision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["configuration", "workspaceRevision", "scriptStatuses"],
+          "type": "object"
+        },
+        "WorkspaceCredentialReference": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "referenceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "slot": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["slot", "hostId", "referenceId"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -61939,6 +62453,29 @@
           },
           "required": ["value"],
           "type": "object"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        },
+        "WorkspaceScriptStatus": {
+          "enum": ["matched", "missing", "changed", "unavailable"],
+          "type": "string"
         },
         "WorkspaceSnapshot": {
           "additionalProperties": false,
@@ -64028,6 +64565,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/WorkspaceDocumentResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
                 }
               },
               "required": ["kind", "value"],
@@ -68699,6 +69250,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_inspection",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationInspection"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "experiment_package",
                   "type": "string"
                 },
@@ -71089,6 +71654,107 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "type": "array"
+            },
+            "credentialRefs": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceCredentialReference"
+              },
+              "type": "array"
+            },
+            "format": {
+              "type": "string"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "type": "array"
+            },
+            "scripts": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptReference"
+              },
+              "type": "array"
+            },
+            "version": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "workspace",
+            "groups",
+            "commands",
+            "scripts",
+            "credentialRefs"
+          ],
+          "type": "object"
+        },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
+        "WorkspaceConfigurationInspection": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "configuration": {
+              "$ref": "#/definitions/WorkspaceConfiguration"
+            },
+            "scriptStatuses": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptStatus"
+              },
+              "type": "array"
+            },
+            "workspaceRevision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["configuration", "workspaceRevision", "scriptStatuses"],
+          "type": "object"
+        },
+        "WorkspaceCredentialReference": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "referenceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "slot": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["slot", "hostId", "referenceId"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -71181,6 +71847,29 @@
           },
           "required": ["value"],
           "type": "object"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        },
+        "WorkspaceScriptStatus": {
+          "enum": ["matched", "missing", "changed", "unavailable"],
+          "type": "string"
         },
         "WorkspaceSnapshot": {
           "additionalProperties": false,
@@ -77724,6 +78413,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_import",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationImportResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "command_library_revision",
                   "type": "string"
                 },
@@ -83338,6 +84041,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspace_configuration_inspection",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceConfigurationInspection"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "experiment_package",
                   "type": "string"
                 },
@@ -86160,6 +86877,107 @@
           "required": ["liveWorkers", "peakWorkers"],
           "type": "object"
         },
+        "WorkspaceConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "type": "array"
+            },
+            "credentialRefs": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceCredentialReference"
+              },
+              "type": "array"
+            },
+            "format": {
+              "type": "string"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "type": "array"
+            },
+            "scripts": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptReference"
+              },
+              "type": "array"
+            },
+            "version": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "workspace",
+            "groups",
+            "commands",
+            "scripts",
+            "credentialRefs"
+          ],
+          "type": "object"
+        },
+        "WorkspaceConfigurationImportResult": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["workspace"],
+          "type": "object"
+        },
+        "WorkspaceConfigurationInspection": {
+          "additionalProperties": false,
+          "properties": {
+            "commandRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "configuration": {
+              "$ref": "#/definitions/WorkspaceConfiguration"
+            },
+            "scriptStatuses": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptStatus"
+              },
+              "type": "array"
+            },
+            "workspaceRevision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["configuration", "workspaceRevision", "scriptStatuses"],
+          "type": "object"
+        },
+        "WorkspaceCredentialReference": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "referenceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "slot": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["slot", "hostId", "referenceId"],
+          "type": "object"
+        },
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
@@ -86252,6 +87070,29 @@
           },
           "required": ["value"],
           "type": "object"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        },
+        "WorkspaceScriptStatus": {
+          "enum": ["matched", "missing", "changed", "unavailable"],
+          "type": "string"
         },
         "WorkspaceSnapshot": {
           "additionalProperties": false,
@@ -86440,6 +87281,1114 @@
       },
       "required": ["liveWorkers", "peakWorkers"],
       "title": "WorkerObservation",
+      "type": "object"
+    },
+    "WorkspaceConfigurationExportParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "commandIds": {
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "commandRevision": {
+          "$ref": "#/definitions/U64"
+        },
+        "scripts": {
+          "items": {
+            "$ref": "#/definitions/WorkspaceScriptReference"
+          },
+          "type": "array"
+        },
+        "workspaceRevision": {
+          "$ref": "#/definitions/U64"
+        }
+      },
+      "required": ["workspaceRevision"],
+      "title": "WorkspaceConfigurationExportParams",
+      "type": "object"
+    },
+    "WorkspaceConfigurationImportParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "commandRevision": {
+          "$ref": "#/definitions/U64"
+        },
+        "json": {
+          "type": "string"
+        }
+      },
+      "required": ["json"],
+      "title": "WorkspaceConfigurationImportParams",
+      "type": "object"
+    },
+    "WorkspaceConfigurationImportResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "DataBits": {
+          "enum": ["5", "6", "7", "8"],
+          "type": "string"
+        },
+        "DeviceBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "bindingId": {
+              "$ref": "#/definitions/Id"
+            },
+            "configuration": {
+              "$ref": "#/definitions/SerialConfiguration"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "fingerprint": {
+              "$ref": "#/definitions/DeviceFingerprint"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "portName": {
+              "type": "string"
+            },
+            "reconnect": {
+              "$ref": "#/definitions/ReconnectPolicy"
+            }
+          },
+          "required": [
+            "bindingId",
+            "hostId",
+            "deviceId",
+            "fingerprint",
+            "configuration",
+            "reconnect"
+          ],
+          "type": "object"
+        },
+        "DeviceFingerprint": {
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {
+              "$ref": "#/definitions/IdentityEvidence"
+            },
+            "pid": {
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "serialNumber": {
+              "type": "string"
+            },
+            "topologyPath": {
+              "type": "string"
+            },
+            "transport": {
+              "$ref": "#/definitions/DeviceTransportKind"
+            },
+            "vid": {
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["transport", "evidence"],
+          "type": "object"
+        },
+        "DeviceTransportKind": {
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
+          "type": "string"
+        },
+        "DurationMs": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+          "type": "string"
+        },
+        "FlowControl": {
+          "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "IdentityEvidence": {
+          "enum": ["serialNumber", "topology", "unreliable"],
+          "type": "string"
+        },
+        "LayoutTemplate": {
+          "additionalProperties": false,
+          "properties": {
+            "panelHeight": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sidebarWidth": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["sidebarWidth", "panelHeight"],
+          "type": "object"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "Parity": {
+          "enum": ["none", "even", "odd", "mark", "space"],
+          "type": "string"
+        },
+        "PositiveU64": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "ReconnectPolicy": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "maxAttempts": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "maxDelayMs": {
+              "$ref": "#/definitions/DurationMs"
+            }
+          },
+          "required": ["enabled", "maxDelayMs", "maxAttempts"],
+          "type": "object"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "SerialConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "baudRate": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "dataBits": {
+              "$ref": "#/definitions/DataBits"
+            },
+            "flowControl": {
+              "$ref": "#/definitions/FlowControl"
+            },
+            "parity": {
+              "$ref": "#/definitions/Parity"
+            },
+            "readWaitMs": {
+              "$ref": "#/definitions/DurationMs"
+            },
+            "reconnectBackoffMs": {
+              "$ref": "#/definitions/DurationMs"
+            },
+            "stopBits": {
+              "$ref": "#/definitions/StopBits"
+            },
+            "writeWaitMs": {
+              "$ref": "#/definitions/DurationMs"
+            }
+          },
+          "required": [
+            "baudRate",
+            "dataBits",
+            "parity",
+            "stopBits",
+            "flowControl",
+            "readWaitMs",
+            "writeWaitMs",
+            "reconnectBackoffMs"
+          ],
+          "type": "object"
+        },
+        "StateScopeRef": {
+          "additionalProperties": false,
+          "properties": {
+            "scopeId": {
+              "$ref": "#/definitions/Id"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["scopeId", "target"],
+          "type": "object"
+        },
+        "StopBits": {
+          "enum": ["one", "onePointFive", "two"],
+          "type": "string"
+        },
+        "Target": {
+          "additionalProperties": false,
+          "dependencies": {
+            "sessionEpoch": ["sessionId"],
+            "sessionId": ["sessionEpoch"]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "session"
+              }
+            },
+            "required": ["kind"]
+          },
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "sessionEpoch": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/U64"
+                }
+              ],
+              "default": null
+            },
+            "sessionId": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "then": {
+            "required": ["sessionId", "sessionEpoch"]
+          },
+          "type": "object"
+        },
+        "TerminalMode": {
+          "enum": ["text", "hex"],
+          "type": "string"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "WorkspaceDocument": {
+          "additionalProperties": false,
+          "properties": {
+            "archived": {
+              "type": "boolean"
+            },
+            "bindings": {
+              "items": {
+                "$ref": "#/definitions/DeviceBinding"
+              },
+              "type": "array"
+            },
+            "captures": {
+              "items": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "type": "array"
+            },
+            "favoriteBindingIds": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "layout": {
+              "$ref": "#/definitions/LayoutTemplate"
+            },
+            "name": {
+              "type": "string"
+            },
+            "views": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceView"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "views",
+            "bindings",
+            "favoriteBindingIds",
+            "layout",
+            "captures"
+          ],
+          "type": "object"
+        },
+        "WorkspaceDocumentResult": {
+          "additionalProperties": false,
+          "properties": {
+            "document": {
+              "$ref": "#/definitions/WorkspaceSnapshot"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["document", "scope"],
+          "type": "object"
+        },
+        "WorkspaceSnapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "value": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": ["revision", "value"],
+          "type": "object"
+        },
+        "WorkspaceView": {
+          "additionalProperties": false,
+          "properties": {
+            "bindingId": {
+              "$ref": "#/definitions/Id"
+            },
+            "color": {
+              "type": "string"
+            },
+            "icon": {
+              "type": "string"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
+            "receiveMode": {
+              "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
+            },
+            "sendMode": {
+              "$ref": "#/definitions/TerminalMode"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "color",
+            "icon",
+            "pinned",
+            "receiveMode",
+            "sendMode",
+            "bindingId"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "commandRevision": {
+          "$ref": "#/definitions/U64"
+        },
+        "workspace": {
+          "$ref": "#/definitions/WorkspaceDocumentResult"
+        }
+      },
+      "required": ["workspace"],
+      "title": "WorkspaceConfigurationImportResult",
+      "type": "object"
+    },
+    "WorkspaceConfigurationInspection": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Bytes": {
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+          "type": "string"
+        },
+        "CommandDraft": {
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "encoding": {
+              "$ref": "#/definitions/TextEncoding"
+            },
+            "lineEnding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/LineEnding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "mode": {
+              "$ref": "#/definitions/TerminalMode"
+            },
+            "summary": {
+              "$ref": "#/definitions/CommandSummary"
+            }
+          },
+          "required": ["summary", "body", "mode", "encoding"],
+          "type": "object"
+        },
+        "CommandGroup": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["id", "name"],
+          "type": "object"
+        },
+        "CommandSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "groupId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": ["id", "groupId", "name", "note"],
+          "type": "object"
+        },
+        "DataBits": {
+          "enum": ["5", "6", "7", "8"],
+          "type": "string"
+        },
+        "DeviceBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "bindingId": {
+              "$ref": "#/definitions/Id"
+            },
+            "configuration": {
+              "$ref": "#/definitions/SerialConfiguration"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "fingerprint": {
+              "$ref": "#/definitions/DeviceFingerprint"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "portName": {
+              "type": "string"
+            },
+            "reconnect": {
+              "$ref": "#/definitions/ReconnectPolicy"
+            }
+          },
+          "required": [
+            "bindingId",
+            "hostId",
+            "deviceId",
+            "fingerprint",
+            "configuration",
+            "reconnect"
+          ],
+          "type": "object"
+        },
+        "DeviceFingerprint": {
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {
+              "$ref": "#/definitions/IdentityEvidence"
+            },
+            "pid": {
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "serialNumber": {
+              "type": "string"
+            },
+            "topologyPath": {
+              "type": "string"
+            },
+            "transport": {
+              "$ref": "#/definitions/DeviceTransportKind"
+            },
+            "vid": {
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["transport", "evidence"],
+          "type": "object"
+        },
+        "DeviceTransportKind": {
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
+          "type": "string"
+        },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "DurationMs": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+          "type": "string"
+        },
+        "FlowControl": {
+          "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "IdentityEvidence": {
+          "enum": ["serialNumber", "topology", "unreliable"],
+          "type": "string"
+        },
+        "LayoutTemplate": {
+          "additionalProperties": false,
+          "properties": {
+            "panelHeight": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sidebarWidth": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["sidebarWidth", "panelHeight"],
+          "type": "object"
+        },
+        "LineEnding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "none",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "cr",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "lf",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "crlf",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "bytesBase64": {
+                  "$ref": "#/definitions/Bytes"
+                },
+                "kind": {
+                  "const": "custom",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "bytesBase64"],
+              "type": "object"
+            }
+          ]
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "Parity": {
+          "enum": ["none", "even", "odd", "mark", "space"],
+          "type": "string"
+        },
+        "PositiveU64": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "ReconnectPolicy": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "maxAttempts": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "maxDelayMs": {
+              "$ref": "#/definitions/DurationMs"
+            }
+          },
+          "required": ["enabled", "maxDelayMs", "maxAttempts"],
+          "type": "object"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "SerialConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "baudRate": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "dataBits": {
+              "$ref": "#/definitions/DataBits"
+            },
+            "flowControl": {
+              "$ref": "#/definitions/FlowControl"
+            },
+            "parity": {
+              "$ref": "#/definitions/Parity"
+            },
+            "readWaitMs": {
+              "$ref": "#/definitions/DurationMs"
+            },
+            "reconnectBackoffMs": {
+              "$ref": "#/definitions/DurationMs"
+            },
+            "stopBits": {
+              "$ref": "#/definitions/StopBits"
+            },
+            "writeWaitMs": {
+              "$ref": "#/definitions/DurationMs"
+            }
+          },
+          "required": [
+            "baudRate",
+            "dataBits",
+            "parity",
+            "stopBits",
+            "flowControl",
+            "readWaitMs",
+            "writeWaitMs",
+            "reconnectBackoffMs"
+          ],
+          "type": "object"
+        },
+        "StopBits": {
+          "enum": ["one", "onePointFive", "two"],
+          "type": "string"
+        },
+        "TerminalMode": {
+          "enum": ["text", "hex"],
+          "type": "string"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "WorkspaceConfiguration": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "items": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "type": "array"
+            },
+            "credentialRefs": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceCredentialReference"
+              },
+              "type": "array"
+            },
+            "format": {
+              "type": "string"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "type": "array"
+            },
+            "scripts": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceScriptReference"
+              },
+              "type": "array"
+            },
+            "version": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": [
+            "format",
+            "version",
+            "workspace",
+            "groups",
+            "commands",
+            "scripts",
+            "credentialRefs"
+          ],
+          "type": "object"
+        },
+        "WorkspaceCredentialReference": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "referenceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "slot": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["slot", "hostId", "referenceId"],
+          "type": "object"
+        },
+        "WorkspaceDocument": {
+          "additionalProperties": false,
+          "properties": {
+            "archived": {
+              "type": "boolean"
+            },
+            "bindings": {
+              "items": {
+                "$ref": "#/definitions/DeviceBinding"
+              },
+              "type": "array"
+            },
+            "captures": {
+              "items": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "type": "array"
+            },
+            "favoriteBindingIds": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "layout": {
+              "$ref": "#/definitions/LayoutTemplate"
+            },
+            "name": {
+              "type": "string"
+            },
+            "views": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceView"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "views",
+            "bindings",
+            "favoriteBindingIds",
+            "layout",
+            "captures"
+          ],
+          "type": "object"
+        },
+        "WorkspaceScriptReference": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["packageId", "version", "archiveSha256", "actionId"],
+          "type": "object"
+        },
+        "WorkspaceScriptStatus": {
+          "enum": ["matched", "missing", "changed", "unavailable"],
+          "type": "string"
+        },
+        "WorkspaceView": {
+          "additionalProperties": false,
+          "properties": {
+            "bindingId": {
+              "$ref": "#/definitions/Id"
+            },
+            "color": {
+              "type": "string"
+            },
+            "icon": {
+              "type": "string"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
+            "receiveMode": {
+              "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
+            },
+            "sendMode": {
+              "$ref": "#/definitions/TerminalMode"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "color",
+            "icon",
+            "pinned",
+            "receiveMode",
+            "sendMode",
+            "bindingId"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "commandRevision": {
+          "$ref": "#/definitions/U64"
+        },
+        "configuration": {
+          "$ref": "#/definitions/WorkspaceConfiguration"
+        },
+        "scriptStatuses": {
+          "items": {
+            "$ref": "#/definitions/WorkspaceScriptStatus"
+          },
+          "type": "array"
+        },
+        "workspaceRevision": {
+          "$ref": "#/definitions/U64"
+        }
+      },
+      "required": ["configuration", "workspaceRevision", "scriptStatuses"],
+      "title": "WorkspaceConfigurationInspection",
       "type": "object"
     },
     "WorkspaceDocument": {
