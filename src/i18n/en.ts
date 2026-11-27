@@ -2790,7 +2790,10 @@ export const en = {
     "Send HEX bytes with no extra line ending. Check the reply using the Modbus RTU frame inspector. For hardware, use its unit ID and a readable register range.",
   "sessionProject.savePeer": "Save simulator",
   "sessionProject.saveArduino": "Save Arduino sketch",
+  "sessionProject.runtime":
+    "Use Node from PATH or the app resources at runtime/node/<version>/<target>/bin. For the bundled Node on Linux, add its adjacent lib directory to LD_LIBRARY_PATH.",
   "sessionProject.saved": "Example file saved.",
+  "sessionProject.downloading": "Example download started.",
   "workbench.tools.more": "Workspace menu",
   "workbench.tools.displayOptions": "Display options",
   "workbench.tools.clearView": "Clear receive view",

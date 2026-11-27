@@ -2550,7 +2550,10 @@ export const zhCN = {
     "使用 HEX 发送，关闭额外行尾，再用 Modbus RTU 帧检查工具核对应答。连接实物时，使用设备站号及其可读取的寄存器地址。",
   "sessionProject.savePeer": "保存模拟对端",
   "sessionProject.saveArduino": "保存 Arduino 源码",
+  "sessionProject.runtime":
+    "可使用 PATH 中的 Node，或应用资源 runtime/node/<版本>/<target>/bin 中的 Node。Linux 随包 Node 需将同级 lib 目录加入 LD_LIBRARY_PATH。",
   "sessionProject.saved": "示例文件已保存。",
+  "sessionProject.downloading": "已发起示例下载。",
   "workbench.tools.more": "工作区菜单",
   "workbench.tools.displayOptions": "显示选项",
   "workbench.tools.clearView": "清空接收视图",

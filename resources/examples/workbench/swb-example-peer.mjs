@@ -38,9 +38,13 @@ function accept(socket, { request, response, binary = false }) {
         : pending[last - 1] === 0x0d
           ? last - 1
           : last;
-      if (pending.subarray(0, payloadEnd).equals(request))
-        socket.write(response);
+      const matches = pending.subarray(0, payloadEnd).equals(request);
       pending = pending.subarray(last + 1);
+      if (matches && !socket.write(response)) {
+        // Retire clients that send requests without reading the replies.
+        socket.destroy();
+        return;
+      }
     }
     if (pending.length > 64) socket.destroy();
   });

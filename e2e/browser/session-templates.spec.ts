@@ -4,21 +4,34 @@ import { expect, test, type Page } from "@playwright/test";
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { session } from "../../src/features/workbench/test-fixtures";
+import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
 
-async function openTemplates(page: Page) {
+async function openTemplates(
+  page: Page,
+  labels: Record<"workbench.tools.more" | "sessionTemplate.title", string> = en,
+) {
   await page
-    .getByRole("button", { name: "Workspace menu", exact: true })
+    .getByRole("button", { name: labels["workbench.tools.more"], exact: true })
     .press("ArrowDown");
   await page
-    .getByRole("menuitem", { name: "Session templates", exact: true })
+    .getByRole("menuitem", {
+      name: labels["sessionTemplate.title"],
+      exact: true,
+    })
     .click();
-  return page.getByRole("dialog", { name: "Session templates", exact: true });
+  return page.getByRole("dialog", {
+    name: labels["sessionTemplate.title"],
+    exact: true,
+  });
 }
 
-async function selectTemplate(page: Page, name: string) {
-  await page
-    .getByRole("combobox", { name: "Session template", exact: true })
-    .click();
+async function selectTemplate(
+  page: Page,
+  name: string,
+  label = "Session template",
+) {
+  await page.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name, exact: true }).click();
 }
 
@@ -107,6 +120,41 @@ test("the three runnable examples preview and save fixed artifacts without openi
     .toEqual(["peer", "arduinoSketch"]);
   await example.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("sample-project-wide.png") });
+  await expect(example.getByText(/runtime\/node\//)).toBeVisible();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    savePeer.evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement))
+        throw new Error("Expected save button");
+      const key = "__TAURI_INTERNALS__";
+      const native = Object.getOwnPropertyDescriptor(window, key);
+      Reflect.deleteProperty(window, key);
+      try {
+        button.click();
+      } finally {
+        if (native) Object.defineProperty(window, key, native);
+      }
+    }),
+  ]);
+  expect(download.suggestedFilename()).toBe("swb-example-peer.mjs");
+  const downloaded = await download.path();
+  if (!downloaded)
+    throw new Error("Expected the browser to download the simulator");
+  expect(readFileSync(downloaded)).toEqual(
+    readFileSync(
+      new URL(
+        "../../resources/examples/workbench/swb-example-peer.mjs",
+        import.meta.url,
+      ),
+    ),
+  );
+  await expect(example.getByRole("status")).toHaveText(
+    "Example download started.",
+  );
+  expect(
+    await page.evaluate(() => window.workbenchFixture.sampleProjectExports),
+  ).toEqual(["peer", "arduinoSketch"]);
 
   await selectTemplate(page, "AT module");
   await expect(example.getByText("AT+CREG?", { exact: true })).toBeVisible();
@@ -148,6 +196,45 @@ test("the three runnable examples preview and save fixed artifacts without openi
       { params: { configuration: { baudRate: "19200", parity: "even" } } },
     ],
     sends: [],
+  });
+});
+
+test("the short dark Chinese example keeps the AT transfer and bundled runtime instructions readable", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 610 });
+  await seedWorkbenchFixture(page, { language: "zh", theme: "dark" });
+  await page.goto("./#/");
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  const dialog = await openTemplates(page, zhCN);
+  await selectTemplate(
+    page,
+    zhCN["sessionTemplate.at"],
+    zhCN["sessionTemplate.label"],
+  );
+  const example = dialog.getByRole("region", {
+    name: zhCN["sessionProject.title"],
+  });
+  await expect(
+    example.getByText(zhCN["sessionProject.request"], { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByText(zhCN["sessionProject.crlf"]).first(),
+  ).toBeVisible();
+  await expect(
+    example.getByText(zhCN["sessionProject.runtime"], { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByRole("button", { name: zhCN["sessionProject.savePeer"] }),
+  ).toBeEnabled();
+  expect(
+    await example.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await example.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("sample-project-zh-dark.png"),
   });
 });
 

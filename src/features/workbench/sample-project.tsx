@@ -3,6 +3,7 @@ import vectors from "../../../resources/examples/workbench/vectors.json";
 import peerSource from "../../../resources/examples/workbench/swb-example-peer.mjs?raw";
 import sketchSource from "../../../resources/examples/workbench/SwbExample.ino?raw";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/code-block";
 import { nativeErrorText } from "@/lib/native-error";
 import {
   isTauri,
@@ -23,20 +24,23 @@ export function SampleProject({ project }: { project: keyof typeof vectors }) {
   const example = vectors[project];
   const format = example.format === "hex" ? "HEX" : t("sessionProject.crlf");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saveOutcome, setSaveOutcome] = useState<"saved" | "downloading">();
   const [error, setError] = useState<string>();
 
   async function save(artifact: SampleProjectArtifact) {
     if (saving) return;
     setSaving(true);
-    setSaved(false);
+    setSaveOutcome(undefined);
     setError(undefined);
     try {
       const { name, source } = artifacts[artifact];
-      const result = await (isTauri()
-        ? saveSampleProjectArtifact(artifact)
-        : saveTextExport(name, source));
-      setSaved(result !== null);
+      if (isTauri()) {
+        const result = await saveSampleProjectArtifact(artifact);
+        if (result !== null) setSaveOutcome("saved");
+      } else {
+        await saveTextExport(name, source);
+        setSaveOutcome("downloading");
+      }
     } catch (reason) {
       setError(nativeErrorText(reason, t));
     } finally {
@@ -62,18 +66,23 @@ export function SampleProject({ project }: { project: keyof typeof vectors }) {
             <dt className="font-medium">{t(`sessionProject.${field}`)}</dt>
             <dd className="grid min-w-0 gap-1">
               <span className="text-muted-foreground">{format}</span>
-              <code className="whitespace-pre-wrap wrap-anywhere">
-                {example[field]}
-              </code>
+              <CodeBlock
+                code={example[field]}
+                language="text"
+                className="min-w-0 whitespace-pre-wrap wrap-anywhere p-1"
+              />
             </dd>
           </div>
         ))}
       </dl>
       <div className="grid gap-1">
         <p>{t("sessionProject.simulator")}</p>
-        <code className="wrap-anywhere">
-          node swb-example-peer.mjs {project}
-        </code>
+        <CodeBlock
+          code={`node swb-example-peer.mjs ${project}`}
+          language="text"
+          className="min-w-0 whitespace-pre-wrap wrap-anywhere p-1"
+        />
+        <p className="text-muted-foreground">{t("sessionProject.runtime")}</p>
         <p className="text-muted-foreground">
           {t(`sessionProject.device.${project}`)}
         </p>
@@ -100,7 +109,7 @@ export function SampleProject({ project }: { project: keyof typeof vectors }) {
           </Button>
         )}
       </div>
-      {saved && <p role="status">{t("sessionProject.saved")}</p>}
+      {saveOutcome && <p role="status">{t(`sessionProject.${saveOutcome}`)}</p>}
       {error && (
         <p role="alert" className="text-destructive wrap-anywhere">
           {error}

@@ -383,6 +383,8 @@ Windows、macOS 和 Linux 在独立桌面分开记录系统通知权限、启用
 
 打开工作台「会话模板」，分别选择 Arduino 采样、AT 模组和 Modbus RTU 读寄存器，查看线路、发送格式和应答金样。保存 `swb-example-peer.mjs`，在 Host 所在机器用 `node swb-example-peer.mjs arduino`、`at` 或 `modbus` 启动对应模式。默认监听 `127.0.0.1:7411`，第二参数可指定端口。在工作台使用 TCP 客户端连接这个地址。串口保留模板线路，按实际设备的串口参数调整，再从现有发送区明确发送。
 
+未配置 Node 的 PATH 时，将命令开头的 `node` 换成随包 Node 的完整路径。应用资源根下的相对路径见[安装布局](./contracts/runtime-distribution.md#安装布局与启动)。Linux 使用随包 Node 时将同套运行时的 `lib` 目录加入 `LD_LIBRARY_PATH`。
+
 Arduino 发送 `READ` 加 CRLF，核对 `3.250` 及 CRLF。Arduino 真板上传随包 `SwbExample.ino` 后复验同一请求。AT 发送 `AT+CREG?` 加 CRLF，在 AT 工具核对回显、注册应答及 `OK`，真模组的注册值按实际状态解释。Modbus 发送 HEX `01 03 00 00 00 02 C4 0B`，关闭额外行尾，在分帧工具选 Modbus RTU 核对模拟应答 `01 03 04 12 34 00 2A 3F 5A`、CRC 和两个寄存器。实物使用对应站号、线路和可读地址，记录原始字节及实际寄存器值。
 
 核对预览和保存阶段无连接请求或发送，打开连接后只发确认请求。独立进程验收使用随机环回端口，覆盖分段请求、精确应答、无效请求及断开重连。无头界面核对宽窄布局和固定示例导出，原生桌面核对系统保存对话框，正式离线安装复验三个入口和资源。 [界面草稿](./ui-design.md#示例工程草稿ux-09)
