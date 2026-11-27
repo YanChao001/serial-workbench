@@ -48,6 +48,14 @@ pub struct FileTransferResult {
 pub struct FileTransferReceipt {
     pub source_offset: U64,
     pub receipt: TxReceipt,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "Vec<ReplayTransmitSpan>")]
+    #[specta(type = Vec<ReplayTransmitSpan>, optional)]
+    pub replay_spans: Option<Vec<ReplayTransmitSpan>>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

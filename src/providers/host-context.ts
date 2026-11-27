@@ -42,6 +42,8 @@ import type {
   ReplayReadParams,
   ReplayReadResult,
   ReplayPeerState,
+  ReplayTransmitPreview,
+  ReplayTransmitSelection,
   ReplaySearchParams,
   ReplaySearchResult,
   ReplayRecord,
@@ -214,6 +216,11 @@ export type HostContextValue = {
     params: FileTransferReceiptsParams,
     signal?: AbortSignal,
   ): Promise<FileTransferReceiptsResult>;
+  previewReplayTransmit?(
+    target: Target,
+    selection: ReplayTransmitSelection,
+    signal: AbortSignal,
+  ): Promise<ReplayTransmitPreview>;
   readReplayPeer?(
     target: Target,
     signal: AbortSignal,

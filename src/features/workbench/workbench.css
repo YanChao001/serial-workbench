@@ -1772,6 +1772,26 @@
   }
 }
 
+@container serial-workbench (max-width: 480px) {
+  .workbench-connection:has(.workbench-view-tabs:not(:empty)) {
+    height: auto;
+    min-height: var(--app-chrome-height);
+    flex-wrap: wrap;
+    padding-block: 0.25rem;
+  }
+  .workbench-view-tabs:not(:empty) {
+    order: 1;
+    flex: 1 0 100%;
+    padding-inline-start: 0;
+  }
+  .workbench-view-tabs:not(:empty)::before {
+    display: none;
+  }
+  .workbench-view-tabs .workbench-tabs {
+    padding-inline: 0;
+  }
+}
+
 /* 工具窗共用紧凑的字段组、动作栏和稳定的数值空间。 */
 .workbench-dialog:has(.workbench-tool-form .workbench-tool-pages),
 .workbench-dialog:has(.workbench-tool-form-fixed) {

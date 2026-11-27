@@ -86,6 +86,7 @@ import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
 const BroadcastSendTool = lazy(() => import("./broadcast-send-tool"));
+const ReplayTransmitTool = lazy(() => import("./replay-transmit-tool"));
 const ExperimentPackageTool = lazy(async () => ({
   default: (await import("./experiment-package-tool")).ExperimentPackageTool,
 }));
@@ -460,6 +461,16 @@ export function WorkbenchTools({
           onRetryRecent={() => setRecentReload((value) => value + 1)}
         />
       </>
+    );
+  if (tool === "replayTransmit")
+    return (
+      <Suspense>
+        <ReplayTransmitTool
+          key={generation}
+          host={host}
+          cancel={onCancelOperation}
+        />
+      </Suspense>
     );
   if (tool === "workspace") {
     const available =

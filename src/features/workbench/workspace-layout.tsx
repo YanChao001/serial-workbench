@@ -233,6 +233,7 @@ export type WorkbenchTool =
   | "devices"
   | "transfer"
   | "captureTools"
+  | "replayTransmit"
   | "framing"
   | "liveComparison"
   | "repeatSend"
@@ -270,6 +271,7 @@ function activityPanel(
     case "devices":
     case "transfer":
     case "captureTools":
+    case "replayTransmit":
     case "framing":
     case "liveComparison":
     case "repeatSend":
@@ -428,6 +430,7 @@ export type WorkspaceLayoutProps = {
     sessionTemplates?: string;
     repeatSend?: string;
     broadcastSend?: string;
+    replayTransmit?: string;
     calendarSchedule?: string;
     commandSequence?: string;
     testSuite?: string;
@@ -469,6 +472,7 @@ export type WorkspaceLayoutProps = {
   ) => Promise<(Operation & { recordingName?: string }) | undefined>;
   onOpenReplayPeer?: WorkspaceLayoutProps["onOpenReplay"];
   replayPeer?: ReplayPeerAccess;
+  canReplayTransmit?: boolean;
   onCloseSession?: (
     sessionId: string,
     signal?: AbortSignal,
@@ -526,6 +530,7 @@ export function WorkspaceLayout({
   onOpenReplay,
   onOpenReplayPeer,
   replayPeer,
+  canReplayTransmit,
   onCloseSession,
   onCancelOperation,
   replay,
@@ -2632,6 +2637,7 @@ export function WorkspaceLayout({
           !savingLayout
         }
         canReplay={!disabled && !choosing && !!onOpenReplay}
+        canReplayTransmit={!disabled && canReplayTransmit}
         toolsAvailable={draftsReady && !!renderTool}
         onDeviceChange={(id) => {
           focusRevision.current++;

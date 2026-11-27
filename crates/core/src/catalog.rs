@@ -184,6 +184,8 @@ pub enum BuiltinAction {
     ReplayPeerState,
     ReplayPeerSubmit,
     ReplayPeerClose,
+    ReplayTransmitPreview,
+    ReplayTransmit,
     ReplayRead,
     ReplaySearch,
     ReplayControl,
@@ -250,7 +252,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 123] = [
+    pub const ALL: [Self; 125] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::WorkspaceConfigurationInspect,
@@ -310,6 +312,8 @@ impl BuiltinAction {
         Self::ReplayPeerState,
         Self::ReplayPeerSubmit,
         Self::ReplayPeerClose,
+        Self::ReplayTransmitPreview,
+        Self::ReplayTransmit,
         Self::ReplayRead,
         Self::ReplaySearch,
         Self::ReplayControl,
@@ -407,6 +411,8 @@ impl BuiltinAction {
             Self::ReplayPeerState => "replay.peer.state",
             Self::ReplayPeerSubmit => "replay.peer.submit",
             Self::ReplayPeerClose => "replay.peer.close",
+            Self::ReplayTransmitPreview => "replay.transmit.preview",
+            Self::ReplayTransmit => "replay.transmit",
             Self::ReplayRead => "replay.read",
             Self::ReplaySearch => "replay.search",
             Self::ReplayControl => "replay.control",
@@ -495,6 +501,7 @@ impl BuiltinAction {
             Self::DeviceOpen
                 | Self::TransferFile
                 | Self::TransferPaste
+                | Self::ReplayTransmit
                 | Self::SessionClose
                 | Self::ToolHandoff
                 | Self::SessionTx
@@ -647,7 +654,9 @@ impl BuiltinAction {
             | Self::ReplayClose
             | Self::ReplayPeerState
             | Self::ReplayPeerSubmit
-            | Self::ReplayPeerClose => &["session"],
+            | Self::ReplayPeerClose
+            | Self::ReplayTransmitPreview
+            | Self::ReplayTransmit => &["session"],
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
             Self::FileMetadata => &["file", "capture", "plugin_result"],
             Self::FileRead => &["file", "capture_record", "plugin_result"],
@@ -724,6 +733,8 @@ impl BuiltinAction {
             | Self::TxDrain => Some("controls"),
             Self::TransferFile
             | Self::TransferPaste
+            | Self::ReplayTransmitPreview
+            | Self::ReplayTransmit
             | Self::TransferReceiptsRead
             | Self::TransferReadProgress => Some("transfer"),
             Self::OperationGet
@@ -1031,6 +1042,14 @@ impl BuiltinAction {
             Self::ReplayPeerClose => {
                 ActionSpec::of_with_dialect::<EmptyParams, ReplayPeerClosed>(meta, dialect)
             }
+            Self::ReplayTransmitPreview => ActionSpec::of_with_dialect::<
+                ReplayTransmitSelection,
+                ReplayTransmitPreview,
+            >(meta, dialect),
+            Self::ReplayTransmit => ActionSpec::of_with_dialect::<
+                ReplayTransmitParams,
+                FileTransferResult,
+            >(meta, dialect),
             Self::ReplaySearch => {
                 ActionSpec::of_with_dialect::<ReplaySearchParams, ReplaySearchResult>(meta, dialect)
             }

@@ -44,8 +44,8 @@ var require_ucs2length = __commonJS({
 });
 
 // host-validators.mjs
-var validateAccent = validate2229;
-var schema519 = {
+var validateAccent = validate2246;
+var schema521 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "neutral",
@@ -66,7 +66,7 @@ var schema519 = {
   title: "Accent",
   type: "string",
 };
-function validate2229(
+function validate2246(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -107,7 +107,7 @@ function validate2229(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema519.enum },
+      params: { allowedValues: schema521.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -117,10 +117,10 @@ function validate2229(
     }
     errors++;
   }
-  validate2229.errors = vErrors;
+  validate2246.errors = vErrors;
   return errors === 0;
 }
-var validateActionCheckParams = validate2230;
+var validateActionCheckParams = validate2247;
 var func0 = Object.prototype.hasOwnProperty;
 var pattern1 = new RegExp("^[A-Za-z0-9._:-]{1,128}$", "u");
 function validate28(
@@ -415,7 +415,7 @@ function validate309(
   validate309.errors = vErrors;
   return errors === 0;
 }
-function validate2230(
+function validate2247(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -538,10 +538,10 @@ function validate2230(
     }
     errors++;
   }
-  validate2230.errors = vErrors;
+  validate2247.errors = vErrors;
   return errors === 0;
 }
-var validateActionCheckResult = validate2233;
+var validateActionCheckResult = validate2250;
 var pattern5 = new RegExp(
   "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
   "u",
@@ -948,7 +948,7 @@ function validate582(
   validate582.errors = vErrors;
   return errors === 0;
 }
-function validate2233(
+function validate2250(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -1081,17 +1081,17 @@ function validate2233(
     }
     errors++;
   }
-  validate2233.errors = vErrors;
+  validate2250.errors = vErrors;
   return errors === 0;
 }
-var validateActionKind = validate2236;
-var schema522 = {
+var validateActionKind = validate2253;
+var schema524 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["query", "action"],
   title: "ActionKind",
   type: "string",
 };
-function validate2236(
+function validate2253(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -1117,7 +1117,7 @@ function validate2236(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema522.enum },
+      params: { allowedValues: schema524.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -1127,7 +1127,7 @@ function validate2236(
     }
     errors++;
   }
-  validate2236.errors = vErrors;
+  validate2253.errors = vErrors;
   return errors === 0;
 }
 var validateActionResult = validate270;
@@ -30801,8 +30801,8 @@ function validate270(
   validate270.errors = vErrors;
   return errors === 0;
 }
-var validateActionSpec = validate2237;
-var schema523 = {
+var validateActionSpec = validate2254;
+var schema525 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -31161,7 +31161,7 @@ function validate113(
   validate113.errors = vErrors;
   return errors === 0;
 }
-function validate2237(
+function validate2254(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31337,7 +31337,7 @@ function validate2237(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema523.properties, key0)) {
+      if (!func0.call(schema525.properties, key0)) {
         const err11 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -31674,11 +31674,11 @@ function validate2237(
     }
     errors++;
   }
-  validate2237.errors = vErrors;
+  validate2254.errors = vErrors;
   return errors === 0;
 }
-var validateActivitySnapshot = validate2246;
-var schema525 = {
+var validateActivitySnapshot = validate2263;
+var schema527 = {
   additionalProperties: false,
   properties: {
     actionId: { $ref: "#/definitions/shared/definitions/Id" },
@@ -31708,7 +31708,7 @@ var pattern21 = new RegExp(
   "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
   "u",
 );
-function validate979(
+function validate1003(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31749,10 +31749,10 @@ function validate979(
     }
     errors++;
   }
-  validate979.errors = vErrors;
+  validate1003.errors = vErrors;
   return errors === 0;
 }
-function validate2247(
+function validate2264(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31880,7 +31880,7 @@ function validate2247(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema525.properties, key0)) {
+      if (!func0.call(schema527.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -32010,7 +32010,7 @@ function validate2247(
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -32019,8 +32019,8 @@ function validate2247(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -32071,10 +32071,10 @@ function validate2247(
     }
     errors++;
   }
-  validate2247.errors = vErrors;
+  validate2264.errors = vErrors;
   return errors === 0;
 }
-function validate2259(
+function validate2276(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32242,10 +32242,10 @@ function validate2259(
     }
     errors++;
   }
-  validate2259.errors = vErrors;
+  validate2276.errors = vErrors;
   return errors === 0;
 }
-function validate2246(
+function validate2263(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32290,7 +32290,7 @@ function validate2246(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate2247(data0[i0], {
+            !validate2264(data0[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -32299,8 +32299,8 @@ function validate2246(
           ) {
             vErrors =
               vErrors === null
-                ? validate2247.errors
-                : vErrors.concat(validate2247.errors);
+                ? validate2264.errors
+                : vErrors.concat(validate2264.errors);
             errors = vErrors.length;
           }
         }
@@ -32325,7 +32325,7 @@ function validate2246(
       func0.call(data, "pendingTakeover")
     ) {
       if (
-        !validate2259(data.pendingTakeover, {
+        !validate2276(data.pendingTakeover, {
           instancePath: instancePath + "/pendingTakeover",
           parentData: data,
           parentDataProperty: "pendingTakeover",
@@ -32334,8 +32334,8 @@ function validate2246(
       ) {
         vErrors =
           vErrors === null
-            ? validate2259.errors
-            : vErrors.concat(validate2259.errors);
+            ? validate2276.errors
+            : vErrors.concat(validate2276.errors);
         errors = vErrors.length;
       }
     }
@@ -32354,11 +32354,11 @@ function validate2246(
     }
     errors++;
   }
-  validate2246.errors = vErrors;
+  validate2263.errors = vErrors;
   return errors === 0;
 }
-var validateAdmission = validate2265;
-function validate2265(
+var validateAdmission = validate2282;
+function validate2282(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32717,15 +32717,15 @@ function validate2265(
       }
     }
   }
-  validate2265.errors = vErrors;
+  validate2282.errors = vErrors;
   return errors === 0;
 }
-var validateAttachParams = validate2270;
-var schema371 = {
+var validateAttachParams = validate2287;
+var schema373 = {
   enum: ["desktop", "browser", "cli", "mcp", "node", "peer"],
   type: "string",
 };
-function validate1479(
+function validate1495(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32758,7 +32758,7 @@ function validate1479(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema371.enum },
+      params: { allowedValues: schema373.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -32768,10 +32768,10 @@ function validate1479(
     }
     errors++;
   }
-  validate1479.errors = vErrors;
+  validate1495.errors = vErrors;
   return errors === 0;
 }
-function validate2270(
+function validate2287(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32866,7 +32866,7 @@ function validate2270(
     }
     if (data.clientKind !== void 0 && func0.call(data, "clientKind")) {
       if (
-        !validate1479(data.clientKind, {
+        !validate1495(data.clientKind, {
           instancePath: instancePath + "/clientKind",
           parentData: data,
           parentDataProperty: "clientKind",
@@ -32875,8 +32875,8 @@ function validate2270(
       ) {
         vErrors =
           vErrors === null
-            ? validate1479.errors
-            : vErrors.concat(validate1479.errors);
+            ? validate1495.errors
+            : vErrors.concat(validate1495.errors);
         errors = vErrors.length;
       }
     }
@@ -32951,11 +32951,11 @@ function validate2270(
     }
     errors++;
   }
-  validate2270.errors = vErrors;
+  validate2287.errors = vErrors;
   return errors === 0;
 }
-var validateAttachResult = validate2274;
-var schema529 = {
+var validateAttachResult = validate2291;
+var schema531 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -32991,7 +32991,7 @@ var pattern33 = new RegExp(
   "^(?:604799999|[1-5][0-9]{8}|60[0-3][0-9]{6}|604[0-6][0-9]{5}|6047[0-8][0-9]{4}|60479[0-8][0-9]{3}|604799[0-8][0-9]{2}|6047999[0-8][0-9]{1}|60479999[0-8][0-9]{0}|[1-9][0-9]{0,7}|0)$",
   "u",
 );
-function validate1695(
+function validate1712(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33070,10 +33070,10 @@ function validate1695(
     }
     errors++;
   }
-  validate1695.errors = vErrors;
+  validate1712.errors = vErrors;
   return errors === 0;
 }
-function validate1689(
+function validate1706(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33294,7 +33294,7 @@ function validate1689(
       func0.call(data, "resultRetentionMs")
     ) {
       if (
-        !validate1695(data.resultRetentionMs, {
+        !validate1712(data.resultRetentionMs, {
           instancePath: instancePath + "/resultRetentionMs",
           parentData: data,
           parentDataProperty: "resultRetentionMs",
@@ -33303,8 +33303,8 @@ function validate1689(
       ) {
         vErrors =
           vErrors === null
-            ? validate1695.errors
-            : vErrors.concat(validate1695.errors);
+            ? validate1712.errors
+            : vErrors.concat(validate1712.errors);
         errors = vErrors.length;
       }
     }
@@ -33323,11 +33323,11 @@ function validate1689(
     }
     errors++;
   }
-  validate1689.errors = vErrors;
+  validate1706.errors = vErrors;
   return errors === 0;
 }
-var schema357 = { enum: ["1.0"], type: "string" };
-function validate1414(
+var schema359 = { enum: ["1.0"], type: "string" };
+function validate1430(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33353,7 +33353,7 @@ function validate1414(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema357.enum },
+      params: { allowedValues: schema359.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -33363,11 +33363,11 @@ function validate1414(
     }
     errors++;
   }
-  validate1414.errors = vErrors;
+  validate1430.errors = vErrors;
   return errors === 0;
 }
 var pattern26 = new RegExp("^[A-Za-z0-9_-]{1,2048}$", "u");
-function validate1416(
+function validate1432(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33404,10 +33404,10 @@ function validate1416(
     }
     errors++;
   }
-  validate1416.errors = vErrors;
+  validate1432.errors = vErrors;
   return errors === 0;
 }
-function validate2274(
+function validate2291(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33556,7 +33556,7 @@ function validate2274(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema529.properties, key0)) {
+      if (!func0.call(schema531.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -33654,7 +33654,7 @@ function validate2274(
     }
     if (data.limits !== void 0 && func0.call(data, "limits")) {
       if (
-        !validate1689(data.limits, {
+        !validate1706(data.limits, {
           instancePath: instancePath + "/limits",
           parentData: data,
           parentDataProperty: "limits",
@@ -33663,8 +33663,8 @@ function validate2274(
       ) {
         vErrors =
           vErrors === null
-            ? validate1689.errors
-            : vErrors.concat(validate1689.errors);
+            ? validate1706.errors
+            : vErrors.concat(validate1706.errors);
         errors = vErrors.length;
       }
     }
@@ -33673,7 +33673,7 @@ function validate2274(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -33682,14 +33682,14 @@ function validate2274(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestContext !== void 0 && func0.call(data, "requestContext")) {
       if (
-        !validate1416(data.requestContext, {
+        !validate1432(data.requestContext, {
           instancePath: instancePath + "/requestContext",
           parentData: data,
           parentDataProperty: "requestContext",
@@ -33698,8 +33698,8 @@ function validate2274(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -33737,11 +33737,11 @@ function validate2274(
     }
     errors++;
   }
-  validate2274.errors = vErrors;
+  validate2291.errors = vErrors;
   return errors === 0;
 }
-var validateAuthorizationResult = validate2284;
-function validate2284(
+var validateAuthorizationResult = validate2301;
+function validate2301(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33811,11 +33811,11 @@ function validate2284(
     }
     errors++;
   }
-  validate2284.errors = vErrors;
+  validate2301.errors = vErrors;
   return errors === 0;
 }
-var validateAuthorizeParams = validate1893;
-function validate1893(
+var validateAuthorizeParams = validate1910;
+function validate1910(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34009,17 +34009,17 @@ function validate1893(
     }
     errors++;
   }
-  validate1893.errors = vErrors;
+  validate1910.errors = vErrors;
   return errors === 0;
 }
-var validateBackgroundFit = validate2286;
-var schema531 = {
+var validateBackgroundFit = validate2303;
+var schema533 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["cover", "contain"],
   title: "BackgroundFit",
   type: "string",
 };
-function validate2286(
+function validate2303(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34045,7 +34045,7 @@ function validate2286(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema531.enum },
+      params: { allowedValues: schema533.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -34055,11 +34055,11 @@ function validate2286(
     }
     errors++;
   }
-  validate2286.errors = vErrors;
+  validate2303.errors = vErrors;
   return errors === 0;
 }
-var validateBackgroundPreset = validate2287;
-var schema532 = {
+var validateBackgroundPreset = validate2304;
+var schema534 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "plain",
@@ -34075,7 +34075,7 @@ var schema532 = {
   title: "BackgroundPreset",
   type: "string",
 };
-function validate2287(
+function validate2304(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34111,7 +34111,7 @@ function validate2287(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema532.enum },
+      params: { allowedValues: schema534.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -34121,11 +34121,11 @@ function validate2287(
     }
     errors++;
   }
-  validate2287.errors = vErrors;
+  validate2304.errors = vErrors;
   return errors === 0;
 }
-var validateBackgroundSelection = validate2288;
-function validate2288(
+var validateBackgroundSelection = validate2305;
+function validate2305(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34553,11 +34553,11 @@ function validate2288(
       }
     }
   }
-  validate2288.errors = vErrors;
+  validate2305.errors = vErrors;
   return errors === 0;
 }
-var validateBreakParams = validate2089;
-function validate2089(
+var validateBreakParams = validate2106;
+function validate2106(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34627,11 +34627,11 @@ function validate2089(
     }
     errors++;
   }
-  validate2089.errors = vErrors;
+  validate2106.errors = vErrors;
   return errors === 0;
 }
-var validateBreakReceipt = validate2095;
-function validate2095(
+var validateBreakReceipt = validate2112;
+function validate2112(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34732,11 +34732,11 @@ function validate2095(
     }
     errors++;
   }
-  validate2095.errors = vErrors;
+  validate2112.errors = vErrors;
   return errors === 0;
 }
-var validateByteRange = validate2293;
-function validate2293(
+var validateByteRange = validate2310;
+function validate2310(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34837,11 +34837,11 @@ function validate2293(
     }
     errors++;
   }
-  validate2293.errors = vErrors;
+  validate2310.errors = vErrors;
   return errors === 0;
 }
-var validateBytes = validate1535;
-function validate1535(
+var validateBytes = validate1551;
+function validate1551(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34882,11 +34882,11 @@ function validate1535(
     }
     errors++;
   }
-  validate1535.errors = vErrors;
+  validate1551.errors = vErrors;
   return errors === 0;
 }
-var validateCall = validate1539;
-var schema383 = {
+var validateCall = validate1555;
+var schema385 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -35148,7 +35148,7 @@ function validate800(
   validate800.errors = vErrors;
   return errors === 0;
 }
-function validate1421(
+function validate1437(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35290,10 +35290,10 @@ function validate1421(
     }
     errors++;
   }
-  validate1421.errors = vErrors;
+  validate1437.errors = vErrors;
   return errors === 0;
 }
-function validate1539(
+function validate1555(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35454,7 +35454,7 @@ function validate1539(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema383.properties, key0)) {
+      if (!func0.call(schema385.properties, key0)) {
         const err10 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -35628,7 +35628,7 @@ function validate1539(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -35637,14 +35637,14 @@ function validate1539(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestContext !== void 0 && func0.call(data, "requestContext")) {
       if (
-        !validate1416(data.requestContext, {
+        !validate1432(data.requestContext, {
           instancePath: instancePath + "/requestContext",
           parentData: data,
           parentDataProperty: "requestContext",
@@ -35653,14 +35653,14 @@ function validate1539(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -35669,8 +35669,8 @@ function validate1539(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -35711,7 +35711,7 @@ function validate1539(
       func0.call(data, "workspaceStartup")
     ) {
       if (
-        !validate1421(data.workspaceStartup, {
+        !validate1437(data.workspaceStartup, {
           instancePath: instancePath + "/workspaceStartup",
           parentData: data,
           parentDataProperty: "workspaceStartup",
@@ -35720,8 +35720,8 @@ function validate1539(
       ) {
         vErrors =
           vErrors === null
-            ? validate1421.errors
-            : vErrors.concat(validate1421.errors);
+            ? validate1437.errors
+            : vErrors.concat(validate1437.errors);
         errors = vErrors.length;
       }
     }
@@ -35740,17 +35740,17 @@ function validate1539(
     }
     errors++;
   }
-  validate1539.errors = vErrors;
+  validate1555.errors = vErrors;
   return errors === 0;
 }
-var validateCancelReason = validate2296;
-var schema535 = {
+var validateCancelReason = validate2313;
+var schema537 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["user", "revoked", "takeover", "shutdown"],
   title: "CancelReason",
   type: "string",
 };
-function validate2296(
+function validate2313(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35781,7 +35781,7 @@ function validate2296(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema535.enum },
+      params: { allowedValues: schema537.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -35791,17 +35791,17 @@ function validate2296(
     }
     errors++;
   }
-  validate2296.errors = vErrors;
+  validate2313.errors = vErrors;
   return errors === 0;
 }
-var validateCancellation = validate2297;
-var schema536 = {
+var validateCancellation = validate2314;
+var schema538 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["none", "cooperative"],
   title: "Cancellation",
   type: "string",
 };
-function validate2297(
+function validate2314(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35827,7 +35827,7 @@ function validate2297(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema536.enum },
+      params: { allowedValues: schema538.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -35837,11 +35837,11 @@ function validate2297(
     }
     errors++;
   }
-  validate2297.errors = vErrors;
+  validate2314.errors = vErrors;
   return errors === 0;
 }
-var validateCancellationResult = validate2298;
-function validate2298(
+var validateCancellationResult = validate2315;
+function validate2315(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35942,11 +35942,11 @@ function validate2298(
     }
     errors++;
   }
-  validate2298.errors = vErrors;
+  validate2315.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRecord = validate2301;
-function validate2301(
+var validateCaptureRecord = validate2318;
+function validate2318(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -36047,11 +36047,11 @@ function validate2301(
     }
     errors++;
   }
-  validate2301.errors = vErrors;
+  validate2318.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRedactedRecord = validate2304;
-var schema539 = {
+var validateCaptureRedactedRecord = validate2321;
+var schema541 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -36078,7 +36078,7 @@ var schema539 = {
   title: "CaptureRedactedRecord",
   type: "object",
 };
-function validate2304(
+function validate2321(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -36206,7 +36206,7 @@ function validate2304(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema539.properties, key0)) {
+      if (!func0.call(schema541.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -36381,11 +36381,11 @@ function validate2304(
     }
     errors++;
   }
-  validate2304.errors = vErrors;
+  validate2321.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRedactedResult = validate2314;
-function validate2314(
+var validateCaptureRedactedResult = validate2331;
+function validate2331(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -36691,17 +36691,17 @@ function validate2314(
       }
     }
   }
-  validate2314.errors = vErrors;
+  validate2331.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRedactionOmission = validate2317;
-var schema541 = {
+var validateCaptureRedactionOmission = validate2334;
+var schema543 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["boundary", "invalid_text", "line_too_long", "incomplete"],
   title: "CaptureRedactionOmission",
   type: "string",
 };
-function validate2317(
+function validate2334(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -36732,7 +36732,7 @@ function validate2317(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema541.enum },
+      params: { allowedValues: schema543.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -36742,11 +36742,11 @@ function validate2317(
     }
     errors++;
   }
-  validate2317.errors = vErrors;
+  validate2334.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRedactionPreviewParams = validate2318;
-function validate1279(
+var validateCaptureRedactionPreviewParams = validate2335;
+function validate1295(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -36849,10 +36849,10 @@ function validate1279(
     }
     errors++;
   }
-  validate1279.errors = vErrors;
+  validate1295.errors = vErrors;
   return errors === 0;
 }
-function validate2318(
+function validate2335(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -36912,7 +36912,7 @@ function validate2318(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1279(data0[i0], {
+            !validate1295(data0[i0], {
               instancePath: instancePath + "/rules/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -36921,8 +36921,8 @@ function validate2318(
           ) {
             vErrors =
               vErrors === null
-                ? validate1279.errors
-                : vErrors.concat(validate1279.errors);
+                ? validate1295.errors
+                : vErrors.concat(validate1295.errors);
             errors = vErrors.length;
           }
         }
@@ -36974,11 +36974,11 @@ function validate2318(
     }
     errors++;
   }
-  validate2318.errors = vErrors;
+  validate2335.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRedactionPreviewResult = validate2320;
-function validate2320(
+var validateCaptureRedactionPreviewResult = validate2337;
+function validate2337(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37080,11 +37080,11 @@ function validate2320(
     }
     errors++;
   }
-  validate2320.errors = vErrors;
+  validate2337.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRedactionRule = validate2322;
-function validate2322(
+var validateCaptureRedactionRule = validate2339;
+function validate2339(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37187,15 +37187,15 @@ function validate2322(
     }
     errors++;
   }
-  validate2322.errors = vErrors;
+  validate2339.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStartParams = validate2323;
-var schema322 = {
+var validateCaptureStartParams = validate2340;
+var schema324 = {
   enum: ["drop_with_gap", "stop", "flow_control"],
   type: "string",
 };
-function validate1277(
+function validate1293(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37225,7 +37225,7 @@ function validate1277(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema322.enum },
+      params: { allowedValues: schema324.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -37235,10 +37235,10 @@ function validate1277(
     }
     errors++;
   }
-  validate1277.errors = vErrors;
+  validate1293.errors = vErrors;
   return errors === 0;
 }
-function validate1282(
+function validate1298(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37339,11 +37339,11 @@ function validate1282(
     }
     errors++;
   }
-  validate1282.errors = vErrors;
+  validate1298.errors = vErrors;
   return errors === 0;
 }
-var schema325 = { enum: ["create_new", "append", "replace"], type: "string" };
-function validate1287(
+var schema327 = { enum: ["create_new", "append", "replace"], type: "string" };
+function validate1303(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37369,7 +37369,7 @@ function validate1287(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema325.enum },
+      params: { allowedValues: schema327.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -37379,10 +37379,10 @@ function validate1287(
     }
     errors++;
   }
-  validate1287.errors = vErrors;
+  validate1303.errors = vErrors;
   return errors === 0;
 }
-function validate2323(
+function validate2340(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37497,7 +37497,7 @@ function validate2323(
     }
     if (data.overflowPolicy !== void 0 && func0.call(data, "overflowPolicy")) {
       if (
-        !validate1277(data.overflowPolicy, {
+        !validate1293(data.overflowPolicy, {
           instancePath: instancePath + "/overflowPolicy",
           parentData: data,
           parentDataProperty: "overflowPolicy",
@@ -37506,8 +37506,8 @@ function validate2323(
       ) {
         vErrors =
           vErrors === null
-            ? validate1277.errors
-            : vErrors.concat(validate1277.errors);
+            ? validate1293.errors
+            : vErrors.concat(validate1293.errors);
         errors = vErrors.length;
       }
     }
@@ -37517,7 +37517,7 @@ function validate2323(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1279(data3[i0], {
+            !validate1295(data3[i0], {
               instancePath: instancePath + "/redactionRules/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -37526,8 +37526,8 @@ function validate2323(
           ) {
             vErrors =
               vErrors === null
-                ? validate1279.errors
-                : vErrors.concat(validate1279.errors);
+                ? validate1295.errors
+                : vErrors.concat(validate1295.errors);
             errors = vErrors.length;
           }
         }
@@ -37585,7 +37585,7 @@ function validate2323(
     }
     if (data.storageLimits !== void 0 && func0.call(data, "storageLimits")) {
       if (
-        !validate1282(data.storageLimits, {
+        !validate1298(data.storageLimits, {
           instancePath: instancePath + "/storageLimits",
           parentData: data,
           parentDataProperty: "storageLimits",
@@ -37594,8 +37594,8 @@ function validate2323(
       ) {
         vErrors =
           vErrors === null
-            ? validate1282.errors
-            : vErrors.concat(validate1282.errors);
+            ? validate1298.errors
+            : vErrors.concat(validate1298.errors);
         errors = vErrors.length;
       }
     }
@@ -37617,7 +37617,7 @@ function validate2323(
     }
     if (data.writeMode !== void 0 && func0.call(data, "writeMode")) {
       if (
-        !validate1287(data.writeMode, {
+        !validate1303(data.writeMode, {
           instancePath: instancePath + "/writeMode",
           parentData: data,
           parentDataProperty: "writeMode",
@@ -37626,8 +37626,8 @@ function validate2323(
       ) {
         vErrors =
           vErrors === null
-            ? validate1287.errors
-            : vErrors.concat(validate1287.errors);
+            ? validate1303.errors
+            : vErrors.concat(validate1303.errors);
         errors = vErrors.length;
       }
     }
@@ -37646,11 +37646,11 @@ function validate2323(
     }
     errors++;
   }
-  validate2323.errors = vErrors;
+  validate2340.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStatusResult = validate2332;
-function validate2332(
+var validateCaptureStatusResult = validate2349;
+function validate2349(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37774,11 +37774,11 @@ function validate2332(
     }
     errors++;
   }
-  validate2332.errors = vErrors;
+  validate2349.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStopParams = validate2336;
-function validate2336(
+var validateCaptureStopParams = validate2353;
+function validate2353(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37848,11 +37848,11 @@ function validate2336(
     }
     errors++;
   }
-  validate2336.errors = vErrors;
+  validate2353.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStorageLimits = validate2338;
-function validate2338(
+var validateCaptureStorageLimits = validate2355;
+function validate2355(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -37953,16 +37953,16 @@ function validate2338(
     }
     errors++;
   }
-  validate2338.errors = vErrors;
+  validate2355.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureTailParams = validate1516;
+var validateCaptureTailParams = validate1532;
 var pattern27 = new RegExp(
   "^(?:[1-9][0-9]{0,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4])$",
   "u",
 );
 var pattern28 = new RegExp("^(?:[1-9]|[1-9][0-9]|100)$", "u");
-function validate1516(
+function validate1532(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -38108,11 +38108,11 @@ function validate1516(
     }
     errors++;
   }
-  validate1516.errors = vErrors;
+  validate1532.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureTailResult = validate1518;
-var schema375 = {
+var validateCaptureTailResult = validate1534;
+var schema377 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -38142,7 +38142,7 @@ var schema375 = {
   title: "CaptureTailResult",
   type: "object",
 };
-function validate1518(
+function validate1534(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -38279,7 +38279,7 @@ function validate1518(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema375.properties, key0)) {
+      if (!func0.call(schema377.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -38485,11 +38485,11 @@ function validate1518(
     }
     errors++;
   }
-  validate1518.errors = vErrors;
+  validate1534.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureTxSettlement = validate2341;
-function validate2341(
+var validateCaptureTxSettlement = validate2358;
+function validate2358(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -38625,11 +38625,11 @@ function validate2341(
     }
     errors++;
   }
-  validate2341.errors = vErrors;
+  validate2358.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureVerifyParams = validate2345;
-function validate2345(
+var validateCaptureVerifyParams = validate2362;
+function validate2362(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -38699,11 +38699,11 @@ function validate2345(
     }
     errors++;
   }
-  validate2345.errors = vErrors;
+  validate2362.errors = vErrors;
   return errors === 0;
 }
-var validateCatalogListParams = validate2347;
-function validate2347(
+var validateCatalogListParams = validate2364;
+function validate2364(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -38810,10 +38810,10 @@ function validate2347(
     }
     errors++;
   }
-  validate2347.errors = vErrors;
+  validate2364.errors = vErrors;
   return errors === 0;
 }
-var validateCatalogListResult = validate2350;
+var validateCatalogListResult = validate2367;
 var schema31 = {
   additionalProperties: false,
   properties: {
@@ -39375,7 +39375,7 @@ function validate105(
   validate105.errors = vErrors;
   return errors === 0;
 }
-function validate2350(
+function validate2367(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39517,17 +39517,17 @@ function validate2350(
     }
     errors++;
   }
-  validate2350.errors = vErrors;
+  validate2367.errors = vErrors;
   return errors === 0;
 }
-var validateCertainty = validate2353;
-var schema553 = {
+var validateCertainty = validate2370;
+var schema555 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["confirmed", "uncertain"],
   title: "Certainty",
   type: "string",
 };
-function validate2353(
+function validate2370(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39553,7 +39553,7 @@ function validate2353(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema553.enum },
+      params: { allowedValues: schema555.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -39563,12 +39563,12 @@ function validate2353(
     }
     errors++;
   }
-  validate2353.errors = vErrors;
+  validate2370.errors = vErrors;
   return errors === 0;
 }
-var validateCharacterRemapRules = validate2354;
-var schema314 = { enum: ["keep", "remove", "apply"], type: "string" };
-function validate1241(
+var validateCharacterRemapRules = validate2371;
+var schema316 = { enum: ["keep", "remove", "apply"], type: "string" };
+function validate1257(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39594,7 +39594,7 @@ function validate1241(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema314.enum },
+      params: { allowedValues: schema316.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -39604,11 +39604,11 @@ function validate1241(
     }
     errors++;
   }
-  validate1241.errors = vErrors;
+  validate1257.errors = vErrors;
   return errors === 0;
 }
-var schema315 = { enum: ["keep", "lower", "upper"], type: "string" };
-function validate1243(
+var schema317 = { enum: ["keep", "lower", "upper"], type: "string" };
+function validate1259(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39634,7 +39634,7 @@ function validate1243(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema315.enum },
+      params: { allowedValues: schema317.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -39644,11 +39644,11 @@ function validate1243(
     }
     errors++;
   }
-  validate1243.errors = vErrors;
+  validate1259.errors = vErrors;
   return errors === 0;
 }
-var schema316 = { enum: ["keep", "cr", "lf", "crlf"], type: "string" };
-function validate1245(
+var schema318 = { enum: ["keep", "cr", "lf", "crlf"], type: "string" };
+function validate1261(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39674,7 +39674,7 @@ function validate1245(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema316.enum },
+      params: { allowedValues: schema318.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -39684,10 +39684,10 @@ function validate1245(
     }
     errors++;
   }
-  validate1245.errors = vErrors;
+  validate1261.errors = vErrors;
   return errors === 0;
 }
-function validate1247(
+function validate1263(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39839,10 +39839,10 @@ function validate1247(
     }
     errors++;
   }
-  validate1247.errors = vErrors;
+  validate1263.errors = vErrors;
   return errors === 0;
 }
-function validate2354(
+function validate2371(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39933,7 +39933,7 @@ function validate2354(
     }
     if (data.backspace !== void 0 && func0.call(data, "backspace")) {
       if (
-        !validate1241(data.backspace, {
+        !validate1257(data.backspace, {
           instancePath: instancePath + "/backspace",
           parentData: data,
           parentDataProperty: "backspace",
@@ -39942,14 +39942,14 @@ function validate2354(
       ) {
         vErrors =
           vErrors === null
-            ? validate1241.errors
-            : vErrors.concat(validate1241.errors);
+            ? validate1257.errors
+            : vErrors.concat(validate1257.errors);
         errors = vErrors.length;
       }
     }
     if (data.letterCase !== void 0 && func0.call(data, "letterCase")) {
       if (
-        !validate1243(data.letterCase, {
+        !validate1259(data.letterCase, {
           instancePath: instancePath + "/letterCase",
           parentData: data,
           parentDataProperty: "letterCase",
@@ -39958,14 +39958,14 @@ function validate2354(
       ) {
         vErrors =
           vErrors === null
-            ? validate1243.errors
-            : vErrors.concat(validate1243.errors);
+            ? validate1259.errors
+            : vErrors.concat(validate1259.errors);
         errors = vErrors.length;
       }
     }
     if (data.newline !== void 0 && func0.call(data, "newline")) {
       if (
-        !validate1245(data.newline, {
+        !validate1261(data.newline, {
           instancePath: instancePath + "/newline",
           parentData: data,
           parentDataProperty: "newline",
@@ -39974,8 +39974,8 @@ function validate2354(
       ) {
         vErrors =
           vErrors === null
-            ? validate1245.errors
-            : vErrors.concat(validate1245.errors);
+            ? validate1261.errors
+            : vErrors.concat(validate1261.errors);
         errors = vErrors.length;
       }
     }
@@ -40000,7 +40000,7 @@ function validate2354(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1247(data3[i0], {
+            !validate1263(data3[i0], {
               instancePath: instancePath + "/replacements/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -40009,8 +40009,8 @@ function validate2354(
           ) {
             vErrors =
               vErrors === null
-                ? validate1247.errors
-                : vErrors.concat(validate1247.errors);
+                ? validate1263.errors
+                : vErrors.concat(validate1263.errors);
             errors = vErrors.length;
           }
         }
@@ -40045,11 +40045,11 @@ function validate2354(
     }
     errors++;
   }
-  validate2354.errors = vErrors;
+  validate2371.errors = vErrors;
   return errors === 0;
 }
-var validateChildCall = validate1560;
-var schema385 = {
+var validateChildCall = validate1576;
+var schema387 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -40090,7 +40090,7 @@ var schema385 = {
   title: "ChildCall",
   type: "object",
 };
-function validate1560(
+function validate1576(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -40269,7 +40269,7 @@ function validate1560(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema385.properties, key0)) {
+      if (!func0.call(schema387.properties, key0)) {
         const err11 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -40462,7 +40462,7 @@ function validate1560(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -40471,8 +40471,8 @@ function validate1560(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
@@ -40510,7 +40510,7 @@ function validate1560(
     }
     if (data.taskContext !== void 0 && func0.call(data, "taskContext")) {
       if (
-        !validate1416(data.taskContext, {
+        !validate1432(data.taskContext, {
           instancePath: instancePath + "/taskContext",
           parentData: data,
           parentDataProperty: "taskContext",
@@ -40519,8 +40519,8 @@ function validate1560(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -40539,11 +40539,11 @@ function validate1560(
     }
     errors++;
   }
-  validate1560.errors = vErrors;
+  validate1576.errors = vErrors;
   return errors === 0;
 }
-var validateClientAutostartParams = validate2359;
-function validate2359(
+var validateClientAutostartParams = validate2376;
+function validate2376(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -40614,11 +40614,11 @@ function validate2359(
     }
     errors++;
   }
-  validate2359.errors = vErrors;
+  validate2376.errors = vErrors;
   return errors === 0;
 }
-var validateClientCapability = validate2360;
-var schema556 = {
+var validateClientCapability = validate2377;
+var schema558 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "client.window.read",
@@ -40647,7 +40647,7 @@ var schema556 = {
   title: "ClientCapability",
   type: "string",
 };
-function validate2360(
+function validate2377(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -40696,7 +40696,7 @@ function validate2360(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema556.enum },
+      params: { allowedValues: schema558.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -40706,11 +40706,11 @@ function validate2360(
     }
     errors++;
   }
-  validate2360.errors = vErrors;
+  validate2377.errors = vErrors;
   return errors === 0;
 }
-var validateClientClipboardWriteParams = validate2361;
-function validate2361(
+var validateClientClipboardWriteParams = validate2378;
+function validate2378(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -40781,11 +40781,11 @@ function validate2361(
     }
     errors++;
   }
-  validate2361.errors = vErrors;
+  validate2378.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectAcknowledged = validate2362;
-function validate2362(
+var validateClientEffectAcknowledged = validate2379;
+function validate2379(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -40855,11 +40855,11 @@ function validate2362(
     }
     errors++;
   }
-  validate2362.errors = vErrors;
+  validate2379.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectAction = validate2364;
-function validate2364(
+var validateClientEffectAction = validate2381;
+function validate2381(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -44924,11 +44924,11 @@ function validate2364(
       }
     }
   }
-  validate2364.errors = vErrors;
+  validate2381.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectOutcome = validate2367;
-function validate2367(
+var validateClientEffectOutcome = validate2384;
+function validate2384(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -45202,11 +45202,11 @@ function validate2367(
       }
     }
   }
-  validate2367.errors = vErrors;
+  validate2384.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectReceipt = validate2370;
-function validate1145(
+var validateClientEffectReceipt = validate2387;
+function validate1161(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -45480,10 +45480,10 @@ function validate1145(
       }
     }
   }
-  validate1145.errors = vErrors;
+  validate1161.errors = vErrors;
   return errors === 0;
 }
-function validate2370(
+function validate2387(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -45686,7 +45686,7 @@ function validate2370(
     }
     if (data.outcome !== void 0 && func0.call(data, "outcome")) {
       if (
-        !validate1145(data.outcome, {
+        !validate1161(data.outcome, {
           instancePath: instancePath + "/outcome",
           parentData: data,
           parentDataProperty: "outcome",
@@ -45695,8 +45695,8 @@ function validate2370(
       ) {
         vErrors =
           vErrors === null
-            ? validate1145.errors
-            : vErrors.concat(validate1145.errors);
+            ? validate1161.errors
+            : vErrors.concat(validate1161.errors);
         errors = vErrors.length;
       }
     }
@@ -45715,11 +45715,11 @@ function validate2370(
     }
     errors++;
   }
-  validate2370.errors = vErrors;
+  validate2387.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectRequest = validate2377;
-function validate1299(
+var validateClientEffectRequest = validate2394;
+function validate1315(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49784,10 +49784,10 @@ function validate1299(
       }
     }
   }
-  validate1299.errors = vErrors;
+  validate1315.errors = vErrors;
   return errors === 0;
 }
-function validate2377(
+function validate2394(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49927,7 +49927,7 @@ function validate2377(
     }
     if (data.action !== void 0 && func0.call(data, "action")) {
       if (
-        !validate1299(data.action, {
+        !validate1315(data.action, {
           instancePath: instancePath + "/action",
           parentData: data,
           parentDataProperty: "action",
@@ -49936,8 +49936,8 @@ function validate2377(
       ) {
         vErrors =
           vErrors === null
-            ? validate1299.errors
-            : vErrors.concat(validate1299.errors);
+            ? validate1315.errors
+            : vErrors.concat(validate1315.errors);
         errors = vErrors.length;
       }
     }
@@ -50039,7 +50039,7 @@ function validate2377(
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -50048,8 +50048,8 @@ function validate2377(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -50068,11 +50068,11 @@ function validate2377(
     }
     errors++;
   }
-  validate2377.errors = vErrors;
+  validate2394.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectResult = validate2386;
-function validate2386(
+var validateClientEffectResult = validate2403;
+function validate2403(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52556,11 +52556,11 @@ function validate2386(
       }
     }
   }
-  validate2386.errors = vErrors;
+  validate2403.errors = vErrors;
   return errors === 0;
 }
-var validateClientFullscreenParams = validate2397;
-function validate2397(
+var validateClientFullscreenParams = validate2414;
+function validate2414(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52631,17 +52631,17 @@ function validate2397(
     }
     errors++;
   }
-  validate2397.errors = vErrors;
+  validate2414.errors = vErrors;
   return errors === 0;
 }
-var validateClientKind = validate2398;
-var schema565 = {
+var validateClientKind = validate2415;
+var schema567 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["desktop", "browser", "cli", "mcp", "node", "peer"],
   title: "ClientKind",
   type: "string",
 };
-function validate2398(
+function validate2415(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52674,7 +52674,7 @@ function validate2398(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema565.enum },
+      params: { allowedValues: schema567.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -52684,10 +52684,10 @@ function validate2398(
     }
     errors++;
   }
-  validate2398.errors = vErrors;
+  validate2415.errors = vErrors;
   return errors === 0;
 }
-var validateClientListItem = validate2399;
+var validateClientListItem = validate2416;
 var schema242 = {
   enum: [
     "client.window.read",
@@ -53075,7 +53075,7 @@ function validate854(
   validate854.errors = vErrors;
   return errors === 0;
 }
-function validate2399(
+function validate2416(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53164,10 +53164,10 @@ function validate2399(
     }
     errors++;
   }
-  validate2399.errors = vErrors;
+  validate2416.errors = vErrors;
   return errors === 0;
 }
-var validateClientListResult = validate2402;
+var validateClientListResult = validate2419;
 function validate847(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -53260,7 +53260,7 @@ function validate847(
   validate847.errors = vErrors;
   return errors === 0;
 }
-function validate2402(
+function validate2419(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53350,11 +53350,11 @@ function validate2402(
     }
     errors++;
   }
-  validate2402.errors = vErrors;
+  validate2419.errors = vErrors;
   return errors === 0;
 }
-var validateClientReceiptSubmission = validate2404;
-function validate1139(
+var validateClientReceiptSubmission = validate2421;
+function validate1155(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53557,7 +53557,7 @@ function validate1139(
     }
     if (data.outcome !== void 0 && func0.call(data, "outcome")) {
       if (
-        !validate1145(data.outcome, {
+        !validate1161(data.outcome, {
           instancePath: instancePath + "/outcome",
           parentData: data,
           parentDataProperty: "outcome",
@@ -53566,8 +53566,8 @@ function validate1139(
       ) {
         vErrors =
           vErrors === null
-            ? validate1145.errors
-            : vErrors.concat(validate1145.errors);
+            ? validate1161.errors
+            : vErrors.concat(validate1161.errors);
         errors = vErrors.length;
       }
     }
@@ -53586,10 +53586,10 @@ function validate1139(
     }
     errors++;
   }
-  validate1139.errors = vErrors;
+  validate1155.errors = vErrors;
   return errors === 0;
 }
-function validate1457(
+function validate1473(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53789,10 +53789,10 @@ function validate1457(
     }
     errors++;
   }
-  validate1457.errors = vErrors;
+  validate1473.errors = vErrors;
   return errors === 0;
 }
-function validate2404(
+function validate2421(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53885,7 +53885,7 @@ function validate2404(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1139(data.value, {
+        !validate1155(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -53894,8 +53894,8 @@ function validate2404(
       ) {
         vErrors =
           vErrors === null
-            ? validate1139.errors
-            : vErrors.concat(validate1139.errors);
+            ? validate1155.errors
+            : vErrors.concat(validate1155.errors);
         errors = vErrors.length;
       }
     }
@@ -54003,7 +54003,7 @@ function validate2404(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1457(data.value, {
+        !validate1473(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -54012,8 +54012,8 @@ function validate2404(
       ) {
         vErrors =
           vErrors === null
-            ? validate1457.errors
-            : vErrors.concat(validate1457.errors);
+            ? validate1473.errors
+            : vErrors.concat(validate1473.errors);
         errors = vErrors.length;
       }
     }
@@ -54189,11 +54189,11 @@ function validate2404(
       }
     }
   }
-  validate2404.errors = vErrors;
+  validate2421.errors = vErrors;
   return errors === 0;
 }
-var validateClientRegisterParams = validate2226;
-function validate2226(
+var validateClientRegisterParams = validate2243;
+function validate2243(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54314,11 +54314,11 @@ function validate2226(
     }
     errors++;
   }
-  validate2226.errors = vErrors;
+  validate2243.errors = vErrors;
   return errors === 0;
 }
-var validateClientRegistration = validate2408;
-function validate2408(
+var validateClientRegistration = validate2425;
+function validate2425(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54474,11 +54474,11 @@ function validate2408(
     }
     errors++;
   }
-  validate2408.errors = vErrors;
+  validate2425.errors = vErrors;
   return errors === 0;
 }
-var validateClientResetGeometryParams = validate2412;
-function validate2412(
+var validateClientResetGeometryParams = validate2429;
+function validate2429(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54549,11 +54549,11 @@ function validate2412(
     }
     errors++;
   }
-  validate2412.errors = vErrors;
+  validate2429.errors = vErrors;
   return errors === 0;
 }
-var validateClientSettingsObservation = validate2413;
-function validate2413(
+var validateClientSettingsObservation = validate2430;
+function validate2430(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54689,11 +54689,11 @@ function validate2413(
     }
     errors++;
   }
-  validate2413.errors = vErrors;
+  validate2430.errors = vErrors;
   return errors === 0;
 }
-var validateClientUnregisterParams = validate2417;
-function validate2417(
+var validateClientUnregisterParams = validate2434;
+function validate2434(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54794,11 +54794,11 @@ function validate2417(
     }
     errors++;
   }
-  validate2417.errors = vErrors;
+  validate2434.errors = vErrors;
   return errors === 0;
 }
-var validateClientUpdatePreparation = validate2420;
-function validate2420(
+var validateClientUpdatePreparation = validate2437;
+function validate2437(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54998,11 +54998,11 @@ function validate2420(
     }
     errors++;
   }
-  validate2420.errors = vErrors;
+  validate2437.errors = vErrors;
   return errors === 0;
 }
-var validateClientWindowSizeParams = validate2426;
-function validate2426(
+var validateClientWindowSizeParams = validate2443;
+function validate2443(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55103,11 +55103,11 @@ function validate2426(
     }
     errors++;
   }
-  validate2426.errors = vErrors;
+  validate2443.errors = vErrors;
   return errors === 0;
 }
-var validateClosedResult = validate2429;
-function validate2429(
+var validateClosedResult = validate2446;
+function validate2446(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55177,10 +55177,10 @@ function validate2429(
     }
     errors++;
   }
-  validate2429.errors = vErrors;
+  validate2446.errors = vErrors;
   return errors === 0;
 }
-var validateCommandLibraryChange = validate1957;
+var validateCommandLibraryChange = validate1974;
 function validate797(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -55698,7 +55698,7 @@ function validate783(
   validate783.errors = vErrors;
   return errors === 0;
 }
-function validate1957(
+function validate1974(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56443,11 +56443,11 @@ function validate1957(
       }
     }
   }
-  validate1957.errors = vErrors;
+  validate1974.errors = vErrors;
   return errors === 0;
 }
-var validateCommandLibraryFileParams = validate1955;
-function validate1955(
+var validateCommandLibraryFileParams = validate1972;
+function validate1972(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56517,11 +56517,11 @@ function validate1955(
     }
     errors++;
   }
-  validate1955.errors = vErrors;
+  validate1972.errors = vErrors;
   return errors === 0;
 }
-var validateCommandLibraryReadParams = validate1942;
-function validate1944(
+var validateCommandLibraryReadParams = validate1959;
+function validate1961(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57019,10 +57019,10 @@ function validate1944(
       }
     }
   }
-  validate1944.errors = vErrors;
+  validate1961.errors = vErrors;
   return errors === 0;
 }
-function validate1942(
+function validate1959(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57129,7 +57129,7 @@ function validate1942(
     }
     if (data.selection !== void 0 && func0.call(data, "selection")) {
       if (
-        !validate1944(data.selection, {
+        !validate1961(data.selection, {
           instancePath: instancePath + "/selection",
           parentData: data,
           parentDataProperty: "selection",
@@ -57138,8 +57138,8 @@ function validate1942(
       ) {
         vErrors =
           vErrors === null
-            ? validate1944.errors
-            : vErrors.concat(validate1944.errors);
+            ? validate1961.errors
+            : vErrors.concat(validate1961.errors);
         errors = vErrors.length;
       }
     }
@@ -57158,11 +57158,11 @@ function validate1942(
     }
     errors++;
   }
-  validate1942.errors = vErrors;
+  validate1959.errors = vErrors;
   return errors === 0;
 }
-var validateCommandLibraryReadResult = validate1950;
-function validate1036(
+var validateCommandLibraryReadResult = validate1967;
+function validate1061(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57731,10 +57731,10 @@ function validate1036(
       }
     }
   }
-  validate1036.errors = vErrors;
+  validate1061.errors = vErrors;
   return errors === 0;
 }
-function validate1950(
+function validate1967(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57790,7 +57790,7 @@ function validate1950(
     }
     if (data.records !== void 0 && func0.call(data, "records")) {
       if (
-        !validate1036(data.records, {
+        !validate1061(data.records, {
           instancePath: instancePath + "/records",
           parentData: data,
           parentDataProperty: "records",
@@ -57799,8 +57799,8 @@ function validate1950(
       ) {
         vErrors =
           vErrors === null
-            ? validate1036.errors
-            : vErrors.concat(validate1036.errors);
+            ? validate1061.errors
+            : vErrors.concat(validate1061.errors);
         errors = vErrors.length;
       }
     }
@@ -57835,11 +57835,11 @@ function validate1950(
     }
     errors++;
   }
-  validate1950.errors = vErrors;
+  validate1967.errors = vErrors;
   return errors === 0;
 }
-var validateCommandLibraryRevision = validate1953;
-function validate1953(
+var validateCommandLibraryRevision = validate1970;
+function validate1970(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57909,11 +57909,11 @@ function validate1953(
     }
     errors++;
   }
-  validate1953.errors = vErrors;
+  validate1970.errors = vErrors;
   return errors === 0;
 }
-var validateConfigField = validate2081;
-function validate2081(
+var validateConfigField = validate2098;
+function validate2098(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58068,11 +58068,11 @@ function validate2081(
     }
     errors++;
   }
-  validate2081.errors = vErrors;
+  validate2098.errors = vErrors;
   return errors === 0;
 }
-var validateConfigReceipt = validate2074;
-function validate2074(
+var validateConfigReceipt = validate2091;
+function validate2091(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58352,11 +58352,11 @@ function validate2074(
     }
     errors++;
   }
-  validate2074.errors = vErrors;
+  validate2091.errors = vErrors;
   return errors === 0;
 }
-var validateConfigurationBoundary = validate2431;
-function validate2431(
+var validateConfigurationBoundary = validate2448;
+function validate2448(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58492,11 +58492,11 @@ function validate2431(
     }
     errors++;
   }
-  validate2431.errors = vErrors;
+  validate2448.errors = vErrors;
   return errors === 0;
 }
-var validateConfigureParams = validate2072;
-function validate2072(
+var validateConfigureParams = validate2089;
+function validate2089(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58566,11 +58566,11 @@ function validate2072(
     }
     errors++;
   }
-  validate2072.errors = vErrors;
+  validate2089.errors = vErrors;
   return errors === 0;
 }
-var validateContextToken = validate2435;
-function validate2435(
+var validateContextToken = validate2452;
+function validate2452(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58607,17 +58607,17 @@ function validate2435(
     }
     errors++;
   }
-  validate2435.errors = vErrors;
+  validate2452.errors = vErrors;
   return errors === 0;
 }
-var validateControlLine = validate1990;
-var schema454 = {
+var validateControlLine = validate2007;
+var schema456 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["dtr", "rts"],
   title: "ControlLine",
   type: "string",
 };
-function validate1990(
+function validate2007(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58643,7 +58643,7 @@ function validate1990(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema454.enum },
+      params: { allowedValues: schema456.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -58653,11 +58653,11 @@ function validate1990(
     }
     errors++;
   }
-  validate1990.errors = vErrors;
+  validate2007.errors = vErrors;
   return errors === 0;
 }
-var validateControlParams = validate2084;
-function validate2084(
+var validateControlParams = validate2101;
+function validate2101(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58759,11 +58759,11 @@ function validate2084(
     }
     errors++;
   }
-  validate2084.errors = vErrors;
+  validate2101.errors = vErrors;
   return errors === 0;
 }
-var validateControlReceipt = validate2086;
-function validate2086(
+var validateControlReceipt = validate2103;
+function validate2103(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58918,17 +58918,17 @@ function validate2086(
     }
     errors++;
   }
-  validate2086.errors = vErrors;
+  validate2103.errors = vErrors;
   return errors === 0;
 }
-var validateControlState = validate1989;
-var schema453 = {
+var validateControlState = validate2006;
+var schema455 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["clear", "asserting", "asserted", "clearing", "unknown"],
   title: "ControlState",
   type: "string",
 };
-function validate1989(
+function validate2006(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -58960,7 +58960,7 @@ function validate1989(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema453.enum },
+      params: { allowedValues: schema455.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -58970,17 +58970,17 @@ function validate1989(
     }
     errors++;
   }
-  validate1989.errors = vErrors;
+  validate2006.errors = vErrors;
   return errors === 0;
 }
-var validateControlStatus = validate2436;
-var schema578 = {
+var validateControlStatus = validate2453;
+var schema580 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["confirmed", "failed", "unknown"],
   title: "ControlStatus",
   type: "string",
 };
-function validate2436(
+function validate2453(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59006,7 +59006,7 @@ function validate2436(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema578.enum },
+      params: { allowedValues: schema580.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -59016,11 +59016,11 @@ function validate2436(
     }
     errors++;
   }
-  validate2436.errors = vErrors;
+  validate2453.errors = vErrors;
   return errors === 0;
 }
-var validateControlTransition = validate2091;
-function validate2091(
+var validateControlTransition = validate2108;
+function validate2108(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59137,11 +59137,11 @@ function validate2091(
     }
     errors++;
   }
-  validate2091.errors = vErrors;
+  validate2108.errors = vErrors;
   return errors === 0;
 }
-var validateCursor = validate2140;
-function validate2140(
+var validateCursor = validate2157;
+function validate2157(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59309,17 +59309,17 @@ function validate2140(
     }
     errors++;
   }
-  validate2140.errors = vErrors;
+  validate2157.errors = vErrors;
   return errors === 0;
 }
-var validateDataBits = validate1902;
-var schema424 = {
+var validateDataBits = validate1919;
+var schema426 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["5", "6", "7", "8"],
   title: "DataBits",
   type: "string",
 };
-function validate1902(
+function validate1919(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59345,7 +59345,7 @@ function validate1902(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema424.enum },
+      params: { allowedValues: schema426.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -59355,11 +59355,11 @@ function validate1902(
     }
     errors++;
   }
-  validate1902.errors = vErrors;
+  validate1919.errors = vErrors;
   return errors === 0;
 }
-var validateDelta = validate2437;
-function validate1015(
+var validateDelta = validate2454;
+function validate1040(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59527,10 +59527,10 @@ function validate1015(
     }
     errors++;
   }
-  validate1015.errors = vErrors;
+  validate1040.errors = vErrors;
   return errors === 0;
 }
-function validate2437(
+function validate2454(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59637,7 +59637,7 @@ function validate2437(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -59646,8 +59646,8 @@ function validate2437(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -59707,7 +59707,7 @@ function validate2437(
     }
     if (data.previousCursor !== void 0 && func0.call(data, "previousCursor")) {
       if (
-        !validate1015(data.previousCursor, {
+        !validate1040(data.previousCursor, {
           instancePath: instancePath + "/previousCursor",
           parentData: data,
           parentDataProperty: "previousCursor",
@@ -59716,8 +59716,8 @@ function validate2437(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -59752,11 +59752,11 @@ function validate2437(
     }
     errors++;
   }
-  validate2437.errors = vErrors;
+  validate2454.errors = vErrors;
   return errors === 0;
 }
-var validateDependency = validate2443;
-function validate2443(
+var validateDependency = validate2460;
+function validate2460(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -59889,10 +59889,10 @@ function validate2443(
     }
     errors++;
   }
-  validate2443.errors = vErrors;
+  validate2460.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedMemoryMetrics = validate2223;
+var validateDerivedMemoryMetrics = validate2240;
 function validate862(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -60032,7 +60032,7 @@ function validate862(
   validate862.errors = vErrors;
   return errors === 0;
 }
-function validate2223(
+function validate2240(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -60133,15 +60133,15 @@ function validate2223(
     }
     errors++;
   }
-  validate2223.errors = vErrors;
+  validate2240.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedProvenance = validate2446;
-var schema285 = {
+var validateDerivedProvenance = validate2463;
+var schema288 = {
   enum: ["complete", "gap", "partial", "unknown", "transformed"],
   type: "string",
 };
-function validate1060(
+function validate1085(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -60173,7 +60173,7 @@ function validate1060(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema285.enum },
+      params: { allowedValues: schema288.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -60183,10 +60183,10 @@ function validate1060(
     }
     errors++;
   }
-  validate1060.errors = vErrors;
+  validate1085.errors = vErrors;
   return errors === 0;
 }
-function validate1062(
+function validate976(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -60437,10 +60437,10 @@ function validate1062(
     }
     errors++;
   }
-  validate1062.errors = vErrors;
+  validate976.errors = vErrors;
   return errors === 0;
 }
-function validate2446(
+function validate2463(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -60607,7 +60607,7 @@ function validate2446(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1060(data3[i0], {
+            !validate1085(data3[i0], {
               instancePath: instancePath + "/quality/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -60616,8 +60616,8 @@ function validate2446(
           ) {
             vErrors =
               vErrors === null
-                ? validate1060.errors
-                : vErrors.concat(validate1060.errors);
+                ? validate1085.errors
+                : vErrors.concat(validate1085.errors);
             errors = vErrors.length;
           }
         }
@@ -60643,7 +60643,7 @@ function validate2446(
         const len1 = data5.length;
         for (let i1 = 0; i1 < len1; i1++) {
           if (
-            !validate1062(data5[i1], {
+            !validate976(data5[i1], {
               instancePath: instancePath + "/sources/" + i1,
               parentData: data5,
               parentDataProperty: i1,
@@ -60652,8 +60652,8 @@ function validate2446(
           ) {
             vErrors =
               vErrors === null
-                ? validate1062.errors
-                : vErrors.concat(validate1062.errors);
+                ? validate976.errors
+                : vErrors.concat(validate976.errors);
             errors = vErrors.length;
           }
         }
@@ -60705,10 +60705,10 @@ function validate2446(
     }
     errors++;
   }
-  validate2446.errors = vErrors;
+  validate2463.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedPublishParams = validate2160;
+var validateDerivedPublishParams = validate2177;
 var wrapper4 = { validate: validate773 };
 function validate773(
   data,
@@ -60901,7 +60901,7 @@ function validate773(
   validate773.errors = vErrors;
   return errors === 0;
 }
-function validate2160(
+function validate2177(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -61011,7 +61011,7 @@ function validate2160(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1060(data0[i0], {
+            !validate1085(data0[i0], {
               instancePath: instancePath + "/quality/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -61020,8 +61020,8 @@ function validate2160(
           ) {
             vErrors =
               vErrors === null
-                ? validate1060.errors
-                : vErrors.concat(validate1060.errors);
+                ? validate1085.errors
+                : vErrors.concat(validate1085.errors);
             errors = vErrors.length;
           }
         }
@@ -61077,7 +61077,7 @@ function validate2160(
         const len1 = data2.length;
         for (let i1 = 0; i1 < len1; i1++) {
           if (
-            !validate1062(data2[i1], {
+            !validate976(data2[i1], {
               instancePath: instancePath + "/sources/" + i1,
               parentData: data2,
               parentDataProperty: i1,
@@ -61086,8 +61086,8 @@ function validate2160(
           ) {
             vErrors =
               vErrors === null
-                ? validate1062.errors
-                : vErrors.concat(validate1062.errors);
+                ? validate976.errors
+                : vErrors.concat(validate976.errors);
             errors = vErrors.length;
           }
         }
@@ -61187,11 +61187,11 @@ function validate2160(
     }
     errors++;
   }
-  validate2160.errors = vErrors;
+  validate2177.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedPublishResult = validate2164;
-function validate2164(
+var validateDerivedPublishResult = validate2181;
+function validate2181(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -61292,17 +61292,17 @@ function validate2164(
     }
     errors++;
   }
-  validate2164.errors = vErrors;
+  validate2181.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedQuality = validate2451;
-var schema582 = {
+var validateDerivedQuality = validate2468;
+var schema584 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["complete", "gap", "partial", "unknown", "transformed"],
   title: "DerivedQuality",
   type: "string",
 };
-function validate2451(
+function validate2468(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -61334,7 +61334,7 @@ function validate2451(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema582.enum },
+      params: { allowedValues: schema584.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -61344,11 +61344,11 @@ function validate2451(
     }
     errors++;
   }
-  validate2451.errors = vErrors;
+  validate2468.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedReadParams = validate2167;
-function validate2167(
+var validateDerivedReadParams = validate2184;
+function validate2184(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -61516,11 +61516,11 @@ function validate2167(
     }
     errors++;
   }
-  validate2167.errors = vErrors;
+  validate2184.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedReadResult = validate2172;
-function validate1057(
+var validateDerivedReadResult = validate2189;
+function validate1082(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -61687,7 +61687,7 @@ function validate1057(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1060(data3[i0], {
+            !validate1085(data3[i0], {
               instancePath: instancePath + "/quality/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -61696,8 +61696,8 @@ function validate1057(
           ) {
             vErrors =
               vErrors === null
-                ? validate1060.errors
-                : vErrors.concat(validate1060.errors);
+                ? validate1085.errors
+                : vErrors.concat(validate1085.errors);
             errors = vErrors.length;
           }
         }
@@ -61723,7 +61723,7 @@ function validate1057(
         const len1 = data5.length;
         for (let i1 = 0; i1 < len1; i1++) {
           if (
-            !validate1062(data5[i1], {
+            !validate976(data5[i1], {
               instancePath: instancePath + "/sources/" + i1,
               parentData: data5,
               parentDataProperty: i1,
@@ -61732,8 +61732,8 @@ function validate1057(
           ) {
             vErrors =
               vErrors === null
-                ? validate1062.errors
-                : vErrors.concat(validate1062.errors);
+                ? validate976.errors
+                : vErrors.concat(validate976.errors);
             errors = vErrors.length;
           }
         }
@@ -61785,10 +61785,10 @@ function validate1057(
     }
     errors++;
   }
-  validate1057.errors = vErrors;
+  validate1082.errors = vErrors;
   return errors === 0;
 }
-function validate1055(
+function validate1080(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -61875,7 +61875,7 @@ function validate1055(
     }
     if (data.provenance !== void 0 && func0.call(data, "provenance")) {
       if (
-        !validate1057(data.provenance, {
+        !validate1082(data.provenance, {
           instancePath: instancePath + "/provenance",
           parentData: data,
           parentDataProperty: "provenance",
@@ -61884,8 +61884,8 @@ function validate1055(
       ) {
         vErrors =
           vErrors === null
-            ? validate1057.errors
-            : vErrors.concat(validate1057.errors);
+            ? validate1082.errors
+            : vErrors.concat(validate1082.errors);
         errors = vErrors.length;
       }
     }
@@ -61920,10 +61920,10 @@ function validate1055(
     }
     errors++;
   }
-  validate1055.errors = vErrors;
+  validate1080.errors = vErrors;
   return errors === 0;
 }
-function validate2172(
+function validate2189(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -62099,7 +62099,7 @@ function validate2172(
         const len0 = data4.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1055(data4[i0], {
+            !validate1080(data4[i0], {
               instancePath: instancePath + "/samples/" + i0,
               parentData: data4,
               parentDataProperty: i0,
@@ -62108,8 +62108,8 @@ function validate2172(
           ) {
             vErrors =
               vErrors === null
-                ? validate1055.errors
-                : vErrors.concat(validate1055.errors);
+                ? validate1080.errors
+                : vErrors.concat(validate1080.errors);
             errors = vErrors.length;
           }
         }
@@ -62144,11 +62144,11 @@ function validate2172(
     }
     errors++;
   }
-  validate2172.errors = vErrors;
+  validate2189.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedSample = validate2452;
-function validate2452(
+var validateDerivedSample = validate2469;
+function validate2469(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -62235,7 +62235,7 @@ function validate2452(
     }
     if (data.provenance !== void 0 && func0.call(data, "provenance")) {
       if (
-        !validate1057(data.provenance, {
+        !validate1082(data.provenance, {
           instancePath: instancePath + "/provenance",
           parentData: data,
           parentDataProperty: "provenance",
@@ -62244,8 +62244,8 @@ function validate2452(
       ) {
         vErrors =
           vErrors === null
-            ? validate1057.errors
-            : vErrors.concat(validate1057.errors);
+            ? validate1082.errors
+            : vErrors.concat(validate1082.errors);
         errors = vErrors.length;
       }
     }
@@ -62280,11 +62280,11 @@ function validate2452(
     }
     errors++;
   }
-  validate2452.errors = vErrors;
+  validate2469.errors = vErrors;
   return errors === 0;
 }
-var validateDeviceBindingReference = validate2045;
-function validate2045(
+var validateDeviceBindingReference = validate2062;
+function validate2062(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -62385,11 +62385,11 @@ function validate2045(
     }
     errors++;
   }
-  validate2045.errors = vErrors;
+  validate2062.errors = vErrors;
   return errors === 0;
 }
-var validateDeviceDescriptor = validate2038;
-function validate2038(
+var validateDeviceDescriptor = validate2055;
+function validate2055(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -62644,11 +62644,11 @@ function validate2038(
     }
     errors++;
   }
-  validate2038.errors = vErrors;
+  validate2055.errors = vErrors;
   return errors === 0;
 }
-var validateDeviceList = validate2043;
-function validate1086(
+var validateDeviceList = validate2060;
+function validate1102(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -62903,10 +62903,10 @@ function validate1086(
     }
     errors++;
   }
-  validate1086.errors = vErrors;
+  validate1102.errors = vErrors;
   return errors === 0;
 }
-function validate2043(
+function validate2060(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -62966,7 +62966,7 @@ function validate2043(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1086(data0[i0], {
+            !validate1102(data0[i0], {
               instancePath: instancePath + "/devices/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -62975,8 +62975,8 @@ function validate2043(
           ) {
             vErrors =
               vErrors === null
-                ? validate1086.errors
-                : vErrors.concat(validate1086.errors);
+                ? validate1102.errors
+                : vErrors.concat(validate1102.errors);
             errors = vErrors.length;
           }
         }
@@ -63028,11 +63028,11 @@ function validate2043(
     }
     errors++;
   }
-  validate2043.errors = vErrors;
+  validate2060.errors = vErrors;
   return errors === 0;
 }
-var validateDigest = validate2456;
-function validate2456(
+var validateDigest = validate2473;
+function validate2473(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63069,17 +63069,17 @@ function validate2456(
     }
     errors++;
   }
-  validate2456.errors = vErrors;
+  validate2473.errors = vErrors;
   return errors === 0;
 }
-var validateDirection = validate2457;
-var schema585 = {
+var validateDirection = validate2474;
+var schema587 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["rx", "tx"],
   title: "Direction",
   type: "string",
 };
-function validate2457(
+function validate2474(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63105,7 +63105,7 @@ function validate2457(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema585.enum },
+      params: { allowedValues: schema587.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -63115,11 +63115,11 @@ function validate2457(
     }
     errors++;
   }
-  validate2457.errors = vErrors;
+  validate2474.errors = vErrors;
   return errors === 0;
 }
-var validateDirectionalRange = validate2458;
-function validate2458(
+var validateDirectionalRange = validate2475;
+function validate2475(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63251,11 +63251,11 @@ function validate2458(
     }
     errors++;
   }
-  validate2458.errors = vErrors;
+  validate2475.errors = vErrors;
   return errors === 0;
 }
-var validateDocumentImportParams = validate1973;
-function validate1973(
+var validateDocumentImportParams = validate1990;
+function validate1990(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63326,11 +63326,11 @@ function validate1973(
     }
     errors++;
   }
-  validate1973.errors = vErrors;
+  validate1990.errors = vErrors;
   return errors === 0;
 }
-var validateDocumentJsonResult = validate1974;
-function validate1974(
+var validateDocumentJsonResult = validate1991;
+function validate1991(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63401,11 +63401,11 @@ function validate1974(
     }
     errors++;
   }
-  validate1974.errors = vErrors;
+  validate1991.errors = vErrors;
   return errors === 0;
 }
-var validateDrainParams = validate2122;
-function validate2122(
+var validateDrainParams = validate2139;
+function validate2139(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63475,11 +63475,11 @@ function validate2122(
     }
     errors++;
   }
-  validate2122.errors = vErrors;
+  validate2139.errors = vErrors;
   return errors === 0;
 }
-var validateDrainReceipt = validate2124;
-function validate2124(
+var validateDrainReceipt = validate2141;
+function validate2141(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63549,11 +63549,11 @@ function validate2124(
     }
     errors++;
   }
-  validate2124.errors = vErrors;
+  validate2141.errors = vErrors;
   return errors === 0;
 }
-var validateDurationMs = validate1743;
-function validate1743(
+var validateDurationMs = validate1760;
+function validate1760(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63632,11 +63632,11 @@ function validate1743(
     }
     errors++;
   }
-  validate1743.errors = vErrors;
+  validate1760.errors = vErrors;
   return errors === 0;
 }
-var validateEmptyParams = validate2037;
-function validate2037(
+var validateEmptyParams = validate2054;
+function validate2054(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63673,11 +63673,11 @@ function validate2037(
     }
     errors++;
   }
-  validate2037.errors = vErrors;
+  validate2054.errors = vErrors;
   return errors === 0;
 }
-var validateEventTime = validate2462;
-function validate2462(
+var validateEventTime = validate2479;
+function validate2479(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63868,17 +63868,17 @@ function validate2462(
     }
     errors++;
   }
-  validate2462.errors = vErrors;
+  validate2479.errors = vErrors;
   return errors === 0;
 }
-var validateExecutionLocation = validate2468;
-var schema588 = {
+var validateExecutionLocation = validate2485;
+var schema590 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["resource_host", "client"],
   title: "ExecutionLocation",
   type: "string",
 };
-function validate2468(
+function validate2485(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63904,7 +63904,7 @@ function validate2468(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema588.enum },
+      params: { allowedValues: schema590.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -63914,17 +63914,17 @@ function validate2468(
     }
     errors++;
   }
-  validate2468.errors = vErrors;
+  validate2485.errors = vErrors;
   return errors === 0;
 }
-var validateExecutionMode = validate2469;
-var schema589 = {
+var validateExecutionMode = validate2486;
+var schema591 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["interactive", "independent"],
   title: "ExecutionMode",
   type: "string",
 };
-function validate2469(
+function validate2486(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -63950,7 +63950,7 @@ function validate2469(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema589.enum },
+      params: { allowedValues: schema591.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -63960,10 +63960,10 @@ function validate2469(
     }
     errors++;
   }
-  validate2469.errors = vErrors;
+  validate2486.errors = vErrors;
   return errors === 0;
 }
-var validateExperimentExportParams = validate1975;
+var validateExperimentExportParams = validate1992;
 function validate822(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -64108,7 +64108,7 @@ function validate822(
   validate822.errors = vErrors;
   return errors === 0;
 }
-function validate1975(
+function validate1992(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -64394,10 +64394,10 @@ function validate1975(
     }
     errors++;
   }
-  validate1975.errors = vErrors;
+  validate1992.errors = vErrors;
   return errors === 0;
 }
-var validateExperimentInspection = validate2470;
+var validateExperimentInspection = validate2487;
 function validate824(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -65138,7 +65138,7 @@ function validate841(
   validate841.errors = vErrors;
   return errors === 0;
 }
-function validate2470(
+function validate2487(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -65320,11 +65320,11 @@ function validate2470(
     }
     errors++;
   }
-  validate2470.errors = vErrors;
+  validate2487.errors = vErrors;
   return errors === 0;
 }
-var validateExperimentPackage = validate1981;
-function validate1981(
+var validateExperimentPackage = validate1998;
+function validate1998(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -65637,17 +65637,17 @@ function validate1981(
     }
     errors++;
   }
-  validate1981.errors = vErrors;
+  validate1998.errors = vErrors;
   return errors === 0;
 }
-var validateExplicitLeaseKind = validate1995;
-var schema459 = {
+var validateExplicitLeaseKind = validate2012;
+var schema461 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["transaction", "exclusive"],
   title: "ExplicitLeaseKind",
   type: "string",
 };
-function validate1995(
+function validate2012(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -65673,7 +65673,7 @@ function validate1995(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema459.enum },
+      params: { allowedValues: schema461.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -65683,11 +65683,11 @@ function validate1995(
     }
     errors++;
   }
-  validate1995.errors = vErrors;
+  validate2012.errors = vErrors;
   return errors === 0;
 }
-var validateFavoritesSaveParams = validate2474;
-function validate2474(
+var validateFavoritesSaveParams = validate2491;
+function validate2491(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -65777,17 +65777,17 @@ function validate2474(
     }
     errors++;
   }
-  validate2474.errors = vErrors;
+  validate2491.errors = vErrors;
   return errors === 0;
 }
-var validateFieldStatus = validate2476;
-var schema592 = {
+var validateFieldStatus = validate2493;
+var schema594 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["applied", "rejected", "unknown"],
   title: "FieldStatus",
   type: "string",
 };
-function validate2476(
+function validate2493(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -65813,7 +65813,7 @@ function validate2476(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema592.enum },
+      params: { allowedValues: schema594.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -65823,11 +65823,11 @@ function validate2476(
     }
     errors++;
   }
-  validate2476.errors = vErrors;
+  validate2493.errors = vErrors;
   return errors === 0;
 }
-var validateFileMetadata = validate2477;
-function validate2477(
+var validateFileMetadata = validate2494;
+function validate2494(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -65995,11 +65995,11 @@ function validate2477(
     }
     errors++;
   }
-  validate2477.errors = vErrors;
+  validate2494.errors = vErrors;
   return errors === 0;
 }
-var validateFileMetadataParams = validate2482;
-function validate2482(
+var validateFileMetadataParams = validate2499;
+function validate2499(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66069,11 +66069,11 @@ function validate2482(
     }
     errors++;
   }
-  validate2482.errors = vErrors;
+  validate2499.errors = vErrors;
   return errors === 0;
 }
-var validateFileReadParams = validate2484;
-function validate2484(
+var validateFileReadParams = validate2501;
+function validate2501(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66205,11 +66205,11 @@ function validate2484(
     }
     errors++;
   }
-  validate2484.errors = vErrors;
+  validate2501.errors = vErrors;
   return errors === 0;
 }
-var validateFileReadResult = validate2488;
-function validate2488(
+var validateFileReadResult = validate2505;
+function validate2505(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66474,11 +66474,11 @@ function validate2488(
     }
     errors++;
   }
-  validate2488.errors = vErrors;
+  validate2505.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferParams = validate2495;
-function validate2495(
+var validateFileTransferParams = validate2512;
+function validate2512(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66727,11 +66727,11 @@ function validate2495(
     }
     errors++;
   }
-  validate2495.errors = vErrors;
+  validate2512.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReadProgress = validate2503;
-function validate2503(
+var validateFileTransferReadProgress = validate2520;
+function validate2520(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66817,11 +66817,11 @@ function validate2503(
     }
     errors++;
   }
-  validate2503.errors = vErrors;
+  validate2520.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReadProgressParams = validate2506;
-function validate2506(
+var validateFileTransferReadProgressParams = validate2523;
+function validate2523(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66891,11 +66891,150 @@ function validate2506(
     }
     errors++;
   }
-  validate2506.errors = vErrors;
+  validate2523.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReceipt = validate2508;
-function validate2508(
+var validateFileTransferReceipt = validate2525;
+function validate973(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.recordOrdinal === void 0 || !func0.call(data, "recordOrdinal")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "recordOrdinal" },
+        message: "must have required property 'recordOrdinal'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.source === void 0 || !func0.call(data, "source")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "source" },
+        message: "must have required property 'source'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.outputOffset === void 0 || !func0.call(data, "outputOffset")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "outputOffset" },
+        message: "must have required property 'outputOffset'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(
+        key0 === "outputOffset" ||
+        key0 === "recordOrdinal" ||
+        key0 === "source"
+      )) {
+        const err3 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
+    if (data.outputOffset !== void 0 && func0.call(data, "outputOffset")) {
+      if (
+        !validate32(data.outputOffset, {
+          instancePath: instancePath + "/outputOffset",
+          parentData: data,
+          parentDataProperty: "outputOffset",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.recordOrdinal !== void 0 && func0.call(data, "recordOrdinal")) {
+      if (
+        !validate32(data.recordOrdinal, {
+          instancePath: instancePath + "/recordOrdinal",
+          parentData: data,
+          parentDataProperty: "recordOrdinal",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.source !== void 0 && func0.call(data, "source")) {
+      if (
+        !validate976(data.source, {
+          instancePath: instancePath + "/source",
+          parentData: data,
+          parentDataProperty: "source",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate976.errors
+            : vErrors.concat(validate976.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err4 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err4];
+    } else {
+      vErrors.push(err4);
+    }
+    errors++;
+  }
+  validate973.errors = vErrors;
+  return errors === 0;
+}
+function validate2525(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -66933,7 +67072,11 @@ function validate2508(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!(key0 === "receipt" || key0 === "sourceOffset")) {
+      if (!(
+        key0 === "receipt" ||
+        key0 === "replaySpans" ||
+        key0 === "sourceOffset"
+      )) {
         const err2 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -66965,6 +67108,42 @@ function validate2508(
         errors = vErrors.length;
       }
     }
+    if (data.replaySpans !== void 0 && func0.call(data, "replaySpans")) {
+      let data1 = data.replaySpans;
+      if (Array.isArray(data1)) {
+        const len0 = data1.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          if (
+            !validate973(data1[i0], {
+              instancePath: instancePath + "/replaySpans/" + i0,
+              parentData: data1,
+              parentDataProperty: i0,
+              rootData,
+            })
+          ) {
+            vErrors =
+              vErrors === null
+                ? validate973.errors
+                : vErrors.concat(validate973.errors);
+            errors = vErrors.length;
+          }
+        }
+      } else {
+        const err3 = {
+          instancePath: instancePath + "/replaySpans",
+          schemaPath: "#/properties/replaySpans/type",
+          keyword: "type",
+          params: { type: "array" },
+          message: "must be array",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
     if (data.sourceOffset !== void 0 && func0.call(data, "sourceOffset")) {
       if (
         !validate32(data.sourceOffset, {
@@ -66982,7 +67161,7 @@ function validate2508(
       }
     }
   } else {
-    const err3 = {
+    const err4 = {
       instancePath,
       schemaPath: "#/type",
       keyword: "type",
@@ -66990,17 +67169,17 @@ function validate2508(
       message: "must be object",
     };
     if (vErrors === null) {
-      vErrors = [err3];
+      vErrors = [err4];
     } else {
-      vErrors.push(err3);
+      vErrors.push(err4);
     }
     errors++;
   }
-  validate2508.errors = vErrors;
+  validate2525.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReceiptsParams = validate2511;
-function validate2511(
+var validateFileTransferReceiptsParams = validate2529;
+function validate2529(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67168,11 +67347,11 @@ function validate2511(
     }
     errors++;
   }
-  validate2511.errors = vErrors;
+  validate2529.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReceiptsResult = validate2516;
-function validate1004(
+var validateFileTransferReceiptsResult = validate2534;
+function validate1028(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67210,7 +67389,11 @@ function validate1004(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!(key0 === "receipt" || key0 === "sourceOffset")) {
+      if (!(
+        key0 === "receipt" ||
+        key0 === "replaySpans" ||
+        key0 === "sourceOffset"
+      )) {
         const err2 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -67242,6 +67425,42 @@ function validate1004(
         errors = vErrors.length;
       }
     }
+    if (data.replaySpans !== void 0 && func0.call(data, "replaySpans")) {
+      let data1 = data.replaySpans;
+      if (Array.isArray(data1)) {
+        const len0 = data1.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          if (
+            !validate973(data1[i0], {
+              instancePath: instancePath + "/replaySpans/" + i0,
+              parentData: data1,
+              parentDataProperty: i0,
+              rootData,
+            })
+          ) {
+            vErrors =
+              vErrors === null
+                ? validate973.errors
+                : vErrors.concat(validate973.errors);
+            errors = vErrors.length;
+          }
+        }
+      } else {
+        const err3 = {
+          instancePath: instancePath + "/replaySpans",
+          schemaPath: "#/properties/replaySpans/type",
+          keyword: "type",
+          params: { type: "array" },
+          message: "must be array",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
     if (data.sourceOffset !== void 0 && func0.call(data, "sourceOffset")) {
       if (
         !validate32(data.sourceOffset, {
@@ -67259,7 +67478,7 @@ function validate1004(
       }
     }
   } else {
-    const err3 = {
+    const err4 = {
       instancePath,
       schemaPath: "#/type",
       keyword: "type",
@@ -67267,16 +67486,16 @@ function validate1004(
       message: "must be object",
     };
     if (vErrors === null) {
-      vErrors = [err3];
+      vErrors = [err4];
     } else {
-      vErrors.push(err3);
+      vErrors.push(err4);
     }
     errors++;
   }
-  validate1004.errors = vErrors;
+  validate1028.errors = vErrors;
   return errors === 0;
 }
-function validate2516(
+function validate2534(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67452,7 +67671,7 @@ function validate2516(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1004(data3[i0], {
+            !validate1028(data3[i0], {
               instancePath: instancePath + "/receipts/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -67461,8 +67680,8 @@ function validate2516(
           ) {
             vErrors =
               vErrors === null
-                ? validate1004.errors
-                : vErrors.concat(validate1004.errors);
+                ? validate1028.errors
+                : vErrors.concat(validate1028.errors);
             errors = vErrors.length;
           }
         }
@@ -67530,11 +67749,11 @@ function validate2516(
     }
     errors++;
   }
-  validate2516.errors = vErrors;
+  validate2534.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferResult = validate2521;
-function validate2521(
+var validateFileTransferResult = validate2539;
+function validate2539(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67741,17 +67960,17 @@ function validate2521(
     }
     errors++;
   }
-  validate2521.errors = vErrors;
+  validate2539.errors = vErrors;
   return errors === 0;
 }
-var validateFlowControl = validate1905;
-var schema427 = {
+var validateFlowControl = validate1922;
+var schema429 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["none", "rtsCts", "xonXoff", "dsrDtr"],
   title: "FlowControl",
   type: "string",
 };
-function validate1905(
+function validate1922(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67782,7 +68001,7 @@ function validate1905(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema427.enum },
+      params: { allowedValues: schema429.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -67792,17 +68011,17 @@ function validate1905(
     }
     errors++;
   }
-  validate1905.errors = vErrors;
+  validate1922.errors = vErrors;
   return errors === 0;
 }
-var validateFont = validate2526;
-var schema604 = {
+var validateFont = validate2544;
+var schema606 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["geist", "system", "serif", "mono"],
   title: "Font",
   type: "string",
 };
-function validate2526(
+function validate2544(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67833,7 +68052,7 @@ function validate2526(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema604.enum },
+      params: { allowedValues: schema606.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -67843,17 +68062,17 @@ function validate2526(
     }
     errors++;
   }
-  validate2526.errors = vErrors;
+  validate2544.errors = vErrors;
   return errors === 0;
 }
-var validateFontSize = validate2527;
-var schema605 = {
+var validateFontSize = validate2545;
+var schema607 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["sm", "md", "lg"],
   title: "FontSize",
   type: "string",
 };
-function validate2527(
+function validate2545(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -67879,7 +68098,7 @@ function validate2527(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema605.enum },
+      params: { allowedValues: schema607.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -67889,11 +68108,11 @@ function validate2527(
     }
     errors++;
   }
-  validate2527.errors = vErrors;
+  validate2545.errors = vErrors;
   return errors === 0;
 }
-var validateHostError = validate2528;
-function validate2528(
+var validateHostError = validate2546;
+function validate2546(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -68105,11 +68324,11 @@ function validate2528(
     }
     errors++;
   }
-  validate2528.errors = vErrors;
+  validate2546.errors = vErrors;
   return errors === 0;
 }
-var validateHostMetrics = validate2211;
-var schema516 = {
+var validateHostMetrics = validate2228;
+var schema518 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   description:
@@ -68433,7 +68652,7 @@ function validate873(
   validate873.errors = vErrors;
   return errors === 0;
 }
-function validate2211(
+function validate2228(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -68576,7 +68795,7 @@ function validate2211(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema516.properties, key0)) {
+      if (!func0.call(schema518.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -68783,11 +69002,11 @@ function validate2211(
     }
     errors++;
   }
-  validate2211.errors = vErrors;
+  validate2228.errors = vErrors;
   return errors === 0;
 }
-var validateHostMetricsParams = validate2532;
-function validate2532(
+var validateHostMetricsParams = validate2550;
+function validate2550(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -68824,11 +69043,11 @@ function validate2532(
     }
     errors++;
   }
-  validate2532.errors = vErrors;
+  validate2550.errors = vErrors;
   return errors === 0;
 }
-var validateHttpControlEntry = validate2533;
-function validate2533(
+var validateHttpControlEntry = validate2551;
+function validate2551(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -68915,7 +69134,7 @@ function validate2533(
     }
     if (data.credential !== void 0 && func0.call(data, "credential")) {
       if (
-        !validate1416(data.credential, {
+        !validate1432(data.credential, {
           instancePath: instancePath + "/credential",
           parentData: data,
           parentDataProperty: "credential",
@@ -68924,8 +69143,8 @@ function validate2533(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -68961,12 +69180,12 @@ function validate2533(
     }
     errors++;
   }
-  validate2533.errors = vErrors;
+  validate2551.errors = vErrors;
   return errors === 0;
 }
-var validateHttpControlRequest = validate1718;
-var schema354 = { enum: ["readOnly", "operate"], type: "string" };
-function validate1395(
+var validateHttpControlRequest = validate1735;
+var schema356 = { enum: ["readOnly", "operate"], type: "string" };
+function validate1411(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -68992,7 +69211,7 @@ function validate1395(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema354.enum },
+      params: { allowedValues: schema356.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -69002,10 +69221,10 @@ function validate1395(
     }
     errors++;
   }
-  validate1395.errors = vErrors;
+  validate1411.errors = vErrors;
   return errors === 0;
 }
-function validate1394(
+function validate1410(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -69217,7 +69436,7 @@ function validate1394(
     }
     if (data.mode !== void 0 && func0.call(data, "mode")) {
       if (
-        !validate1395(data.mode, {
+        !validate1411(data.mode, {
           instancePath: instancePath + "/mode",
           parentData: data,
           parentDataProperty: "mode",
@@ -69226,8 +69445,8 @@ function validate1394(
       ) {
         vErrors =
           vErrors === null
-            ? validate1395.errors
-            : vErrors.concat(validate1395.errors);
+            ? validate1411.errors
+            : vErrors.concat(validate1411.errors);
         errors = vErrors.length;
       }
     }
@@ -69372,10 +69591,10 @@ function validate1394(
       }
     }
   }
-  validate1394.errors = vErrors;
+  validate1410.errors = vErrors;
   return errors === 0;
 }
-var schema356 = {
+var schema358 = {
   additionalProperties: false,
   properties: {
     actionId: { $ref: "#/definitions/shared/definitions/Id" },
@@ -69416,7 +69635,7 @@ var schema356 = {
   ],
   type: "object",
 };
-function validate1405(
+function validate1421(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -69577,7 +69796,7 @@ function validate1405(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema356.properties, key0)) {
+      if (!func0.call(schema358.properties, key0)) {
         const err10 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -69751,7 +69970,7 @@ function validate1405(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -69760,14 +69979,14 @@ function validate1405(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestContext !== void 0 && func0.call(data, "requestContext")) {
       if (
-        !validate1416(data.requestContext, {
+        !validate1432(data.requestContext, {
           instancePath: instancePath + "/requestContext",
           parentData: data,
           parentDataProperty: "requestContext",
@@ -69776,14 +69995,14 @@ function validate1405(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -69792,8 +70011,8 @@ function validate1405(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -69834,7 +70053,7 @@ function validate1405(
       func0.call(data, "workspaceStartup")
     ) {
       if (
-        !validate1421(data.workspaceStartup, {
+        !validate1437(data.workspaceStartup, {
           instancePath: instancePath + "/workspaceStartup",
           parentData: data,
           parentDataProperty: "workspaceStartup",
@@ -69843,8 +70062,8 @@ function validate1405(
       ) {
         vErrors =
           vErrors === null
-            ? validate1421.errors
-            : vErrors.concat(validate1421.errors);
+            ? validate1437.errors
+            : vErrors.concat(validate1437.errors);
         errors = vErrors.length;
       }
     }
@@ -69863,10 +70082,10 @@ function validate1405(
     }
     errors++;
   }
-  validate1405.errors = vErrors;
+  validate1421.errors = vErrors;
   return errors === 0;
 }
-function validate1398(
+function validate1414(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -70401,7 +70620,7 @@ function validate1398(
         }
         if (data.call !== void 0 && func0.call(data, "call")) {
           if (
-            !validate1405(data.call, {
+            !validate1421(data.call, {
               instancePath: instancePath + "/call",
               parentData: data,
               parentDataProperty: "call",
@@ -70410,8 +70629,8 @@ function validate1398(
           ) {
             vErrors =
               vErrors === null
-                ? validate1405.errors
-                : vErrors.concat(validate1405.errors);
+                ? validate1421.errors
+                : vErrors.concat(validate1421.errors);
             errors = vErrors.length;
           }
         }
@@ -70638,10 +70857,10 @@ function validate1398(
       }
     }
   }
-  validate1398.errors = vErrors;
+  validate1414.errors = vErrors;
   return errors === 0;
 }
-function validate1430(
+function validate1446(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -70978,10 +71197,10 @@ function validate1430(
       }
     }
   }
-  validate1430.errors = vErrors;
+  validate1446.errors = vErrors;
   return errors === 0;
 }
-function validate1436(
+function validate1452(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -71082,11 +71301,11 @@ function validate1436(
     }
     errors++;
   }
-  validate1436.errors = vErrors;
+  validate1452.errors = vErrors;
   return errors === 0;
 }
-var schema364 = { enum: ["readOnly", "operate"], type: "string" };
-function validate1441(
+var schema366 = { enum: ["readOnly", "operate"], type: "string" };
+function validate1457(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -71112,7 +71331,7 @@ function validate1441(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema364.enum },
+      params: { allowedValues: schema366.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -71122,10 +71341,10 @@ function validate1441(
     }
     errors++;
   }
-  validate1441.errors = vErrors;
+  validate1457.errors = vErrors;
   return errors === 0;
 }
-function validate1440(
+function validate1456(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -71181,7 +71400,7 @@ function validate1440(
     }
     if (data.access !== void 0 && func0.call(data, "access")) {
       if (
-        !validate1441(data.access, {
+        !validate1457(data.access, {
           instancePath: instancePath + "/access",
           parentData: data,
           parentDataProperty: "access",
@@ -71190,8 +71409,8 @@ function validate1440(
       ) {
         vErrors =
           vErrors === null
-            ? validate1441.errors
-            : vErrors.concat(validate1441.errors);
+            ? validate1457.errors
+            : vErrors.concat(validate1457.errors);
         errors = vErrors.length;
       }
     }
@@ -71226,10 +71445,10 @@ function validate1440(
     }
     errors++;
   }
-  validate1440.errors = vErrors;
+  validate1456.errors = vErrors;
   return errors === 0;
 }
-function validate1435(
+function validate1451(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -71638,7 +71857,7 @@ function validate1435(
         }
         if (data.peer !== void 0 && func0.call(data, "peer")) {
           if (
-            !validate1436(data.peer, {
+            !validate1452(data.peer, {
               instancePath: instancePath + "/peer",
               parentData: data,
               parentDataProperty: "peer",
@@ -71647,8 +71866,8 @@ function validate1435(
           ) {
             vErrors =
               vErrors === null
-                ? validate1436.errors
-                : vErrors.concat(validate1436.errors);
+                ? validate1452.errors
+                : vErrors.concat(validate1452.errors);
             errors = vErrors.length;
           }
         }
@@ -71658,7 +71877,7 @@ function validate1435(
             const len0 = data6.length;
             for (let i0 = 0; i0 < len0; i0++) {
               if (
-                !validate1440(data6[i0], {
+                !validate1456(data6[i0], {
                   instancePath: instancePath + "/shares/" + i0,
                   parentData: data6,
                   parentDataProperty: i0,
@@ -71667,8 +71886,8 @@ function validate1435(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1440.errors
-                    : vErrors.concat(validate1440.errors);
+                    ? validate1456.errors
+                    : vErrors.concat(validate1456.errors);
                 errors = vErrors.length;
               }
             }
@@ -71796,7 +72015,7 @@ function validate1435(
           }
           if (data.peer !== void 0 && func0.call(data, "peer")) {
             if (
-              !validate1436(data.peer, {
+              !validate1452(data.peer, {
                 instancePath: instancePath + "/peer",
                 parentData: data,
                 parentDataProperty: "peer",
@@ -71805,8 +72024,8 @@ function validate1435(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1436.errors
-                  : vErrors.concat(validate1436.errors);
+                  ? validate1452.errors
+                  : vErrors.concat(validate1452.errors);
               errors = vErrors.length;
             }
           }
@@ -71862,10 +72081,10 @@ function validate1435(
       }
     }
   }
-  validate1435.errors = vErrors;
+  validate1451.errors = vErrors;
   return errors === 0;
 }
-function validate1447(
+function validate1463(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -71986,10 +72205,10 @@ function validate1447(
     }
     errors++;
   }
-  validate1447.errors = vErrors;
+  validate1463.errors = vErrors;
   return errors === 0;
 }
-function validate1451(
+function validate1467(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -72090,10 +72309,10 @@ function validate1451(
     }
     errors++;
   }
-  validate1451.errors = vErrors;
+  validate1467.errors = vErrors;
   return errors === 0;
 }
-function validate1455(
+function validate1471(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -72186,7 +72405,7 @@ function validate1455(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1139(data.value, {
+        !validate1155(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -72195,8 +72414,8 @@ function validate1455(
       ) {
         vErrors =
           vErrors === null
-            ? validate1139.errors
-            : vErrors.concat(validate1139.errors);
+            ? validate1155.errors
+            : vErrors.concat(validate1155.errors);
         errors = vErrors.length;
       }
     }
@@ -72304,7 +72523,7 @@ function validate1455(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1457(data.value, {
+        !validate1473(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -72313,8 +72532,8 @@ function validate1455(
       ) {
         vErrors =
           vErrors === null
-            ? validate1457.errors
-            : vErrors.concat(validate1457.errors);
+            ? validate1473.errors
+            : vErrors.concat(validate1473.errors);
         errors = vErrors.length;
       }
     }
@@ -72490,10 +72709,10 @@ function validate1455(
       }
     }
   }
-  validate1455.errors = vErrors;
+  validate1471.errors = vErrors;
   return errors === 0;
 }
-var schema369 = {
+var schema371 = {
   additionalProperties: false,
   properties: {
     actionId: { $ref: "#/definitions/shared/definitions/Id" },
@@ -72526,7 +72745,7 @@ var schema369 = {
   ],
   type: "object",
 };
-function validate1466(
+function validate1482(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -72672,7 +72891,7 @@ function validate1466(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema369.properties, key0)) {
+      if (!func0.call(schema371.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -72795,7 +73014,7 @@ function validate1466(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -72804,14 +73023,14 @@ function validate1466(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -72820,8 +73039,8 @@ function validate1466(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -72872,10 +73091,10 @@ function validate1466(
     }
     errors++;
   }
-  validate1466.errors = vErrors;
+  validate1482.errors = vErrors;
   return errors === 0;
 }
-function validate1477(
+function validate1493(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -72970,7 +73189,7 @@ function validate1477(
     }
     if (data.clientKind !== void 0 && func0.call(data, "clientKind")) {
       if (
-        !validate1479(data.clientKind, {
+        !validate1495(data.clientKind, {
           instancePath: instancePath + "/clientKind",
           parentData: data,
           parentDataProperty: "clientKind",
@@ -72979,8 +73198,8 @@ function validate1477(
       ) {
         vErrors =
           vErrors === null
-            ? validate1479.errors
-            : vErrors.concat(validate1479.errors);
+            ? validate1495.errors
+            : vErrors.concat(validate1495.errors);
         errors = vErrors.length;
       }
     }
@@ -73055,10 +73274,10 @@ function validate1477(
     }
     errors++;
   }
-  validate1477.errors = vErrors;
+  validate1493.errors = vErrors;
   return errors === 0;
 }
-var schema372 = {
+var schema374 = {
   additionalProperties: false,
   properties: {
     actionId: { $ref: "#/definitions/shared/definitions/Id" },
@@ -73097,7 +73316,7 @@ var schema372 = {
   ],
   type: "object",
 };
-function validate1485(
+function validate1501(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -73276,7 +73495,7 @@ function validate1485(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema372.properties, key0)) {
+      if (!func0.call(schema374.properties, key0)) {
         const err11 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -73469,7 +73688,7 @@ function validate1485(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -73478,8 +73697,8 @@ function validate1485(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
@@ -73517,7 +73736,7 @@ function validate1485(
     }
     if (data.taskContext !== void 0 && func0.call(data, "taskContext")) {
       if (
-        !validate1416(data.taskContext, {
+        !validate1432(data.taskContext, {
           instancePath: instancePath + "/taskContext",
           parentData: data,
           parentDataProperty: "taskContext",
@@ -73526,8 +73745,8 @@ function validate1485(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -73546,10 +73765,10 @@ function validate1485(
     }
     errors++;
   }
-  validate1485.errors = vErrors;
+  validate1501.errors = vErrors;
   return errors === 0;
 }
-function validate1719(
+function validate1736(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -73642,7 +73861,7 @@ function validate1719(
     }
     if (data.params !== void 0 && func0.call(data, "params")) {
       if (
-        !validate1394(data.params, {
+        !validate1410(data.params, {
           instancePath: instancePath + "/params",
           parentData: data,
           parentDataProperty: "params",
@@ -73651,8 +73870,8 @@ function validate1719(
       ) {
         vErrors =
           vErrors === null
-            ? validate1394.errors
-            : vErrors.concat(validate1394.errors);
+            ? validate1410.errors
+            : vErrors.concat(validate1410.errors);
         errors = vErrors.length;
       }
     }
@@ -73760,7 +73979,7 @@ function validate1719(
     }
     if (data.params !== void 0 && func0.call(data, "params")) {
       if (
-        !validate1398(data.params, {
+        !validate1414(data.params, {
           instancePath: instancePath + "/params",
           parentData: data,
           parentDataProperty: "params",
@@ -73769,8 +73988,8 @@ function validate1719(
       ) {
         vErrors =
           vErrors === null
-            ? validate1398.errors
-            : vErrors.concat(validate1398.errors);
+            ? validate1414.errors
+            : vErrors.concat(validate1414.errors);
         errors = vErrors.length;
       }
     }
@@ -73882,7 +74101,7 @@ function validate1719(
       }
       if (data.params !== void 0 && func0.call(data, "params")) {
         if (
-          !validate1430(data.params, {
+          !validate1446(data.params, {
             instancePath: instancePath + "/params",
             parentData: data,
             parentDataProperty: "params",
@@ -73891,8 +74110,8 @@ function validate1719(
         ) {
           vErrors =
             vErrors === null
-              ? validate1430.errors
-              : vErrors.concat(validate1430.errors);
+              ? validate1446.errors
+              : vErrors.concat(validate1446.errors);
           errors = vErrors.length;
         }
       }
@@ -74004,7 +74223,7 @@ function validate1719(
         }
         if (data.params !== void 0 && func0.call(data, "params")) {
           if (
-            !validate1435(data.params, {
+            !validate1451(data.params, {
               instancePath: instancePath + "/params",
               parentData: data,
               parentDataProperty: "params",
@@ -74013,8 +74232,8 @@ function validate1719(
           ) {
             vErrors =
               vErrors === null
-                ? validate1435.errors
-                : vErrors.concat(validate1435.errors);
+                ? validate1451.errors
+                : vErrors.concat(validate1451.errors);
             errors = vErrors.length;
           }
         }
@@ -74126,7 +74345,7 @@ function validate1719(
           }
           if (data.params !== void 0 && func0.call(data, "params")) {
             if (
-              !validate1447(data.params, {
+              !validate1463(data.params, {
                 instancePath: instancePath + "/params",
                 parentData: data,
                 parentDataProperty: "params",
@@ -74135,8 +74354,8 @@ function validate1719(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1447.errors
-                  : vErrors.concat(validate1447.errors);
+                  ? validate1463.errors
+                  : vErrors.concat(validate1463.errors);
               errors = vErrors.length;
             }
           }
@@ -74248,7 +74467,7 @@ function validate1719(
             }
             if (data.params !== void 0 && func0.call(data, "params")) {
               if (
-                !validate1451(data.params, {
+                !validate1467(data.params, {
                   instancePath: instancePath + "/params",
                   parentData: data,
                   parentDataProperty: "params",
@@ -74257,8 +74476,8 @@ function validate1719(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1451.errors
-                    : vErrors.concat(validate1451.errors);
+                    ? validate1467.errors
+                    : vErrors.concat(validate1467.errors);
                 errors = vErrors.length;
               }
             }
@@ -74370,7 +74589,7 @@ function validate1719(
               }
               if (data.params !== void 0 && func0.call(data, "params")) {
                 if (
-                  !validate1455(data.params, {
+                  !validate1471(data.params, {
                     instancePath: instancePath + "/params",
                     parentData: data,
                     parentDataProperty: "params",
@@ -74379,8 +74598,8 @@ function validate1719(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1455.errors
-                      : vErrors.concat(validate1455.errors);
+                      ? validate1471.errors
+                      : vErrors.concat(validate1471.errors);
                   errors = vErrors.length;
                 }
               }
@@ -74492,7 +74711,7 @@ function validate1719(
                 }
                 if (data.params !== void 0 && func0.call(data, "params")) {
                   if (
-                    !validate1466(data.params, {
+                    !validate1482(data.params, {
                       instancePath: instancePath + "/params",
                       parentData: data,
                       parentDataProperty: "params",
@@ -74501,8 +74720,8 @@ function validate1719(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1466.errors
-                        : vErrors.concat(validate1466.errors);
+                        ? validate1482.errors
+                        : vErrors.concat(validate1482.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -74614,7 +74833,7 @@ function validate1719(
                   }
                   if (data.params !== void 0 && func0.call(data, "params")) {
                     if (
-                      !validate1477(data.params, {
+                      !validate1493(data.params, {
                         instancePath: instancePath + "/params",
                         parentData: data,
                         parentDataProperty: "params",
@@ -74623,8 +74842,8 @@ function validate1719(
                     ) {
                       vErrors =
                         vErrors === null
-                          ? validate1477.errors
-                          : vErrors.concat(validate1477.errors);
+                          ? validate1493.errors
+                          : vErrors.concat(validate1493.errors);
                       errors = vErrors.length;
                     }
                   }
@@ -74736,7 +74955,7 @@ function validate1719(
                     }
                     if (data.params !== void 0 && func0.call(data, "params")) {
                       if (
-                        !validate1466(data.params, {
+                        !validate1482(data.params, {
                           instancePath: instancePath + "/params",
                           parentData: data,
                           parentDataProperty: "params",
@@ -74745,8 +74964,8 @@ function validate1719(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1466.errors
-                            : vErrors.concat(validate1466.errors);
+                            ? validate1482.errors
+                            : vErrors.concat(validate1482.errors);
                         errors = vErrors.length;
                       }
                     }
@@ -74874,7 +75093,7 @@ function validate1719(
                         func0.call(data, "params")
                       ) {
                         if (
-                          !validate1405(data.params, {
+                          !validate1421(data.params, {
                             instancePath: instancePath + "/params",
                             parentData: data,
                             parentDataProperty: "params",
@@ -74883,8 +75102,8 @@ function validate1719(
                         ) {
                           vErrors =
                             vErrors === null
-                              ? validate1405.errors
-                              : vErrors.concat(validate1405.errors);
+                              ? validate1421.errors
+                              : vErrors.concat(validate1421.errors);
                           errors = vErrors.length;
                         }
                       }
@@ -75012,7 +75231,7 @@ function validate1719(
                           func0.call(data, "params")
                         ) {
                           if (
-                            !validate1485(data.params, {
+                            !validate1501(data.params, {
                               instancePath: instancePath + "/params",
                               parentData: data,
                               parentDataProperty: "params",
@@ -75021,8 +75240,8 @@ function validate1719(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1485.errors
-                                : vErrors.concat(validate1485.errors);
+                                ? validate1501.errors
+                                : vErrors.concat(validate1501.errors);
                             errors = vErrors.length;
                           }
                         }
@@ -75151,7 +75370,7 @@ function validate1719(
                             func0.call(data, "params")
                           ) {
                             if (
-                              !validate1466(data.params, {
+                              !validate1482(data.params, {
                                 instancePath: instancePath + "/params",
                                 parentData: data,
                                 parentDataProperty: "params",
@@ -75160,8 +75379,8 @@ function validate1719(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1466.errors
-                                  : vErrors.concat(validate1466.errors);
+                                  ? validate1482.errors
+                                  : vErrors.concat(validate1482.errors);
                               errors = vErrors.length;
                             }
                           }
@@ -75292,7 +75511,7 @@ function validate1719(
                               func0.call(data, "params")
                             ) {
                               if (
-                                !validate1405(data.params, {
+                                !validate1421(data.params, {
                                   instancePath: instancePath + "/params",
                                   parentData: data,
                                   parentDataProperty: "params",
@@ -75301,8 +75520,8 @@ function validate1719(
                               ) {
                                 vErrors =
                                   vErrors === null
-                                    ? validate1405.errors
-                                    : vErrors.concat(validate1405.errors);
+                                    ? validate1421.errors
+                                    : vErrors.concat(validate1421.errors);
                                 errors = vErrors.length;
                               }
                             }
@@ -75438,7 +75657,7 @@ function validate1719(
                                 func0.call(data, "params")
                               ) {
                                 if (
-                                  !validate1466(data.params, {
+                                  !validate1482(data.params, {
                                     instancePath: instancePath + "/params",
                                     parentData: data,
                                     parentDataProperty: "params",
@@ -75447,8 +75666,8 @@ function validate1719(
                                 ) {
                                   vErrors =
                                     vErrors === null
-                                      ? validate1466.errors
-                                      : vErrors.concat(validate1466.errors);
+                                      ? validate1482.errors
+                                      : vErrors.concat(validate1482.errors);
                                   errors = vErrors.length;
                                 }
                               }
@@ -75586,7 +75805,7 @@ function validate1719(
                                   func0.call(data, "params")
                                 ) {
                                   if (
-                                    !validate1466(data.params, {
+                                    !validate1482(data.params, {
                                       instancePath: instancePath + "/params",
                                       parentData: data,
                                       parentDataProperty: "params",
@@ -75595,8 +75814,8 @@ function validate1719(
                                   ) {
                                     vErrors =
                                       vErrors === null
-                                        ? validate1466.errors
-                                        : vErrors.concat(validate1466.errors);
+                                        ? validate1482.errors
+                                        : vErrors.concat(validate1482.errors);
                                     errors = vErrors.length;
                                   }
                                 }
@@ -75734,7 +75953,7 @@ function validate1719(
                                     func0.call(data, "params")
                                   ) {
                                     if (
-                                      !validate1466(data.params, {
+                                      !validate1482(data.params, {
                                         instancePath: instancePath + "/params",
                                         parentData: data,
                                         parentDataProperty: "params",
@@ -75743,8 +75962,8 @@ function validate1719(
                                     ) {
                                       vErrors =
                                         vErrors === null
-                                          ? validate1466.errors
-                                          : vErrors.concat(validate1466.errors);
+                                          ? validate1482.errors
+                                          : vErrors.concat(validate1482.errors);
                                       errors = vErrors.length;
                                     }
                                   }
@@ -75884,7 +76103,7 @@ function validate1719(
                                       func0.call(data, "params")
                                     ) {
                                       if (
-                                        !validate1466(data.params, {
+                                        !validate1482(data.params, {
                                           instancePath:
                                             instancePath + "/params",
                                           parentData: data,
@@ -75894,9 +76113,9 @@ function validate1719(
                                       ) {
                                         vErrors =
                                           vErrors === null
-                                            ? validate1466.errors
+                                            ? validate1482.errors
                                             : vErrors.concat(
-                                                validate1466.errors,
+                                                validate1482.errors,
                                               );
                                         errors = vErrors.length;
                                       }
@@ -76041,7 +76260,7 @@ function validate1719(
                                         func0.call(data, "params")
                                       ) {
                                         if (
-                                          !validate1466(data.params, {
+                                          !validate1482(data.params, {
                                             instancePath:
                                               instancePath + "/params",
                                             parentData: data,
@@ -76051,9 +76270,9 @@ function validate1719(
                                         ) {
                                           vErrors =
                                             vErrors === null
-                                              ? validate1466.errors
+                                              ? validate1482.errors
                                               : vErrors.concat(
-                                                  validate1466.errors,
+                                                  validate1482.errors,
                                                 );
                                           errors = vErrors.length;
                                         }
@@ -76203,7 +76422,7 @@ function validate1719(
                                           func0.call(data, "params")
                                         ) {
                                           if (
-                                            !validate1466(data.params, {
+                                            !validate1482(data.params, {
                                               instancePath:
                                                 instancePath + "/params",
                                               parentData: data,
@@ -76213,9 +76432,9 @@ function validate1719(
                                           ) {
                                             vErrors =
                                               vErrors === null
-                                                ? validate1466.errors
+                                                ? validate1482.errors
                                                 : vErrors.concat(
-                                                    validate1466.errors,
+                                                    validate1482.errors,
                                                   );
                                             errors = vErrors.length;
                                           }
@@ -76366,7 +76585,7 @@ function validate1719(
                                             func0.call(data, "params")
                                           ) {
                                             if (
-                                              !validate1466(data.params, {
+                                              !validate1482(data.params, {
                                                 instancePath:
                                                   instancePath + "/params",
                                                 parentData: data,
@@ -76376,9 +76595,9 @@ function validate1719(
                                             ) {
                                               vErrors =
                                                 vErrors === null
-                                                  ? validate1466.errors
+                                                  ? validate1482.errors
                                                   : vErrors.concat(
-                                                      validate1466.errors,
+                                                      validate1482.errors,
                                                     );
                                               errors = vErrors.length;
                                             }
@@ -76451,10 +76670,10 @@ function validate1719(
       }
     }
   }
-  validate1719.errors = vErrors;
+  validate1736.errors = vErrors;
   return errors === 0;
 }
-function validate1718(
+function validate1735(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -76510,7 +76729,7 @@ function validate1718(
     }
     if (data.request !== void 0 && func0.call(data, "request")) {
       if (
-        !validate1719(data.request, {
+        !validate1736(data.request, {
           instancePath: instancePath + "/request",
           parentData: data,
           parentDataProperty: "request",
@@ -76519,14 +76738,14 @@ function validate1718(
       ) {
         vErrors =
           vErrors === null
-            ? validate1719.errors
-            : vErrors.concat(validate1719.errors);
+            ? validate1736.errors
+            : vErrors.concat(validate1736.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -76535,8 +76754,8 @@ function validate1718(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -76555,11 +76774,11 @@ function validate1718(
     }
     errors++;
   }
-  validate1718.errors = vErrors;
+  validate1735.errors = vErrors;
   return errors === 0;
 }
-var validateId = validate2536;
-function validate2536(
+var validateId = validate2554;
+function validate2554(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -76596,17 +76815,17 @@ function validate2536(
     }
     errors++;
   }
-  validate2536.errors = vErrors;
+  validate2554.errors = vErrors;
   return errors === 0;
 }
-var validateIpcChannel = validate1851;
-var schema417 = {
+var validateIpcChannel = validate1868;
+var schema419 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["control", "raw", "state"],
   title: "IpcChannel",
   type: "string",
 };
-function validate1851(
+function validate1868(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -76632,7 +76851,7 @@ function validate1851(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema417.enum },
+      params: { allowedValues: schema419.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -76642,11 +76861,11 @@ function validate1851(
     }
     errors++;
   }
-  validate1851.errors = vErrors;
+  validate1868.errors = vErrors;
   return errors === 0;
 }
-var validateIpcMessage = validate1788;
-function validate1789(
+var validateIpcMessage = validate1805;
+function validate1806(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -76786,7 +77005,7 @@ function validate1789(
     }
     if (data.action !== void 0 && func0.call(data, "action")) {
       if (
-        !validate1299(data.action, {
+        !validate1315(data.action, {
           instancePath: instancePath + "/action",
           parentData: data,
           parentDataProperty: "action",
@@ -76795,8 +77014,8 @@ function validate1789(
       ) {
         vErrors =
           vErrors === null
-            ? validate1299.errors
-            : vErrors.concat(validate1299.errors);
+            ? validate1315.errors
+            : vErrors.concat(validate1315.errors);
         errors = vErrors.length;
       }
     }
@@ -76898,7 +77117,7 @@ function validate1789(
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -76907,8 +77126,8 @@ function validate1789(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -76927,10 +77146,10 @@ function validate1789(
     }
     errors++;
   }
-  validate1789.errors = vErrors;
+  validate1806.errors = vErrors;
   return errors === 0;
 }
-function validate1813(
+function validate1830(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -77032,10 +77251,10 @@ function validate1813(
     }
     errors++;
   }
-  validate1813.errors = vErrors;
+  validate1830.errors = vErrors;
   return errors === 0;
 }
-function validate1605(
+function validate1621(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -77122,7 +77341,7 @@ function validate1605(
     }
     if (data.pairingCode !== void 0 && func0.call(data, "pairingCode")) {
       if (
-        !validate1416(data.pairingCode, {
+        !validate1432(data.pairingCode, {
           instancePath: instancePath + "/pairingCode",
           parentData: data,
           parentDataProperty: "pairingCode",
@@ -77131,8 +77350,8 @@ function validate1605(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -77168,10 +77387,10 @@ function validate1605(
     }
     errors++;
   }
-  validate1605.errors = vErrors;
+  validate1621.errors = vErrors;
   return errors === 0;
 }
-function validate1603(
+function validate1619(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -77366,7 +77585,7 @@ function validate1603(
     }
     if (data.mode !== void 0 && func0.call(data, "mode")) {
       if (
-        !validate1395(data.mode, {
+        !validate1411(data.mode, {
           instancePath: instancePath + "/mode",
           parentData: data,
           parentDataProperty: "mode",
@@ -77375,8 +77594,8 @@ function validate1603(
       ) {
         vErrors =
           vErrors === null
-            ? validate1395.errors
-            : vErrors.concat(validate1395.errors);
+            ? validate1411.errors
+            : vErrors.concat(validate1411.errors);
         errors = vErrors.length;
       }
     }
@@ -77487,7 +77706,7 @@ function validate1603(
       }
       if (data.entry !== void 0 && func0.call(data, "entry")) {
         if (
-          !validate1605(data.entry, {
+          !validate1621(data.entry, {
             instancePath: instancePath + "/entry",
             parentData: data,
             parentDataProperty: "entry",
@@ -77496,8 +77715,8 @@ function validate1603(
         ) {
           vErrors =
             vErrors === null
-              ? validate1605.errors
-              : vErrors.concat(validate1605.errors);
+              ? validate1621.errors
+              : vErrors.concat(validate1621.errors);
           errors = vErrors.length;
         }
       }
@@ -77536,7 +77755,7 @@ function validate1603(
       }
       if (data.mode !== void 0 && func0.call(data, "mode")) {
         if (
-          !validate1395(data.mode, {
+          !validate1411(data.mode, {
             instancePath: instancePath + "/mode",
             parentData: data,
             parentDataProperty: "mode",
@@ -77545,8 +77764,8 @@ function validate1603(
         ) {
           vErrors =
             vErrors === null
-              ? validate1395.errors
-              : vErrors.concat(validate1395.errors);
+              ? validate1411.errors
+              : vErrors.concat(validate1411.errors);
           errors = vErrors.length;
         }
       }
@@ -77600,10 +77819,10 @@ function validate1603(
       }
     }
   }
-  validate1603.errors = vErrors;
+  validate1619.errors = vErrors;
   return errors === 0;
 }
-function validate1602(
+function validate1618(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -77644,7 +77863,7 @@ function validate1602(
     }
     if (data.browserAccess !== void 0 && func0.call(data, "browserAccess")) {
       if (
-        !validate1603(data.browserAccess, {
+        !validate1619(data.browserAccess, {
           instancePath: instancePath + "/browserAccess",
           parentData: data,
           parentDataProperty: "browserAccess",
@@ -77653,8 +77872,8 @@ function validate1602(
       ) {
         vErrors =
           vErrors === null
-            ? validate1603.errors
-            : vErrors.concat(validate1603.errors);
+            ? validate1619.errors
+            : vErrors.concat(validate1619.errors);
         errors = vErrors.length;
       }
     }
@@ -77673,10 +77892,10 @@ function validate1602(
     }
     errors++;
   }
-  validate1602.errors = vErrors;
+  validate1618.errors = vErrors;
   return errors === 0;
 }
-function validate1612(
+function validate1628(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -77832,10 +78051,10 @@ function validate1612(
     }
     errors++;
   }
-  validate1612.errors = vErrors;
+  validate1628.errors = vErrors;
   return errors === 0;
 }
-function validate1619(
+function validate1635(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -78079,10 +78298,10 @@ function validate1619(
       }
     }
   }
-  validate1619.errors = vErrors;
+  validate1635.errors = vErrors;
   return errors === 0;
 }
-function validate1622(
+function validate1638(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -78138,7 +78357,7 @@ function validate1622(
     }
     if (data.peer !== void 0 && func0.call(data, "peer")) {
       if (
-        !validate1436(data.peer, {
+        !validate1452(data.peer, {
           instancePath: instancePath + "/peer",
           parentData: data,
           parentDataProperty: "peer",
@@ -78147,8 +78366,8 @@ function validate1622(
       ) {
         vErrors =
           vErrors === null
-            ? validate1436.errors
-            : vErrors.concat(validate1436.errors);
+            ? validate1452.errors
+            : vErrors.concat(validate1452.errors);
         errors = vErrors.length;
       }
     }
@@ -78158,7 +78377,7 @@ function validate1622(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1440(data1[i0], {
+            !validate1456(data1[i0], {
               instancePath: instancePath + "/shares/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -78167,8 +78386,8 @@ function validate1622(
           ) {
             vErrors =
               vErrors === null
-                ? validate1440.errors
-                : vErrors.concat(validate1440.errors);
+                ? validate1456.errors
+                : vErrors.concat(validate1456.errors);
             errors = vErrors.length;
           }
         }
@@ -78203,10 +78422,10 @@ function validate1622(
     }
     errors++;
   }
-  validate1622.errors = vErrors;
+  validate1638.errors = vErrors;
   return errors === 0;
 }
-function validate1618(
+function validate1634(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -78277,7 +78496,7 @@ function validate1618(
     }
     if (data.listener !== void 0 && func0.call(data, "listener")) {
       if (
-        !validate1619(data.listener, {
+        !validate1635(data.listener, {
           instancePath: instancePath + "/listener",
           parentData: data,
           parentDataProperty: "listener",
@@ -78286,14 +78505,14 @@ function validate1618(
       ) {
         vErrors =
           vErrors === null
-            ? validate1619.errors
-            : vErrors.concat(validate1619.errors);
+            ? validate1635.errors
+            : vErrors.concat(validate1635.errors);
         errors = vErrors.length;
       }
     }
     if (data.localPeer !== void 0 && func0.call(data, "localPeer")) {
       if (
-        !validate1436(data.localPeer, {
+        !validate1452(data.localPeer, {
           instancePath: instancePath + "/localPeer",
           parentData: data,
           parentDataProperty: "localPeer",
@@ -78302,8 +78521,8 @@ function validate1618(
       ) {
         vErrors =
           vErrors === null
-            ? validate1436.errors
-            : vErrors.concat(validate1436.errors);
+            ? validate1452.errors
+            : vErrors.concat(validate1452.errors);
         errors = vErrors.length;
       }
     }
@@ -78313,7 +78532,7 @@ function validate1618(
         const len0 = data2.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1622(data2[i0], {
+            !validate1638(data2[i0], {
               instancePath: instancePath + "/peers/" + i0,
               parentData: data2,
               parentDataProperty: i0,
@@ -78322,8 +78541,8 @@ function validate1618(
           ) {
             vErrors =
               vErrors === null
-                ? validate1622.errors
-                : vErrors.concat(validate1622.errors);
+                ? validate1638.errors
+                : vErrors.concat(validate1638.errors);
             errors = vErrors.length;
           }
         }
@@ -78358,10 +78577,10 @@ function validate1618(
     }
     errors++;
   }
-  validate1618.errors = vErrors;
+  validate1634.errors = vErrors;
   return errors === 0;
 }
-function validate1628(
+function validate1644(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -78431,7 +78650,7 @@ function validate1628(
     }
     errors++;
   }
-  validate1628.errors = vErrors;
+  validate1644.errors = vErrors;
   return errors === 0;
 }
 function validate775(
@@ -83193,7 +83412,379 @@ function validate957(
   validate957.errors = vErrors;
   return errors === 0;
 }
-function validate969(
+var schema263 = {
+  additionalProperties: false,
+  properties: {
+    bytesBase64: { $ref: "#/definitions/shared/definitions/Bytes" },
+    bytesPerSecond: { $ref: "#/definitions/shared/definitions/U64" },
+    captureRef: { $ref: "#/definitions/shared/definitions/ObjectRef" },
+    configuration: {
+      $ref: "#/definitions/shared/definitions/SerialConfiguration",
+    },
+    direction: { $ref: "#/definitions/shared/definitions/Direction" },
+    previewDigest: { $ref: "#/definitions/shared/definitions/Digest" },
+    spans: {
+      items: { $ref: "#/definitions/shared/definitions/ReplayTransmitSpan" },
+      type: "array",
+    },
+    target: { $ref: "#/definitions/shared/definitions/Target" },
+    targetRevision: { $ref: "#/definitions/shared/definitions/U64" },
+  },
+  required: [
+    "captureRef",
+    "target",
+    "targetRevision",
+    "configuration",
+    "direction",
+    "bytesPerSecond",
+    "bytesBase64",
+    "spans",
+    "previewDigest",
+  ],
+  type: "object",
+};
+function validate966(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.captureRef === void 0 || !func0.call(data, "captureRef")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "captureRef" },
+        message: "must have required property 'captureRef'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.target === void 0 || !func0.call(data, "target")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "target" },
+        message: "must have required property 'target'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.targetRevision === void 0 || !func0.call(data, "targetRevision")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "targetRevision" },
+        message: "must have required property 'targetRevision'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    if (data.configuration === void 0 || !func0.call(data, "configuration")) {
+      const err3 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "configuration" },
+        message: "must have required property 'configuration'",
+      };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
+    if (data.direction === void 0 || !func0.call(data, "direction")) {
+      const err4 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "direction" },
+        message: "must have required property 'direction'",
+      };
+      if (vErrors === null) {
+        vErrors = [err4];
+      } else {
+        vErrors.push(err4);
+      }
+      errors++;
+    }
+    if (data.bytesPerSecond === void 0 || !func0.call(data, "bytesPerSecond")) {
+      const err5 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "bytesPerSecond" },
+        message: "must have required property 'bytesPerSecond'",
+      };
+      if (vErrors === null) {
+        vErrors = [err5];
+      } else {
+        vErrors.push(err5);
+      }
+      errors++;
+    }
+    if (data.bytesBase64 === void 0 || !func0.call(data, "bytesBase64")) {
+      const err6 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "bytesBase64" },
+        message: "must have required property 'bytesBase64'",
+      };
+      if (vErrors === null) {
+        vErrors = [err6];
+      } else {
+        vErrors.push(err6);
+      }
+      errors++;
+    }
+    if (data.spans === void 0 || !func0.call(data, "spans")) {
+      const err7 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "spans" },
+        message: "must have required property 'spans'",
+      };
+      if (vErrors === null) {
+        vErrors = [err7];
+      } else {
+        vErrors.push(err7);
+      }
+      errors++;
+    }
+    if (data.previewDigest === void 0 || !func0.call(data, "previewDigest")) {
+      const err8 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "previewDigest" },
+        message: "must have required property 'previewDigest'",
+      };
+      if (vErrors === null) {
+        vErrors = [err8];
+      } else {
+        vErrors.push(err8);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!func0.call(schema263.properties, key0)) {
+        const err9 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err9];
+        } else {
+          vErrors.push(err9);
+        }
+        errors++;
+      }
+    }
+    if (data.bytesBase64 !== void 0 && func0.call(data, "bytesBase64")) {
+      if (
+        !validate256(data.bytesBase64, {
+          instancePath: instancePath + "/bytesBase64",
+          parentData: data,
+          parentDataProperty: "bytesBase64",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate256.errors
+            : vErrors.concat(validate256.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.bytesPerSecond !== void 0 && func0.call(data, "bytesPerSecond")) {
+      if (
+        !validate32(data.bytesPerSecond, {
+          instancePath: instancePath + "/bytesPerSecond",
+          parentData: data,
+          parentDataProperty: "bytesPerSecond",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.captureRef !== void 0 && func0.call(data, "captureRef")) {
+      if (
+        !validate119(data.captureRef, {
+          instancePath: instancePath + "/captureRef",
+          parentData: data,
+          parentDataProperty: "captureRef",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate119.errors
+            : vErrors.concat(validate119.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.configuration !== void 0 && func0.call(data, "configuration")) {
+      if (
+        !validate597(data.configuration, {
+          instancePath: instancePath + "/configuration",
+          parentData: data,
+          parentDataProperty: "configuration",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate597.errors
+            : vErrors.concat(validate597.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.direction !== void 0 && func0.call(data, "direction")) {
+      if (
+        !validate409(data.direction, {
+          instancePath: instancePath + "/direction",
+          parentData: data,
+          parentDataProperty: "direction",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate409.errors
+            : vErrors.concat(validate409.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.previewDigest !== void 0 && func0.call(data, "previewDigest")) {
+      if (
+        !validate30(data.previewDigest, {
+          instancePath: instancePath + "/previewDigest",
+          parentData: data,
+          parentDataProperty: "previewDigest",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate30.errors
+            : vErrors.concat(validate30.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.spans !== void 0 && func0.call(data, "spans")) {
+      let data6 = data.spans;
+      if (Array.isArray(data6)) {
+        const len0 = data6.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          if (
+            !validate973(data6[i0], {
+              instancePath: instancePath + "/spans/" + i0,
+              parentData: data6,
+              parentDataProperty: i0,
+              rootData,
+            })
+          ) {
+            vErrors =
+              vErrors === null
+                ? validate973.errors
+                : vErrors.concat(validate973.errors);
+            errors = vErrors.length;
+          }
+        }
+      } else {
+        const err10 = {
+          instancePath: instancePath + "/spans",
+          schemaPath: "#/properties/spans/type",
+          keyword: "type",
+          params: { type: "array" },
+          message: "must be array",
+        };
+        if (vErrors === null) {
+          vErrors = [err10];
+        } else {
+          vErrors.push(err10);
+        }
+        errors++;
+      }
+    }
+    if (data.target !== void 0 && func0.call(data, "target")) {
+      if (
+        !validate582(data.target, {
+          instancePath: instancePath + "/target",
+          parentData: data,
+          parentDataProperty: "target",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate582.errors
+            : vErrors.concat(validate582.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.targetRevision !== void 0 && func0.call(data, "targetRevision")) {
+      if (
+        !validate32(data.targetRevision, {
+          instancePath: instancePath + "/targetRevision",
+          parentData: data,
+          parentDataProperty: "targetRevision",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err11 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err11];
+    } else {
+      vErrors.push(err11);
+    }
+    errors++;
+  }
+  validate966.errors = vErrors;
+  return errors === 0;
+}
+function validate993(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -83393,10 +83984,10 @@ function validate969(
     }
     errors++;
   }
-  validate969.errors = vErrors;
+  validate993.errors = vErrors;
   return errors === 0;
 }
-function validate968(
+function validate992(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -83508,7 +84099,7 @@ function validate968(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate969(data1[i0], {
+            !validate993(data1[i0], {
               instancePath: instancePath + "/hits/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -83517,8 +84108,8 @@ function validate968(
           ) {
             vErrors =
               vErrors === null
-                ? validate969.errors
-                : vErrors.concat(validate969.errors);
+                ? validate993.errors
+                : vErrors.concat(validate993.errors);
             errors = vErrors.length;
           }
         }
@@ -83585,10 +84176,10 @@ function validate968(
     }
     errors++;
   }
-  validate968.errors = vErrors;
+  validate992.errors = vErrors;
   return errors === 0;
 }
-function validate966(
+function validate990(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -83732,7 +84323,7 @@ function validate966(
     }
     if (data.result !== void 0 && func0.call(data, "result")) {
       if (
-        !validate968(data.result, {
+        !validate992(data.result, {
           instancePath: instancePath + "/result",
           parentData: data,
           parentDataProperty: "result",
@@ -83741,14 +84332,14 @@ function validate966(
       ) {
         vErrors =
           vErrors === null
-            ? validate968.errors
-            : vErrors.concat(validate968.errors);
+            ? validate992.errors
+            : vErrors.concat(validate992.errors);
         errors = vErrors.length;
       }
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -83757,8 +84348,8 @@ function validate966(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -83881,7 +84472,7 @@ function validate966(
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -83890,8 +84481,8 @@ function validate966(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -83961,10 +84552,10 @@ function validate966(
       }
     }
   }
-  validate966.errors = vErrors;
+  validate990.errors = vErrors;
   return errors === 0;
 }
-function validate984(
+function validate1008(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -84132,10 +84723,10 @@ function validate984(
     }
     errors++;
   }
-  validate984.errors = vErrors;
+  validate1008.errors = vErrors;
   return errors === 0;
 }
-function validate983(
+function validate1007(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -84195,7 +84786,7 @@ function validate983(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate984(data0[i0], {
+            !validate1008(data0[i0], {
               instancePath: instancePath + "/entries/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -84204,8 +84795,8 @@ function validate983(
           ) {
             vErrors =
               vErrors === null
-                ? validate984.errors
-                : vErrors.concat(validate984.errors);
+                ? validate1008.errors
+                : vErrors.concat(validate1008.errors);
             errors = vErrors.length;
           }
         }
@@ -84256,10 +84847,10 @@ function validate983(
     }
     errors++;
   }
-  validate983.errors = vErrors;
+  validate1007.errors = vErrors;
   return errors === 0;
 }
-function validate993(
+function validate1017(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -84524,10 +85115,10 @@ function validate993(
     }
     errors++;
   }
-  validate993.errors = vErrors;
+  validate1017.errors = vErrors;
   return errors === 0;
 }
-function validate1001(
+function validate1025(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -84703,7 +85294,7 @@ function validate1001(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1004(data3[i0], {
+            !validate1028(data3[i0], {
               instancePath: instancePath + "/receipts/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -84712,8 +85303,8 @@ function validate1001(
           ) {
             vErrors =
               vErrors === null
-                ? validate1004.errors
-                : vErrors.concat(validate1004.errors);
+                ? validate1028.errors
+                : vErrors.concat(validate1028.errors);
             errors = vErrors.length;
           }
         }
@@ -84781,10 +85372,10 @@ function validate1001(
     }
     errors++;
   }
-  validate1001.errors = vErrors;
+  validate1025.errors = vErrors;
   return errors === 0;
 }
-function validate1010(
+function validate1035(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -84870,10 +85461,10 @@ function validate1010(
     }
     errors++;
   }
-  validate1010.errors = vErrors;
+  validate1035.errors = vErrors;
   return errors === 0;
 }
-function validate1014(
+function validate1039(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -84929,7 +85520,7 @@ function validate1014(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -84938,8 +85529,8 @@ function validate1014(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -84974,10 +85565,10 @@ function validate1014(
     }
     errors++;
   }
-  validate1014.errors = vErrors;
+  validate1039.errors = vErrors;
   return errors === 0;
 }
-function validate1023(
+function validate1048(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85067,10 +85658,10 @@ function validate1023(
     }
     errors++;
   }
-  validate1023.errors = vErrors;
+  validate1048.errors = vErrors;
   return errors === 0;
 }
-function validate1030(
+function validate1055(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85203,10 +85794,10 @@ function validate1030(
     }
     errors++;
   }
-  validate1030.errors = vErrors;
+  validate1055.errors = vErrors;
   return errors === 0;
 }
-function validate1028(
+function validate1053(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85317,7 +85908,7 @@ function validate1028(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1030(data1[i0], {
+            !validate1055(data1[i0], {
               instancePath: instancePath + "/workspaces/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -85326,8 +85917,8 @@ function validate1028(
           ) {
             vErrors =
               vErrors === null
-                ? validate1030.errors
-                : vErrors.concat(validate1030.errors);
+                ? validate1055.errors
+                : vErrors.concat(validate1055.errors);
             errors = vErrors.length;
           }
         }
@@ -85362,10 +85953,10 @@ function validate1028(
     }
     errors++;
   }
-  validate1028.errors = vErrors;
+  validate1053.errors = vErrors;
   return errors === 0;
 }
-function validate1035(
+function validate1060(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85421,7 +86012,7 @@ function validate1035(
     }
     if (data.records !== void 0 && func0.call(data, "records")) {
       if (
-        !validate1036(data.records, {
+        !validate1061(data.records, {
           instancePath: instancePath + "/records",
           parentData: data,
           parentDataProperty: "records",
@@ -85430,8 +86021,8 @@ function validate1035(
       ) {
         vErrors =
           vErrors === null
-            ? validate1036.errors
-            : vErrors.concat(validate1036.errors);
+            ? validate1061.errors
+            : vErrors.concat(validate1061.errors);
         errors = vErrors.length;
       }
     }
@@ -85466,10 +86057,10 @@ function validate1035(
     }
     errors++;
   }
-  validate1035.errors = vErrors;
+  validate1060.errors = vErrors;
   return errors === 0;
 }
-function validate1045(
+function validate1070(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85540,10 +86131,10 @@ function validate1045(
     }
     errors++;
   }
-  validate1045.errors = vErrors;
+  validate1070.errors = vErrors;
   return errors === 0;
 }
-function validate1047(
+function validate1072(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85700,10 +86291,10 @@ function validate1047(
     }
     errors++;
   }
-  validate1047.errors = vErrors;
+  validate1072.errors = vErrors;
   return errors === 0;
 }
-function validate1051(
+function validate1076(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85879,7 +86470,7 @@ function validate1051(
         const len0 = data4.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1055(data4[i0], {
+            !validate1080(data4[i0], {
               instancePath: instancePath + "/samples/" + i0,
               parentData: data4,
               parentDataProperty: i0,
@@ -85888,8 +86479,8 @@ function validate1051(
           ) {
             vErrors =
               vErrors === null
-                ? validate1055.errors
-                : vErrors.concat(validate1055.errors);
+                ? validate1080.errors
+                : vErrors.concat(validate1080.errors);
             errors = vErrors.length;
           }
         }
@@ -85924,10 +86515,10 @@ function validate1051(
     }
     errors++;
   }
-  validate1051.errors = vErrors;
+  validate1076.errors = vErrors;
   return errors === 0;
 }
-function validate1076(
+function validate1092(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -85997,10 +86588,10 @@ function validate1076(
     }
     errors++;
   }
-  validate1076.errors = vErrors;
+  validate1092.errors = vErrors;
   return errors === 0;
 }
-function validate1079(
+function validate1095(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -86097,7 +86688,7 @@ function validate1079(
     }
     if (data.ackCursor !== void 0 && func0.call(data, "ackCursor")) {
       if (
-        !validate1015(data.ackCursor, {
+        !validate1040(data.ackCursor, {
           instancePath: instancePath + "/ackCursor",
           parentData: data,
           parentDataProperty: "ackCursor",
@@ -86106,8 +86697,8 @@ function validate1079(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -86180,10 +86771,10 @@ function validate1079(
     }
     errors++;
   }
-  validate1079.errors = vErrors;
+  validate1095.errors = vErrors;
   return errors === 0;
 }
-function validate1085(
+function validate1101(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -86243,7 +86834,7 @@ function validate1085(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1086(data0[i0], {
+            !validate1102(data0[i0], {
               instancePath: instancePath + "/devices/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -86252,8 +86843,8 @@ function validate1085(
           ) {
             vErrors =
               vErrors === null
-                ? validate1086.errors
-                : vErrors.concat(validate1086.errors);
+                ? validate1102.errors
+                : vErrors.concat(validate1102.errors);
             errors = vErrors.length;
           }
         }
@@ -86305,10 +86896,10 @@ function validate1085(
     }
     errors++;
   }
-  validate1085.errors = vErrors;
+  validate1101.errors = vErrors;
   return errors === 0;
 }
-var schema291 = {
+var schema293 = {
   additionalProperties: false,
   description:
     "\u5F53\u524D Host instance \u7684\u4F1A\u8BDD\u7D2F\u8BA1\u503C\uFF1B\u91CD\u8FDE\u4EC5\u91CD\u542F\u672C\u6B21\u8FDE\u63A5\u65F6\u957F\u3002",
@@ -86352,7 +86943,7 @@ var schema291 = {
   ],
   type: "object",
 };
-function validate1094(
+function validate1110(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -86636,7 +87227,7 @@ function validate1094(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema291.properties, key0)) {
+      if (!func0.call(schema293.properties, key0)) {
         const err17 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -86960,10 +87551,10 @@ function validate1094(
     }
     errors++;
   }
-  validate1094.errors = vErrors;
+  validate1110.errors = vErrors;
   return errors === 0;
 }
-function validate1113(
+function validate1129(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -87263,10 +87854,10 @@ function validate1113(
     }
     errors++;
   }
-  validate1113.errors = vErrors;
+  validate1129.errors = vErrors;
   return errors === 0;
 }
-function validate1119(
+function validate1135(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -87367,10 +87958,10 @@ function validate1119(
     }
     errors++;
   }
-  validate1119.errors = vErrors;
+  validate1135.errors = vErrors;
   return errors === 0;
 }
-function validate1123(
+function validate1139(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -87512,10 +88103,10 @@ function validate1123(
     }
     errors++;
   }
-  validate1123.errors = vErrors;
+  validate1139.errors = vErrors;
   return errors === 0;
 }
-var schema296 = {
+var schema298 = {
   additionalProperties: false,
   properties: {
     acceptedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
@@ -87569,7 +88160,7 @@ var schema296 = {
   ],
   type: "object",
 };
-function validate1132(
+function validate1148(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -87928,10 +88519,10 @@ function validate1132(
       }
     }
   }
-  validate1132.errors = vErrors;
+  validate1148.errors = vErrors;
   return errors === 0;
 }
-function validate1150(
+function validate1166(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -88064,11 +88655,11 @@ function validate1150(
     }
     errors++;
   }
-  validate1150.errors = vErrors;
+  validate1166.errors = vErrors;
   return errors === 0;
 }
-var schema302 = { enum: ["host", "plugin"], type: "string" };
-function validate1160(
+var schema304 = { enum: ["host", "plugin"], type: "string" };
+function validate1176(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -88094,7 +88685,7 @@ function validate1160(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema302.enum },
+      params: { allowedValues: schema304.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -88104,10 +88695,10 @@ function validate1160(
     }
     errors++;
   }
-  validate1160.errors = vErrors;
+  validate1176.errors = vErrors;
   return errors === 0;
 }
-function validate1158(
+function validate1174(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -88179,7 +88770,7 @@ function validate1158(
     }
     if (data.kind !== void 0 && func0.call(data, "kind")) {
       if (
-        !validate1160(data.kind, {
+        !validate1176(data.kind, {
           instancePath: instancePath + "/kind",
           parentData: data,
           parentDataProperty: "kind",
@@ -88188,8 +88779,8 @@ function validate1158(
       ) {
         vErrors =
           vErrors === null
-            ? validate1160.errors
-            : vErrors.concat(validate1160.errors);
+            ? validate1176.errors
+            : vErrors.concat(validate1176.errors);
         errors = vErrors.length;
       }
     }
@@ -88225,10 +88816,10 @@ function validate1158(
     }
     errors++;
   }
-  validate1158.errors = vErrors;
+  validate1174.errors = vErrors;
   return errors === 0;
 }
-function validate1163(
+function validate1179(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -88346,10 +88937,10 @@ function validate1163(
     }
     errors++;
   }
-  validate1163.errors = vErrors;
+  validate1179.errors = vErrors;
   return errors === 0;
 }
-function validate1168(
+function validate1184(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -93629,10 +94220,10 @@ function validate1168(
       }
     }
   }
-  validate1168.errors = vErrors;
+  validate1184.errors = vErrors;
   return errors === 0;
 }
-function validate1211(
+function validate1227(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -93780,10 +94371,10 @@ function validate1211(
     }
     errors++;
   }
-  validate1211.errors = vErrors;
+  validate1227.errors = vErrors;
   return errors === 0;
 }
-function validate1210(
+function validate1226(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -93843,7 +94434,7 @@ function validate1210(
     }
     if (data.lastMemory !== void 0 && func0.call(data, "lastMemory")) {
       if (
-        !validate1211(data.lastMemory, {
+        !validate1227(data.lastMemory, {
           instancePath: instancePath + "/lastMemory",
           parentData: data,
           parentDataProperty: "lastMemory",
@@ -93852,8 +94443,8 @@ function validate1210(
       ) {
         vErrors =
           vErrors === null
-            ? validate1211.errors
-            : vErrors.concat(validate1211.errors);
+            ? validate1227.errors
+            : vErrors.concat(validate1227.errors);
         errors = vErrors.length;
       }
     }
@@ -93904,10 +94495,10 @@ function validate1210(
     }
     errors++;
   }
-  validate1210.errors = vErrors;
+  validate1226.errors = vErrors;
   return errors === 0;
 }
-function validate1128(
+function validate1144(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94149,7 +94740,7 @@ function validate1128(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema296.properties, key0)) {
+      if (!func0.call(schema298.properties, key0)) {
         const err15 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -94215,7 +94806,7 @@ function validate1128(
     }
     if (data.admission !== void 0 && func0.call(data, "admission")) {
       if (
-        !validate1132(data.admission, {
+        !validate1148(data.admission, {
           instancePath: instancePath + "/admission",
           parentData: data,
           parentDataProperty: "admission",
@@ -94224,8 +94815,8 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate1132.errors
-            : vErrors.concat(validate1132.errors);
+            ? validate1148.errors
+            : vErrors.concat(validate1148.errors);
         errors = vErrors.length;
       }
     }
@@ -94253,7 +94844,7 @@ function validate1128(
       func0.call(data, "clientEffectReceipt")
     ) {
       if (
-        !validate1139(data.clientEffectReceipt, {
+        !validate1155(data.clientEffectReceipt, {
           instancePath: instancePath + "/clientEffectReceipt",
           parentData: data,
           parentDataProperty: "clientEffectReceipt",
@@ -94262,8 +94853,8 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate1139.errors
-            : vErrors.concat(validate1139.errors);
+            ? validate1155.errors
+            : vErrors.concat(validate1155.errors);
         errors = vErrors.length;
       }
     }
@@ -94273,7 +94864,7 @@ function validate1128(
         const len0 = data6.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1150(data6[i0], {
+            !validate1166(data6[i0], {
               instancePath: instancePath + "/dependencies/" + i0,
               parentData: data6,
               parentDataProperty: i0,
@@ -94282,8 +94873,8 @@ function validate1128(
           ) {
             vErrors =
               vErrors === null
-                ? validate1150.errors
-                : vErrors.concat(validate1150.errors);
+                ? validate1166.errors
+                : vErrors.concat(validate1166.errors);
             errors = vErrors.length;
           }
         }
@@ -94372,7 +94963,7 @@ function validate1128(
     }
     if (data.owner !== void 0 && func0.call(data, "owner")) {
       if (
-        !validate1158(data.owner, {
+        !validate1174(data.owner, {
           instancePath: instancePath + "/owner",
           parentData: data,
           parentDataProperty: "owner",
@@ -94381,14 +94972,14 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate1158.errors
-            : vErrors.concat(validate1158.errors);
+            ? validate1174.errors
+            : vErrors.concat(validate1174.errors);
         errors = vErrors.length;
       }
     }
     if (data.progress !== void 0 && func0.call(data, "progress")) {
       if (
-        !validate1163(data.progress, {
+        !validate1179(data.progress, {
           instancePath: instancePath + "/progress",
           parentData: data,
           parentDataProperty: "progress",
@@ -94397,14 +94988,14 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate1163.errors
-            : vErrors.concat(validate1163.errors);
+            ? validate1179.errors
+            : vErrors.concat(validate1179.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -94413,14 +95004,14 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
     if (data.result !== void 0 && func0.call(data, "result")) {
       if (
-        !validate1168(data.result, {
+        !validate1184(data.result, {
           instancePath: instancePath + "/result",
           parentData: data,
           parentDataProperty: "result",
@@ -94429,8 +95020,8 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate1168.errors
-            : vErrors.concat(validate1168.errors);
+            ? validate1184.errors
+            : vErrors.concat(validate1184.errors);
         errors = vErrors.length;
       }
     }
@@ -94573,7 +95164,7 @@ function validate1128(
       func0.call(data, "workerObservation")
     ) {
       if (
-        !validate1210(data.workerObservation, {
+        !validate1226(data.workerObservation, {
           instancePath: instancePath + "/workerObservation",
           parentData: data,
           parentDataProperty: "workerObservation",
@@ -94582,8 +95173,8 @@ function validate1128(
       ) {
         vErrors =
           vErrors === null
-            ? validate1210.errors
-            : vErrors.concat(validate1210.errors);
+            ? validate1226.errors
+            : vErrors.concat(validate1226.errors);
         errors = vErrors.length;
       }
     }
@@ -94602,10 +95193,10 @@ function validate1128(
     }
     errors++;
   }
-  validate1128.errors = vErrors;
+  validate1144.errors = vErrors;
   return errors === 0;
 }
-function validate1127(
+function validate1143(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94646,7 +95237,7 @@ function validate1127(
     }
     if (data.operation !== void 0 && func0.call(data, "operation")) {
       if (
-        !validate1128(data.operation, {
+        !validate1144(data.operation, {
           instancePath: instancePath + "/operation",
           parentData: data,
           parentDataProperty: "operation",
@@ -94655,8 +95246,8 @@ function validate1127(
       ) {
         vErrors =
           vErrors === null
-            ? validate1128.errors
-            : vErrors.concat(validate1128.errors);
+            ? validate1144.errors
+            : vErrors.concat(validate1144.errors);
         errors = vErrors.length;
       }
     }
@@ -94675,10 +95266,10 @@ function validate1127(
     }
     errors++;
   }
-  validate1127.errors = vErrors;
+  validate1143.errors = vErrors;
   return errors === 0;
 }
-function validate1223(
+function validate1239(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94779,10 +95370,10 @@ function validate1223(
     }
     errors++;
   }
-  validate1223.errors = vErrors;
+  validate1239.errors = vErrors;
   return errors === 0;
 }
-function validate1222(
+function validate1238(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94827,7 +95418,7 @@ function validate1222(
     }
     if (data.binding !== void 0 && func0.call(data, "binding")) {
       if (
-        !validate1223(data.binding, {
+        !validate1239(data.binding, {
           instancePath: instancePath + "/binding",
           parentData: data,
           parentDataProperty: "binding",
@@ -94836,8 +95427,8 @@ function validate1222(
       ) {
         vErrors =
           vErrors === null
-            ? validate1223.errors
-            : vErrors.concat(validate1223.errors);
+            ? validate1239.errors
+            : vErrors.concat(validate1239.errors);
         errors = vErrors.length;
       }
     }
@@ -94913,10 +95504,10 @@ function validate1222(
     }
     errors++;
   }
-  validate1222.errors = vErrors;
+  validate1238.errors = vErrors;
   return errors === 0;
 }
-function validate1232(
+function validate1248(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95017,10 +95608,10 @@ function validate1232(
     }
     errors++;
   }
-  validate1232.errors = vErrors;
+  validate1248.errors = vErrors;
   return errors === 0;
 }
-function validate1240(
+function validate1256(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95111,7 +95702,7 @@ function validate1240(
     }
     if (data.backspace !== void 0 && func0.call(data, "backspace")) {
       if (
-        !validate1241(data.backspace, {
+        !validate1257(data.backspace, {
           instancePath: instancePath + "/backspace",
           parentData: data,
           parentDataProperty: "backspace",
@@ -95120,14 +95711,14 @@ function validate1240(
       ) {
         vErrors =
           vErrors === null
-            ? validate1241.errors
-            : vErrors.concat(validate1241.errors);
+            ? validate1257.errors
+            : vErrors.concat(validate1257.errors);
         errors = vErrors.length;
       }
     }
     if (data.letterCase !== void 0 && func0.call(data, "letterCase")) {
       if (
-        !validate1243(data.letterCase, {
+        !validate1259(data.letterCase, {
           instancePath: instancePath + "/letterCase",
           parentData: data,
           parentDataProperty: "letterCase",
@@ -95136,14 +95727,14 @@ function validate1240(
       ) {
         vErrors =
           vErrors === null
-            ? validate1243.errors
-            : vErrors.concat(validate1243.errors);
+            ? validate1259.errors
+            : vErrors.concat(validate1259.errors);
         errors = vErrors.length;
       }
     }
     if (data.newline !== void 0 && func0.call(data, "newline")) {
       if (
-        !validate1245(data.newline, {
+        !validate1261(data.newline, {
           instancePath: instancePath + "/newline",
           parentData: data,
           parentDataProperty: "newline",
@@ -95152,8 +95743,8 @@ function validate1240(
       ) {
         vErrors =
           vErrors === null
-            ? validate1245.errors
-            : vErrors.concat(validate1245.errors);
+            ? validate1261.errors
+            : vErrors.concat(validate1261.errors);
         errors = vErrors.length;
       }
     }
@@ -95178,7 +95769,7 @@ function validate1240(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1247(data3[i0], {
+            !validate1263(data3[i0], {
               instancePath: instancePath + "/replacements/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -95187,8 +95778,8 @@ function validate1240(
           ) {
             vErrors =
               vErrors === null
-                ? validate1247.errors
-                : vErrors.concat(validate1247.errors);
+                ? validate1263.errors
+                : vErrors.concat(validate1263.errors);
             errors = vErrors.length;
           }
         }
@@ -95223,11 +95814,11 @@ function validate1240(
     }
     errors++;
   }
-  validate1240.errors = vErrors;
+  validate1256.errors = vErrors;
   return errors === 0;
 }
 var pattern22 = new RegExp("=$", "u");
-function validate1238(
+function validate1254(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95318,7 +95909,7 @@ function validate1238(
     }
     if (data.mapping !== void 0 && func0.call(data, "mapping")) {
       if (
-        !validate1240(data.mapping, {
+        !validate1256(data.mapping, {
           instancePath: instancePath + "/mapping",
           parentData: data,
           parentDataProperty: "mapping",
@@ -95327,8 +95918,8 @@ function validate1238(
       ) {
         vErrors =
           vErrors === null
-            ? validate1240.errors
-            : vErrors.concat(validate1240.errors);
+            ? validate1256.errors
+            : vErrors.concat(validate1256.errors);
         errors = vErrors.length;
       }
     }
@@ -95559,10 +96150,10 @@ function validate1238(
     }
     errors++;
   }
-  validate1238.errors = vErrors;
+  validate1254.errors = vErrors;
   return errors === 0;
 }
-function validate1252(
+function validate1268(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95705,10 +96296,10 @@ function validate1252(
     }
     errors++;
   }
-  validate1252.errors = vErrors;
+  validate1268.errors = vErrors;
   return errors === 0;
 }
-function validate1230(
+function validate1246(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95931,7 +96522,7 @@ function validate1230(
     }
     if (data.dispatchWindow !== void 0 && func0.call(data, "dispatchWindow")) {
       if (
-        !validate1232(data.dispatchWindow, {
+        !validate1248(data.dispatchWindow, {
           instancePath: instancePath + "/dispatchWindow",
           parentData: data,
           parentDataProperty: "dispatchWindow",
@@ -95940,8 +96531,8 @@ function validate1230(
       ) {
         vErrors =
           vErrors === null
-            ? validate1232.errors
-            : vErrors.concat(validate1232.errors);
+            ? validate1248.errors
+            : vErrors.concat(validate1248.errors);
         errors = vErrors.length;
       }
     }
@@ -95979,7 +96570,7 @@ function validate1230(
     }
     if (data.sourceText !== void 0 && func0.call(data, "sourceText")) {
       if (
-        !validate1238(data.sourceText, {
+        !validate1254(data.sourceText, {
           instancePath: instancePath + "/sourceText",
           parentData: data,
           parentDataProperty: "sourceText",
@@ -95988,8 +96579,8 @@ function validate1230(
       ) {
         vErrors =
           vErrors === null
-            ? validate1238.errors
-            : vErrors.concat(validate1238.errors);
+            ? validate1254.errors
+            : vErrors.concat(validate1254.errors);
         errors = vErrors.length;
       }
     }
@@ -95999,7 +96590,7 @@ function validate1230(
         const len0 = data5.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1252(data5[i0], {
+            !validate1268(data5[i0], {
               instancePath: instancePath + "/transforms/" + i0,
               parentData: data5,
               parentDataProperty: i0,
@@ -96008,8 +96599,8 @@ function validate1230(
           ) {
             vErrors =
               vErrors === null
-                ? validate1252.errors
-                : vErrors.concat(validate1252.errors);
+                ? validate1268.errors
+                : vErrors.concat(validate1268.errors);
             errors = vErrors.length;
           }
         }
@@ -96060,10 +96651,10 @@ function validate1230(
     }
     errors++;
   }
-  validate1230.errors = vErrors;
+  validate1246.errors = vErrors;
   return errors === 0;
 }
-function validate1258(
+function validate1274(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96312,10 +96903,10 @@ function validate1258(
     }
     errors++;
   }
-  validate1258.errors = vErrors;
+  validate1274.errors = vErrors;
   return errors === 0;
 }
-function validate1267(
+function validate1283(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96643,10 +97234,10 @@ function validate1267(
     }
     errors++;
   }
-  validate1267.errors = vErrors;
+  validate1283.errors = vErrors;
   return errors === 0;
 }
-function validate1274(
+function validate1290(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96761,7 +97352,7 @@ function validate1274(
     }
     if (data.overflowPolicy !== void 0 && func0.call(data, "overflowPolicy")) {
       if (
-        !validate1277(data.overflowPolicy, {
+        !validate1293(data.overflowPolicy, {
           instancePath: instancePath + "/overflowPolicy",
           parentData: data,
           parentDataProperty: "overflowPolicy",
@@ -96770,8 +97361,8 @@ function validate1274(
       ) {
         vErrors =
           vErrors === null
-            ? validate1277.errors
-            : vErrors.concat(validate1277.errors);
+            ? validate1293.errors
+            : vErrors.concat(validate1293.errors);
         errors = vErrors.length;
       }
     }
@@ -96781,7 +97372,7 @@ function validate1274(
         const len0 = data3.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1279(data3[i0], {
+            !validate1295(data3[i0], {
               instancePath: instancePath + "/redactionRules/" + i0,
               parentData: data3,
               parentDataProperty: i0,
@@ -96790,8 +97381,8 @@ function validate1274(
           ) {
             vErrors =
               vErrors === null
-                ? validate1279.errors
-                : vErrors.concat(validate1279.errors);
+                ? validate1295.errors
+                : vErrors.concat(validate1295.errors);
             errors = vErrors.length;
           }
         }
@@ -96849,7 +97440,7 @@ function validate1274(
     }
     if (data.storageLimits !== void 0 && func0.call(data, "storageLimits")) {
       if (
-        !validate1282(data.storageLimits, {
+        !validate1298(data.storageLimits, {
           instancePath: instancePath + "/storageLimits",
           parentData: data,
           parentDataProperty: "storageLimits",
@@ -96858,8 +97449,8 @@ function validate1274(
       ) {
         vErrors =
           vErrors === null
-            ? validate1282.errors
-            : vErrors.concat(validate1282.errors);
+            ? validate1298.errors
+            : vErrors.concat(validate1298.errors);
         errors = vErrors.length;
       }
     }
@@ -96881,7 +97472,7 @@ function validate1274(
     }
     if (data.writeMode !== void 0 && func0.call(data, "writeMode")) {
       if (
-        !validate1287(data.writeMode, {
+        !validate1303(data.writeMode, {
           instancePath: instancePath + "/writeMode",
           parentData: data,
           parentDataProperty: "writeMode",
@@ -96890,8 +97481,8 @@ function validate1274(
       ) {
         vErrors =
           vErrors === null
-            ? validate1287.errors
-            : vErrors.concat(validate1287.errors);
+            ? validate1303.errors
+            : vErrors.concat(validate1303.errors);
         errors = vErrors.length;
       }
     }
@@ -96910,10 +97501,10 @@ function validate1274(
     }
     errors++;
   }
-  validate1274.errors = vErrors;
+  validate1290.errors = vErrors;
   return errors === 0;
 }
-function validate1290(
+function validate1306(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96983,10 +97574,10 @@ function validate1290(
     }
     errors++;
   }
-  validate1290.errors = vErrors;
+  validate1306.errors = vErrors;
   return errors === 0;
 }
-function validate1293(
+function validate1309(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97088,10 +97679,10 @@ function validate1293(
     }
     errors++;
   }
-  validate1293.errors = vErrors;
+  validate1309.errors = vErrors;
   return errors === 0;
 }
-function validate1296(
+function validate1312(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97161,10 +97752,10 @@ function validate1296(
     }
     errors++;
   }
-  validate1296.errors = vErrors;
+  validate1312.errors = vErrors;
   return errors === 0;
 }
-function validate1303(
+function validate1319(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97234,10 +97825,10 @@ function validate1303(
     }
     errors++;
   }
-  validate1303.errors = vErrors;
+  validate1319.errors = vErrors;
   return errors === 0;
 }
-function validate1306(
+function validate1322(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97307,10 +97898,10 @@ function validate1306(
     }
     errors++;
   }
-  validate1306.errors = vErrors;
+  validate1322.errors = vErrors;
   return errors === 0;
 }
-var schema332 = {
+var schema334 = {
   enum: [
     "sensitive_path",
     "management",
@@ -97319,7 +97910,7 @@ var schema332 = {
   ],
   type: "string",
 };
-function validate1309(
+function validate1325(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97350,7 +97941,7 @@ function validate1309(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema332.enum },
+      params: { allowedValues: schema334.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -97360,10 +97951,10 @@ function validate1309(
     }
     errors++;
   }
-  validate1309.errors = vErrors;
+  validate1325.errors = vErrors;
   return errors === 0;
 }
-function validate1221(
+function validate1237(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97456,7 +98047,7 @@ function validate1221(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1222(data.value, {
+        !validate1238(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -97465,8 +98056,8 @@ function validate1221(
       ) {
         vErrors =
           vErrors === null
-            ? validate1222.errors
-            : vErrors.concat(validate1222.errors);
+            ? validate1238.errors
+            : vErrors.concat(validate1238.errors);
         errors = vErrors.length;
       }
     }
@@ -97574,7 +98165,7 @@ function validate1221(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1230(data.value, {
+        !validate1246(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -97583,8 +98174,8 @@ function validate1221(
       ) {
         vErrors =
           vErrors === null
-            ? validate1230.errors
-            : vErrors.concat(validate1230.errors);
+            ? validate1246.errors
+            : vErrors.concat(validate1246.errors);
         errors = vErrors.length;
       }
     }
@@ -97696,7 +98287,7 @@ function validate1221(
       }
       if (data.value !== void 0 && func0.call(data, "value")) {
         if (
-          !validate1258(data.value, {
+          !validate1274(data.value, {
             instancePath: instancePath + "/value",
             parentData: data,
             parentDataProperty: "value",
@@ -97705,8 +98296,8 @@ function validate1221(
         ) {
           vErrors =
             vErrors === null
-              ? validate1258.errors
-              : vErrors.concat(validate1258.errors);
+              ? validate1274.errors
+              : vErrors.concat(validate1274.errors);
           errors = vErrors.length;
         }
       }
@@ -97818,7 +98409,7 @@ function validate1221(
         }
         if (data.value !== void 0 && func0.call(data, "value")) {
           if (
-            !validate1267(data.value, {
+            !validate1283(data.value, {
               instancePath: instancePath + "/value",
               parentData: data,
               parentDataProperty: "value",
@@ -97827,8 +98418,8 @@ function validate1221(
           ) {
             vErrors =
               vErrors === null
-                ? validate1267.errors
-                : vErrors.concat(validate1267.errors);
+                ? validate1283.errors
+                : vErrors.concat(validate1283.errors);
             errors = vErrors.length;
           }
         }
@@ -97940,7 +98531,7 @@ function validate1221(
           }
           if (data.value !== void 0 && func0.call(data, "value")) {
             if (
-              !validate1274(data.value, {
+              !validate1290(data.value, {
                 instancePath: instancePath + "/value",
                 parentData: data,
                 parentDataProperty: "value",
@@ -97949,8 +98540,8 @@ function validate1221(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1274.errors
-                  : vErrors.concat(validate1274.errors);
+                  ? validate1290.errors
+                  : vErrors.concat(validate1290.errors);
               errors = vErrors.length;
             }
           }
@@ -98062,7 +98653,7 @@ function validate1221(
             }
             if (data.value !== void 0 && func0.call(data, "value")) {
               if (
-                !validate1290(data.value, {
+                !validate1306(data.value, {
                   instancePath: instancePath + "/value",
                   parentData: data,
                   parentDataProperty: "value",
@@ -98071,8 +98662,8 @@ function validate1221(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1290.errors
-                    : vErrors.concat(validate1290.errors);
+                    ? validate1306.errors
+                    : vErrors.concat(validate1306.errors);
                 errors = vErrors.length;
               }
             }
@@ -98184,7 +98775,7 @@ function validate1221(
               }
               if (data.value !== void 0 && func0.call(data, "value")) {
                 if (
-                  !validate1293(data.value, {
+                  !validate1309(data.value, {
                     instancePath: instancePath + "/value",
                     parentData: data,
                     parentDataProperty: "value",
@@ -98193,8 +98784,8 @@ function validate1221(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1293.errors
-                      : vErrors.concat(validate1293.errors);
+                      ? validate1309.errors
+                      : vErrors.concat(validate1309.errors);
                   errors = vErrors.length;
                 }
               }
@@ -98306,7 +98897,7 @@ function validate1221(
                 }
                 if (data.value !== void 0 && func0.call(data, "value")) {
                   if (
-                    !validate1296(data.value, {
+                    !validate1312(data.value, {
                       instancePath: instancePath + "/value",
                       parentData: data,
                       parentDataProperty: "value",
@@ -98315,8 +98906,8 @@ function validate1221(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1296.errors
-                        : vErrors.concat(validate1296.errors);
+                        ? validate1312.errors
+                        : vErrors.concat(validate1312.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -98428,7 +99019,7 @@ function validate1221(
                   }
                   if (data.value !== void 0 && func0.call(data, "value")) {
                     if (
-                      !validate1299(data.value, {
+                      !validate1315(data.value, {
                         instancePath: instancePath + "/value",
                         parentData: data,
                         parentDataProperty: "value",
@@ -98437,8 +99028,8 @@ function validate1221(
                     ) {
                       vErrors =
                         vErrors === null
-                          ? validate1299.errors
-                          : vErrors.concat(validate1299.errors);
+                          ? validate1315.errors
+                          : vErrors.concat(validate1315.errors);
                       errors = vErrors.length;
                     }
                   }
@@ -98550,7 +99141,7 @@ function validate1221(
                     }
                     if (data.value !== void 0 && func0.call(data, "value")) {
                       if (
-                        !validate1303(data.value, {
+                        !validate1319(data.value, {
                           instancePath: instancePath + "/value",
                           parentData: data,
                           parentDataProperty: "value",
@@ -98559,8 +99150,8 @@ function validate1221(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1303.errors
-                            : vErrors.concat(validate1303.errors);
+                            ? validate1319.errors
+                            : vErrors.concat(validate1319.errors);
                         errors = vErrors.length;
                       }
                     }
@@ -98676,7 +99267,7 @@ function validate1221(
                       }
                       if (data.value !== void 0 && func0.call(data, "value")) {
                         if (
-                          !validate1306(data.value, {
+                          !validate1322(data.value, {
                             instancePath: instancePath + "/value",
                             parentData: data,
                             parentDataProperty: "value",
@@ -98685,8 +99276,8 @@ function validate1221(
                         ) {
                           vErrors =
                             vErrors === null
-                              ? validate1306.errors
-                              : vErrors.concat(validate1306.errors);
+                              ? validate1322.errors
+                              : vErrors.concat(validate1322.errors);
                           errors = vErrors.length;
                         }
                       }
@@ -98856,7 +99447,7 @@ function validate1221(
                               func0.call(data23, "reason")
                             ) {
                               if (
-                                !validate1309(data23.reason, {
+                                !validate1325(data23.reason, {
                                   instancePath: instancePath + "/value/reason",
                                   parentData: data23,
                                   parentDataProperty: "reason",
@@ -98865,8 +99456,8 @@ function validate1221(
                               ) {
                                 vErrors =
                                   vErrors === null
-                                    ? validate1309.errors
-                                    : vErrors.concat(validate1309.errors);
+                                    ? validate1325.errors
+                                    : vErrors.concat(validate1325.errors);
                                 errors = vErrors.length;
                               }
                             }
@@ -98945,10 +99536,10 @@ function validate1221(
       }
     }
   }
-  validate1221.errors = vErrors;
+  validate1237.errors = vErrors;
   return errors === 0;
 }
-function validate1312(
+function validate1328(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -99055,7 +99646,7 @@ function validate1312(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -99064,8 +99655,8 @@ function validate1312(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -99170,10 +99761,10 @@ function validate1312(
     }
     errors++;
   }
-  validate1312.errors = vErrors;
+  validate1328.errors = vErrors;
   return errors === 0;
 }
-function validate1319(
+function validate1335(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -99243,10 +99834,10 @@ function validate1319(
     }
     errors++;
   }
-  validate1319.errors = vErrors;
+  validate1335.errors = vErrors;
   return errors === 0;
 }
-function validate1322(
+function validate1338(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -99316,10 +99907,10 @@ function validate1322(
     }
     errors++;
   }
-  validate1322.errors = vErrors;
+  validate1338.errors = vErrors;
   return errors === 0;
 }
-function validate1631(
+function validate1647(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -102424,7 +103015,8 @@ function validate1631(
                                                   errors++;
                                                 }
                                                 if (
-                                                  "replay_search" !== data44
+                                                  "replay_transmit_preview" !==
+                                                  data44
                                                 ) {
                                                   const err136 = {
                                                     instancePath:
@@ -102434,7 +103026,7 @@ function validate1631(
                                                     keyword: "const",
                                                     params: {
                                                       allowedValue:
-                                                        "replay_search",
+                                                        "replay_transmit_preview",
                                                     },
                                                     message:
                                                       "must be equal to constant",
@@ -102597,7 +103189,9 @@ function validate1631(
                                                     }
                                                     errors++;
                                                   }
-                                                  if ("recent" !== data46) {
+                                                  if (
+                                                    "replay_search" !== data46
+                                                  ) {
                                                     const err142 = {
                                                       instancePath:
                                                         instancePath + "/kind",
@@ -102605,7 +103199,8 @@ function validate1631(
                                                         "#/oneOf/23/properties/kind/const",
                                                       keyword: "const",
                                                       params: {
-                                                        allowedValue: "recent",
+                                                        allowedValue:
+                                                          "replay_search",
                                                       },
                                                       message:
                                                         "must be equal to constant",
@@ -102623,7 +103218,7 @@ function validate1631(
                                                   func0.call(data, "value")
                                                 ) {
                                                   if (
-                                                    !validate983(data.value, {
+                                                    !validate990(data.value, {
                                                       instancePath:
                                                         instancePath + "/value",
                                                       parentData: data,
@@ -102634,9 +103229,9 @@ function validate1631(
                                                   ) {
                                                     vErrors =
                                                       vErrors === null
-                                                        ? validate983.errors
+                                                        ? validate990.errors
                                                         : vErrors.concat(
-                                                            validate983.errors,
+                                                            validate990.errors,
                                                           );
                                                     errors = vErrors.length;
                                                   }
@@ -102772,9 +103367,7 @@ function validate1631(
                                                       }
                                                       errors++;
                                                     }
-                                                    if (
-                                                      "file_metadata" !== data48
-                                                    ) {
+                                                    if ("recent" !== data48) {
                                                       const err148 = {
                                                         instancePath:
                                                           instancePath +
@@ -102784,7 +103377,7 @@ function validate1631(
                                                         keyword: "const",
                                                         params: {
                                                           allowedValue:
-                                                            "file_metadata",
+                                                            "recent",
                                                         },
                                                         message:
                                                           "must be equal to constant",
@@ -102802,21 +103395,24 @@ function validate1631(
                                                     func0.call(data, "value")
                                                   ) {
                                                     if (
-                                                      !validate501(data.value, {
-                                                        instancePath:
-                                                          instancePath +
-                                                          "/value",
-                                                        parentData: data,
-                                                        parentDataProperty:
-                                                          "value",
-                                                        rootData,
-                                                      })
+                                                      !validate1007(
+                                                        data.value,
+                                                        {
+                                                          instancePath:
+                                                            instancePath +
+                                                            "/value",
+                                                          parentData: data,
+                                                          parentDataProperty:
+                                                            "value",
+                                                          rootData,
+                                                        },
+                                                      )
                                                     ) {
                                                       vErrors =
                                                         vErrors === null
-                                                          ? validate501.errors
+                                                          ? validate1007.errors
                                                           : vErrors.concat(
-                                                              validate501.errors,
+                                                              validate1007.errors,
                                                             );
                                                       errors = vErrors.length;
                                                     }
@@ -102957,7 +103553,8 @@ function validate1631(
                                                         errors++;
                                                       }
                                                       if (
-                                                        "file_read" !== data50
+                                                        "file_metadata" !==
+                                                        data50
                                                       ) {
                                                         const err154 = {
                                                           instancePath:
@@ -102968,7 +103565,7 @@ function validate1631(
                                                           keyword: "const",
                                                           params: {
                                                             allowedValue:
-                                                              "file_read",
+                                                              "file_metadata",
                                                           },
                                                           message:
                                                             "must be equal to constant",
@@ -102986,7 +103583,7 @@ function validate1631(
                                                       func0.call(data, "value")
                                                     ) {
                                                       if (
-                                                        !validate993(
+                                                        !validate501(
                                                           data.value,
                                                           {
                                                             instancePath:
@@ -103001,9 +103598,9 @@ function validate1631(
                                                       ) {
                                                         vErrors =
                                                           vErrors === null
-                                                            ? validate993.errors
+                                                            ? validate501.errors
                                                             : vErrors.concat(
-                                                                validate993.errors,
+                                                                validate501.errors,
                                                               );
                                                         errors = vErrors.length;
                                                       }
@@ -103160,8 +103757,7 @@ function validate1631(
                                                           errors++;
                                                         }
                                                         if (
-                                                          "file_transfer_receipts" !==
-                                                          data52
+                                                          "file_read" !== data52
                                                         ) {
                                                           const err160 = {
                                                             instancePath:
@@ -103172,7 +103768,7 @@ function validate1631(
                                                             keyword: "const",
                                                             params: {
                                                               allowedValue:
-                                                                "file_transfer_receipts",
+                                                                "file_read",
                                                             },
                                                             message:
                                                               "must be equal to constant",
@@ -103197,7 +103793,7 @@ function validate1631(
                                                         )
                                                       ) {
                                                         if (
-                                                          !validate1001(
+                                                          !validate1017(
                                                             data.value,
                                                             {
                                                               instancePath:
@@ -103212,9 +103808,9 @@ function validate1631(
                                                         ) {
                                                           vErrors =
                                                             vErrors === null
-                                                              ? validate1001.errors
+                                                              ? validate1017.errors
                                                               : vErrors.concat(
-                                                                  validate1001.errors,
+                                                                  validate1017.errors,
                                                                 );
                                                           errors =
                                                             vErrors.length;
@@ -103393,7 +103989,7 @@ function validate1631(
                                                             errors++;
                                                           }
                                                           if (
-                                                            "file_transfer_read_progress" !==
+                                                            "file_transfer_receipts" !==
                                                             data54
                                                           ) {
                                                             const err166 = {
@@ -103405,7 +104001,7 @@ function validate1631(
                                                               keyword: "const",
                                                               params: {
                                                                 allowedValue:
-                                                                  "file_transfer_read_progress",
+                                                                  "file_transfer_receipts",
                                                               },
                                                               message:
                                                                 "must be equal to constant",
@@ -103433,7 +104029,7 @@ function validate1631(
                                                           )
                                                         ) {
                                                           if (
-                                                            !validate1010(
+                                                            !validate1025(
                                                               data.value,
                                                               {
                                                                 instancePath:
@@ -103449,9 +104045,9 @@ function validate1631(
                                                           ) {
                                                             vErrors =
                                                               vErrors === null
-                                                                ? validate1010.errors
+                                                                ? validate1025.errors
                                                                 : vErrors.concat(
-                                                                    validate1010.errors,
+                                                                    validate1025.errors,
                                                                   );
                                                             errors =
                                                               vErrors.length;
@@ -103640,7 +104236,7 @@ function validate1631(
                                                               errors++;
                                                             }
                                                             if (
-                                                              "stream_cursor" !==
+                                                              "file_transfer_read_progress" !==
                                                               data56
                                                             ) {
                                                               const err172 = {
@@ -103653,7 +104249,7 @@ function validate1631(
                                                                   "const",
                                                                 params: {
                                                                   allowedValue:
-                                                                    "stream_cursor",
+                                                                    "file_transfer_read_progress",
                                                                 },
                                                                 message:
                                                                   "must be equal to constant",
@@ -103681,7 +104277,7 @@ function validate1631(
                                                             )
                                                           ) {
                                                             if (
-                                                              !validate1014(
+                                                              !validate1035(
                                                                 data.value,
                                                                 {
                                                                   instancePath:
@@ -103697,9 +104293,9 @@ function validate1631(
                                                             ) {
                                                               vErrors =
                                                                 vErrors === null
-                                                                  ? validate1014.errors
+                                                                  ? validate1035.errors
                                                                   : vErrors.concat(
-                                                                      validate1014.errors,
+                                                                      validate1035.errors,
                                                                     );
                                                               errors =
                                                                 vErrors.length;
@@ -103897,7 +104493,7 @@ function validate1631(
                                                                 errors++;
                                                               }
                                                               if (
-                                                                "scopes" !==
+                                                                "stream_cursor" !==
                                                                 data58
                                                               ) {
                                                                 const err178 = {
@@ -103910,7 +104506,7 @@ function validate1631(
                                                                     "const",
                                                                   params: {
                                                                     allowedValue:
-                                                                      "scopes",
+                                                                      "stream_cursor",
                                                                   },
                                                                   message:
                                                                     "must be equal to constant",
@@ -103939,7 +104535,7 @@ function validate1631(
                                                               )
                                                             ) {
                                                               if (
-                                                                !validate1023(
+                                                                !validate1039(
                                                                   data.value,
                                                                   {
                                                                     instancePath:
@@ -103956,9 +104552,9 @@ function validate1631(
                                                                 vErrors =
                                                                   vErrors ===
                                                                   null
-                                                                    ? validate1023.errors
+                                                                    ? validate1039.errors
                                                                     : vErrors.concat(
-                                                                        validate1023.errors,
+                                                                        validate1039.errors,
                                                                       );
                                                                 errors =
                                                                   vErrors.length;
@@ -104167,7 +104763,7 @@ function validate1631(
                                                                   errors++;
                                                                 }
                                                                 if (
-                                                                  "settings" !==
+                                                                  "scopes" !==
                                                                   data60
                                                                 ) {
                                                                   const err184 =
@@ -104181,7 +104777,7 @@ function validate1631(
                                                                         "const",
                                                                       params: {
                                                                         allowedValue:
-                                                                          "settings",
+                                                                          "scopes",
                                                                       },
                                                                       message:
                                                                         "must be equal to constant",
@@ -104210,7 +104806,7 @@ function validate1631(
                                                                 )
                                                               ) {
                                                                 if (
-                                                                  !validate532(
+                                                                  !validate1048(
                                                                     data.value,
                                                                     {
                                                                       instancePath:
@@ -104227,9 +104823,9 @@ function validate1631(
                                                                   vErrors =
                                                                     vErrors ===
                                                                     null
-                                                                      ? validate532.errors
+                                                                      ? validate1048.errors
                                                                       : vErrors.concat(
-                                                                          validate532.errors,
+                                                                          validate1048.errors,
                                                                         );
                                                                   errors =
                                                                     vErrors.length;
@@ -104445,7 +105041,7 @@ function validate1631(
                                                                     errors++;
                                                                   }
                                                                   if (
-                                                                    "workspace" !==
+                                                                    "settings" !==
                                                                     data62
                                                                   ) {
                                                                     const err190 =
@@ -104460,7 +105056,7 @@ function validate1631(
                                                                         params:
                                                                           {
                                                                             allowedValue:
-                                                                              "workspace",
+                                                                              "settings",
                                                                           },
                                                                         message:
                                                                           "must be equal to constant",
@@ -104490,7 +105086,7 @@ function validate1631(
                                                                   )
                                                                 ) {
                                                                   if (
-                                                                    !validate591(
+                                                                    !validate532(
                                                                       data.value,
                                                                       {
                                                                         instancePath:
@@ -104507,9 +105103,9 @@ function validate1631(
                                                                     vErrors =
                                                                       vErrors ===
                                                                       null
-                                                                        ? validate591.errors
+                                                                        ? validate532.errors
                                                                         : vErrors.concat(
-                                                                            validate591.errors,
+                                                                            validate532.errors,
                                                                           );
                                                                     errors =
                                                                       vErrors.length;
@@ -104731,7 +105327,7 @@ function validate1631(
                                                                       errors++;
                                                                     }
                                                                     if (
-                                                                      "workspaces" !==
+                                                                      "workspace" !==
                                                                       data64
                                                                     ) {
                                                                       const err196 =
@@ -104746,7 +105342,7 @@ function validate1631(
                                                                           params:
                                                                             {
                                                                               allowedValue:
-                                                                                "workspaces",
+                                                                                "workspace",
                                                                             },
                                                                           message:
                                                                             "must be equal to constant",
@@ -104776,7 +105372,7 @@ function validate1631(
                                                                     )
                                                                   ) {
                                                                     if (
-                                                                      !validate1028(
+                                                                      !validate591(
                                                                         data.value,
                                                                         {
                                                                           instancePath:
@@ -104793,9 +105389,9 @@ function validate1631(
                                                                       vErrors =
                                                                         vErrors ===
                                                                         null
-                                                                          ? validate1028.errors
+                                                                          ? validate591.errors
                                                                           : vErrors.concat(
-                                                                              validate1028.errors,
+                                                                              validate591.errors,
                                                                             );
                                                                       errors =
                                                                         vErrors.length;
@@ -105018,7 +105614,7 @@ function validate1631(
                                                                         errors++;
                                                                       }
                                                                       if (
-                                                                        "command_library" !==
+                                                                        "workspaces" !==
                                                                         data66
                                                                       ) {
                                                                         const err202 =
@@ -105033,7 +105629,7 @@ function validate1631(
                                                                             params:
                                                                               {
                                                                                 allowedValue:
-                                                                                  "command_library",
+                                                                                  "workspaces",
                                                                               },
                                                                             message:
                                                                               "must be equal to constant",
@@ -105063,7 +105659,7 @@ function validate1631(
                                                                       )
                                                                     ) {
                                                                       if (
-                                                                        !validate1035(
+                                                                        !validate1053(
                                                                           data.value,
                                                                           {
                                                                             instancePath:
@@ -105080,9 +105676,9 @@ function validate1631(
                                                                         vErrors =
                                                                           vErrors ===
                                                                           null
-                                                                            ? validate1035.errors
+                                                                            ? validate1053.errors
                                                                             : vErrors.concat(
-                                                                                validate1035.errors,
+                                                                                validate1053.errors,
                                                                               );
                                                                         errors =
                                                                           vErrors.length;
@@ -105309,7 +105905,7 @@ function validate1631(
                                                                           errors++;
                                                                         }
                                                                         if (
-                                                                          "document_json" !==
+                                                                          "command_library" !==
                                                                           data68
                                                                         ) {
                                                                           const err208 =
@@ -105324,7 +105920,7 @@ function validate1631(
                                                                               params:
                                                                                 {
                                                                                   allowedValue:
-                                                                                    "document_json",
+                                                                                    "command_library",
                                                                                 },
                                                                               message:
                                                                                 "must be equal to constant",
@@ -105354,7 +105950,7 @@ function validate1631(
                                                                         )
                                                                       ) {
                                                                         if (
-                                                                          !validate1045(
+                                                                          !validate1060(
                                                                             data.value,
                                                                             {
                                                                               instancePath:
@@ -105371,9 +105967,9 @@ function validate1631(
                                                                           vErrors =
                                                                             vErrors ===
                                                                             null
-                                                                              ? validate1045.errors
+                                                                              ? validate1060.errors
                                                                               : vErrors.concat(
-                                                                                  validate1045.errors,
+                                                                                  validate1060.errors,
                                                                                 );
                                                                           errors =
                                                                             vErrors.length;
@@ -105601,7 +106197,7 @@ function validate1631(
                                                                             errors++;
                                                                           }
                                                                           if (
-                                                                            "stream_read" !==
+                                                                            "document_json" !==
                                                                             data70
                                                                           ) {
                                                                             const err214 =
@@ -105616,7 +106212,7 @@ function validate1631(
                                                                                 params:
                                                                                   {
                                                                                     allowedValue:
-                                                                                      "stream_read",
+                                                                                      "document_json",
                                                                                   },
                                                                                 message:
                                                                                   "must be equal to constant",
@@ -105646,7 +106242,7 @@ function validate1631(
                                                                           )
                                                                         ) {
                                                                           if (
-                                                                            !validate1047(
+                                                                            !validate1070(
                                                                               data.value,
                                                                               {
                                                                                 instancePath:
@@ -105663,9 +106259,9 @@ function validate1631(
                                                                             vErrors =
                                                                               vErrors ===
                                                                               null
-                                                                                ? validate1047.errors
+                                                                                ? validate1070.errors
                                                                                 : vErrors.concat(
-                                                                                    validate1047.errors,
+                                                                                    validate1070.errors,
                                                                                   );
                                                                             errors =
                                                                               vErrors.length;
@@ -105893,7 +106489,7 @@ function validate1631(
                                                                               errors++;
                                                                             }
                                                                             if (
-                                                                              "stream_derived_read" !==
+                                                                              "stream_read" !==
                                                                               data72
                                                                             ) {
                                                                               const err220 =
@@ -105908,7 +106504,7 @@ function validate1631(
                                                                                   params:
                                                                                     {
                                                                                       allowedValue:
-                                                                                        "stream_derived_read",
+                                                                                        "stream_read",
                                                                                     },
                                                                                   message:
                                                                                     "must be equal to constant",
@@ -105938,7 +106534,7 @@ function validate1631(
                                                                             )
                                                                           ) {
                                                                             if (
-                                                                              !validate1051(
+                                                                              !validate1072(
                                                                                 data.value,
                                                                                 {
                                                                                   instancePath:
@@ -105955,9 +106551,9 @@ function validate1631(
                                                                               vErrors =
                                                                                 vErrors ===
                                                                                 null
-                                                                                  ? validate1051.errors
+                                                                                  ? validate1072.errors
                                                                                   : vErrors.concat(
-                                                                                      validate1051.errors,
+                                                                                      validate1072.errors,
                                                                                     );
                                                                               errors =
                                                                                 vErrors.length;
@@ -106185,7 +106781,7 @@ function validate1631(
                                                                                 errors++;
                                                                               }
                                                                               if (
-                                                                                "stream_subscribe" !==
+                                                                                "stream_derived_read" !==
                                                                                 data74
                                                                               ) {
                                                                                 const err226 =
@@ -106200,7 +106796,7 @@ function validate1631(
                                                                                     params:
                                                                                       {
                                                                                         allowedValue:
-                                                                                          "stream_subscribe",
+                                                                                          "stream_derived_read",
                                                                                       },
                                                                                     message:
                                                                                       "must be equal to constant",
@@ -106477,7 +107073,7 @@ function validate1631(
                                                                                   errors++;
                                                                                 }
                                                                                 if (
-                                                                                  "stream_credit" !==
+                                                                                  "stream_subscribe" !==
                                                                                   data76
                                                                                 ) {
                                                                                   const err232 =
@@ -106492,7 +107088,7 @@ function validate1631(
                                                                                       params:
                                                                                         {
                                                                                           allowedValue:
-                                                                                            "stream_credit",
+                                                                                            "stream_subscribe",
                                                                                         },
                                                                                       message:
                                                                                         "must be equal to constant",
@@ -106522,7 +107118,7 @@ function validate1631(
                                                                                 )
                                                                               ) {
                                                                                 if (
-                                                                                  !validate1079(
+                                                                                  !validate1092(
                                                                                     data.value,
                                                                                     {
                                                                                       instancePath:
@@ -106539,9 +107135,9 @@ function validate1631(
                                                                                   vErrors =
                                                                                     vErrors ===
                                                                                     null
-                                                                                      ? validate1079.errors
+                                                                                      ? validate1092.errors
                                                                                       : vErrors.concat(
-                                                                                          validate1079.errors,
+                                                                                          validate1092.errors,
                                                                                         );
                                                                                   errors =
                                                                                     vErrors.length;
@@ -106769,7 +107365,7 @@ function validate1631(
                                                                                     errors++;
                                                                                   }
                                                                                   if (
-                                                                                    "devices" !==
+                                                                                    "stream_credit" !==
                                                                                     data78
                                                                                   ) {
                                                                                     const err238 =
@@ -106784,7 +107380,7 @@ function validate1631(
                                                                                         params:
                                                                                           {
                                                                                             allowedValue:
-                                                                                              "devices",
+                                                                                              "stream_credit",
                                                                                           },
                                                                                         message:
                                                                                           "must be equal to constant",
@@ -106814,7 +107410,7 @@ function validate1631(
                                                                                   )
                                                                                 ) {
                                                                                   if (
-                                                                                    !validate1085(
+                                                                                    !validate1095(
                                                                                       data.value,
                                                                                       {
                                                                                         instancePath:
@@ -106831,9 +107427,9 @@ function validate1631(
                                                                                     vErrors =
                                                                                       vErrors ===
                                                                                       null
-                                                                                        ? validate1085.errors
+                                                                                        ? validate1095.errors
                                                                                         : vErrors.concat(
-                                                                                            validate1085.errors,
+                                                                                            validate1095.errors,
                                                                                           );
                                                                                     errors =
                                                                                       vErrors.length;
@@ -107061,7 +107657,7 @@ function validate1631(
                                                                                       errors++;
                                                                                     }
                                                                                     if (
-                                                                                      "session" !==
+                                                                                      "devices" !==
                                                                                       data80
                                                                                     ) {
                                                                                       const err244 =
@@ -107076,7 +107672,7 @@ function validate1631(
                                                                                           params:
                                                                                             {
                                                                                               allowedValue:
-                                                                                                "session",
+                                                                                                "devices",
                                                                                             },
                                                                                           message:
                                                                                             "must be equal to constant",
@@ -107106,7 +107702,7 @@ function validate1631(
                                                                                     )
                                                                                   ) {
                                                                                     if (
-                                                                                      !validate661(
+                                                                                      !validate1101(
                                                                                         data.value,
                                                                                         {
                                                                                           instancePath:
@@ -107123,9 +107719,9 @@ function validate1631(
                                                                                       vErrors =
                                                                                         vErrors ===
                                                                                         null
-                                                                                          ? validate661.errors
+                                                                                          ? validate1101.errors
                                                                                           : vErrors.concat(
-                                                                                              validate661.errors,
+                                                                                              validate1101.errors,
                                                                                             );
                                                                                       errors =
                                                                                         vErrors.length;
@@ -107353,7 +107949,7 @@ function validate1631(
                                                                                         errors++;
                                                                                       }
                                                                                       if (
-                                                                                        "session_metrics" !==
+                                                                                        "session" !==
                                                                                         data82
                                                                                       ) {
                                                                                         const err250 =
@@ -107368,7 +107964,7 @@ function validate1631(
                                                                                             params:
                                                                                               {
                                                                                                 allowedValue:
-                                                                                                  "session_metrics",
+                                                                                                  "session",
                                                                                               },
                                                                                             message:
                                                                                               "must be equal to constant",
@@ -107398,7 +107994,7 @@ function validate1631(
                                                                                       )
                                                                                     ) {
                                                                                       if (
-                                                                                        !validate1094(
+                                                                                        !validate661(
                                                                                           data.value,
                                                                                           {
                                                                                             instancePath:
@@ -107415,9 +108011,9 @@ function validate1631(
                                                                                         vErrors =
                                                                                           vErrors ===
                                                                                           null
-                                                                                            ? validate1094.errors
+                                                                                            ? validate661.errors
                                                                                             : vErrors.concat(
-                                                                                                validate1094.errors,
+                                                                                                validate661.errors,
                                                                                               );
                                                                                         errors =
                                                                                           vErrors.length;
@@ -107645,7 +108241,7 @@ function validate1631(
                                                                                           errors++;
                                                                                         }
                                                                                         if (
-                                                                                          "session_inputs" !==
+                                                                                          "session_metrics" !==
                                                                                           data84
                                                                                         ) {
                                                                                           const err256 =
@@ -107660,7 +108256,7 @@ function validate1631(
                                                                                               params:
                                                                                                 {
                                                                                                   allowedValue:
-                                                                                                    "session_inputs",
+                                                                                                    "session_metrics",
                                                                                                 },
                                                                                               message:
                                                                                                 "must be equal to constant",
@@ -107690,7 +108286,7 @@ function validate1631(
                                                                                         )
                                                                                       ) {
                                                                                         if (
-                                                                                          !validate1113(
+                                                                                          !validate1110(
                                                                                             data.value,
                                                                                             {
                                                                                               instancePath:
@@ -107707,9 +108303,9 @@ function validate1631(
                                                                                           vErrors =
                                                                                             vErrors ===
                                                                                             null
-                                                                                              ? validate1113.errors
+                                                                                              ? validate1110.errors
                                                                                               : vErrors.concat(
-                                                                                                  validate1113.errors,
+                                                                                                  validate1110.errors,
                                                                                                 );
                                                                                           errors =
                                                                                             vErrors.length;
@@ -107937,7 +108533,7 @@ function validate1631(
                                                                                             errors++;
                                                                                           }
                                                                                           if (
-                                                                                            "queue" !==
+                                                                                            "session_inputs" !==
                                                                                             data86
                                                                                           ) {
                                                                                             const err262 =
@@ -107952,7 +108548,7 @@ function validate1631(
                                                                                                 params:
                                                                                                   {
                                                                                                     allowedValue:
-                                                                                                      "queue",
+                                                                                                      "session_inputs",
                                                                                                   },
                                                                                                 message:
                                                                                                   "must be equal to constant",
@@ -107982,7 +108578,7 @@ function validate1631(
                                                                                           )
                                                                                         ) {
                                                                                           if (
-                                                                                            !validate1119(
+                                                                                            !validate1129(
                                                                                               data.value,
                                                                                               {
                                                                                                 instancePath:
@@ -107999,9 +108595,9 @@ function validate1631(
                                                                                             vErrors =
                                                                                               vErrors ===
                                                                                               null
-                                                                                                ? validate1119.errors
+                                                                                                ? validate1129.errors
                                                                                                 : vErrors.concat(
-                                                                                                    validate1119.errors,
+                                                                                                    validate1129.errors,
                                                                                                   );
                                                                                             errors =
                                                                                               vErrors.length;
@@ -108229,7 +108825,7 @@ function validate1631(
                                                                                               errors++;
                                                                                             }
                                                                                             if (
-                                                                                              "catalog" !==
+                                                                                              "queue" !==
                                                                                               data88
                                                                                             ) {
                                                                                               const err268 =
@@ -108244,7 +108840,7 @@ function validate1631(
                                                                                                   params:
                                                                                                     {
                                                                                                       allowedValue:
-                                                                                                        "catalog",
+                                                                                                        "queue",
                                                                                                     },
                                                                                                   message:
                                                                                                     "must be equal to constant",
@@ -108274,7 +108870,7 @@ function validate1631(
                                                                                             )
                                                                                           ) {
                                                                                             if (
-                                                                                              !validate1123(
+                                                                                              !validate1135(
                                                                                                 data.value,
                                                                                                 {
                                                                                                   instancePath:
@@ -108291,9 +108887,9 @@ function validate1631(
                                                                                               vErrors =
                                                                                                 vErrors ===
                                                                                                 null
-                                                                                                  ? validate1123.errors
+                                                                                                  ? validate1135.errors
                                                                                                   : vErrors.concat(
-                                                                                                      validate1123.errors,
+                                                                                                      validate1135.errors,
                                                                                                     );
                                                                                               errors =
                                                                                                 vErrors.length;
@@ -108521,7 +109117,7 @@ function validate1631(
                                                                                                 errors++;
                                                                                               }
                                                                                               if (
-                                                                                                "operation" !==
+                                                                                                "catalog" !==
                                                                                                 data90
                                                                                               ) {
                                                                                                 const err274 =
@@ -108536,7 +109132,7 @@ function validate1631(
                                                                                                     params:
                                                                                                       {
                                                                                                         allowedValue:
-                                                                                                          "operation",
+                                                                                                          "catalog",
                                                                                                       },
                                                                                                     message:
                                                                                                       "must be equal to constant",
@@ -108566,7 +109162,7 @@ function validate1631(
                                                                                               )
                                                                                             ) {
                                                                                               if (
-                                                                                                !validate1127(
+                                                                                                !validate1139(
                                                                                                   data.value,
                                                                                                   {
                                                                                                     instancePath:
@@ -108583,9 +109179,9 @@ function validate1631(
                                                                                                 vErrors =
                                                                                                   vErrors ===
                                                                                                   null
-                                                                                                    ? validate1127.errors
+                                                                                                    ? validate1139.errors
                                                                                                     : vErrors.concat(
-                                                                                                        validate1127.errors,
+                                                                                                        validate1139.errors,
                                                                                                       );
                                                                                                 errors =
                                                                                                   vErrors.length;
@@ -108813,7 +109409,7 @@ function validate1631(
                                                                                                   errors++;
                                                                                                 }
                                                                                                 if (
-                                                                                                  "operation_input" !==
+                                                                                                  "operation" !==
                                                                                                   data92
                                                                                                 ) {
                                                                                                   const err280 =
@@ -108828,7 +109424,7 @@ function validate1631(
                                                                                                       params:
                                                                                                         {
                                                                                                           allowedValue:
-                                                                                                            "operation_input",
+                                                                                                            "operation",
                                                                                                         },
                                                                                                       message:
                                                                                                         "must be equal to constant",
@@ -108858,7 +109454,7 @@ function validate1631(
                                                                                                 )
                                                                                               ) {
                                                                                                 if (
-                                                                                                  !validate1221(
+                                                                                                  !validate1143(
                                                                                                     data.value,
                                                                                                     {
                                                                                                       instancePath:
@@ -108875,9 +109471,9 @@ function validate1631(
                                                                                                   vErrors =
                                                                                                     vErrors ===
                                                                                                     null
-                                                                                                      ? validate1221.errors
+                                                                                                      ? validate1143.errors
                                                                                                       : vErrors.concat(
-                                                                                                          validate1221.errors,
+                                                                                                          validate1143.errors,
                                                                                                         );
                                                                                                   errors =
                                                                                                     vErrors.length;
@@ -109105,7 +109701,7 @@ function validate1631(
                                                                                                     errors++;
                                                                                                   }
                                                                                                   if (
-                                                                                                    "snapshot" !==
+                                                                                                    "operation_input" !==
                                                                                                     data94
                                                                                                   ) {
                                                                                                     const err286 =
@@ -109120,7 +109716,7 @@ function validate1631(
                                                                                                         params:
                                                                                                           {
                                                                                                             allowedValue:
-                                                                                                              "snapshot",
+                                                                                                              "operation_input",
                                                                                                           },
                                                                                                         message:
                                                                                                           "must be equal to constant",
@@ -109150,7 +109746,7 @@ function validate1631(
                                                                                                   )
                                                                                                 ) {
                                                                                                   if (
-                                                                                                    !validate1312(
+                                                                                                    !validate1237(
                                                                                                       data.value,
                                                                                                       {
                                                                                                         instancePath:
@@ -109167,9 +109763,9 @@ function validate1631(
                                                                                                     vErrors =
                                                                                                       vErrors ===
                                                                                                       null
-                                                                                                        ? validate1312.errors
+                                                                                                        ? validate1237.errors
                                                                                                         : vErrors.concat(
-                                                                                                            validate1312.errors,
+                                                                                                            validate1237.errors,
                                                                                                           );
                                                                                                     errors =
                                                                                                       vErrors.length;
@@ -109397,7 +109993,7 @@ function validate1631(
                                                                                                       errors++;
                                                                                                     }
                                                                                                     if (
-                                                                                                      "subscription" !==
+                                                                                                      "snapshot" !==
                                                                                                       data96
                                                                                                     ) {
                                                                                                       const err292 =
@@ -109412,7 +110008,7 @@ function validate1631(
                                                                                                           params:
                                                                                                             {
                                                                                                               allowedValue:
-                                                                                                                "subscription",
+                                                                                                                "snapshot",
                                                                                                             },
                                                                                                           message:
                                                                                                             "must be equal to constant",
@@ -109442,7 +110038,7 @@ function validate1631(
                                                                                                     )
                                                                                                   ) {
                                                                                                     if (
-                                                                                                      !validate1319(
+                                                                                                      !validate1328(
                                                                                                         data.value,
                                                                                                         {
                                                                                                           instancePath:
@@ -109459,9 +110055,9 @@ function validate1631(
                                                                                                       vErrors =
                                                                                                         vErrors ===
                                                                                                         null
-                                                                                                          ? validate1319.errors
+                                                                                                          ? validate1328.errors
                                                                                                           : vErrors.concat(
-                                                                                                              validate1319.errors,
+                                                                                                              validate1328.errors,
                                                                                                             );
                                                                                                       errors =
                                                                                                         vErrors.length;
@@ -109689,7 +110285,7 @@ function validate1631(
                                                                                                         errors++;
                                                                                                       }
                                                                                                       if (
-                                                                                                        "closed" !==
+                                                                                                        "subscription" !==
                                                                                                         data98
                                                                                                       ) {
                                                                                                         const err298 =
@@ -109704,7 +110300,7 @@ function validate1631(
                                                                                                             params:
                                                                                                               {
                                                                                                                 allowedValue:
-                                                                                                                  "closed",
+                                                                                                                  "subscription",
                                                                                                               },
                                                                                                             message:
                                                                                                               "must be equal to constant",
@@ -109734,7 +110330,7 @@ function validate1631(
                                                                                                       )
                                                                                                     ) {
                                                                                                       if (
-                                                                                                        !validate1322(
+                                                                                                        !validate1335(
                                                                                                           data.value,
                                                                                                           {
                                                                                                             instancePath:
@@ -109751,9 +110347,9 @@ function validate1631(
                                                                                                         vErrors =
                                                                                                           vErrors ===
                                                                                                           null
-                                                                                                            ? validate1322.errors
+                                                                                                            ? validate1335.errors
                                                                                                             : vErrors.concat(
-                                                                                                                validate1322.errors,
+                                                                                                                validate1335.errors,
                                                                                                               );
                                                                                                         errors =
                                                                                                           vErrors.length;
@@ -109809,6 +110405,299 @@ function validate1631(
                                                                                                       valid0 = true;
                                                                                                       passing0 = 49;
                                                                                                     }
+                                                                                                    const _errs301 =
+                                                                                                      errors;
+                                                                                                    if (
+                                                                                                      data &&
+                                                                                                      typeof data ==
+                                                                                                        "object" &&
+                                                                                                      !Array.isArray(
+                                                                                                        data,
+                                                                                                      )
+                                                                                                    ) {
+                                                                                                      if (
+                                                                                                        data.kind ===
+                                                                                                          void 0 ||
+                                                                                                        !func0.call(
+                                                                                                          data,
+                                                                                                          "kind",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        const err300 =
+                                                                                                          {
+                                                                                                            instancePath,
+                                                                                                            schemaPath:
+                                                                                                              "#/oneOf/50/required",
+                                                                                                            keyword:
+                                                                                                              "required",
+                                                                                                            params:
+                                                                                                              {
+                                                                                                                missingProperty:
+                                                                                                                  "kind",
+                                                                                                              },
+                                                                                                            message:
+                                                                                                              "must have required property 'kind'",
+                                                                                                          };
+                                                                                                        if (
+                                                                                                          vErrors ===
+                                                                                                          null
+                                                                                                        ) {
+                                                                                                          vErrors =
+                                                                                                            [
+                                                                                                              err300,
+                                                                                                            ];
+                                                                                                        } else {
+                                                                                                          vErrors.push(
+                                                                                                            err300,
+                                                                                                          );
+                                                                                                        }
+                                                                                                        errors++;
+                                                                                                      }
+                                                                                                      if (
+                                                                                                        data.value ===
+                                                                                                          void 0 ||
+                                                                                                        !func0.call(
+                                                                                                          data,
+                                                                                                          "value",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        const err301 =
+                                                                                                          {
+                                                                                                            instancePath,
+                                                                                                            schemaPath:
+                                                                                                              "#/oneOf/50/required",
+                                                                                                            keyword:
+                                                                                                              "required",
+                                                                                                            params:
+                                                                                                              {
+                                                                                                                missingProperty:
+                                                                                                                  "value",
+                                                                                                              },
+                                                                                                            message:
+                                                                                                              "must have required property 'value'",
+                                                                                                          };
+                                                                                                        if (
+                                                                                                          vErrors ===
+                                                                                                          null
+                                                                                                        ) {
+                                                                                                          vErrors =
+                                                                                                            [
+                                                                                                              err301,
+                                                                                                            ];
+                                                                                                        } else {
+                                                                                                          vErrors.push(
+                                                                                                            err301,
+                                                                                                          );
+                                                                                                        }
+                                                                                                        errors++;
+                                                                                                      }
+                                                                                                      for (const key50 of Object.keys(
+                                                                                                        data,
+                                                                                                      )) {
+                                                                                                        if (!(
+                                                                                                          key50 ===
+                                                                                                            "kind" ||
+                                                                                                          key50 ===
+                                                                                                            "value"
+                                                                                                        )) {
+                                                                                                          const err302 =
+                                                                                                            {
+                                                                                                              instancePath,
+                                                                                                              schemaPath:
+                                                                                                                "#/oneOf/50/additionalProperties",
+                                                                                                              keyword:
+                                                                                                                "additionalProperties",
+                                                                                                              params:
+                                                                                                                {
+                                                                                                                  additionalProperty:
+                                                                                                                    key50,
+                                                                                                                },
+                                                                                                              message:
+                                                                                                                "must NOT have additional properties",
+                                                                                                            };
+                                                                                                          if (
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                          ) {
+                                                                                                            vErrors =
+                                                                                                              [
+                                                                                                                err302,
+                                                                                                              ];
+                                                                                                          } else {
+                                                                                                            vErrors.push(
+                                                                                                              err302,
+                                                                                                            );
+                                                                                                          }
+                                                                                                          errors++;
+                                                                                                        }
+                                                                                                      }
+                                                                                                      if (
+                                                                                                        data.kind !==
+                                                                                                          void 0 &&
+                                                                                                        func0.call(
+                                                                                                          data,
+                                                                                                          "kind",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        let data100 =
+                                                                                                          data.kind;
+                                                                                                        if (
+                                                                                                          typeof data100 !==
+                                                                                                          "string"
+                                                                                                        ) {
+                                                                                                          const err303 =
+                                                                                                            {
+                                                                                                              instancePath:
+                                                                                                                instancePath +
+                                                                                                                "/kind",
+                                                                                                              schemaPath:
+                                                                                                                "#/oneOf/50/properties/kind/type",
+                                                                                                              keyword:
+                                                                                                                "type",
+                                                                                                              params:
+                                                                                                                {
+                                                                                                                  type: "string",
+                                                                                                                },
+                                                                                                              message:
+                                                                                                                "must be string",
+                                                                                                            };
+                                                                                                          if (
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                          ) {
+                                                                                                            vErrors =
+                                                                                                              [
+                                                                                                                err303,
+                                                                                                              ];
+                                                                                                          } else {
+                                                                                                            vErrors.push(
+                                                                                                              err303,
+                                                                                                            );
+                                                                                                          }
+                                                                                                          errors++;
+                                                                                                        }
+                                                                                                        if (
+                                                                                                          "closed" !==
+                                                                                                          data100
+                                                                                                        ) {
+                                                                                                          const err304 =
+                                                                                                            {
+                                                                                                              instancePath:
+                                                                                                                instancePath +
+                                                                                                                "/kind",
+                                                                                                              schemaPath:
+                                                                                                                "#/oneOf/50/properties/kind/const",
+                                                                                                              keyword:
+                                                                                                                "const",
+                                                                                                              params:
+                                                                                                                {
+                                                                                                                  allowedValue:
+                                                                                                                    "closed",
+                                                                                                                },
+                                                                                                              message:
+                                                                                                                "must be equal to constant",
+                                                                                                            };
+                                                                                                          if (
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                          ) {
+                                                                                                            vErrors =
+                                                                                                              [
+                                                                                                                err304,
+                                                                                                              ];
+                                                                                                          } else {
+                                                                                                            vErrors.push(
+                                                                                                              err304,
+                                                                                                            );
+                                                                                                          }
+                                                                                                          errors++;
+                                                                                                        }
+                                                                                                      }
+                                                                                                      if (
+                                                                                                        data.value !==
+                                                                                                          void 0 &&
+                                                                                                        func0.call(
+                                                                                                          data,
+                                                                                                          "value",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        if (
+                                                                                                          !validate1338(
+                                                                                                            data.value,
+                                                                                                            {
+                                                                                                              instancePath:
+                                                                                                                instancePath +
+                                                                                                                "/value",
+                                                                                                              parentData:
+                                                                                                                data,
+                                                                                                              parentDataProperty:
+                                                                                                                "value",
+                                                                                                              rootData,
+                                                                                                            },
+                                                                                                          )
+                                                                                                        ) {
+                                                                                                          vErrors =
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                              ? validate1338.errors
+                                                                                                              : vErrors.concat(
+                                                                                                                  validate1338.errors,
+                                                                                                                );
+                                                                                                          errors =
+                                                                                                            vErrors.length;
+                                                                                                        }
+                                                                                                      }
+                                                                                                    } else {
+                                                                                                      const err305 =
+                                                                                                        {
+                                                                                                          instancePath,
+                                                                                                          schemaPath:
+                                                                                                            "#/oneOf/50/type",
+                                                                                                          keyword:
+                                                                                                            "type",
+                                                                                                          params:
+                                                                                                            {
+                                                                                                              type: "object",
+                                                                                                            },
+                                                                                                          message:
+                                                                                                            "must be object",
+                                                                                                        };
+                                                                                                      if (
+                                                                                                        vErrors ===
+                                                                                                        null
+                                                                                                      ) {
+                                                                                                        vErrors =
+                                                                                                          [
+                                                                                                            err305,
+                                                                                                          ];
+                                                                                                      } else {
+                                                                                                        vErrors.push(
+                                                                                                          err305,
+                                                                                                        );
+                                                                                                      }
+                                                                                                      errors++;
+                                                                                                    }
+                                                                                                    var _valid0 =
+                                                                                                      _errs301 ===
+                                                                                                      errors;
+                                                                                                    if (
+                                                                                                      _valid0 &&
+                                                                                                      valid0
+                                                                                                    ) {
+                                                                                                      valid0 = false;
+                                                                                                      passing0 =
+                                                                                                        [
+                                                                                                          passing0,
+                                                                                                          50,
+                                                                                                        ];
+                                                                                                    } else {
+                                                                                                      if (
+                                                                                                        _valid0
+                                                                                                      ) {
+                                                                                                        valid0 = true;
+                                                                                                        passing0 = 50;
+                                                                                                      }
+                                                                                                    }
                                                                                                   }
                                                                                                 }
                                                                                               }
@@ -109859,7 +110748,7 @@ function validate1631(
     }
   }
   if (!valid0) {
-    const err300 = {
+    const err306 = {
       instancePath,
       schemaPath: "#/oneOf",
       keyword: "oneOf",
@@ -109867,9 +110756,9 @@ function validate1631(
       message: "must match exactly one schema in oneOf",
     };
     if (vErrors === null) {
-      vErrors = [err300];
+      vErrors = [err306];
     } else {
-      vErrors.push(err300);
+      vErrors.push(err306);
     }
     errors++;
   } else {
@@ -109882,10 +110771,10 @@ function validate1631(
       }
     }
   }
-  validate1631.errors = vErrors;
+  validate1647.errors = vErrors;
   return errors === 0;
 }
-var schema398 = {
+var schema400 = {
   additionalProperties: false,
   properties: {
     actorId: { $ref: "#/definitions/shared/definitions/Id" },
@@ -109915,7 +110804,7 @@ var schema398 = {
   ],
   type: "object",
 };
-function validate1683(
+function validate1700(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110064,7 +110953,7 @@ function validate1683(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema398.properties, key0)) {
+      if (!func0.call(schema400.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -110162,7 +111051,7 @@ function validate1683(
     }
     if (data.limits !== void 0 && func0.call(data, "limits")) {
       if (
-        !validate1689(data.limits, {
+        !validate1706(data.limits, {
           instancePath: instancePath + "/limits",
           parentData: data,
           parentDataProperty: "limits",
@@ -110171,8 +111060,8 @@ function validate1683(
       ) {
         vErrors =
           vErrors === null
-            ? validate1689.errors
-            : vErrors.concat(validate1689.errors);
+            ? validate1706.errors
+            : vErrors.concat(validate1706.errors);
         errors = vErrors.length;
       }
     }
@@ -110181,7 +111070,7 @@ function validate1683(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -110190,14 +111079,14 @@ function validate1683(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestContext !== void 0 && func0.call(data, "requestContext")) {
       if (
-        !validate1416(data.requestContext, {
+        !validate1432(data.requestContext, {
           instancePath: instancePath + "/requestContext",
           parentData: data,
           parentDataProperty: "requestContext",
@@ -110206,8 +111095,8 @@ function validate1683(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -110245,10 +111134,10 @@ function validate1683(
     }
     errors++;
   }
-  validate1683.errors = vErrors;
+  validate1700.errors = vErrors;
   return errors === 0;
 }
-function validate1707(
+function validate1724(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110401,10 +111290,10 @@ function validate1707(
     }
     errors++;
   }
-  validate1707.errors = vErrors;
+  validate1724.errors = vErrors;
   return errors === 0;
 }
-function validate1601(
+function validate1617(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110414,7 +111303,7 @@ function validate1601(
   let valid0 = false;
   const _errs1 = errors;
   if (
-    !validate1602(data, {
+    !validate1618(data, {
       instancePath,
       parentData,
       parentDataProperty,
@@ -110423,8 +111312,8 @@ function validate1601(
   ) {
     vErrors =
       vErrors === null
-        ? validate1602.errors
-        : vErrors.concat(validate1602.errors);
+        ? validate1618.errors
+        : vErrors.concat(validate1618.errors);
     errors = vErrors.length;
   }
   var _valid0 = _errs1 === errors;
@@ -110432,7 +111321,7 @@ function validate1601(
   if (!valid0) {
     const _errs2 = errors;
     if (
-      !validate1612(data, {
+      !validate1628(data, {
         instancePath,
         parentData,
         parentDataProperty,
@@ -110441,8 +111330,8 @@ function validate1601(
     ) {
       vErrors =
         vErrors === null
-          ? validate1612.errors
-          : vErrors.concat(validate1612.errors);
+          ? validate1628.errors
+          : vErrors.concat(validate1628.errors);
       errors = vErrors.length;
     }
     var _valid0 = _errs2 === errors;
@@ -110450,7 +111339,7 @@ function validate1601(
     if (!valid0) {
       const _errs3 = errors;
       if (
-        !validate1618(data, {
+        !validate1634(data, {
           instancePath,
           parentData,
           parentDataProperty,
@@ -110459,8 +111348,8 @@ function validate1601(
       ) {
         vErrors =
           vErrors === null
-            ? validate1618.errors
-            : vErrors.concat(validate1618.errors);
+            ? validate1634.errors
+            : vErrors.concat(validate1634.errors);
         errors = vErrors.length;
       }
       var _valid0 = _errs3 === errors;
@@ -110486,7 +111375,7 @@ function validate1601(
         if (!valid0) {
           const _errs5 = errors;
           if (
-            !validate1628(data, {
+            !validate1644(data, {
               instancePath,
               parentData,
               parentDataProperty,
@@ -110495,8 +111384,8 @@ function validate1601(
           ) {
             vErrors =
               vErrors === null
-                ? validate1628.errors
-                : vErrors.concat(validate1628.errors);
+                ? validate1644.errors
+                : vErrors.concat(validate1644.errors);
             errors = vErrors.length;
           }
           var _valid0 = _errs5 === errors;
@@ -110504,7 +111393,7 @@ function validate1601(
           if (!valid0) {
             const _errs6 = errors;
             if (
-              !validate1631(data, {
+              !validate1647(data, {
                 instancePath,
                 parentData,
                 parentDataProperty,
@@ -110513,8 +111402,8 @@ function validate1601(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1631.errors
-                  : vErrors.concat(validate1631.errors);
+                  ? validate1647.errors
+                  : vErrors.concat(validate1647.errors);
               errors = vErrors.length;
             }
             var _valid0 = _errs6 === errors;
@@ -110522,7 +111411,7 @@ function validate1601(
             if (!valid0) {
               const _errs7 = errors;
               if (
-                !validate1683(data, {
+                !validate1700(data, {
                   instancePath,
                   parentData,
                   parentDataProperty,
@@ -110531,8 +111420,8 @@ function validate1601(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1683.errors
-                    : vErrors.concat(validate1683.errors);
+                    ? validate1700.errors
+                    : vErrors.concat(validate1700.errors);
                 errors = vErrors.length;
               }
               var _valid0 = _errs7 === errors;
@@ -110540,7 +111429,7 @@ function validate1601(
               if (!valid0) {
                 const _errs8 = errors;
                 if (
-                  !validate1127(data, {
+                  !validate1143(data, {
                     instancePath,
                     parentData,
                     parentDataProperty,
@@ -110549,8 +111438,8 @@ function validate1601(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1127.errors
-                      : vErrors.concat(validate1127.errors);
+                      ? validate1143.errors
+                      : vErrors.concat(validate1143.errors);
                   errors = vErrors.length;
                 }
                 var _valid0 = _errs8 === errors;
@@ -110558,7 +111447,7 @@ function validate1601(
                 if (!valid0) {
                   const _errs9 = errors;
                   if (
-                    !validate1123(data, {
+                    !validate1139(data, {
                       instancePath,
                       parentData,
                       parentDataProperty,
@@ -110567,8 +111456,8 @@ function validate1601(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1123.errors
-                        : vErrors.concat(validate1123.errors);
+                        ? validate1139.errors
+                        : vErrors.concat(validate1139.errors);
                     errors = vErrors.length;
                   }
                   var _valid0 = _errs9 === errors;
@@ -110576,7 +111465,7 @@ function validate1601(
                   if (!valid0) {
                     const _errs10 = errors;
                     if (
-                      !validate1312(data, {
+                      !validate1328(data, {
                         instancePath,
                         parentData,
                         parentDataProperty,
@@ -110585,8 +111474,8 @@ function validate1601(
                     ) {
                       vErrors =
                         vErrors === null
-                          ? validate1312.errors
-                          : vErrors.concat(validate1312.errors);
+                          ? validate1328.errors
+                          : vErrors.concat(validate1328.errors);
                       errors = vErrors.length;
                     }
                     var _valid0 = _errs10 === errors;
@@ -110594,7 +111483,7 @@ function validate1601(
                     if (!valid0) {
                       const _errs11 = errors;
                       if (
-                        !validate1319(data, {
+                        !validate1335(data, {
                           instancePath,
                           parentData,
                           parentDataProperty,
@@ -110603,8 +111492,8 @@ function validate1601(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1319.errors
-                            : vErrors.concat(validate1319.errors);
+                            ? validate1335.errors
+                            : vErrors.concat(validate1335.errors);
                         errors = vErrors.length;
                       }
                       var _valid0 = _errs11 === errors;
@@ -110612,7 +111501,7 @@ function validate1601(
                       if (!valid0) {
                         const _errs12 = errors;
                         if (
-                          !validate1322(data, {
+                          !validate1338(data, {
                             instancePath,
                             parentData,
                             parentDataProperty,
@@ -110621,8 +111510,8 @@ function validate1601(
                         ) {
                           vErrors =
                             vErrors === null
-                              ? validate1322.errors
-                              : vErrors.concat(validate1322.errors);
+                              ? validate1338.errors
+                              : vErrors.concat(validate1338.errors);
                           errors = vErrors.length;
                         }
                         var _valid0 = _errs12 === errors;
@@ -110630,7 +111519,7 @@ function validate1601(
                         if (!valid0) {
                           const _errs13 = errors;
                           if (
-                            !validate1707(data, {
+                            !validate1724(data, {
                               instancePath,
                               parentData,
                               parentDataProperty,
@@ -110639,8 +111528,8 @@ function validate1601(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1707.errors
-                                : vErrors.concat(validate1707.errors);
+                                ? validate1724.errors
+                                : vErrors.concat(validate1724.errors);
                             errors = vErrors.length;
                           }
                           var _valid0 = _errs13 === errors;
@@ -110648,7 +111537,7 @@ function validate1601(
                           if (!valid0) {
                             const _errs14 = errors;
                             if (
-                              !validate1047(data, {
+                              !validate1072(data, {
                                 instancePath,
                                 parentData,
                                 parentDataProperty,
@@ -110657,8 +111546,8 @@ function validate1601(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1047.errors
-                                  : vErrors.concat(validate1047.errors);
+                                  ? validate1072.errors
+                                  : vErrors.concat(validate1072.errors);
                               errors = vErrors.length;
                             }
                             var _valid0 = _errs14 === errors;
@@ -110666,7 +111555,7 @@ function validate1601(
                             if (!valid0) {
                               const _errs15 = errors;
                               if (
-                                !validate1079(data, {
+                                !validate1095(data, {
                                   instancePath,
                                   parentData,
                                   parentDataProperty,
@@ -110675,8 +111564,8 @@ function validate1601(
                               ) {
                                 vErrors =
                                   vErrors === null
-                                    ? validate1079.errors
-                                    : vErrors.concat(validate1079.errors);
+                                    ? validate1095.errors
+                                    : vErrors.concat(validate1095.errors);
                                 errors = vErrors.length;
                               }
                               var _valid0 = _errs15 === errors;
@@ -110719,10 +111608,10 @@ function validate1601(
       }
     }
   }
-  validate1601.errors = vErrors;
+  validate1617.errors = vErrors;
   return errors === 0;
 }
-function validate1826(
+function validate1843(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110797,7 +111686,7 @@ function validate1826(
     }
     if (data.result !== void 0 && func0.call(data, "result")) {
       if (
-        !validate1601(data.result, {
+        !validate1617(data.result, {
           instancePath: instancePath + "/result",
           parentData: data,
           parentDataProperty: "result",
@@ -110806,8 +111695,8 @@ function validate1826(
       ) {
         vErrors =
           vErrors === null
-            ? validate1601.errors
-            : vErrors.concat(validate1601.errors);
+            ? validate1617.errors
+            : vErrors.concat(validate1617.errors);
         errors = vErrors.length;
       }
     }
@@ -110952,10 +111841,10 @@ function validate1826(
       }
     }
   }
-  validate1826.errors = vErrors;
+  validate1843.errors = vErrors;
   return errors === 0;
 }
-function validate1762(
+function validate1779(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -111229,10 +112118,10 @@ function validate1762(
       }
     }
   }
-  validate1762.errors = vErrors;
+  validate1779.errors = vErrors;
   return errors === 0;
 }
-function validate1833(
+function validate1850(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -111323,7 +112212,7 @@ function validate1833(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -111332,8 +112221,8 @@ function validate1833(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -111358,7 +112247,7 @@ function validate1833(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1762(data1[i0], {
+            !validate1779(data1[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -111367,8 +112256,8 @@ function validate1833(
           ) {
             vErrors =
               vErrors === null
-                ? validate1762.errors
-                : vErrors.concat(validate1762.errors);
+                ? validate1779.errors
+                : vErrors.concat(validate1779.errors);
             errors = vErrors.length;
           }
         }
@@ -111390,7 +112279,7 @@ function validate1833(
     }
     if (data.previousCursor !== void 0 && func0.call(data, "previousCursor")) {
       if (
-        !validate1015(data.previousCursor, {
+        !validate1040(data.previousCursor, {
           instancePath: instancePath + "/previousCursor",
           parentData: data,
           parentDataProperty: "previousCursor",
@@ -111399,8 +112288,8 @@ function validate1833(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -111435,10 +112324,10 @@ function validate1833(
     }
     errors++;
   }
-  validate1833.errors = vErrors;
+  validate1850.errors = vErrors;
   return errors === 0;
 }
-function validate1839(
+function validate1856(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -111545,7 +112434,7 @@ function validate1839(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -111554,8 +112443,8 @@ function validate1839(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -111615,7 +112504,7 @@ function validate1839(
     }
     if (data.previousCursor !== void 0 && func0.call(data, "previousCursor")) {
       if (
-        !validate1015(data.previousCursor, {
+        !validate1040(data.previousCursor, {
           instancePath: instancePath + "/previousCursor",
           parentData: data,
           parentDataProperty: "previousCursor",
@@ -111624,8 +112513,8 @@ function validate1839(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -111660,10 +112549,10 @@ function validate1839(
     }
     errors++;
   }
-  validate1839.errors = vErrors;
+  validate1856.errors = vErrors;
   return errors === 0;
 }
-function validate1788(
+function validate1805(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -111723,7 +112612,7 @@ function validate1788(
     }
     if (data.request !== void 0 && func0.call(data, "request")) {
       if (
-        !validate1789(data.request, {
+        !validate1806(data.request, {
           instancePath: instancePath + "/request",
           parentData: data,
           parentDataProperty: "request",
@@ -111732,8 +112621,8 @@ function validate1788(
       ) {
         vErrors =
           vErrors === null
-            ? validate1789.errors
-            : vErrors.concat(validate1789.errors);
+            ? validate1806.errors
+            : vErrors.concat(validate1806.errors);
         errors = vErrors.length;
       }
     }
@@ -111864,7 +112753,7 @@ function validate1788(
     }
     if (data.clientNonce !== void 0 && func0.call(data, "clientNonce")) {
       if (
-        !validate1416(data.clientNonce, {
+        !validate1432(data.clientNonce, {
           instancePath: instancePath + "/clientNonce",
           parentData: data,
           parentDataProperty: "clientNonce",
@@ -111873,8 +112762,8 @@ function validate1788(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -112145,7 +113034,7 @@ function validate1788(
       }
       if (data.proof !== void 0 && func0.call(data, "proof")) {
         if (
-          !validate1416(data.proof, {
+          !validate1432(data.proof, {
             instancePath: instancePath + "/proof",
             parentData: data,
             parentDataProperty: "proof",
@@ -112154,8 +113043,8 @@ function validate1788(
         ) {
           vErrors =
             vErrors === null
-              ? validate1416.errors
-              : vErrors.concat(validate1416.errors);
+              ? validate1432.errors
+              : vErrors.concat(validate1432.errors);
           errors = vErrors.length;
         }
       }
@@ -112164,7 +113053,7 @@ function validate1788(
         func0.call(data, "protocolVersion")
       ) {
         if (
-          !validate1414(data.protocolVersion, {
+          !validate1430(data.protocolVersion, {
             instancePath: instancePath + "/protocolVersion",
             parentData: data,
             parentDataProperty: "protocolVersion",
@@ -112173,14 +113062,14 @@ function validate1788(
         ) {
           vErrors =
             vErrors === null
-              ? validate1414.errors
-              : vErrors.concat(validate1414.errors);
+              ? validate1430.errors
+              : vErrors.concat(validate1430.errors);
           errors = vErrors.length;
         }
       }
       if (data.serverNonce !== void 0 && func0.call(data, "serverNonce")) {
         if (
-          !validate1416(data.serverNonce, {
+          !validate1432(data.serverNonce, {
             instancePath: instancePath + "/serverNonce",
             parentData: data,
             parentDataProperty: "serverNonce",
@@ -112189,8 +113078,8 @@ function validate1788(
         ) {
           vErrors =
             vErrors === null
-              ? validate1416.errors
-              : vErrors.concat(validate1416.errors);
+              ? validate1432.errors
+              : vErrors.concat(validate1432.errors);
           errors = vErrors.length;
         }
       }
@@ -112322,7 +113211,7 @@ function validate1788(
         }
         if (data.credential !== void 0 && func0.call(data, "credential")) {
           if (
-            !validate1416(data.credential, {
+            !validate1432(data.credential, {
               instancePath: instancePath + "/credential",
               parentData: data,
               parentDataProperty: "credential",
@@ -112331,8 +113220,8 @@ function validate1788(
           ) {
             vErrors =
               vErrors === null
-                ? validate1416.errors
-                : vErrors.concat(validate1416.errors);
+                ? validate1432.errors
+                : vErrors.concat(validate1432.errors);
             errors = vErrors.length;
           }
         }
@@ -112479,7 +113368,7 @@ function validate1788(
           }
           if (data.credential !== void 0 && func0.call(data, "credential")) {
             if (
-              !validate1416(data.credential, {
+              !validate1432(data.credential, {
                 instancePath: instancePath + "/credential",
                 parentData: data,
                 parentDataProperty: "credential",
@@ -112488,8 +113377,8 @@ function validate1788(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1416.errors
-                  : vErrors.concat(validate1416.errors);
+                  ? validate1432.errors
+                  : vErrors.concat(validate1432.errors);
               errors = vErrors.length;
             }
           }
@@ -112653,7 +113542,7 @@ function validate1788(
             }
             if (data.clientKind !== void 0 && func0.call(data, "clientKind")) {
               if (
-                !validate1479(data.clientKind, {
+                !validate1495(data.clientKind, {
                   instancePath: instancePath + "/clientKind",
                   parentData: data,
                   parentDataProperty: "clientKind",
@@ -112662,14 +113551,14 @@ function validate1788(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1479.errors
-                    : vErrors.concat(validate1479.errors);
+                    ? validate1495.errors
+                    : vErrors.concat(validate1495.errors);
                 errors = vErrors.length;
               }
             }
             if (data.credential !== void 0 && func0.call(data, "credential")) {
               if (
-                !validate1416(data.credential, {
+                !validate1432(data.credential, {
                   instancePath: instancePath + "/credential",
                   parentData: data,
                   parentDataProperty: "credential",
@@ -112678,14 +113567,14 @@ function validate1788(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1416.errors
-                    : vErrors.concat(validate1416.errors);
+                    ? validate1432.errors
+                    : vErrors.concat(validate1432.errors);
                 errors = vErrors.length;
               }
             }
             if (data.route !== void 0 && func0.call(data, "route")) {
               if (
-                !validate1813(data.route, {
+                !validate1830(data.route, {
                   instancePath: instancePath + "/route",
                   parentData: data,
                   parentDataProperty: "route",
@@ -112694,8 +113583,8 @@ function validate1788(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1813.errors
-                    : vErrors.concat(validate1813.errors);
+                    ? validate1830.errors
+                    : vErrors.concat(validate1830.errors);
                 errors = vErrors.length;
               }
             }
@@ -112867,7 +113756,7 @@ function validate1788(
                 func0.call(data, "pairingCode")
               ) {
                 if (
-                  !validate1416(data.pairingCode, {
+                  !validate1432(data.pairingCode, {
                     instancePath: instancePath + "/pairingCode",
                     parentData: data,
                     parentDataProperty: "pairingCode",
@@ -112876,8 +113765,8 @@ function validate1788(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1416.errors
-                      : vErrors.concat(validate1416.errors);
+                      ? validate1432.errors
+                      : vErrors.concat(validate1432.errors);
                   errors = vErrors.length;
                 }
               }
@@ -112886,7 +113775,7 @@ function validate1788(
                 func0.call(data, "reconnectCredential")
               ) {
                 if (
-                  !validate1416(data.reconnectCredential, {
+                  !validate1432(data.reconnectCredential, {
                     instancePath: instancePath + "/reconnectCredential",
                     parentData: data,
                     parentDataProperty: "reconnectCredential",
@@ -112895,8 +113784,8 @@ function validate1788(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1416.errors
-                      : vErrors.concat(validate1416.errors);
+                      ? validate1432.errors
+                      : vErrors.concat(validate1432.errors);
                   errors = vErrors.length;
                 }
               }
@@ -113018,7 +113907,7 @@ function validate1788(
                   func0.call(data, "credential")
                 ) {
                   if (
-                    !validate1416(data.credential, {
+                    !validate1432(data.credential, {
                       instancePath: instancePath + "/credential",
                       parentData: data,
                       parentDataProperty: "credential",
@@ -113027,8 +113916,8 @@ function validate1788(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1416.errors
-                        : vErrors.concat(validate1416.errors);
+                        ? validate1432.errors
+                        : vErrors.concat(validate1432.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -113037,7 +113926,7 @@ function validate1788(
                   func0.call(data, "rawAttachToken")
                 ) {
                   if (
-                    !validate1416(data.rawAttachToken, {
+                    !validate1432(data.rawAttachToken, {
                       instancePath: instancePath + "/rawAttachToken",
                       parentData: data,
                       parentDataProperty: "rawAttachToken",
@@ -113046,8 +113935,8 @@ function validate1788(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1416.errors
-                        : vErrors.concat(validate1416.errors);
+                        ? validate1432.errors
+                        : vErrors.concat(validate1432.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -113360,7 +114249,7 @@ function validate1788(
                     }
                     if (data.token !== void 0 && func0.call(data, "token")) {
                       if (
-                        !validate1416(data.token, {
+                        !validate1432(data.token, {
                           instancePath: instancePath + "/token",
                           parentData: data,
                           parentDataProperty: "token",
@@ -113369,8 +114258,8 @@ function validate1788(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1416.errors
-                            : vErrors.concat(validate1416.errors);
+                            ? validate1432.errors
+                            : vErrors.concat(validate1432.errors);
                         errors = vErrors.length;
                       }
                     }
@@ -113587,7 +114476,7 @@ function validate1788(
                           func0.call(data, "request")
                         ) {
                           if (
-                            !validate1719(data.request, {
+                            !validate1736(data.request, {
                               instancePath: instancePath + "/request",
                               parentData: data,
                               parentDataProperty: "request",
@@ -113596,8 +114485,8 @@ function validate1788(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1719.errors
-                                : vErrors.concat(validate1719.errors);
+                                ? validate1736.errors
+                                : vErrors.concat(validate1736.errors);
                             errors = vErrors.length;
                           }
                         }
@@ -113722,7 +114611,7 @@ function validate1788(
                             func0.call(data, "reply")
                           ) {
                             if (
-                              !validate1826(data.reply, {
+                              !validate1843(data.reply, {
                                 instancePath: instancePath + "/reply",
                                 parentData: data,
                                 parentDataProperty: "reply",
@@ -113731,8 +114620,8 @@ function validate1788(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1826.errors
-                                  : vErrors.concat(validate1826.errors);
+                                  ? validate1843.errors
+                                  : vErrors.concat(validate1843.errors);
                               errors = vErrors.length;
                             }
                           }
@@ -114003,7 +114892,7 @@ function validate1788(
                                 func0.call(data, "batch")
                               ) {
                                 if (
-                                  !validate1833(data.batch, {
+                                  !validate1850(data.batch, {
                                     instancePath: instancePath + "/batch",
                                     parentData: data,
                                     parentDataProperty: "batch",
@@ -114012,8 +114901,8 @@ function validate1788(
                                 ) {
                                   vErrors =
                                     vErrors === null
-                                      ? validate1833.errors
-                                      : vErrors.concat(validate1833.errors);
+                                      ? validate1850.errors
+                                      : vErrors.concat(validate1850.errors);
                                   errors = vErrors.length;
                                 }
                               }
@@ -114172,7 +115061,7 @@ function validate1788(
                                   func0.call(data, "delta")
                                 ) {
                                   if (
-                                    !validate1839(data.delta, {
+                                    !validate1856(data.delta, {
                                       instancePath: instancePath + "/delta",
                                       parentData: data,
                                       parentDataProperty: "delta",
@@ -114181,8 +115070,8 @@ function validate1788(
                                   ) {
                                     vErrors =
                                       vErrors === null
-                                        ? validate1839.errors
-                                        : vErrors.concat(validate1839.errors);
+                                        ? validate1856.errors
+                                        : vErrors.concat(validate1856.errors);
                                     errors = vErrors.length;
                                   }
                                 }
@@ -114694,12 +115583,12 @@ function validate1788(
       }
     }
   }
-  validate1788.errors = vErrors;
+  validate1805.errors = vErrors;
   return errors === 0;
 }
-var validateJsonValue = validate1537;
-var wrapper6 = { validate: validate1537 };
-function validate1537(
+var validateJsonValue = validate1553;
+var wrapper6 = { validate: validate1553 };
+function validate1553(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114886,11 +115775,11 @@ function validate1537(
       }
     }
   }
-  validate1537.errors = vErrors;
+  validate1553.errors = vErrors;
   return errors === 0;
 }
-var validateLanAccessParams = validate2537;
-function validate2537(
+var validateLanAccessParams = validate2555;
+function validate2555(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -115299,7 +116188,7 @@ function validate2537(
         }
         if (data.peer !== void 0 && func0.call(data, "peer")) {
           if (
-            !validate1436(data.peer, {
+            !validate1452(data.peer, {
               instancePath: instancePath + "/peer",
               parentData: data,
               parentDataProperty: "peer",
@@ -115308,8 +116197,8 @@ function validate2537(
           ) {
             vErrors =
               vErrors === null
-                ? validate1436.errors
-                : vErrors.concat(validate1436.errors);
+                ? validate1452.errors
+                : vErrors.concat(validate1452.errors);
             errors = vErrors.length;
           }
         }
@@ -115319,7 +116208,7 @@ function validate2537(
             const len0 = data6.length;
             for (let i0 = 0; i0 < len0; i0++) {
               if (
-                !validate1440(data6[i0], {
+                !validate1456(data6[i0], {
                   instancePath: instancePath + "/shares/" + i0,
                   parentData: data6,
                   parentDataProperty: i0,
@@ -115328,8 +116217,8 @@ function validate2537(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1440.errors
-                    : vErrors.concat(validate1440.errors);
+                    ? validate1456.errors
+                    : vErrors.concat(validate1456.errors);
                 errors = vErrors.length;
               }
             }
@@ -115457,7 +116346,7 @@ function validate2537(
           }
           if (data.peer !== void 0 && func0.call(data, "peer")) {
             if (
-              !validate1436(data.peer, {
+              !validate1452(data.peer, {
                 instancePath: instancePath + "/peer",
                 parentData: data,
                 parentDataProperty: "peer",
@@ -115466,8 +116355,8 @@ function validate2537(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1436.errors
-                  : vErrors.concat(validate1436.errors);
+                  ? validate1452.errors
+                  : vErrors.concat(validate1452.errors);
               errors = vErrors.length;
             }
           }
@@ -115523,11 +116412,11 @@ function validate2537(
       }
     }
   }
-  validate2537.errors = vErrors;
+  validate2555.errors = vErrors;
   return errors === 0;
 }
-var validateLanAccessResult = validate2541;
-function validate2541(
+var validateLanAccessResult = validate2559;
+function validate2559(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -115598,7 +116487,7 @@ function validate2541(
     }
     if (data.listener !== void 0 && func0.call(data, "listener")) {
       if (
-        !validate1619(data.listener, {
+        !validate1635(data.listener, {
           instancePath: instancePath + "/listener",
           parentData: data,
           parentDataProperty: "listener",
@@ -115607,14 +116496,14 @@ function validate2541(
       ) {
         vErrors =
           vErrors === null
-            ? validate1619.errors
-            : vErrors.concat(validate1619.errors);
+            ? validate1635.errors
+            : vErrors.concat(validate1635.errors);
         errors = vErrors.length;
       }
     }
     if (data.localPeer !== void 0 && func0.call(data, "localPeer")) {
       if (
-        !validate1436(data.localPeer, {
+        !validate1452(data.localPeer, {
           instancePath: instancePath + "/localPeer",
           parentData: data,
           parentDataProperty: "localPeer",
@@ -115623,8 +116512,8 @@ function validate2541(
       ) {
         vErrors =
           vErrors === null
-            ? validate1436.errors
-            : vErrors.concat(validate1436.errors);
+            ? validate1452.errors
+            : vErrors.concat(validate1452.errors);
         errors = vErrors.length;
       }
     }
@@ -115634,7 +116523,7 @@ function validate2541(
         const len0 = data2.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1622(data2[i0], {
+            !validate1638(data2[i0], {
               instancePath: instancePath + "/peers/" + i0,
               parentData: data2,
               parentDataProperty: i0,
@@ -115643,8 +116532,8 @@ function validate2541(
           ) {
             vErrors =
               vErrors === null
-                ? validate1622.errors
-                : vErrors.concat(validate1622.errors);
+                ? validate1638.errors
+                : vErrors.concat(validate1638.errors);
             errors = vErrors.length;
           }
         }
@@ -115679,17 +116568,17 @@ function validate2541(
     }
     errors++;
   }
-  validate2541.errors = vErrors;
+  validate2559.errors = vErrors;
   return errors === 0;
 }
-var validateLanguage = validate2545;
-var schema612 = {
+var validateLanguage = validate2563;
+var schema614 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["zh", "en"],
   title: "Language",
   type: "string",
 };
-function validate2545(
+function validate2563(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -115715,7 +116604,7 @@ function validate2545(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema612.enum },
+      params: { allowedValues: schema614.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -115725,11 +116614,11 @@ function validate2545(
     }
     errors++;
   }
-  validate2545.errors = vErrors;
+  validate2563.errors = vErrors;
   return errors === 0;
 }
-var validateLayoutTemplate = validate2546;
-function validate2546(
+var validateLayoutTemplate = validate2564;
+function validate2564(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -115908,11 +116797,11 @@ function validate2546(
     }
     errors++;
   }
-  validate2546.errors = vErrors;
+  validate2564.errors = vErrors;
   return errors === 0;
 }
-var validateLease = validate2027;
-var schema467 = {
+var validateLease = validate2044;
+var schema469 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -115940,7 +116829,7 @@ var schema467 = {
   title: "Lease",
   type: "object",
 };
-function validate2027(
+function validate2044(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116089,7 +116978,7 @@ function validate2027(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema467.properties, key0)) {
+      if (!func0.call(schema469.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -116270,12 +117159,12 @@ function validate2027(
     }
     errors++;
   }
-  validate2027.errors = vErrors;
+  validate2044.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseAcquireParams = validate2099;
-var schema487 = { enum: ["transaction", "exclusive"], type: "string" };
-function validate2100(
+var validateLeaseAcquireParams = validate2116;
+var schema489 = { enum: ["transaction", "exclusive"], type: "string" };
+function validate2117(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116301,7 +117190,7 @@ function validate2100(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema487.enum },
+      params: { allowedValues: schema489.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -116311,10 +117200,10 @@ function validate2100(
     }
     errors++;
   }
-  validate2100.errors = vErrors;
+  validate2117.errors = vErrors;
   return errors === 0;
 }
-function validate2099(
+function validate2116(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116370,7 +117259,7 @@ function validate2099(
     }
     if (data.kind !== void 0 && func0.call(data, "kind")) {
       if (
-        !validate2100(data.kind, {
+        !validate2117(data.kind, {
           instancePath: instancePath + "/kind",
           parentData: data,
           parentDataProperty: "kind",
@@ -116379,8 +117268,8 @@ function validate2099(
       ) {
         vErrors =
           vErrors === null
-            ? validate2100.errors
-            : vErrors.concat(validate2100.errors);
+            ? validate2117.errors
+            : vErrors.concat(validate2117.errors);
         errors = vErrors.length;
       }
     }
@@ -116415,17 +117304,17 @@ function validate2099(
     }
     errors++;
   }
-  validate2099.errors = vErrors;
+  validate2116.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseKind = validate1994;
-var schema458 = {
+var validateLeaseKind = validate2011;
+var schema460 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["ordinary", "transaction", "exclusive"],
   title: "LeaseKind",
   type: "string",
 };
-function validate1994(
+function validate2011(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116455,7 +117344,7 @@ function validate1994(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema458.enum },
+      params: { allowedValues: schema460.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -116465,11 +117354,11 @@ function validate1994(
     }
     errors++;
   }
-  validate1994.errors = vErrors;
+  validate2011.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseReleaseParams = validate2106;
-function validate2106(
+var validateLeaseReleaseParams = validate2123;
+function validate2123(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116539,11 +117428,11 @@ function validate2106(
     }
     errors++;
   }
-  validate2106.errors = vErrors;
+  validate2123.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseRenewParams = validate2103;
-function validate2103(
+var validateLeaseRenewParams = validate2120;
+function validate2120(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116644,17 +117533,17 @@ function validate2103(
     }
     errors++;
   }
-  validate2103.errors = vErrors;
+  validate2120.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseState = validate1996;
-var schema460 = {
+var validateLeaseState = validate2013;
+var schema462 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["active", "revoking", "released", "expired"],
   title: "LeaseState",
   type: "string",
 };
-function validate1996(
+function validate2013(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116685,7 +117574,7 @@ function validate1996(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema460.enum },
+      params: { allowedValues: schema462.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -116695,11 +117584,11 @@ function validate1996(
     }
     errors++;
   }
-  validate1996.errors = vErrors;
+  validate2013.errors = vErrors;
   return errors === 0;
 }
-var validateLimits = validate2547;
-function validate2547(
+var validateLimits = validate2565;
+function validate2565(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -116920,7 +117809,7 @@ function validate2547(
       func0.call(data, "resultRetentionMs")
     ) {
       if (
-        !validate1695(data.resultRetentionMs, {
+        !validate1712(data.resultRetentionMs, {
           instancePath: instancePath + "/resultRetentionMs",
           parentData: data,
           parentDataProperty: "resultRetentionMs",
@@ -116929,8 +117818,8 @@ function validate2547(
       ) {
         vErrors =
           vErrors === null
-            ? validate1695.errors
-            : vErrors.concat(validate1695.errors);
+            ? validate1712.errors
+            : vErrors.concat(validate1712.errors);
         errors = vErrors.length;
       }
     }
@@ -116949,11 +117838,11 @@ function validate2547(
     }
     errors++;
   }
-  validate2547.errors = vErrors;
+  validate2565.errors = vErrors;
   return errors === 0;
 }
-var validateLineEnding = validate1906;
-function validate1906(
+var validateLineEnding = validate1923;
+function validate1923(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -117472,11 +118361,11 @@ function validate1906(
       }
     }
   }
-  validate1906.errors = vErrors;
+  validate1923.errors = vErrors;
   return errors === 0;
 }
-var validateMemoryBudget = validate2554;
-function validate2554(
+var validateMemoryBudget = validate2572;
+function validate2572(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -117612,11 +118501,11 @@ function validate2554(
     }
     errors++;
   }
-  validate2554.errors = vErrors;
+  validate2572.errors = vErrors;
   return errors === 0;
 }
-var validateMessageFragment = validate2558;
-function validate2558(
+var validateMessageFragment = validate2576;
+function validate2576(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -117785,17 +118674,17 @@ function validate2558(
     }
     errors++;
   }
-  validate2558.errors = vErrors;
+  validate2576.errors = vErrors;
   return errors === 0;
 }
-var validateMotion = validate2562;
-var schema617 = {
+var validateMotion = validate2580;
+var schema619 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["full", "reduced"],
   title: "Motion",
   type: "string",
 };
-function validate2562(
+function validate2580(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -117821,7 +118710,7 @@ function validate2562(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema617.enum },
+      params: { allowedValues: schema619.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -117831,17 +118720,17 @@ function validate2562(
     }
     errors++;
   }
-  validate2562.errors = vErrors;
+  validate2580.errors = vErrors;
   return errors === 0;
 }
-var validateNetworkMode = validate2563;
-var schema618 = {
+var validateNetworkMode = validate2581;
+var schema620 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["system", "direct"],
   title: "NetworkMode",
   type: "string",
 };
-function validate2563(
+function validate2581(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -117867,7 +118756,7 @@ function validate2563(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema618.enum },
+      params: { allowedValues: schema620.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -117877,10 +118766,10 @@ function validate2563(
     }
     errors++;
   }
-  validate2563.errors = vErrors;
+  validate2581.errors = vErrors;
   return errors === 0;
 }
-var validateNodeExecutionTrust = validate2564;
+var validateNodeExecutionTrust = validate2582;
 function validate160(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -118377,7 +119266,7 @@ function validate222(
   validate222.errors = vErrors;
   return errors === 0;
 }
-function validate2564(
+function validate2582(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -118548,11 +119437,11 @@ function validate2564(
     }
     errors++;
   }
-  validate2564.errors = vErrors;
+  validate2582.errors = vErrors;
   return errors === 0;
 }
-var validateNodeMetrics = validate2205;
-function validate2205(
+var validateNodeMetrics = validate2222;
+function validate2222(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -118737,7 +119626,7 @@ function validate2205(
     }
     errors++;
   }
-  validate2205.errors = vErrors;
+  validate2222.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageChangeResult = validate263;
@@ -119323,8 +120212,8 @@ function validate254(
   validate254.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageHostProtocolVersion = validate2568;
-var schema620 = {
+var validateNodePackageHostProtocolVersion = validate2586;
+var schema622 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   description:
     "\u6E05\u5355\u4FDD\u7559\u65E2\u6709 SDK \u517C\u5BB9\u6807\u8BB0\uFF0C\u7B7E\u540D\u5305\u7684\u683C\u5F0F\u4E0E\u5916\u90E8 IPC \u63E1\u624B\u5206\u522B\u6F14\u8FDB\u3002",
@@ -119332,7 +120221,7 @@ var schema620 = {
   title: "NodePackageHostProtocolVersion",
   type: "string",
 };
-function validate2568(
+function validate2586(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -119358,7 +120247,7 @@ function validate2568(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema620.enum },
+      params: { allowedValues: schema622.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -119368,7 +120257,7 @@ function validate2568(
     }
     errors++;
   }
-  validate2568.errors = vErrors;
+  validate2586.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageId = validate179;
@@ -119532,8 +120421,8 @@ function validate757(
   validate757.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageInstallParams = validate1329;
-function validate1331(
+var validateNodePackageInstallParams = validate1345;
+function validate1347(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -119807,10 +120696,10 @@ function validate1331(
       }
     }
   }
-  validate1331.errors = vErrors;
+  validate1347.errors = vErrors;
   return errors === 0;
 }
-function validate1329(
+function validate1345(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -119882,7 +120771,7 @@ function validate1329(
     }
     if (data.source !== void 0 && func0.call(data, "source")) {
       if (
-        !validate1331(data.source, {
+        !validate1347(data.source, {
           instancePath: instancePath + "/source",
           parentData: data,
           parentDataProperty: "source",
@@ -119891,8 +120780,8 @@ function validate1329(
       ) {
         vErrors =
           vErrors === null
-            ? validate1331.errors
-            : vErrors.concat(validate1331.errors);
+            ? validate1347.errors
+            : vErrors.concat(validate1347.errors);
         errors = vErrors.length;
       }
     }
@@ -119911,11 +120800,11 @@ function validate1329(
     }
     errors++;
   }
-  validate1329.errors = vErrors;
+  validate1345.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageInstallSource = validate2569;
-function validate2569(
+var validateNodePackageInstallSource = validate2587;
+function validate2587(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -120189,7 +121078,7 @@ function validate2569(
       }
     }
   }
-  validate2569.errors = vErrors;
+  validate2587.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageInstallation = validate217;
@@ -124643,14 +125532,14 @@ function validate763(
   validate763.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageRuntimePhase = validate2572;
-var schema622 = {
+var validateNodePackageRuntimePhase = validate2590;
+var schema624 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["inactive", "starting", "active", "stopping", "failed"],
   title: "NodePackageRuntimePhase",
   type: "string",
 };
-function validate2572(
+function validate2590(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -124682,7 +125571,7 @@ function validate2572(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema622.enum },
+      params: { allowedValues: schema624.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -124692,7 +125581,7 @@ function validate2572(
     }
     errors++;
   }
-  validate2572.errors = vErrors;
+  validate2590.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageRuntimeStatus = validate765;
@@ -125233,8 +126122,8 @@ function validate192(
   validate192.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageSourceKey = validate1335;
-function validate1335(
+var validateNodePackageSourceKey = validate1351;
+function validate1351(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -125530,11 +126419,11 @@ function validate1335(
     }
     errors++;
   }
-  validate1335.errors = vErrors;
+  validate1351.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageSummary = validate2573;
-function validate2573(
+var validateNodePackageSummary = validate2591;
+function validate2591(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -125779,7 +126668,7 @@ function validate2573(
     }
     errors++;
   }
-  validate2573.errors = vErrors;
+  validate2591.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageUninstallResult = validate266;
@@ -128987,8 +129876,8 @@ function validate96(
   validate96.errors = vErrors;
   return errors === 0;
 }
-var validateNodeSourceApproveParams = validate1350;
-function validate1350(
+var validateNodeSourceApproveParams = validate1366;
+function validate1366(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -129251,11 +130140,11 @@ function validate1350(
     }
     errors++;
   }
-  validate1350.errors = vErrors;
+  validate1366.errors = vErrors;
   return errors === 0;
 }
-var validateNodeSourceChangeResult = validate1347;
-function validate1347(
+var validateNodeSourceChangeResult = validate1363;
+function validate1363(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -129356,11 +130245,11 @@ function validate1347(
     }
     errors++;
   }
-  validate1347.errors = vErrors;
+  validate1363.errors = vErrors;
   return errors === 0;
 }
-var validateNodeSourceListParams = validate1339;
-function validate1339(
+var validateNodeSourceListParams = validate1355;
+function validate1355(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -129454,11 +130343,11 @@ function validate1339(
     }
     errors++;
   }
-  validate1339.errors = vErrors;
+  validate1355.errors = vErrors;
   return errors === 0;
 }
-var validateNodeSourceListResult = validate1343;
-function validate1343(
+var validateNodeSourceListResult = validate1359;
+function validate1359(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -129595,11 +130484,11 @@ function validate1343(
     }
     errors++;
   }
-  validate1343.errors = vErrors;
+  validate1359.errors = vErrors;
   return errors === 0;
 }
-var validateNodeSourceRevokeParams = validate1354;
-function validate1354(
+var validateNodeSourceRevokeParams = validate1370;
+function validate1370(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -129741,11 +130630,11 @@ function validate1354(
     }
     errors++;
   }
-  validate1354.errors = vErrors;
+  validate1370.errors = vErrors;
   return errors === 0;
 }
-var validateNodeThemeEntry = validate2576;
-function validate2576(
+var validateNodeThemeEntry = validate2594;
+function validate2594(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -129964,11 +130853,11 @@ function validate2576(
     }
     errors++;
   }
-  validate2576.errors = vErrors;
+  validate2594.errors = vErrors;
   return errors === 0;
 }
-var validateNodeThemeReference = validate2580;
-function validate2580(
+var validateNodeThemeReference = validate2598;
+function validate2598(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -130104,11 +130993,11 @@ function validate2580(
     }
     errors++;
   }
-  validate2580.errors = vErrors;
+  validate2598.errors = vErrors;
   return errors === 0;
 }
-var validateNodeThemeTokens = validate1920;
-function validate1920(
+var validateNodeThemeTokens = validate1937;
+function validate1937(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -130196,11 +131085,11 @@ function validate1920(
     }
     errors++;
   }
-  validate1920.errors = vErrors;
+  validate1937.errors = vErrors;
   return errors === 0;
 }
-var validateNodeThemesResult = validate2584;
-function validate2584(
+var validateNodeThemesResult = validate2602;
+function validate2602(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -130290,11 +131179,11 @@ function validate2584(
     }
     errors++;
   }
-  validate2584.errors = vErrors;
+  validate2602.errors = vErrors;
   return errors === 0;
 }
-var validateNodeViewAssetReadParams = validate1325;
-function validate1325(
+var validateNodeViewAssetReadParams = validate1341;
+function validate1341(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -130411,11 +131300,11 @@ function validate1325(
     }
     errors++;
   }
-  validate1325.errors = vErrors;
+  validate1341.errors = vErrors;
   return errors === 0;
 }
-var validateNodeViewAssetReadResult = validate2586;
-var schema627 = {
+var validateNodeViewAssetReadResult = validate2604;
+var schema629 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -130449,7 +131338,7 @@ var schema627 = {
   title: "NodeViewAssetReadResult",
   type: "object",
 };
-function validate2586(
+function validate2604(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -130637,7 +131526,7 @@ function validate2586(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema627.properties, key0)) {
+      if (!func0.call(schema629.properties, key0)) {
         const err12 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -130860,11 +131749,11 @@ function validate2586(
     }
     errors++;
   }
-  validate2586.errors = vErrors;
+  validate2604.errors = vErrors;
   return errors === 0;
 }
-var validateObjectReadResult = validate2599;
-function validate2599(
+var validateObjectReadResult = validate2617;
+function validate2617(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131017,11 +131906,11 @@ function validate2599(
     }
     errors++;
   }
-  validate2599.errors = vErrors;
+  validate2617.errors = vErrors;
   return errors === 0;
 }
-var validateObjectRef = validate1529;
-function validate1529(
+var validateObjectRef = validate1545;
+function validate1545(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131174,11 +132063,11 @@ function validate1529(
     }
     errors++;
   }
-  validate1529.errors = vErrors;
+  validate1545.errors = vErrors;
   return errors === 0;
 }
-var validateOpenParams = validate2048;
-function validate2048(
+var validateOpenParams = validate2065;
+function validate2065(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131223,7 +132112,7 @@ function validate2048(
     }
     if (data.binding !== void 0 && func0.call(data, "binding")) {
       if (
-        !validate1223(data.binding, {
+        !validate1239(data.binding, {
           instancePath: instancePath + "/binding",
           parentData: data,
           parentDataProperty: "binding",
@@ -131232,8 +132121,8 @@ function validate2048(
       ) {
         vErrors =
           vErrors === null
-            ? validate1223.errors
-            : vErrors.concat(validate1223.errors);
+            ? validate1239.errors
+            : vErrors.concat(validate1239.errors);
         errors = vErrors.length;
       }
     }
@@ -131309,11 +132198,11 @@ function validate2048(
     }
     errors++;
   }
-  validate2048.errors = vErrors;
+  validate2065.errors = vErrors;
   return errors === 0;
 }
-var validateOpenResult = validate2052;
-function validate2052(
+var validateOpenResult = validate2069;
+function validate2069(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131499,11 +132388,11 @@ function validate2052(
     }
     errors++;
   }
-  validate2052.errors = vErrors;
+  validate2069.errors = vErrors;
   return errors === 0;
 }
-var validateOperation = validate1574;
-var schema386 = {
+var validateOperation = validate1590;
+var schema388 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -131559,7 +132448,7 @@ var schema386 = {
   title: "Operation",
   type: "object",
 };
-function validate1574(
+function validate1590(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131801,7 +132690,7 @@ function validate1574(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema386.properties, key0)) {
+      if (!func0.call(schema388.properties, key0)) {
         const err15 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -131867,7 +132756,7 @@ function validate1574(
     }
     if (data.admission !== void 0 && func0.call(data, "admission")) {
       if (
-        !validate1132(data.admission, {
+        !validate1148(data.admission, {
           instancePath: instancePath + "/admission",
           parentData: data,
           parentDataProperty: "admission",
@@ -131876,8 +132765,8 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate1132.errors
-            : vErrors.concat(validate1132.errors);
+            ? validate1148.errors
+            : vErrors.concat(validate1148.errors);
         errors = vErrors.length;
       }
     }
@@ -131905,7 +132794,7 @@ function validate1574(
       func0.call(data, "clientEffectReceipt")
     ) {
       if (
-        !validate1139(data.clientEffectReceipt, {
+        !validate1155(data.clientEffectReceipt, {
           instancePath: instancePath + "/clientEffectReceipt",
           parentData: data,
           parentDataProperty: "clientEffectReceipt",
@@ -131914,8 +132803,8 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate1139.errors
-            : vErrors.concat(validate1139.errors);
+            ? validate1155.errors
+            : vErrors.concat(validate1155.errors);
         errors = vErrors.length;
       }
     }
@@ -131925,7 +132814,7 @@ function validate1574(
         const len0 = data6.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1150(data6[i0], {
+            !validate1166(data6[i0], {
               instancePath: instancePath + "/dependencies/" + i0,
               parentData: data6,
               parentDataProperty: i0,
@@ -131934,8 +132823,8 @@ function validate1574(
           ) {
             vErrors =
               vErrors === null
-                ? validate1150.errors
-                : vErrors.concat(validate1150.errors);
+                ? validate1166.errors
+                : vErrors.concat(validate1166.errors);
             errors = vErrors.length;
           }
         }
@@ -132024,7 +132913,7 @@ function validate1574(
     }
     if (data.owner !== void 0 && func0.call(data, "owner")) {
       if (
-        !validate1158(data.owner, {
+        !validate1174(data.owner, {
           instancePath: instancePath + "/owner",
           parentData: data,
           parentDataProperty: "owner",
@@ -132033,14 +132922,14 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate1158.errors
-            : vErrors.concat(validate1158.errors);
+            ? validate1174.errors
+            : vErrors.concat(validate1174.errors);
         errors = vErrors.length;
       }
     }
     if (data.progress !== void 0 && func0.call(data, "progress")) {
       if (
-        !validate1163(data.progress, {
+        !validate1179(data.progress, {
           instancePath: instancePath + "/progress",
           parentData: data,
           parentDataProperty: "progress",
@@ -132049,14 +132938,14 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate1163.errors
-            : vErrors.concat(validate1163.errors);
+            ? validate1179.errors
+            : vErrors.concat(validate1179.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -132065,14 +132954,14 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
     if (data.result !== void 0 && func0.call(data, "result")) {
       if (
-        !validate1168(data.result, {
+        !validate1184(data.result, {
           instancePath: instancePath + "/result",
           parentData: data,
           parentDataProperty: "result",
@@ -132081,8 +132970,8 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate1168.errors
-            : vErrors.concat(validate1168.errors);
+            ? validate1184.errors
+            : vErrors.concat(validate1184.errors);
         errors = vErrors.length;
       }
     }
@@ -132225,7 +133114,7 @@ function validate1574(
       func0.call(data, "workerObservation")
     ) {
       if (
-        !validate1210(data.workerObservation, {
+        !validate1226(data.workerObservation, {
           instancePath: instancePath + "/workerObservation",
           parentData: data,
           parentDataProperty: "workerObservation",
@@ -132234,8 +133123,8 @@ function validate1574(
       ) {
         vErrors =
           vErrors === null
-            ? validate1210.errors
-            : vErrors.concat(validate1210.errors);
+            ? validate1226.errors
+            : vErrors.concat(validate1226.errors);
         errors = vErrors.length;
       }
     }
@@ -132254,15 +133143,15 @@ function validate1574(
     }
     errors++;
   }
-  validate1574.errors = vErrors;
+  validate1590.errors = vErrors;
   return errors === 0;
 }
-var validateOperationCancelParams = validate2604;
-var schema630 = {
+var validateOperationCancelParams = validate2622;
+var schema632 = {
   enum: ["user", "revoked", "takeover", "shutdown"],
   type: "string",
 };
-function validate2605(
+function validate2623(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -132293,7 +133182,7 @@ function validate2605(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema630.enum },
+      params: { allowedValues: schema632.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -132303,10 +133192,10 @@ function validate2605(
     }
     errors++;
   }
-  validate2605.errors = vErrors;
+  validate2623.errors = vErrors;
   return errors === 0;
 }
-function validate2604(
+function validate2622(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -132347,7 +133236,7 @@ function validate2604(
     }
     if (data.reason !== void 0 && func0.call(data, "reason")) {
       if (
-        !validate2605(data.reason, {
+        !validate2623(data.reason, {
           instancePath: instancePath + "/reason",
           parentData: data,
           parentDataProperty: "reason",
@@ -132356,8 +133245,8 @@ function validate2604(
       ) {
         vErrors =
           vErrors === null
-            ? validate2605.errors
-            : vErrors.concat(validate2605.errors);
+            ? validate2623.errors
+            : vErrors.concat(validate2623.errors);
         errors = vErrors.length;
       }
     }
@@ -132376,11 +133265,11 @@ function validate2604(
     }
     errors++;
   }
-  validate2604.errors = vErrors;
+  validate2622.errors = vErrors;
   return errors === 0;
 }
-var validateOperationGetParams = validate2607;
-function validate2607(
+var validateOperationGetParams = validate2625;
+function validate2625(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -132440,7 +133329,7 @@ function validate2607(
     }
     if (data.requestContext !== void 0 && func0.call(data, "requestContext")) {
       if (
-        !validate1416(data.requestContext, {
+        !validate1432(data.requestContext, {
           instancePath: instancePath + "/requestContext",
           parentData: data,
           parentDataProperty: "requestContext",
@@ -132449,8 +133338,8 @@ function validate2607(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -132564,7 +133453,7 @@ function validate2607(
         func0.call(data, "requestContext")
       ) {
         if (
-          !validate1416(data.requestContext, {
+          !validate1432(data.requestContext, {
             instancePath: instancePath + "/requestContext",
             parentData: data,
             parentDataProperty: "requestContext",
@@ -132573,14 +133462,14 @@ function validate2607(
         ) {
           vErrors =
             vErrors === null
-              ? validate1416.errors
-              : vErrors.concat(validate1416.errors);
+              ? validate1432.errors
+              : vErrors.concat(validate1432.errors);
           errors = vErrors.length;
         }
       }
       if (data.requestId !== void 0 && func0.call(data, "requestId")) {
         if (
-          !validate979(data.requestId, {
+          !validate1003(data.requestId, {
             instancePath: instancePath + "/requestId",
             parentData: data,
             parentDataProperty: "requestId",
@@ -132589,8 +133478,8 @@ function validate2607(
         ) {
           vErrors =
             vErrors === null
-              ? validate979.errors
-              : vErrors.concat(validate979.errors);
+              ? validate1003.errors
+              : vErrors.concat(validate1003.errors);
           errors = vErrors.length;
         }
       }
@@ -132742,11 +133631,11 @@ function validate2607(
       }
     }
   }
-  validate2607.errors = vErrors;
+  validate2625.errors = vErrors;
   return errors === 0;
 }
-var validateOperationInput = validate2615;
-function validate2615(
+var validateOperationInput = validate2633;
+function validate2633(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -132839,7 +133728,7 @@ function validate2615(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1222(data.value, {
+        !validate1238(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -132848,8 +133737,8 @@ function validate2615(
       ) {
         vErrors =
           vErrors === null
-            ? validate1222.errors
-            : vErrors.concat(validate1222.errors);
+            ? validate1238.errors
+            : vErrors.concat(validate1238.errors);
         errors = vErrors.length;
       }
     }
@@ -132957,7 +133846,7 @@ function validate2615(
     }
     if (data.value !== void 0 && func0.call(data, "value")) {
       if (
-        !validate1230(data.value, {
+        !validate1246(data.value, {
           instancePath: instancePath + "/value",
           parentData: data,
           parentDataProperty: "value",
@@ -132966,8 +133855,8 @@ function validate2615(
       ) {
         vErrors =
           vErrors === null
-            ? validate1230.errors
-            : vErrors.concat(validate1230.errors);
+            ? validate1246.errors
+            : vErrors.concat(validate1246.errors);
         errors = vErrors.length;
       }
     }
@@ -133079,7 +133968,7 @@ function validate2615(
       }
       if (data.value !== void 0 && func0.call(data, "value")) {
         if (
-          !validate1258(data.value, {
+          !validate1274(data.value, {
             instancePath: instancePath + "/value",
             parentData: data,
             parentDataProperty: "value",
@@ -133088,8 +133977,8 @@ function validate2615(
         ) {
           vErrors =
             vErrors === null
-              ? validate1258.errors
-              : vErrors.concat(validate1258.errors);
+              ? validate1274.errors
+              : vErrors.concat(validate1274.errors);
           errors = vErrors.length;
         }
       }
@@ -133201,7 +134090,7 @@ function validate2615(
         }
         if (data.value !== void 0 && func0.call(data, "value")) {
           if (
-            !validate1267(data.value, {
+            !validate1283(data.value, {
               instancePath: instancePath + "/value",
               parentData: data,
               parentDataProperty: "value",
@@ -133210,8 +134099,8 @@ function validate2615(
           ) {
             vErrors =
               vErrors === null
-                ? validate1267.errors
-                : vErrors.concat(validate1267.errors);
+                ? validate1283.errors
+                : vErrors.concat(validate1283.errors);
             errors = vErrors.length;
           }
         }
@@ -133323,7 +134212,7 @@ function validate2615(
           }
           if (data.value !== void 0 && func0.call(data, "value")) {
             if (
-              !validate1274(data.value, {
+              !validate1290(data.value, {
                 instancePath: instancePath + "/value",
                 parentData: data,
                 parentDataProperty: "value",
@@ -133332,8 +134221,8 @@ function validate2615(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1274.errors
-                  : vErrors.concat(validate1274.errors);
+                  ? validate1290.errors
+                  : vErrors.concat(validate1290.errors);
               errors = vErrors.length;
             }
           }
@@ -133445,7 +134334,7 @@ function validate2615(
             }
             if (data.value !== void 0 && func0.call(data, "value")) {
               if (
-                !validate1290(data.value, {
+                !validate1306(data.value, {
                   instancePath: instancePath + "/value",
                   parentData: data,
                   parentDataProperty: "value",
@@ -133454,8 +134343,8 @@ function validate2615(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1290.errors
-                    : vErrors.concat(validate1290.errors);
+                    ? validate1306.errors
+                    : vErrors.concat(validate1306.errors);
                 errors = vErrors.length;
               }
             }
@@ -133567,7 +134456,7 @@ function validate2615(
               }
               if (data.value !== void 0 && func0.call(data, "value")) {
                 if (
-                  !validate1293(data.value, {
+                  !validate1309(data.value, {
                     instancePath: instancePath + "/value",
                     parentData: data,
                     parentDataProperty: "value",
@@ -133576,8 +134465,8 @@ function validate2615(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1293.errors
-                      : vErrors.concat(validate1293.errors);
+                      ? validate1309.errors
+                      : vErrors.concat(validate1309.errors);
                   errors = vErrors.length;
                 }
               }
@@ -133689,7 +134578,7 @@ function validate2615(
                 }
                 if (data.value !== void 0 && func0.call(data, "value")) {
                   if (
-                    !validate1296(data.value, {
+                    !validate1312(data.value, {
                       instancePath: instancePath + "/value",
                       parentData: data,
                       parentDataProperty: "value",
@@ -133698,8 +134587,8 @@ function validate2615(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1296.errors
-                        : vErrors.concat(validate1296.errors);
+                        ? validate1312.errors
+                        : vErrors.concat(validate1312.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -133811,7 +134700,7 @@ function validate2615(
                   }
                   if (data.value !== void 0 && func0.call(data, "value")) {
                     if (
-                      !validate1299(data.value, {
+                      !validate1315(data.value, {
                         instancePath: instancePath + "/value",
                         parentData: data,
                         parentDataProperty: "value",
@@ -133820,8 +134709,8 @@ function validate2615(
                     ) {
                       vErrors =
                         vErrors === null
-                          ? validate1299.errors
-                          : vErrors.concat(validate1299.errors);
+                          ? validate1315.errors
+                          : vErrors.concat(validate1315.errors);
                       errors = vErrors.length;
                     }
                   }
@@ -133933,7 +134822,7 @@ function validate2615(
                     }
                     if (data.value !== void 0 && func0.call(data, "value")) {
                       if (
-                        !validate1303(data.value, {
+                        !validate1319(data.value, {
                           instancePath: instancePath + "/value",
                           parentData: data,
                           parentDataProperty: "value",
@@ -133942,8 +134831,8 @@ function validate2615(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1303.errors
-                            : vErrors.concat(validate1303.errors);
+                            ? validate1319.errors
+                            : vErrors.concat(validate1319.errors);
                         errors = vErrors.length;
                       }
                     }
@@ -134059,7 +134948,7 @@ function validate2615(
                       }
                       if (data.value !== void 0 && func0.call(data, "value")) {
                         if (
-                          !validate1306(data.value, {
+                          !validate1322(data.value, {
                             instancePath: instancePath + "/value",
                             parentData: data,
                             parentDataProperty: "value",
@@ -134068,8 +134957,8 @@ function validate2615(
                         ) {
                           vErrors =
                             vErrors === null
-                              ? validate1306.errors
-                              : vErrors.concat(validate1306.errors);
+                              ? validate1322.errors
+                              : vErrors.concat(validate1322.errors);
                           errors = vErrors.length;
                         }
                       }
@@ -134239,7 +135128,7 @@ function validate2615(
                               func0.call(data23, "reason")
                             ) {
                               if (
-                                !validate1309(data23.reason, {
+                                !validate1325(data23.reason, {
                                   instancePath: instancePath + "/value/reason",
                                   parentData: data23,
                                   parentDataProperty: "reason",
@@ -134248,8 +135137,8 @@ function validate2615(
                               ) {
                                 vErrors =
                                   vErrors === null
-                                    ? validate1309.errors
-                                    : vErrors.concat(validate1309.errors);
+                                    ? validate1325.errors
+                                    : vErrors.concat(validate1325.errors);
                                 errors = vErrors.length;
                               }
                             }
@@ -134328,11 +135217,11 @@ function validate2615(
       }
     }
   }
-  validate2615.errors = vErrors;
+  validate2633.errors = vErrors;
   return errors === 0;
 }
-var validateOperationInputParams = validate2628;
-function validate2628(
+var validateOperationInputParams = validate2646;
+function validate2646(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134402,11 +135291,11 @@ function validate2628(
     }
     errors++;
   }
-  validate2628.errors = vErrors;
+  validate2646.errors = vErrors;
   return errors === 0;
 }
-var validateOperationInputRedaction = validate2630;
-var schema634 = {
+var validateOperationInputRedaction = validate2648;
+var schema636 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "sensitive_path",
@@ -134417,7 +135306,7 @@ var schema634 = {
   title: "OperationInputRedaction",
   type: "string",
 };
-function validate2630(
+function validate2648(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134448,7 +135337,7 @@ function validate2630(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema634.enum },
+      params: { allowedValues: schema636.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -134458,11 +135347,11 @@ function validate2630(
     }
     errors++;
   }
-  validate2630.errors = vErrors;
+  validate2648.errors = vErrors;
   return errors === 0;
 }
-var validateOperationResult = validate2631;
-function validate2631(
+var validateOperationResult = validate2649;
+function validate2649(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134503,7 +135392,7 @@ function validate2631(
     }
     if (data.operation !== void 0 && func0.call(data, "operation")) {
       if (
-        !validate1128(data.operation, {
+        !validate1144(data.operation, {
           instancePath: instancePath + "/operation",
           parentData: data,
           parentDataProperty: "operation",
@@ -134512,8 +135401,8 @@ function validate2631(
       ) {
         vErrors =
           vErrors === null
-            ? validate1128.errors
-            : vErrors.concat(validate1128.errors);
+            ? validate1144.errors
+            : vErrors.concat(validate1144.errors);
         errors = vErrors.length;
       }
     }
@@ -134532,11 +135421,11 @@ function validate2631(
     }
     errors++;
   }
-  validate2631.errors = vErrors;
+  validate2649.errors = vErrors;
   return errors === 0;
 }
-var validateOperationState = validate2633;
-var schema636 = {
+var validateOperationState = validate2651;
+var schema638 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "queued",
@@ -134551,7 +135440,7 @@ var schema636 = {
   title: "OperationState",
   type: "string",
 };
-function validate2633(
+function validate2651(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134586,7 +135475,7 @@ function validate2633(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema636.enum },
+      params: { allowedValues: schema638.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -134596,11 +135485,11 @@ function validate2633(
     }
     errors++;
   }
-  validate2633.errors = vErrors;
+  validate2651.errors = vErrors;
   return errors === 0;
 }
-var validateOperationSummary = validate2634;
-var schema637 = {
+var validateOperationSummary = validate2652;
+var schema639 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -134634,463 +135523,7 @@ var schema637 = {
   title: "OperationSummary",
   type: "object",
 };
-function validate2634(
-  data,
-  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
-) {
-  let vErrors = null;
-  let errors = 0;
-  if (data && typeof data == "object" && !Array.isArray(data)) {
-    if (data.operationId === void 0 || !func0.call(data, "operationId")) {
-      const err0 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "operationId" },
-        message: "must have required property 'operationId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err0];
-      } else {
-        vErrors.push(err0);
-      }
-      errors++;
-    }
-    if (
-      data.executionHostId === void 0 ||
-      !func0.call(data, "executionHostId")
-    ) {
-      const err1 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "executionHostId" },
-        message: "must have required property 'executionHostId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err1];
-      } else {
-        vErrors.push(err1);
-      }
-      errors++;
-    }
-    if (data.actorId === void 0 || !func0.call(data, "actorId")) {
-      const err2 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "actorId" },
-        message: "must have required property 'actorId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err2];
-      } else {
-        vErrors.push(err2);
-      }
-      errors++;
-    }
-    if (data.actionId === void 0 || !func0.call(data, "actionId")) {
-      const err3 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "actionId" },
-        message: "must have required property 'actionId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err3];
-      } else {
-        vErrors.push(err3);
-      }
-      errors++;
-    }
-    if (data.target === void 0 || !func0.call(data, "target")) {
-      const err4 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "target" },
-        message: "must have required property 'target'",
-      };
-      if (vErrors === null) {
-        vErrors = [err4];
-      } else {
-        vErrors.push(err4);
-      }
-      errors++;
-    }
-    if (data.executionMode === void 0 || !func0.call(data, "executionMode")) {
-      const err5 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "executionMode" },
-        message: "must have required property 'executionMode'",
-      };
-      if (vErrors === null) {
-        vErrors = [err5];
-      } else {
-        vErrors.push(err5);
-      }
-      errors++;
-    }
-    if (data.state === void 0 || !func0.call(data, "state")) {
-      const err6 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "state" },
-        message: "must have required property 'state'",
-      };
-      if (vErrors === null) {
-        vErrors = [err6];
-      } else {
-        vErrors.push(err6);
-      }
-      errors++;
-    }
-    if (data.revision === void 0 || !func0.call(data, "revision")) {
-      const err7 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "revision" },
-        message: "must have required property 'revision'",
-      };
-      if (vErrors === null) {
-        vErrors = [err7];
-      } else {
-        vErrors.push(err7);
-      }
-      errors++;
-    }
-    if (data.revealTarget === void 0 || !func0.call(data, "revealTarget")) {
-      const err8 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "revealTarget" },
-        message: "must have required property 'revealTarget'",
-      };
-      if (vErrors === null) {
-        vErrors = [err8];
-      } else {
-        vErrors.push(err8);
-      }
-      errors++;
-    }
-    if (data.acceptedAt === void 0 || !func0.call(data, "acceptedAt")) {
-      const err9 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "acceptedAt" },
-        message: "must have required property 'acceptedAt'",
-      };
-      if (vErrors === null) {
-        vErrors = [err9];
-      } else {
-        vErrors.push(err9);
-      }
-      errors++;
-    }
-    for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema637.properties, key0)) {
-        const err10 = {
-          instancePath,
-          schemaPath: "#/additionalProperties",
-          keyword: "additionalProperties",
-          params: { additionalProperty: key0 },
-          message: "must NOT have additional properties",
-        };
-        if (vErrors === null) {
-          vErrors = [err10];
-        } else {
-          vErrors.push(err10);
-        }
-        errors++;
-      }
-    }
-    if (data.acceptedAt !== void 0 && func0.call(data, "acceptedAt")) {
-      if (
-        !validate301(data.acceptedAt, {
-          instancePath: instancePath + "/acceptedAt",
-          parentData: data,
-          parentDataProperty: "acceptedAt",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate301.errors
-            : vErrors.concat(validate301.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.actionId !== void 0 && func0.call(data, "actionId")) {
-      if (
-        !validate28(data.actionId, {
-          instancePath: instancePath + "/actionId",
-          parentData: data,
-          parentDataProperty: "actionId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.actorId !== void 0 && func0.call(data, "actorId")) {
-      if (
-        !validate28(data.actorId, {
-          instancePath: instancePath + "/actorId",
-          parentData: data,
-          parentDataProperty: "actorId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.errorCode !== void 0 && func0.call(data, "errorCode")) {
-      if (typeof data.errorCode !== "string") {
-        const err11 = {
-          instancePath: instancePath + "/errorCode",
-          schemaPath: "#/properties/errorCode/type",
-          keyword: "type",
-          params: { type: "string" },
-          message: "must be string",
-        };
-        if (vErrors === null) {
-          vErrors = [err11];
-        } else {
-          vErrors.push(err11);
-        }
-        errors++;
-      }
-    }
-    if (
-      data.executionHostId !== void 0 &&
-      func0.call(data, "executionHostId")
-    ) {
-      if (
-        !validate28(data.executionHostId, {
-          instancePath: instancePath + "/executionHostId",
-          parentData: data,
-          parentDataProperty: "executionHostId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.executionMode !== void 0 && func0.call(data, "executionMode")) {
-      if (
-        !validate673(data.executionMode, {
-          instancePath: instancePath + "/executionMode",
-          parentData: data,
-          parentDataProperty: "executionMode",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate673.errors
-            : vErrors.concat(validate673.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.operationId !== void 0 && func0.call(data, "operationId")) {
-      if (
-        !validate28(data.operationId, {
-          instancePath: instancePath + "/operationId",
-          parentData: data,
-          parentDataProperty: "operationId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.progress !== void 0 && func0.call(data, "progress")) {
-      if (
-        !validate1163(data.progress, {
-          instancePath: instancePath + "/progress",
-          parentData: data,
-          parentDataProperty: "progress",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate1163.errors
-            : vErrors.concat(validate1163.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.revealTarget !== void 0 && func0.call(data, "revealTarget")) {
-      if (
-        !validate116(data.revealTarget, {
-          instancePath: instancePath + "/revealTarget",
-          parentData: data,
-          parentDataProperty: "revealTarget",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate116.errors
-            : vErrors.concat(validate116.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.revision !== void 0 && func0.call(data, "revision")) {
-      if (
-        !validate32(data.revision, {
-          instancePath: instancePath + "/revision",
-          parentData: data,
-          parentDataProperty: "revision",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate32.errors
-            : vErrors.concat(validate32.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.settledAt !== void 0 && func0.call(data, "settledAt")) {
-      if (
-        !validate301(data.settledAt, {
-          instancePath: instancePath + "/settledAt",
-          parentData: data,
-          parentDataProperty: "settledAt",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate301.errors
-            : vErrors.concat(validate301.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.startedAt !== void 0 && func0.call(data, "startedAt")) {
-      if (
-        !validate301(data.startedAt, {
-          instancePath: instancePath + "/startedAt",
-          parentData: data,
-          parentDataProperty: "startedAt",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate301.errors
-            : vErrors.concat(validate301.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.state !== void 0 && func0.call(data, "state")) {
-      if (
-        !validate754(data.state, {
-          instancePath: instancePath + "/state",
-          parentData: data,
-          parentDataProperty: "state",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate754.errors
-            : vErrors.concat(validate754.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.target !== void 0 && func0.call(data, "target")) {
-      if (
-        !validate582(data.target, {
-          instancePath: instancePath + "/target",
-          parentData: data,
-          parentDataProperty: "target",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate582.errors
-            : vErrors.concat(validate582.errors);
-        errors = vErrors.length;
-      }
-    }
-  } else {
-    const err12 = {
-      instancePath,
-      schemaPath: "#/type",
-      keyword: "type",
-      params: { type: "object" },
-      message: "must be object",
-    };
-    if (vErrors === null) {
-      vErrors = [err12];
-    } else {
-      vErrors.push(err12);
-    }
-    errors++;
-  }
-  validate2634.errors = vErrors;
-  return errors === 0;
-}
-var validateOperationsSnapshot = validate2648;
-var schema639 = {
-  additionalProperties: false,
-  properties: {
-    acceptedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
-    actionId: { $ref: "#/definitions/shared/definitions/Id" },
-    actorId: { $ref: "#/definitions/shared/definitions/Id" },
-    errorCode: { type: "string" },
-    executionHostId: { $ref: "#/definitions/shared/definitions/Id" },
-    executionMode: { $ref: "#/definitions/shared/definitions/ExecutionMode" },
-    operationId: { $ref: "#/definitions/shared/definitions/Id" },
-    progress: { $ref: "#/definitions/shared/definitions/Progress" },
-    revealTarget: { $ref: "#/definitions/shared/definitions/RevealTarget" },
-    revision: { $ref: "#/definitions/shared/definitions/U64" },
-    settledAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
-    startedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
-    state: { $ref: "#/definitions/shared/definitions/OperationState" },
-    target: { $ref: "#/definitions/shared/definitions/Target" },
-  },
-  required: [
-    "operationId",
-    "executionHostId",
-    "actorId",
-    "actionId",
-    "target",
-    "executionMode",
-    "state",
-    "revision",
-    "revealTarget",
-    "acceptedAt",
-  ],
-  type: "object",
-};
-function validate2649(
+function validate2652(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135385,7 +135818,7 @@ function validate2649(
     }
     if (data.progress !== void 0 && func0.call(data, "progress")) {
       if (
-        !validate1163(data.progress, {
+        !validate1179(data.progress, {
           instancePath: instancePath + "/progress",
           parentData: data,
           parentDataProperty: "progress",
@@ -135394,8 +135827,8 @@ function validate2649(
       ) {
         vErrors =
           vErrors === null
-            ? validate1163.errors
-            : vErrors.concat(validate1163.errors);
+            ? validate1179.errors
+            : vErrors.concat(validate1179.errors);
         errors = vErrors.length;
       }
     }
@@ -135510,10 +135943,466 @@ function validate2649(
     }
     errors++;
   }
-  validate2649.errors = vErrors;
+  validate2652.errors = vErrors;
   return errors === 0;
 }
-function validate2648(
+var validateOperationsSnapshot = validate2666;
+var schema641 = {
+  additionalProperties: false,
+  properties: {
+    acceptedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
+    actionId: { $ref: "#/definitions/shared/definitions/Id" },
+    actorId: { $ref: "#/definitions/shared/definitions/Id" },
+    errorCode: { type: "string" },
+    executionHostId: { $ref: "#/definitions/shared/definitions/Id" },
+    executionMode: { $ref: "#/definitions/shared/definitions/ExecutionMode" },
+    operationId: { $ref: "#/definitions/shared/definitions/Id" },
+    progress: { $ref: "#/definitions/shared/definitions/Progress" },
+    revealTarget: { $ref: "#/definitions/shared/definitions/RevealTarget" },
+    revision: { $ref: "#/definitions/shared/definitions/U64" },
+    settledAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
+    startedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
+    state: { $ref: "#/definitions/shared/definitions/OperationState" },
+    target: { $ref: "#/definitions/shared/definitions/Target" },
+  },
+  required: [
+    "operationId",
+    "executionHostId",
+    "actorId",
+    "actionId",
+    "target",
+    "executionMode",
+    "state",
+    "revision",
+    "revealTarget",
+    "acceptedAt",
+  ],
+  type: "object",
+};
+function validate2667(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.operationId === void 0 || !func0.call(data, "operationId")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "operationId" },
+        message: "must have required property 'operationId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (
+      data.executionHostId === void 0 ||
+      !func0.call(data, "executionHostId")
+    ) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "executionHostId" },
+        message: "must have required property 'executionHostId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.actorId === void 0 || !func0.call(data, "actorId")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "actorId" },
+        message: "must have required property 'actorId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    if (data.actionId === void 0 || !func0.call(data, "actionId")) {
+      const err3 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "actionId" },
+        message: "must have required property 'actionId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
+    if (data.target === void 0 || !func0.call(data, "target")) {
+      const err4 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "target" },
+        message: "must have required property 'target'",
+      };
+      if (vErrors === null) {
+        vErrors = [err4];
+      } else {
+        vErrors.push(err4);
+      }
+      errors++;
+    }
+    if (data.executionMode === void 0 || !func0.call(data, "executionMode")) {
+      const err5 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "executionMode" },
+        message: "must have required property 'executionMode'",
+      };
+      if (vErrors === null) {
+        vErrors = [err5];
+      } else {
+        vErrors.push(err5);
+      }
+      errors++;
+    }
+    if (data.state === void 0 || !func0.call(data, "state")) {
+      const err6 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "state" },
+        message: "must have required property 'state'",
+      };
+      if (vErrors === null) {
+        vErrors = [err6];
+      } else {
+        vErrors.push(err6);
+      }
+      errors++;
+    }
+    if (data.revision === void 0 || !func0.call(data, "revision")) {
+      const err7 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "revision" },
+        message: "must have required property 'revision'",
+      };
+      if (vErrors === null) {
+        vErrors = [err7];
+      } else {
+        vErrors.push(err7);
+      }
+      errors++;
+    }
+    if (data.revealTarget === void 0 || !func0.call(data, "revealTarget")) {
+      const err8 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "revealTarget" },
+        message: "must have required property 'revealTarget'",
+      };
+      if (vErrors === null) {
+        vErrors = [err8];
+      } else {
+        vErrors.push(err8);
+      }
+      errors++;
+    }
+    if (data.acceptedAt === void 0 || !func0.call(data, "acceptedAt")) {
+      const err9 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "acceptedAt" },
+        message: "must have required property 'acceptedAt'",
+      };
+      if (vErrors === null) {
+        vErrors = [err9];
+      } else {
+        vErrors.push(err9);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!func0.call(schema641.properties, key0)) {
+        const err10 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err10];
+        } else {
+          vErrors.push(err10);
+        }
+        errors++;
+      }
+    }
+    if (data.acceptedAt !== void 0 && func0.call(data, "acceptedAt")) {
+      if (
+        !validate301(data.acceptedAt, {
+          instancePath: instancePath + "/acceptedAt",
+          parentData: data,
+          parentDataProperty: "acceptedAt",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate301.errors
+            : vErrors.concat(validate301.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.actionId !== void 0 && func0.call(data, "actionId")) {
+      if (
+        !validate28(data.actionId, {
+          instancePath: instancePath + "/actionId",
+          parentData: data,
+          parentDataProperty: "actionId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.actorId !== void 0 && func0.call(data, "actorId")) {
+      if (
+        !validate28(data.actorId, {
+          instancePath: instancePath + "/actorId",
+          parentData: data,
+          parentDataProperty: "actorId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.errorCode !== void 0 && func0.call(data, "errorCode")) {
+      if (typeof data.errorCode !== "string") {
+        const err11 = {
+          instancePath: instancePath + "/errorCode",
+          schemaPath: "#/properties/errorCode/type",
+          keyword: "type",
+          params: { type: "string" },
+          message: "must be string",
+        };
+        if (vErrors === null) {
+          vErrors = [err11];
+        } else {
+          vErrors.push(err11);
+        }
+        errors++;
+      }
+    }
+    if (
+      data.executionHostId !== void 0 &&
+      func0.call(data, "executionHostId")
+    ) {
+      if (
+        !validate28(data.executionHostId, {
+          instancePath: instancePath + "/executionHostId",
+          parentData: data,
+          parentDataProperty: "executionHostId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.executionMode !== void 0 && func0.call(data, "executionMode")) {
+      if (
+        !validate673(data.executionMode, {
+          instancePath: instancePath + "/executionMode",
+          parentData: data,
+          parentDataProperty: "executionMode",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate673.errors
+            : vErrors.concat(validate673.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.operationId !== void 0 && func0.call(data, "operationId")) {
+      if (
+        !validate28(data.operationId, {
+          instancePath: instancePath + "/operationId",
+          parentData: data,
+          parentDataProperty: "operationId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.progress !== void 0 && func0.call(data, "progress")) {
+      if (
+        !validate1179(data.progress, {
+          instancePath: instancePath + "/progress",
+          parentData: data,
+          parentDataProperty: "progress",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate1179.errors
+            : vErrors.concat(validate1179.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.revealTarget !== void 0 && func0.call(data, "revealTarget")) {
+      if (
+        !validate116(data.revealTarget, {
+          instancePath: instancePath + "/revealTarget",
+          parentData: data,
+          parentDataProperty: "revealTarget",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate116.errors
+            : vErrors.concat(validate116.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.revision !== void 0 && func0.call(data, "revision")) {
+      if (
+        !validate32(data.revision, {
+          instancePath: instancePath + "/revision",
+          parentData: data,
+          parentDataProperty: "revision",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.settledAt !== void 0 && func0.call(data, "settledAt")) {
+      if (
+        !validate301(data.settledAt, {
+          instancePath: instancePath + "/settledAt",
+          parentData: data,
+          parentDataProperty: "settledAt",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate301.errors
+            : vErrors.concat(validate301.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.startedAt !== void 0 && func0.call(data, "startedAt")) {
+      if (
+        !validate301(data.startedAt, {
+          instancePath: instancePath + "/startedAt",
+          parentData: data,
+          parentDataProperty: "startedAt",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate301.errors
+            : vErrors.concat(validate301.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.state !== void 0 && func0.call(data, "state")) {
+      if (
+        !validate754(data.state, {
+          instancePath: instancePath + "/state",
+          parentData: data,
+          parentDataProperty: "state",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate754.errors
+            : vErrors.concat(validate754.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.target !== void 0 && func0.call(data, "target")) {
+      if (
+        !validate582(data.target, {
+          instancePath: instancePath + "/target",
+          parentData: data,
+          parentDataProperty: "target",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate582.errors
+            : vErrors.concat(validate582.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err12 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err12];
+    } else {
+      vErrors.push(err12);
+    }
+    errors++;
+  }
+  validate2667.errors = vErrors;
+  return errors === 0;
+}
+function validate2666(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135558,7 +136447,7 @@ function validate2648(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate2649(data0[i0], {
+            !validate2667(data0[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -135567,8 +136456,8 @@ function validate2648(
           ) {
             vErrors =
               vErrors === null
-                ? validate2649.errors
-                : vErrors.concat(validate2649.errors);
+                ? validate2667.errors
+                : vErrors.concat(validate2667.errors);
             errors = vErrors.length;
           }
         }
@@ -135603,17 +136492,17 @@ function validate2648(
     }
     errors++;
   }
-  validate2648.errors = vErrors;
+  validate2666.errors = vErrors;
   return errors === 0;
 }
-var validateOverflowPolicy = validate2664;
-var schema640 = {
+var validateOverflowPolicy = validate2682;
+var schema642 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["drop_with_gap", "stop", "flow_control"],
   title: "OverflowPolicy",
   type: "string",
 };
-function validate2664(
+function validate2682(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135643,7 +136532,7 @@ function validate2664(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema640.enum },
+      params: { allowedValues: schema642.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135653,11 +136542,11 @@ function validate2664(
     }
     errors++;
   }
-  validate2664.errors = vErrors;
+  validate2682.errors = vErrors;
   return errors === 0;
 }
-var validateOwner = validate2665;
-function validate2665(
+var validateOwner = validate2683;
+function validate2683(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135729,7 +136618,7 @@ function validate2665(
     }
     if (data.kind !== void 0 && func0.call(data, "kind")) {
       if (
-        !validate1160(data.kind, {
+        !validate1176(data.kind, {
           instancePath: instancePath + "/kind",
           parentData: data,
           parentDataProperty: "kind",
@@ -135738,8 +136627,8 @@ function validate2665(
       ) {
         vErrors =
           vErrors === null
-            ? validate1160.errors
-            : vErrors.concat(validate1160.errors);
+            ? validate1176.errors
+            : vErrors.concat(validate1176.errors);
         errors = vErrors.length;
       }
     }
@@ -135775,17 +136664,17 @@ function validate2665(
     }
     errors++;
   }
-  validate2665.errors = vErrors;
+  validate2683.errors = vErrors;
   return errors === 0;
 }
-var validateOwnerKind = validate2668;
-var schema642 = {
+var validateOwnerKind = validate2686;
+var schema644 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["host", "plugin"],
   title: "OwnerKind",
   type: "string",
 };
-function validate2668(
+function validate2686(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135811,7 +136700,7 @@ function validate2668(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema642.enum },
+      params: { allowedValues: schema644.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135821,17 +136710,17 @@ function validate2668(
     }
     errors++;
   }
-  validate2668.errors = vErrors;
+  validate2686.errors = vErrors;
   return errors === 0;
 }
-var validateParity = validate1903;
-var schema425 = {
+var validateParity = validate1920;
+var schema427 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["none", "even", "odd", "mark", "space"],
   title: "Parity",
   type: "string",
 };
-function validate1903(
+function validate1920(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135863,7 +136752,7 @@ function validate1903(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema425.enum },
+      params: { allowedValues: schema427.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135873,11 +136762,11 @@ function validate1903(
     }
     errors++;
   }
-  validate1903.errors = vErrors;
+  validate1920.errors = vErrors;
   return errors === 0;
 }
-var validatePasteTransferParams = validate2669;
-function validate2669(
+var validatePasteTransferParams = validate2687;
+function validate2687(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136205,11 +137094,11 @@ function validate2669(
     }
     errors++;
   }
-  validate2669.errors = vErrors;
+  validate2687.errors = vErrors;
   return errors === 0;
 }
-var validatePositiveU64 = validate2675;
-function validate2675(
+var validatePositiveU64 = validate2693;
+function validate2693(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136288,11 +137177,11 @@ function validate2675(
     }
     errors++;
   }
-  validate2675.errors = vErrors;
+  validate2693.errors = vErrors;
   return errors === 0;
 }
-var validateProgress = validate2676;
-function validate2676(
+var validateProgress = validate2694;
+function validate2694(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136410,17 +137299,17 @@ function validate2676(
     }
     errors++;
   }
-  validate2676.errors = vErrors;
+  validate2694.errors = vErrors;
   return errors === 0;
 }
-var validateProtocolVersion = validate2679;
-var schema646 = {
+var validateProtocolVersion = validate2697;
+var schema648 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["1.0"],
   title: "ProtocolVersion",
   type: "string",
 };
-function validate2679(
+function validate2697(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136446,7 +137335,7 @@ function validate2679(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema646.enum },
+      params: { allowedValues: schema648.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -136456,17 +137345,17 @@ function validate2679(
     }
     errors++;
   }
-  validate2679.errors = vErrors;
+  validate2697.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeDirection = validate1991;
-var schema455 = {
+var validatePurgeDirection = validate2008;
+var schema457 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["rx", "tx", "both"],
   title: "PurgeDirection",
   type: "string",
 };
-function validate1991(
+function validate2008(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136492,7 +137381,7 @@ function validate1991(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema455.enum },
+      params: { allowedValues: schema457.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -136502,17 +137391,17 @@ function validate1991(
     }
     errors++;
   }
-  validate1991.errors = vErrors;
+  validate2008.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeOutcome = validate1993;
-var schema457 = {
+var validatePurgeOutcome = validate2010;
+var schema459 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["completed", "partial", "unknown"],
   title: "PurgeOutcome",
   type: "string",
 };
-function validate1993(
+function validate2010(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136538,7 +137427,7 @@ function validate1993(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema457.enum },
+      params: { allowedValues: schema459.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -136548,11 +137437,11 @@ function validate1993(
     }
     errors++;
   }
-  validate1993.errors = vErrors;
+  validate2010.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeParams = validate2126;
-function validate2126(
+var validatePurgeParams = validate2143;
+function validate2143(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136653,11 +137542,11 @@ function validate2126(
     }
     errors++;
   }
-  validate2126.errors = vErrors;
+  validate2143.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeReceipt = validate2129;
-function validate2129(
+var validatePurgeReceipt = validate2146;
+function validate2146(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136936,17 +137825,17 @@ function validate2129(
     }
     errors++;
   }
-  validate2129.errors = vErrors;
+  validate2146.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeScope = validate1992;
-var schema456 = {
+var validatePurgeScope = validate2009;
+var schema458 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["application", "driver", "both"],
   title: "PurgeScope",
   type: "string",
 };
-function validate1992(
+function validate2009(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136972,7 +137861,7 @@ function validate1992(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema456.enum },
+      params: { allowedValues: schema458.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -136982,11 +137871,11 @@ function validate1992(
     }
     errors++;
   }
-  validate1992.errors = vErrors;
+  validate2009.errors = vErrors;
   return errors === 0;
 }
-var validateQuery = validate2680;
-var schema647 = {
+var validateQuery = validate2698;
+var schema649 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -137021,7 +137910,7 @@ var schema647 = {
   title: "Query",
   type: "object",
 };
-function validate2680(
+function validate2698(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137167,7 +138056,7 @@ function validate2680(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema647.properties, key0)) {
+      if (!func0.call(schema649.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -137290,7 +138179,7 @@ function validate2680(
       func0.call(data, "protocolVersion")
     ) {
       if (
-        !validate1414(data.protocolVersion, {
+        !validate1430(data.protocolVersion, {
           instancePath: instancePath + "/protocolVersion",
           parentData: data,
           parentDataProperty: "protocolVersion",
@@ -137299,14 +138188,14 @@ function validate2680(
       ) {
         vErrors =
           vErrors === null
-            ? validate1414.errors
-            : vErrors.concat(validate1414.errors);
+            ? validate1430.errors
+            : vErrors.concat(validate1430.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -137315,8 +138204,8 @@ function validate2680(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -137367,7 +138256,7 @@ function validate2680(
     }
     errors++;
   }
-  validate2680.errors = vErrors;
+  validate2698.errors = vErrors;
   return errors === 0;
 }
 var validateQueryResult = validate772;
@@ -140476,7 +141365,8 @@ function validate772(
                                                   errors++;
                                                 }
                                                 if (
-                                                  "replay_search" !== data44
+                                                  "replay_transmit_preview" !==
+                                                  data44
                                                 ) {
                                                   const err136 = {
                                                     instancePath:
@@ -140486,7 +141376,7 @@ function validate772(
                                                     keyword: "const",
                                                     params: {
                                                       allowedValue:
-                                                        "replay_search",
+                                                        "replay_transmit_preview",
                                                     },
                                                     message:
                                                       "must be equal to constant",
@@ -140649,7 +141539,9 @@ function validate772(
                                                     }
                                                     errors++;
                                                   }
-                                                  if ("recent" !== data46) {
+                                                  if (
+                                                    "replay_search" !== data46
+                                                  ) {
                                                     const err142 = {
                                                       instancePath:
                                                         instancePath + "/kind",
@@ -140657,7 +141549,8 @@ function validate772(
                                                         "#/oneOf/23/properties/kind/const",
                                                       keyword: "const",
                                                       params: {
-                                                        allowedValue: "recent",
+                                                        allowedValue:
+                                                          "replay_search",
                                                       },
                                                       message:
                                                         "must be equal to constant",
@@ -140675,7 +141568,7 @@ function validate772(
                                                   func0.call(data, "value")
                                                 ) {
                                                   if (
-                                                    !validate983(data.value, {
+                                                    !validate990(data.value, {
                                                       instancePath:
                                                         instancePath + "/value",
                                                       parentData: data,
@@ -140686,9 +141579,9 @@ function validate772(
                                                   ) {
                                                     vErrors =
                                                       vErrors === null
-                                                        ? validate983.errors
+                                                        ? validate990.errors
                                                         : vErrors.concat(
-                                                            validate983.errors,
+                                                            validate990.errors,
                                                           );
                                                     errors = vErrors.length;
                                                   }
@@ -140824,9 +141717,7 @@ function validate772(
                                                       }
                                                       errors++;
                                                     }
-                                                    if (
-                                                      "file_metadata" !== data48
-                                                    ) {
+                                                    if ("recent" !== data48) {
                                                       const err148 = {
                                                         instancePath:
                                                           instancePath +
@@ -140836,7 +141727,7 @@ function validate772(
                                                         keyword: "const",
                                                         params: {
                                                           allowedValue:
-                                                            "file_metadata",
+                                                            "recent",
                                                         },
                                                         message:
                                                           "must be equal to constant",
@@ -140854,21 +141745,24 @@ function validate772(
                                                     func0.call(data, "value")
                                                   ) {
                                                     if (
-                                                      !validate501(data.value, {
-                                                        instancePath:
-                                                          instancePath +
-                                                          "/value",
-                                                        parentData: data,
-                                                        parentDataProperty:
-                                                          "value",
-                                                        rootData,
-                                                      })
+                                                      !validate1007(
+                                                        data.value,
+                                                        {
+                                                          instancePath:
+                                                            instancePath +
+                                                            "/value",
+                                                          parentData: data,
+                                                          parentDataProperty:
+                                                            "value",
+                                                          rootData,
+                                                        },
+                                                      )
                                                     ) {
                                                       vErrors =
                                                         vErrors === null
-                                                          ? validate501.errors
+                                                          ? validate1007.errors
                                                           : vErrors.concat(
-                                                              validate501.errors,
+                                                              validate1007.errors,
                                                             );
                                                       errors = vErrors.length;
                                                     }
@@ -141009,7 +141903,8 @@ function validate772(
                                                         errors++;
                                                       }
                                                       if (
-                                                        "file_read" !== data50
+                                                        "file_metadata" !==
+                                                        data50
                                                       ) {
                                                         const err154 = {
                                                           instancePath:
@@ -141020,7 +141915,7 @@ function validate772(
                                                           keyword: "const",
                                                           params: {
                                                             allowedValue:
-                                                              "file_read",
+                                                              "file_metadata",
                                                           },
                                                           message:
                                                             "must be equal to constant",
@@ -141038,7 +141933,7 @@ function validate772(
                                                       func0.call(data, "value")
                                                     ) {
                                                       if (
-                                                        !validate993(
+                                                        !validate501(
                                                           data.value,
                                                           {
                                                             instancePath:
@@ -141053,9 +141948,9 @@ function validate772(
                                                       ) {
                                                         vErrors =
                                                           vErrors === null
-                                                            ? validate993.errors
+                                                            ? validate501.errors
                                                             : vErrors.concat(
-                                                                validate993.errors,
+                                                                validate501.errors,
                                                               );
                                                         errors = vErrors.length;
                                                       }
@@ -141212,8 +142107,7 @@ function validate772(
                                                           errors++;
                                                         }
                                                         if (
-                                                          "file_transfer_receipts" !==
-                                                          data52
+                                                          "file_read" !== data52
                                                         ) {
                                                           const err160 = {
                                                             instancePath:
@@ -141224,7 +142118,7 @@ function validate772(
                                                             keyword: "const",
                                                             params: {
                                                               allowedValue:
-                                                                "file_transfer_receipts",
+                                                                "file_read",
                                                             },
                                                             message:
                                                               "must be equal to constant",
@@ -141249,7 +142143,7 @@ function validate772(
                                                         )
                                                       ) {
                                                         if (
-                                                          !validate1001(
+                                                          !validate1017(
                                                             data.value,
                                                             {
                                                               instancePath:
@@ -141264,9 +142158,9 @@ function validate772(
                                                         ) {
                                                           vErrors =
                                                             vErrors === null
-                                                              ? validate1001.errors
+                                                              ? validate1017.errors
                                                               : vErrors.concat(
-                                                                  validate1001.errors,
+                                                                  validate1017.errors,
                                                                 );
                                                           errors =
                                                             vErrors.length;
@@ -141445,7 +142339,7 @@ function validate772(
                                                             errors++;
                                                           }
                                                           if (
-                                                            "file_transfer_read_progress" !==
+                                                            "file_transfer_receipts" !==
                                                             data54
                                                           ) {
                                                             const err166 = {
@@ -141457,7 +142351,7 @@ function validate772(
                                                               keyword: "const",
                                                               params: {
                                                                 allowedValue:
-                                                                  "file_transfer_read_progress",
+                                                                  "file_transfer_receipts",
                                                               },
                                                               message:
                                                                 "must be equal to constant",
@@ -141485,7 +142379,7 @@ function validate772(
                                                           )
                                                         ) {
                                                           if (
-                                                            !validate1010(
+                                                            !validate1025(
                                                               data.value,
                                                               {
                                                                 instancePath:
@@ -141501,9 +142395,9 @@ function validate772(
                                                           ) {
                                                             vErrors =
                                                               vErrors === null
-                                                                ? validate1010.errors
+                                                                ? validate1025.errors
                                                                 : vErrors.concat(
-                                                                    validate1010.errors,
+                                                                    validate1025.errors,
                                                                   );
                                                             errors =
                                                               vErrors.length;
@@ -141692,7 +142586,7 @@ function validate772(
                                                               errors++;
                                                             }
                                                             if (
-                                                              "stream_cursor" !==
+                                                              "file_transfer_read_progress" !==
                                                               data56
                                                             ) {
                                                               const err172 = {
@@ -141705,7 +142599,7 @@ function validate772(
                                                                   "const",
                                                                 params: {
                                                                   allowedValue:
-                                                                    "stream_cursor",
+                                                                    "file_transfer_read_progress",
                                                                 },
                                                                 message:
                                                                   "must be equal to constant",
@@ -141733,7 +142627,7 @@ function validate772(
                                                             )
                                                           ) {
                                                             if (
-                                                              !validate1014(
+                                                              !validate1035(
                                                                 data.value,
                                                                 {
                                                                   instancePath:
@@ -141749,9 +142643,9 @@ function validate772(
                                                             ) {
                                                               vErrors =
                                                                 vErrors === null
-                                                                  ? validate1014.errors
+                                                                  ? validate1035.errors
                                                                   : vErrors.concat(
-                                                                      validate1014.errors,
+                                                                      validate1035.errors,
                                                                     );
                                                               errors =
                                                                 vErrors.length;
@@ -141949,7 +142843,7 @@ function validate772(
                                                                 errors++;
                                                               }
                                                               if (
-                                                                "scopes" !==
+                                                                "stream_cursor" !==
                                                                 data58
                                                               ) {
                                                                 const err178 = {
@@ -141962,7 +142856,7 @@ function validate772(
                                                                     "const",
                                                                   params: {
                                                                     allowedValue:
-                                                                      "scopes",
+                                                                      "stream_cursor",
                                                                   },
                                                                   message:
                                                                     "must be equal to constant",
@@ -141991,7 +142885,7 @@ function validate772(
                                                               )
                                                             ) {
                                                               if (
-                                                                !validate1023(
+                                                                !validate1039(
                                                                   data.value,
                                                                   {
                                                                     instancePath:
@@ -142008,9 +142902,9 @@ function validate772(
                                                                 vErrors =
                                                                   vErrors ===
                                                                   null
-                                                                    ? validate1023.errors
+                                                                    ? validate1039.errors
                                                                     : vErrors.concat(
-                                                                        validate1023.errors,
+                                                                        validate1039.errors,
                                                                       );
                                                                 errors =
                                                                   vErrors.length;
@@ -142219,7 +143113,7 @@ function validate772(
                                                                   errors++;
                                                                 }
                                                                 if (
-                                                                  "settings" !==
+                                                                  "scopes" !==
                                                                   data60
                                                                 ) {
                                                                   const err184 =
@@ -142233,7 +143127,7 @@ function validate772(
                                                                         "const",
                                                                       params: {
                                                                         allowedValue:
-                                                                          "settings",
+                                                                          "scopes",
                                                                       },
                                                                       message:
                                                                         "must be equal to constant",
@@ -142262,7 +143156,7 @@ function validate772(
                                                                 )
                                                               ) {
                                                                 if (
-                                                                  !validate532(
+                                                                  !validate1048(
                                                                     data.value,
                                                                     {
                                                                       instancePath:
@@ -142279,9 +143173,9 @@ function validate772(
                                                                   vErrors =
                                                                     vErrors ===
                                                                     null
-                                                                      ? validate532.errors
+                                                                      ? validate1048.errors
                                                                       : vErrors.concat(
-                                                                          validate532.errors,
+                                                                          validate1048.errors,
                                                                         );
                                                                   errors =
                                                                     vErrors.length;
@@ -142497,7 +143391,7 @@ function validate772(
                                                                     errors++;
                                                                   }
                                                                   if (
-                                                                    "workspace" !==
+                                                                    "settings" !==
                                                                     data62
                                                                   ) {
                                                                     const err190 =
@@ -142512,7 +143406,7 @@ function validate772(
                                                                         params:
                                                                           {
                                                                             allowedValue:
-                                                                              "workspace",
+                                                                              "settings",
                                                                           },
                                                                         message:
                                                                           "must be equal to constant",
@@ -142542,7 +143436,7 @@ function validate772(
                                                                   )
                                                                 ) {
                                                                   if (
-                                                                    !validate591(
+                                                                    !validate532(
                                                                       data.value,
                                                                       {
                                                                         instancePath:
@@ -142559,9 +143453,9 @@ function validate772(
                                                                     vErrors =
                                                                       vErrors ===
                                                                       null
-                                                                        ? validate591.errors
+                                                                        ? validate532.errors
                                                                         : vErrors.concat(
-                                                                            validate591.errors,
+                                                                            validate532.errors,
                                                                           );
                                                                     errors =
                                                                       vErrors.length;
@@ -142783,7 +143677,7 @@ function validate772(
                                                                       errors++;
                                                                     }
                                                                     if (
-                                                                      "workspaces" !==
+                                                                      "workspace" !==
                                                                       data64
                                                                     ) {
                                                                       const err196 =
@@ -142798,7 +143692,7 @@ function validate772(
                                                                           params:
                                                                             {
                                                                               allowedValue:
-                                                                                "workspaces",
+                                                                                "workspace",
                                                                             },
                                                                           message:
                                                                             "must be equal to constant",
@@ -142828,7 +143722,7 @@ function validate772(
                                                                     )
                                                                   ) {
                                                                     if (
-                                                                      !validate1028(
+                                                                      !validate591(
                                                                         data.value,
                                                                         {
                                                                           instancePath:
@@ -142845,9 +143739,9 @@ function validate772(
                                                                       vErrors =
                                                                         vErrors ===
                                                                         null
-                                                                          ? validate1028.errors
+                                                                          ? validate591.errors
                                                                           : vErrors.concat(
-                                                                              validate1028.errors,
+                                                                              validate591.errors,
                                                                             );
                                                                       errors =
                                                                         vErrors.length;
@@ -143070,7 +143964,7 @@ function validate772(
                                                                         errors++;
                                                                       }
                                                                       if (
-                                                                        "command_library" !==
+                                                                        "workspaces" !==
                                                                         data66
                                                                       ) {
                                                                         const err202 =
@@ -143085,7 +143979,7 @@ function validate772(
                                                                             params:
                                                                               {
                                                                                 allowedValue:
-                                                                                  "command_library",
+                                                                                  "workspaces",
                                                                               },
                                                                             message:
                                                                               "must be equal to constant",
@@ -143115,7 +144009,7 @@ function validate772(
                                                                       )
                                                                     ) {
                                                                       if (
-                                                                        !validate1035(
+                                                                        !validate1053(
                                                                           data.value,
                                                                           {
                                                                             instancePath:
@@ -143132,9 +144026,9 @@ function validate772(
                                                                         vErrors =
                                                                           vErrors ===
                                                                           null
-                                                                            ? validate1035.errors
+                                                                            ? validate1053.errors
                                                                             : vErrors.concat(
-                                                                                validate1035.errors,
+                                                                                validate1053.errors,
                                                                               );
                                                                         errors =
                                                                           vErrors.length;
@@ -143361,7 +144255,7 @@ function validate772(
                                                                           errors++;
                                                                         }
                                                                         if (
-                                                                          "document_json" !==
+                                                                          "command_library" !==
                                                                           data68
                                                                         ) {
                                                                           const err208 =
@@ -143376,7 +144270,7 @@ function validate772(
                                                                               params:
                                                                                 {
                                                                                   allowedValue:
-                                                                                    "document_json",
+                                                                                    "command_library",
                                                                                 },
                                                                               message:
                                                                                 "must be equal to constant",
@@ -143406,7 +144300,7 @@ function validate772(
                                                                         )
                                                                       ) {
                                                                         if (
-                                                                          !validate1045(
+                                                                          !validate1060(
                                                                             data.value,
                                                                             {
                                                                               instancePath:
@@ -143423,9 +144317,9 @@ function validate772(
                                                                           vErrors =
                                                                             vErrors ===
                                                                             null
-                                                                              ? validate1045.errors
+                                                                              ? validate1060.errors
                                                                               : vErrors.concat(
-                                                                                  validate1045.errors,
+                                                                                  validate1060.errors,
                                                                                 );
                                                                           errors =
                                                                             vErrors.length;
@@ -143653,7 +144547,7 @@ function validate772(
                                                                             errors++;
                                                                           }
                                                                           if (
-                                                                            "stream_read" !==
+                                                                            "document_json" !==
                                                                             data70
                                                                           ) {
                                                                             const err214 =
@@ -143668,7 +144562,7 @@ function validate772(
                                                                                 params:
                                                                                   {
                                                                                     allowedValue:
-                                                                                      "stream_read",
+                                                                                      "document_json",
                                                                                   },
                                                                                 message:
                                                                                   "must be equal to constant",
@@ -143698,7 +144592,7 @@ function validate772(
                                                                           )
                                                                         ) {
                                                                           if (
-                                                                            !validate1047(
+                                                                            !validate1070(
                                                                               data.value,
                                                                               {
                                                                                 instancePath:
@@ -143715,9 +144609,9 @@ function validate772(
                                                                             vErrors =
                                                                               vErrors ===
                                                                               null
-                                                                                ? validate1047.errors
+                                                                                ? validate1070.errors
                                                                                 : vErrors.concat(
-                                                                                    validate1047.errors,
+                                                                                    validate1070.errors,
                                                                                   );
                                                                             errors =
                                                                               vErrors.length;
@@ -143945,7 +144839,7 @@ function validate772(
                                                                               errors++;
                                                                             }
                                                                             if (
-                                                                              "stream_derived_read" !==
+                                                                              "stream_read" !==
                                                                               data72
                                                                             ) {
                                                                               const err220 =
@@ -143960,7 +144854,7 @@ function validate772(
                                                                                   params:
                                                                                     {
                                                                                       allowedValue:
-                                                                                        "stream_derived_read",
+                                                                                        "stream_read",
                                                                                     },
                                                                                   message:
                                                                                     "must be equal to constant",
@@ -143990,7 +144884,7 @@ function validate772(
                                                                             )
                                                                           ) {
                                                                             if (
-                                                                              !validate1051(
+                                                                              !validate1072(
                                                                                 data.value,
                                                                                 {
                                                                                   instancePath:
@@ -144007,9 +144901,9 @@ function validate772(
                                                                               vErrors =
                                                                                 vErrors ===
                                                                                 null
-                                                                                  ? validate1051.errors
+                                                                                  ? validate1072.errors
                                                                                   : vErrors.concat(
-                                                                                      validate1051.errors,
+                                                                                      validate1072.errors,
                                                                                     );
                                                                               errors =
                                                                                 vErrors.length;
@@ -144237,7 +145131,7 @@ function validate772(
                                                                                 errors++;
                                                                               }
                                                                               if (
-                                                                                "stream_subscribe" !==
+                                                                                "stream_derived_read" !==
                                                                                 data74
                                                                               ) {
                                                                                 const err226 =
@@ -144252,7 +145146,7 @@ function validate772(
                                                                                     params:
                                                                                       {
                                                                                         allowedValue:
-                                                                                          "stream_subscribe",
+                                                                                          "stream_derived_read",
                                                                                       },
                                                                                     message:
                                                                                       "must be equal to constant",
@@ -144529,7 +145423,7 @@ function validate772(
                                                                                   errors++;
                                                                                 }
                                                                                 if (
-                                                                                  "stream_credit" !==
+                                                                                  "stream_subscribe" !==
                                                                                   data76
                                                                                 ) {
                                                                                   const err232 =
@@ -144544,7 +145438,7 @@ function validate772(
                                                                                       params:
                                                                                         {
                                                                                           allowedValue:
-                                                                                            "stream_credit",
+                                                                                            "stream_subscribe",
                                                                                         },
                                                                                       message:
                                                                                         "must be equal to constant",
@@ -144574,7 +145468,7 @@ function validate772(
                                                                                 )
                                                                               ) {
                                                                                 if (
-                                                                                  !validate1079(
+                                                                                  !validate1092(
                                                                                     data.value,
                                                                                     {
                                                                                       instancePath:
@@ -144591,9 +145485,9 @@ function validate772(
                                                                                   vErrors =
                                                                                     vErrors ===
                                                                                     null
-                                                                                      ? validate1079.errors
+                                                                                      ? validate1092.errors
                                                                                       : vErrors.concat(
-                                                                                          validate1079.errors,
+                                                                                          validate1092.errors,
                                                                                         );
                                                                                   errors =
                                                                                     vErrors.length;
@@ -144821,7 +145715,7 @@ function validate772(
                                                                                     errors++;
                                                                                   }
                                                                                   if (
-                                                                                    "devices" !==
+                                                                                    "stream_credit" !==
                                                                                     data78
                                                                                   ) {
                                                                                     const err238 =
@@ -144836,7 +145730,7 @@ function validate772(
                                                                                         params:
                                                                                           {
                                                                                             allowedValue:
-                                                                                              "devices",
+                                                                                              "stream_credit",
                                                                                           },
                                                                                         message:
                                                                                           "must be equal to constant",
@@ -144866,7 +145760,7 @@ function validate772(
                                                                                   )
                                                                                 ) {
                                                                                   if (
-                                                                                    !validate1085(
+                                                                                    !validate1095(
                                                                                       data.value,
                                                                                       {
                                                                                         instancePath:
@@ -144883,9 +145777,9 @@ function validate772(
                                                                                     vErrors =
                                                                                       vErrors ===
                                                                                       null
-                                                                                        ? validate1085.errors
+                                                                                        ? validate1095.errors
                                                                                         : vErrors.concat(
-                                                                                            validate1085.errors,
+                                                                                            validate1095.errors,
                                                                                           );
                                                                                     errors =
                                                                                       vErrors.length;
@@ -145113,7 +146007,7 @@ function validate772(
                                                                                       errors++;
                                                                                     }
                                                                                     if (
-                                                                                      "session" !==
+                                                                                      "devices" !==
                                                                                       data80
                                                                                     ) {
                                                                                       const err244 =
@@ -145128,7 +146022,7 @@ function validate772(
                                                                                           params:
                                                                                             {
                                                                                               allowedValue:
-                                                                                                "session",
+                                                                                                "devices",
                                                                                             },
                                                                                           message:
                                                                                             "must be equal to constant",
@@ -145158,7 +146052,7 @@ function validate772(
                                                                                     )
                                                                                   ) {
                                                                                     if (
-                                                                                      !validate661(
+                                                                                      !validate1101(
                                                                                         data.value,
                                                                                         {
                                                                                           instancePath:
@@ -145175,9 +146069,9 @@ function validate772(
                                                                                       vErrors =
                                                                                         vErrors ===
                                                                                         null
-                                                                                          ? validate661.errors
+                                                                                          ? validate1101.errors
                                                                                           : vErrors.concat(
-                                                                                              validate661.errors,
+                                                                                              validate1101.errors,
                                                                                             );
                                                                                       errors =
                                                                                         vErrors.length;
@@ -145405,7 +146299,7 @@ function validate772(
                                                                                         errors++;
                                                                                       }
                                                                                       if (
-                                                                                        "session_metrics" !==
+                                                                                        "session" !==
                                                                                         data82
                                                                                       ) {
                                                                                         const err250 =
@@ -145420,7 +146314,7 @@ function validate772(
                                                                                             params:
                                                                                               {
                                                                                                 allowedValue:
-                                                                                                  "session_metrics",
+                                                                                                  "session",
                                                                                               },
                                                                                             message:
                                                                                               "must be equal to constant",
@@ -145450,7 +146344,7 @@ function validate772(
                                                                                       )
                                                                                     ) {
                                                                                       if (
-                                                                                        !validate1094(
+                                                                                        !validate661(
                                                                                           data.value,
                                                                                           {
                                                                                             instancePath:
@@ -145467,9 +146361,9 @@ function validate772(
                                                                                         vErrors =
                                                                                           vErrors ===
                                                                                           null
-                                                                                            ? validate1094.errors
+                                                                                            ? validate661.errors
                                                                                             : vErrors.concat(
-                                                                                                validate1094.errors,
+                                                                                                validate661.errors,
                                                                                               );
                                                                                         errors =
                                                                                           vErrors.length;
@@ -145697,7 +146591,7 @@ function validate772(
                                                                                           errors++;
                                                                                         }
                                                                                         if (
-                                                                                          "session_inputs" !==
+                                                                                          "session_metrics" !==
                                                                                           data84
                                                                                         ) {
                                                                                           const err256 =
@@ -145712,7 +146606,7 @@ function validate772(
                                                                                               params:
                                                                                                 {
                                                                                                   allowedValue:
-                                                                                                    "session_inputs",
+                                                                                                    "session_metrics",
                                                                                                 },
                                                                                               message:
                                                                                                 "must be equal to constant",
@@ -145742,7 +146636,7 @@ function validate772(
                                                                                         )
                                                                                       ) {
                                                                                         if (
-                                                                                          !validate1113(
+                                                                                          !validate1110(
                                                                                             data.value,
                                                                                             {
                                                                                               instancePath:
@@ -145759,9 +146653,9 @@ function validate772(
                                                                                           vErrors =
                                                                                             vErrors ===
                                                                                             null
-                                                                                              ? validate1113.errors
+                                                                                              ? validate1110.errors
                                                                                               : vErrors.concat(
-                                                                                                  validate1113.errors,
+                                                                                                  validate1110.errors,
                                                                                                 );
                                                                                           errors =
                                                                                             vErrors.length;
@@ -145989,7 +146883,7 @@ function validate772(
                                                                                             errors++;
                                                                                           }
                                                                                           if (
-                                                                                            "queue" !==
+                                                                                            "session_inputs" !==
                                                                                             data86
                                                                                           ) {
                                                                                             const err262 =
@@ -146004,7 +146898,7 @@ function validate772(
                                                                                                 params:
                                                                                                   {
                                                                                                     allowedValue:
-                                                                                                      "queue",
+                                                                                                      "session_inputs",
                                                                                                   },
                                                                                                 message:
                                                                                                   "must be equal to constant",
@@ -146034,7 +146928,7 @@ function validate772(
                                                                                           )
                                                                                         ) {
                                                                                           if (
-                                                                                            !validate1119(
+                                                                                            !validate1129(
                                                                                               data.value,
                                                                                               {
                                                                                                 instancePath:
@@ -146051,9 +146945,9 @@ function validate772(
                                                                                             vErrors =
                                                                                               vErrors ===
                                                                                               null
-                                                                                                ? validate1119.errors
+                                                                                                ? validate1129.errors
                                                                                                 : vErrors.concat(
-                                                                                                    validate1119.errors,
+                                                                                                    validate1129.errors,
                                                                                                   );
                                                                                             errors =
                                                                                               vErrors.length;
@@ -146281,7 +147175,7 @@ function validate772(
                                                                                               errors++;
                                                                                             }
                                                                                             if (
-                                                                                              "catalog" !==
+                                                                                              "queue" !==
                                                                                               data88
                                                                                             ) {
                                                                                               const err268 =
@@ -146296,7 +147190,7 @@ function validate772(
                                                                                                   params:
                                                                                                     {
                                                                                                       allowedValue:
-                                                                                                        "catalog",
+                                                                                                        "queue",
                                                                                                     },
                                                                                                   message:
                                                                                                     "must be equal to constant",
@@ -146326,7 +147220,7 @@ function validate772(
                                                                                             )
                                                                                           ) {
                                                                                             if (
-                                                                                              !validate1123(
+                                                                                              !validate1135(
                                                                                                 data.value,
                                                                                                 {
                                                                                                   instancePath:
@@ -146343,9 +147237,9 @@ function validate772(
                                                                                               vErrors =
                                                                                                 vErrors ===
                                                                                                 null
-                                                                                                  ? validate1123.errors
+                                                                                                  ? validate1135.errors
                                                                                                   : vErrors.concat(
-                                                                                                      validate1123.errors,
+                                                                                                      validate1135.errors,
                                                                                                     );
                                                                                               errors =
                                                                                                 vErrors.length;
@@ -146573,7 +147467,7 @@ function validate772(
                                                                                                 errors++;
                                                                                               }
                                                                                               if (
-                                                                                                "operation" !==
+                                                                                                "catalog" !==
                                                                                                 data90
                                                                                               ) {
                                                                                                 const err274 =
@@ -146588,7 +147482,7 @@ function validate772(
                                                                                                     params:
                                                                                                       {
                                                                                                         allowedValue:
-                                                                                                          "operation",
+                                                                                                          "catalog",
                                                                                                       },
                                                                                                     message:
                                                                                                       "must be equal to constant",
@@ -146618,7 +147512,7 @@ function validate772(
                                                                                               )
                                                                                             ) {
                                                                                               if (
-                                                                                                !validate1127(
+                                                                                                !validate1139(
                                                                                                   data.value,
                                                                                                   {
                                                                                                     instancePath:
@@ -146635,9 +147529,9 @@ function validate772(
                                                                                                 vErrors =
                                                                                                   vErrors ===
                                                                                                   null
-                                                                                                    ? validate1127.errors
+                                                                                                    ? validate1139.errors
                                                                                                     : vErrors.concat(
-                                                                                                        validate1127.errors,
+                                                                                                        validate1139.errors,
                                                                                                       );
                                                                                                 errors =
                                                                                                   vErrors.length;
@@ -146865,7 +147759,7 @@ function validate772(
                                                                                                   errors++;
                                                                                                 }
                                                                                                 if (
-                                                                                                  "operation_input" !==
+                                                                                                  "operation" !==
                                                                                                   data92
                                                                                                 ) {
                                                                                                   const err280 =
@@ -146880,7 +147774,7 @@ function validate772(
                                                                                                       params:
                                                                                                         {
                                                                                                           allowedValue:
-                                                                                                            "operation_input",
+                                                                                                            "operation",
                                                                                                         },
                                                                                                       message:
                                                                                                         "must be equal to constant",
@@ -146910,7 +147804,7 @@ function validate772(
                                                                                                 )
                                                                                               ) {
                                                                                                 if (
-                                                                                                  !validate1221(
+                                                                                                  !validate1143(
                                                                                                     data.value,
                                                                                                     {
                                                                                                       instancePath:
@@ -146927,9 +147821,9 @@ function validate772(
                                                                                                   vErrors =
                                                                                                     vErrors ===
                                                                                                     null
-                                                                                                      ? validate1221.errors
+                                                                                                      ? validate1143.errors
                                                                                                       : vErrors.concat(
-                                                                                                          validate1221.errors,
+                                                                                                          validate1143.errors,
                                                                                                         );
                                                                                                   errors =
                                                                                                     vErrors.length;
@@ -147157,7 +148051,7 @@ function validate772(
                                                                                                     errors++;
                                                                                                   }
                                                                                                   if (
-                                                                                                    "snapshot" !==
+                                                                                                    "operation_input" !==
                                                                                                     data94
                                                                                                   ) {
                                                                                                     const err286 =
@@ -147172,7 +148066,7 @@ function validate772(
                                                                                                         params:
                                                                                                           {
                                                                                                             allowedValue:
-                                                                                                              "snapshot",
+                                                                                                              "operation_input",
                                                                                                           },
                                                                                                         message:
                                                                                                           "must be equal to constant",
@@ -147202,7 +148096,7 @@ function validate772(
                                                                                                   )
                                                                                                 ) {
                                                                                                   if (
-                                                                                                    !validate1312(
+                                                                                                    !validate1237(
                                                                                                       data.value,
                                                                                                       {
                                                                                                         instancePath:
@@ -147219,9 +148113,9 @@ function validate772(
                                                                                                     vErrors =
                                                                                                       vErrors ===
                                                                                                       null
-                                                                                                        ? validate1312.errors
+                                                                                                        ? validate1237.errors
                                                                                                         : vErrors.concat(
-                                                                                                            validate1312.errors,
+                                                                                                            validate1237.errors,
                                                                                                           );
                                                                                                     errors =
                                                                                                       vErrors.length;
@@ -147449,7 +148343,7 @@ function validate772(
                                                                                                       errors++;
                                                                                                     }
                                                                                                     if (
-                                                                                                      "subscription" !==
+                                                                                                      "snapshot" !==
                                                                                                       data96
                                                                                                     ) {
                                                                                                       const err292 =
@@ -147464,7 +148358,7 @@ function validate772(
                                                                                                           params:
                                                                                                             {
                                                                                                               allowedValue:
-                                                                                                                "subscription",
+                                                                                                                "snapshot",
                                                                                                             },
                                                                                                           message:
                                                                                                             "must be equal to constant",
@@ -147494,7 +148388,7 @@ function validate772(
                                                                                                     )
                                                                                                   ) {
                                                                                                     if (
-                                                                                                      !validate1319(
+                                                                                                      !validate1328(
                                                                                                         data.value,
                                                                                                         {
                                                                                                           instancePath:
@@ -147511,9 +148405,9 @@ function validate772(
                                                                                                       vErrors =
                                                                                                         vErrors ===
                                                                                                         null
-                                                                                                          ? validate1319.errors
+                                                                                                          ? validate1328.errors
                                                                                                           : vErrors.concat(
-                                                                                                              validate1319.errors,
+                                                                                                              validate1328.errors,
                                                                                                             );
                                                                                                       errors =
                                                                                                         vErrors.length;
@@ -147741,7 +148635,7 @@ function validate772(
                                                                                                         errors++;
                                                                                                       }
                                                                                                       if (
-                                                                                                        "closed" !==
+                                                                                                        "subscription" !==
                                                                                                         data98
                                                                                                       ) {
                                                                                                         const err298 =
@@ -147756,7 +148650,7 @@ function validate772(
                                                                                                             params:
                                                                                                               {
                                                                                                                 allowedValue:
-                                                                                                                  "closed",
+                                                                                                                  "subscription",
                                                                                                               },
                                                                                                             message:
                                                                                                               "must be equal to constant",
@@ -147786,7 +148680,7 @@ function validate772(
                                                                                                       )
                                                                                                     ) {
                                                                                                       if (
-                                                                                                        !validate1322(
+                                                                                                        !validate1335(
                                                                                                           data.value,
                                                                                                           {
                                                                                                             instancePath:
@@ -147803,9 +148697,9 @@ function validate772(
                                                                                                         vErrors =
                                                                                                           vErrors ===
                                                                                                           null
-                                                                                                            ? validate1322.errors
+                                                                                                            ? validate1335.errors
                                                                                                             : vErrors.concat(
-                                                                                                                validate1322.errors,
+                                                                                                                validate1335.errors,
                                                                                                               );
                                                                                                         errors =
                                                                                                           vErrors.length;
@@ -147861,6 +148755,299 @@ function validate772(
                                                                                                       valid0 = true;
                                                                                                       passing0 = 49;
                                                                                                     }
+                                                                                                    const _errs301 =
+                                                                                                      errors;
+                                                                                                    if (
+                                                                                                      data &&
+                                                                                                      typeof data ==
+                                                                                                        "object" &&
+                                                                                                      !Array.isArray(
+                                                                                                        data,
+                                                                                                      )
+                                                                                                    ) {
+                                                                                                      if (
+                                                                                                        data.kind ===
+                                                                                                          void 0 ||
+                                                                                                        !func0.call(
+                                                                                                          data,
+                                                                                                          "kind",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        const err300 =
+                                                                                                          {
+                                                                                                            instancePath,
+                                                                                                            schemaPath:
+                                                                                                              "#/oneOf/50/required",
+                                                                                                            keyword:
+                                                                                                              "required",
+                                                                                                            params:
+                                                                                                              {
+                                                                                                                missingProperty:
+                                                                                                                  "kind",
+                                                                                                              },
+                                                                                                            message:
+                                                                                                              "must have required property 'kind'",
+                                                                                                          };
+                                                                                                        if (
+                                                                                                          vErrors ===
+                                                                                                          null
+                                                                                                        ) {
+                                                                                                          vErrors =
+                                                                                                            [
+                                                                                                              err300,
+                                                                                                            ];
+                                                                                                        } else {
+                                                                                                          vErrors.push(
+                                                                                                            err300,
+                                                                                                          );
+                                                                                                        }
+                                                                                                        errors++;
+                                                                                                      }
+                                                                                                      if (
+                                                                                                        data.value ===
+                                                                                                          void 0 ||
+                                                                                                        !func0.call(
+                                                                                                          data,
+                                                                                                          "value",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        const err301 =
+                                                                                                          {
+                                                                                                            instancePath,
+                                                                                                            schemaPath:
+                                                                                                              "#/oneOf/50/required",
+                                                                                                            keyword:
+                                                                                                              "required",
+                                                                                                            params:
+                                                                                                              {
+                                                                                                                missingProperty:
+                                                                                                                  "value",
+                                                                                                              },
+                                                                                                            message:
+                                                                                                              "must have required property 'value'",
+                                                                                                          };
+                                                                                                        if (
+                                                                                                          vErrors ===
+                                                                                                          null
+                                                                                                        ) {
+                                                                                                          vErrors =
+                                                                                                            [
+                                                                                                              err301,
+                                                                                                            ];
+                                                                                                        } else {
+                                                                                                          vErrors.push(
+                                                                                                            err301,
+                                                                                                          );
+                                                                                                        }
+                                                                                                        errors++;
+                                                                                                      }
+                                                                                                      for (const key50 of Object.keys(
+                                                                                                        data,
+                                                                                                      )) {
+                                                                                                        if (!(
+                                                                                                          key50 ===
+                                                                                                            "kind" ||
+                                                                                                          key50 ===
+                                                                                                            "value"
+                                                                                                        )) {
+                                                                                                          const err302 =
+                                                                                                            {
+                                                                                                              instancePath,
+                                                                                                              schemaPath:
+                                                                                                                "#/oneOf/50/additionalProperties",
+                                                                                                              keyword:
+                                                                                                                "additionalProperties",
+                                                                                                              params:
+                                                                                                                {
+                                                                                                                  additionalProperty:
+                                                                                                                    key50,
+                                                                                                                },
+                                                                                                              message:
+                                                                                                                "must NOT have additional properties",
+                                                                                                            };
+                                                                                                          if (
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                          ) {
+                                                                                                            vErrors =
+                                                                                                              [
+                                                                                                                err302,
+                                                                                                              ];
+                                                                                                          } else {
+                                                                                                            vErrors.push(
+                                                                                                              err302,
+                                                                                                            );
+                                                                                                          }
+                                                                                                          errors++;
+                                                                                                        }
+                                                                                                      }
+                                                                                                      if (
+                                                                                                        data.kind !==
+                                                                                                          void 0 &&
+                                                                                                        func0.call(
+                                                                                                          data,
+                                                                                                          "kind",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        let data100 =
+                                                                                                          data.kind;
+                                                                                                        if (
+                                                                                                          typeof data100 !==
+                                                                                                          "string"
+                                                                                                        ) {
+                                                                                                          const err303 =
+                                                                                                            {
+                                                                                                              instancePath:
+                                                                                                                instancePath +
+                                                                                                                "/kind",
+                                                                                                              schemaPath:
+                                                                                                                "#/oneOf/50/properties/kind/type",
+                                                                                                              keyword:
+                                                                                                                "type",
+                                                                                                              params:
+                                                                                                                {
+                                                                                                                  type: "string",
+                                                                                                                },
+                                                                                                              message:
+                                                                                                                "must be string",
+                                                                                                            };
+                                                                                                          if (
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                          ) {
+                                                                                                            vErrors =
+                                                                                                              [
+                                                                                                                err303,
+                                                                                                              ];
+                                                                                                          } else {
+                                                                                                            vErrors.push(
+                                                                                                              err303,
+                                                                                                            );
+                                                                                                          }
+                                                                                                          errors++;
+                                                                                                        }
+                                                                                                        if (
+                                                                                                          "closed" !==
+                                                                                                          data100
+                                                                                                        ) {
+                                                                                                          const err304 =
+                                                                                                            {
+                                                                                                              instancePath:
+                                                                                                                instancePath +
+                                                                                                                "/kind",
+                                                                                                              schemaPath:
+                                                                                                                "#/oneOf/50/properties/kind/const",
+                                                                                                              keyword:
+                                                                                                                "const",
+                                                                                                              params:
+                                                                                                                {
+                                                                                                                  allowedValue:
+                                                                                                                    "closed",
+                                                                                                                },
+                                                                                                              message:
+                                                                                                                "must be equal to constant",
+                                                                                                            };
+                                                                                                          if (
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                          ) {
+                                                                                                            vErrors =
+                                                                                                              [
+                                                                                                                err304,
+                                                                                                              ];
+                                                                                                          } else {
+                                                                                                            vErrors.push(
+                                                                                                              err304,
+                                                                                                            );
+                                                                                                          }
+                                                                                                          errors++;
+                                                                                                        }
+                                                                                                      }
+                                                                                                      if (
+                                                                                                        data.value !==
+                                                                                                          void 0 &&
+                                                                                                        func0.call(
+                                                                                                          data,
+                                                                                                          "value",
+                                                                                                        )
+                                                                                                      ) {
+                                                                                                        if (
+                                                                                                          !validate1338(
+                                                                                                            data.value,
+                                                                                                            {
+                                                                                                              instancePath:
+                                                                                                                instancePath +
+                                                                                                                "/value",
+                                                                                                              parentData:
+                                                                                                                data,
+                                                                                                              parentDataProperty:
+                                                                                                                "value",
+                                                                                                              rootData,
+                                                                                                            },
+                                                                                                          )
+                                                                                                        ) {
+                                                                                                          vErrors =
+                                                                                                            vErrors ===
+                                                                                                            null
+                                                                                                              ? validate1338.errors
+                                                                                                              : vErrors.concat(
+                                                                                                                  validate1338.errors,
+                                                                                                                );
+                                                                                                          errors =
+                                                                                                            vErrors.length;
+                                                                                                        }
+                                                                                                      }
+                                                                                                    } else {
+                                                                                                      const err305 =
+                                                                                                        {
+                                                                                                          instancePath,
+                                                                                                          schemaPath:
+                                                                                                            "#/oneOf/50/type",
+                                                                                                          keyword:
+                                                                                                            "type",
+                                                                                                          params:
+                                                                                                            {
+                                                                                                              type: "object",
+                                                                                                            },
+                                                                                                          message:
+                                                                                                            "must be object",
+                                                                                                        };
+                                                                                                      if (
+                                                                                                        vErrors ===
+                                                                                                        null
+                                                                                                      ) {
+                                                                                                        vErrors =
+                                                                                                          [
+                                                                                                            err305,
+                                                                                                          ];
+                                                                                                      } else {
+                                                                                                        vErrors.push(
+                                                                                                          err305,
+                                                                                                        );
+                                                                                                      }
+                                                                                                      errors++;
+                                                                                                    }
+                                                                                                    var _valid0 =
+                                                                                                      _errs301 ===
+                                                                                                      errors;
+                                                                                                    if (
+                                                                                                      _valid0 &&
+                                                                                                      valid0
+                                                                                                    ) {
+                                                                                                      valid0 = false;
+                                                                                                      passing0 =
+                                                                                                        [
+                                                                                                          passing0,
+                                                                                                          50,
+                                                                                                        ];
+                                                                                                    } else {
+                                                                                                      if (
+                                                                                                        _valid0
+                                                                                                      ) {
+                                                                                                        valid0 = true;
+                                                                                                        passing0 = 50;
+                                                                                                      }
+                                                                                                    }
                                                                                                   }
                                                                                                 }
                                                                                               }
@@ -147911,7 +149098,7 @@ function validate772(
     }
   }
   if (!valid0) {
-    const err300 = {
+    const err306 = {
       instancePath,
       schemaPath: "#/oneOf",
       keyword: "oneOf",
@@ -147919,9 +149106,9 @@ function validate772(
       message: "must match exactly one schema in oneOf",
     };
     if (vErrors === null) {
-      vErrors = [err300];
+      vErrors = [err306];
     } else {
-      vErrors.push(err300);
+      vErrors.push(err306);
     }
     errors++;
   } else {
@@ -147937,9 +149124,9 @@ function validate772(
   validate772.errors = vErrors;
   return errors === 0;
 }
-var validateQueryValue = validate2690;
-var wrapper8 = { validate: validate2690 };
-function validate2690(
+var validateQueryValue = validate2708;
+var wrapper8 = { validate: validate2708 };
+function validate2708(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -148127,11 +149314,11 @@ function validate2690(
       }
     }
   }
-  validate2690.errors = vErrors;
+  validate2708.errors = vErrors;
   return errors === 0;
 }
-var validateQueueStatus = validate2119;
-function validate2119(
+var validateQueueStatus = validate2136;
+function validate2136(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -148232,17 +149419,17 @@ function validate2119(
     }
     errors++;
   }
-  validate2119.errors = vErrors;
+  validate2136.errors = vErrors;
   return errors === 0;
 }
-var validateRadius = validate2691;
-var schema649 = {
+var validateRadius = validate2709;
+var schema651 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["sharp", "soft", "round"],
   title: "Radius",
   type: "string",
 };
-function validate2691(
+function validate2709(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -148268,7 +149455,7 @@ function validate2691(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema649.enum },
+      params: { allowedValues: schema651.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -148278,11 +149465,11 @@ function validate2691(
     }
     errors++;
   }
-  validate2691.errors = vErrors;
+  validate2709.errors = vErrors;
   return errors === 0;
 }
-var validateRawBatch = validate1760;
-function validate1760(
+var validateRawBatch = validate1777;
+function validate1777(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -148373,7 +149560,7 @@ function validate1760(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -148382,8 +149569,8 @@ function validate1760(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -148408,7 +149595,7 @@ function validate1760(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1762(data1[i0], {
+            !validate1779(data1[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -148417,8 +149604,8 @@ function validate1760(
           ) {
             vErrors =
               vErrors === null
-                ? validate1762.errors
-                : vErrors.concat(validate1762.errors);
+                ? validate1779.errors
+                : vErrors.concat(validate1779.errors);
             errors = vErrors.length;
           }
         }
@@ -148440,7 +149627,7 @@ function validate1760(
     }
     if (data.previousCursor !== void 0 && func0.call(data, "previousCursor")) {
       if (
-        !validate1015(data.previousCursor, {
+        !validate1040(data.previousCursor, {
           instancePath: instancePath + "/previousCursor",
           parentData: data,
           parentDataProperty: "previousCursor",
@@ -148449,8 +149636,8 @@ function validate1760(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -148485,11 +149672,11 @@ function validate1760(
     }
     errors++;
   }
-  validate1760.errors = vErrors;
+  validate1777.errors = vErrors;
   return errors === 0;
 }
-var validateRawEvent = validate1745;
-var schema406 = {
+var validateRawEvent = validate1762;
+var schema408 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   oneOf: [
@@ -148585,7 +149772,7 @@ var schema406 = {
   title: "RawEvent",
   type: "object",
 };
-function validate1745(
+function validate1762(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -149517,7 +150704,7 @@ function validate1745(
       errors++;
     }
     for (const key2 of Object.keys(data)) {
-      if (!func0.call(schema406.properties, key2)) {
+      if (!func0.call(schema408.properties, key2)) {
         const err45 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -149663,11 +150850,11 @@ function validate1745(
     }
     errors++;
   }
-  validate1745.errors = vErrors;
+  validate1762.errors = vErrors;
   return errors === 0;
 }
-var validateRawPayload = validate2692;
-function validate2692(
+var validateRawPayload = validate2710;
+function validate2710(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -150608,11 +151795,11 @@ function validate2692(
       }
     }
   }
-  validate2692.errors = vErrors;
+  validate2710.errors = vErrors;
   return errors === 0;
 }
-var validateReaderGap = validate1768;
-function validate1768(
+var validateReaderGap = validate1785;
+function validate1785(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -150890,11 +152077,11 @@ function validate1768(
     }
     errors++;
   }
-  validate1768.errors = vErrors;
+  validate1785.errors = vErrors;
   return errors === 0;
 }
-var validateReaderGapReason = validate2700;
-var schema651 = {
+var validateReaderGapReason = validate2718;
+var schema653 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "reader_overflow",
@@ -150905,7 +152092,7 @@ var schema651 = {
   title: "ReaderGapReason",
   type: "string",
 };
-function validate2700(
+function validate2718(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -150936,7 +152123,7 @@ function validate2700(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema651.enum },
+      params: { allowedValues: schema653.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -150946,11 +152133,11 @@ function validate2700(
     }
     errors++;
   }
-  validate2700.errors = vErrors;
+  validate2718.errors = vErrors;
   return errors === 0;
 }
-var validateRebindParams = validate2701;
-function validate2701(
+var validateRebindParams = validate2719;
+function validate2719(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151051,11 +152238,11 @@ function validate2701(
     }
     errors++;
   }
-  validate2701.errors = vErrors;
+  validate2719.errors = vErrors;
   return errors === 0;
 }
-var validateRecentList = validate2704;
-function validate2704(
+var validateRecentList = validate2722;
+function validate2722(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151115,7 +152302,7 @@ function validate2704(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate984(data0[i0], {
+            !validate1008(data0[i0], {
               instancePath: instancePath + "/entries/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -151124,8 +152311,8 @@ function validate2704(
           ) {
             vErrors =
               vErrors === null
-                ? validate984.errors
-                : vErrors.concat(validate984.errors);
+                ? validate1008.errors
+                : vErrors.concat(validate1008.errors);
             errors = vErrors.length;
           }
         }
@@ -151176,17 +152363,17 @@ function validate2704(
     }
     errors++;
   }
-  validate2704.errors = vErrors;
+  validate2722.errors = vErrors;
   return errors === 0;
 }
-var validateReconnectState = validate2022;
-var schema465 = {
+var validateReconnectState = validate2039;
+var schema467 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["idle", "waiting", "attempting", "requires_rebind", "stopped"],
   title: "ReconnectState",
   type: "string",
 };
-function validate2022(
+function validate2039(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151218,7 +152405,7 @@ function validate2022(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema465.enum },
+      params: { allowedValues: schema467.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -151228,11 +152415,11 @@ function validate2022(
     }
     errors++;
   }
-  validate2022.errors = vErrors;
+  validate2039.errors = vErrors;
   return errors === 0;
 }
-var validateReconnectStatus = validate2023;
-function validate2023(
+var validateReconnectStatus = validate2040;
+function validate2040(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151349,11 +152536,11 @@ function validate2023(
     }
     errors++;
   }
-  validate2023.errors = vErrors;
+  validate2040.errors = vErrors;
   return errors === 0;
 }
-var validateRecoverPrefixParams = validate2707;
-function validate2707(
+var validateRecoverPrefixParams = validate2725;
+function validate2725(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151495,11 +152682,11 @@ function validate2707(
     }
     errors++;
   }
-  validate2707.errors = vErrors;
+  validate2725.errors = vErrors;
   return errors === 0;
 }
-var validateRegisterFileParams = validate1526;
-function validate1526(
+var validateRegisterFileParams = validate1542;
+function validate1542(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151601,11 +152788,11 @@ function validate1526(
     }
     errors++;
   }
-  validate1526.errors = vErrors;
+  validate1542.errors = vErrors;
   return errors === 0;
 }
-var validateReplayControlParams = validate1363;
-function validate1364(
+var validateReplayControlParams = validate1379;
+function validate1380(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151864,10 +153051,10 @@ function validate1364(
       }
     }
   }
-  validate1364.errors = vErrors;
+  validate1380.errors = vErrors;
   return errors === 0;
 }
-function validate1363(
+function validate1379(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -151961,7 +153148,7 @@ function validate1363(
     }
     if (data.playback !== void 0 && func0.call(data, "playback")) {
       if (
-        !validate1364(data.playback, {
+        !validate1380(data.playback, {
           instancePath: instancePath + "/playback",
           parentData: data,
           parentDataProperty: "playback",
@@ -151970,8 +153157,8 @@ function validate1363(
       ) {
         vErrors =
           vErrors === null
-            ? validate1364.errors
-            : vErrors.concat(validate1364.errors);
+            ? validate1380.errors
+            : vErrors.concat(validate1380.errors);
         errors = vErrors.length;
       }
     }
@@ -152038,12 +153225,12 @@ function validate1363(
     }
     errors++;
   }
-  validate1363.errors = vErrors;
+  validate1379.errors = vErrors;
   return errors === 0;
 }
-var validateReplayOpenParams = validate2711;
-var schema656 = { enum: ["original_timing", "fastest"], type: "string" };
-function validate2713(
+var validateReplayOpenParams = validate2729;
+var schema658 = { enum: ["original_timing", "fastest"], type: "string" };
+function validate2731(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152069,7 +153256,7 @@ function validate2713(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema656.enum },
+      params: { allowedValues: schema658.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -152079,10 +153266,10 @@ function validate2713(
     }
     errors++;
   }
-  validate2713.errors = vErrors;
+  validate2731.errors = vErrors;
   return errors === 0;
 }
-function validate2711(
+function validate2729(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152139,7 +153326,7 @@ function validate2711(
     }
     if (data.mode !== void 0 && func0.call(data, "mode")) {
       if (
-        !validate2713(data.mode, {
+        !validate2731(data.mode, {
           instancePath: instancePath + "/mode",
           parentData: data,
           parentDataProperty: "mode",
@@ -152148,8 +153335,8 @@ function validate2711(
       ) {
         vErrors =
           vErrors === null
-            ? validate2713.errors
-            : vErrors.concat(validate2713.errors);
+            ? validate2731.errors
+            : vErrors.concat(validate2731.errors);
         errors = vErrors.length;
       }
     }
@@ -152168,11 +153355,11 @@ function validate2711(
     }
     errors++;
   }
-  validate2711.errors = vErrors;
+  validate2729.errors = vErrors;
   return errors === 0;
 }
-var validateReplayPeerClosed = validate2715;
-function validate2715(
+var validateReplayPeerClosed = validate2733;
+function validate2733(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152308,11 +153495,11 @@ function validate2715(
     }
     errors++;
   }
-  validate2715.errors = vErrors;
+  validate2733.errors = vErrors;
   return errors === 0;
 }
-var validateReplayPeerOpenParams = validate2719;
-function validate2719(
+var validateReplayPeerOpenParams = validate2737;
+function validate2737(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152382,11 +153569,11 @@ function validate2719(
     }
     errors++;
   }
-  validate2719.errors = vErrors;
+  validate2737.errors = vErrors;
   return errors === 0;
 }
-var validateReplayPeerProgress = validate2721;
-function validate2721(
+var validateReplayPeerProgress = validate2739;
+function validate2739(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152625,11 +153812,11 @@ function validate2721(
     }
     errors++;
   }
-  validate2721.errors = vErrors;
+  validate2739.errors = vErrors;
   return errors === 0;
 }
-var validateReplayPeerResponse = validate2727;
-function validate2727(
+var validateReplayPeerResponse = validate2745;
+function validate2745(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152730,11 +153917,11 @@ function validate2727(
     }
     errors++;
   }
-  validate2727.errors = vErrors;
+  validate2745.errors = vErrors;
   return errors === 0;
 }
-var validateReplayPeerState = validate2730;
-function validate2730(
+var validateReplayPeerState = validate2748;
+function validate2748(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152922,11 +154109,11 @@ function validate2730(
     }
     errors++;
   }
-  validate2730.errors = vErrors;
+  validate2748.errors = vErrors;
   return errors === 0;
 }
-var validateReplayPeerSubmitParams = validate2735;
-function validate2735(
+var validateReplayPeerSubmitParams = validate2753;
+function validate2753(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -152996,11 +154183,11 @@ function validate2735(
     }
     errors++;
   }
-  validate2735.errors = vErrors;
+  validate2753.errors = vErrors;
   return errors === 0;
 }
-var validateReplayReadParams = validate1358;
-function validate1358(
+var validateReplayReadParams = validate1374;
+function validate1374(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -153225,11 +154412,11 @@ function validate1358(
     }
     errors++;
   }
-  validate1358.errors = vErrors;
+  validate1374.errors = vErrors;
   return errors === 0;
 }
-var validateReplayReadResult = validate1371;
-function validate1371(
+var validateReplayReadResult = validate1387;
+function validate1387(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -153458,11 +154645,11 @@ function validate1371(
     }
     errors++;
   }
-  validate1371.errors = vErrors;
+  validate1387.errors = vErrors;
   return errors === 0;
 }
-var validateReplayRecord = validate2737;
-function validate2737(
+var validateReplayRecord = validate2755;
+function validate2755(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -153835,12 +155022,12 @@ function validate2737(
       }
     }
   }
-  validate2737.errors = vErrors;
+  validate2755.errors = vErrors;
   return errors === 0;
 }
-var validateReplaySearchCommand = validate2743;
+var validateReplaySearchCommand = validate2761;
 var pattern25 = new RegExp("==$", "u");
-function validate2743(
+function validate2761(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -154102,7 +155289,7 @@ function validate2743(
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -154111,8 +155298,8 @@ function validate2743(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -154251,7 +155438,7 @@ function validate2743(
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -154260,8 +155447,8 @@ function validate2743(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -154373,7 +155560,7 @@ function validate2743(
       }
       if (data.searchId !== void 0 && func0.call(data, "searchId")) {
         if (
-          !validate979(data.searchId, {
+          !validate1003(data.searchId, {
             instancePath: instancePath + "/searchId",
             parentData: data,
             parentDataProperty: "searchId",
@@ -154382,8 +155569,8 @@ function validate2743(
         ) {
           vErrors =
             vErrors === null
-              ? validate979.errors
-              : vErrors.concat(validate979.errors);
+              ? validate1003.errors
+              : vErrors.concat(validate1003.errors);
           errors = vErrors.length;
         }
       }
@@ -154437,11 +155624,11 @@ function validate2743(
       }
     }
   }
-  validate2743.errors = vErrors;
+  validate2761.errors = vErrors;
   return errors === 0;
 }
-var validateReplaySearchHit = validate2750;
-function validate2750(
+var validateReplaySearchHit = validate2768;
+function validate2768(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -154641,11 +155828,11 @@ function validate2750(
     }
     errors++;
   }
-  validate2750.errors = vErrors;
+  validate2768.errors = vErrors;
   return errors === 0;
 }
-var validateReplaySearchPage = validate2756;
-function validate2756(
+var validateReplaySearchPage = validate2774;
+function validate2774(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -154757,7 +155944,7 @@ function validate2756(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate969(data1[i0], {
+            !validate993(data1[i0], {
               instancePath: instancePath + "/hits/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -154766,8 +155953,8 @@ function validate2756(
           ) {
             vErrors =
               vErrors === null
-                ? validate969.errors
-                : vErrors.concat(validate969.errors);
+                ? validate993.errors
+                : vErrors.concat(validate993.errors);
             errors = vErrors.length;
           }
         }
@@ -154834,11 +156021,11 @@ function validate2756(
     }
     errors++;
   }
-  validate2756.errors = vErrors;
+  validate2774.errors = vErrors;
   return errors === 0;
 }
-var validateReplaySearchParams = validate1377;
-function validate1378(
+var validateReplaySearchParams = validate1393;
+function validate1394(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -155100,7 +156287,7 @@ function validate1378(
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -155109,8 +156296,8 @@ function validate1378(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -155249,7 +156436,7 @@ function validate1378(
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -155258,8 +156445,8 @@ function validate1378(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -155371,7 +156558,7 @@ function validate1378(
       }
       if (data.searchId !== void 0 && func0.call(data, "searchId")) {
         if (
-          !validate979(data.searchId, {
+          !validate1003(data.searchId, {
             instancePath: instancePath + "/searchId",
             parentData: data,
             parentDataProperty: "searchId",
@@ -155380,8 +156567,8 @@ function validate1378(
         ) {
           vErrors =
             vErrors === null
-              ? validate979.errors
-              : vErrors.concat(validate979.errors);
+              ? validate1003.errors
+              : vErrors.concat(validate1003.errors);
           errors = vErrors.length;
         }
       }
@@ -155435,10 +156622,10 @@ function validate1378(
       }
     }
   }
-  validate1378.errors = vErrors;
+  validate1394.errors = vErrors;
   return errors === 0;
 }
-function validate1377(
+function validate1393(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -155513,7 +156700,7 @@ function validate1377(
     }
     if (data.command !== void 0 && func0.call(data, "command")) {
       if (
-        !validate1378(data.command, {
+        !validate1394(data.command, {
           instancePath: instancePath + "/command",
           parentData: data,
           parentDataProperty: "command",
@@ -155522,8 +156709,8 @@ function validate1377(
       ) {
         vErrors =
           vErrors === null
-            ? validate1378.errors
-            : vErrors.concat(validate1378.errors);
+            ? validate1394.errors
+            : vErrors.concat(validate1394.errors);
         errors = vErrors.length;
       }
     }
@@ -155574,11 +156761,11 @@ function validate1377(
     }
     errors++;
   }
-  validate1377.errors = vErrors;
+  validate1393.errors = vErrors;
   return errors === 0;
 }
-var validateReplaySearchResult = validate1388;
-function validate1388(
+var validateReplaySearchResult = validate1404;
+function validate1404(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -155722,7 +156909,7 @@ function validate1388(
     }
     if (data.result !== void 0 && func0.call(data, "result")) {
       if (
-        !validate968(data.result, {
+        !validate992(data.result, {
           instancePath: instancePath + "/result",
           parentData: data,
           parentDataProperty: "result",
@@ -155731,14 +156918,14 @@ function validate1388(
       ) {
         vErrors =
           vErrors === null
-            ? validate968.errors
-            : vErrors.concat(validate968.errors);
+            ? validate992.errors
+            : vErrors.concat(validate992.errors);
         errors = vErrors.length;
       }
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -155747,8 +156934,8 @@ function validate1388(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -155871,7 +157058,7 @@ function validate1388(
     }
     if (data.searchId !== void 0 && func0.call(data, "searchId")) {
       if (
-        !validate979(data.searchId, {
+        !validate1003(data.searchId, {
           instancePath: instancePath + "/searchId",
           parentData: data,
           parentDataProperty: "searchId",
@@ -155880,8 +157067,8 @@ function validate1388(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -155951,11 +157138,944 @@ function validate1388(
       }
     }
   }
-  validate1388.errors = vErrors;
+  validate1404.errors = vErrors;
   return errors === 0;
 }
-var validateRequestId = validate2760;
-function validate2760(
+var validateReplayTransmitParams = validate2778;
+function validate2780(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.captureRef === void 0 || !func0.call(data, "captureRef")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "captureRef" },
+        message: "must have required property 'captureRef'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.direction === void 0 || !func0.call(data, "direction")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "direction" },
+        message: "must have required property 'direction'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.bytesPerSecond === void 0 || !func0.call(data, "bytesPerSecond")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "bytesPerSecond" },
+        message: "must have required property 'bytesPerSecond'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(
+        key0 === "bytesPerSecond" ||
+        key0 === "captureRef" ||
+        key0 === "direction" ||
+        key0 === "sourceRange"
+      )) {
+        const err3 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
+    if (data.bytesPerSecond !== void 0 && func0.call(data, "bytesPerSecond")) {
+      if (
+        !validate32(data.bytesPerSecond, {
+          instancePath: instancePath + "/bytesPerSecond",
+          parentData: data,
+          parentDataProperty: "bytesPerSecond",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.captureRef !== void 0 && func0.call(data, "captureRef")) {
+      if (
+        !validate119(data.captureRef, {
+          instancePath: instancePath + "/captureRef",
+          parentData: data,
+          parentDataProperty: "captureRef",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate119.errors
+            : vErrors.concat(validate119.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.direction !== void 0 && func0.call(data, "direction")) {
+      if (
+        !validate409(data.direction, {
+          instancePath: instancePath + "/direction",
+          parentData: data,
+          parentDataProperty: "direction",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate409.errors
+            : vErrors.concat(validate409.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.sourceRange !== void 0 && func0.call(data, "sourceRange")) {
+      if (
+        !validate976(data.sourceRange, {
+          instancePath: instancePath + "/sourceRange",
+          parentData: data,
+          parentDataProperty: "sourceRange",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate976.errors
+            : vErrors.concat(validate976.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err4 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err4];
+    } else {
+      vErrors.push(err4);
+    }
+    errors++;
+  }
+  validate2780.errors = vErrors;
+  return errors === 0;
+}
+function validate2778(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.selection === void 0 || !func0.call(data, "selection")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "selection" },
+        message: "must have required property 'selection'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.previewDigest === void 0 || !func0.call(data, "previewDigest")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "previewDigest" },
+        message: "must have required property 'previewDigest'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(key0 === "previewDigest" || key0 === "selection")) {
+        const err2 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err2];
+        } else {
+          vErrors.push(err2);
+        }
+        errors++;
+      }
+    }
+    if (data.previewDigest !== void 0 && func0.call(data, "previewDigest")) {
+      if (
+        !validate30(data.previewDigest, {
+          instancePath: instancePath + "/previewDigest",
+          parentData: data,
+          parentDataProperty: "previewDigest",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate30.errors
+            : vErrors.concat(validate30.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.selection !== void 0 && func0.call(data, "selection")) {
+      if (
+        !validate2780(data.selection, {
+          instancePath: instancePath + "/selection",
+          parentData: data,
+          parentDataProperty: "selection",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate2780.errors
+            : vErrors.concat(validate2780.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err3 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err3];
+    } else {
+      vErrors.push(err3);
+    }
+    errors++;
+  }
+  validate2778.errors = vErrors;
+  return errors === 0;
+}
+var validateReplayTransmitPreview = validate2786;
+var schema671 = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  additionalProperties: false,
+  properties: {
+    bytesBase64: { $ref: "#/definitions/shared/definitions/Bytes" },
+    bytesPerSecond: { $ref: "#/definitions/shared/definitions/U64" },
+    captureRef: { $ref: "#/definitions/shared/definitions/ObjectRef" },
+    configuration: {
+      $ref: "#/definitions/shared/definitions/SerialConfiguration",
+    },
+    direction: { $ref: "#/definitions/shared/definitions/Direction" },
+    previewDigest: { $ref: "#/definitions/shared/definitions/Digest" },
+    spans: {
+      items: { $ref: "#/definitions/shared/definitions/ReplayTransmitSpan" },
+      type: "array",
+    },
+    target: { $ref: "#/definitions/shared/definitions/Target" },
+    targetRevision: { $ref: "#/definitions/shared/definitions/U64" },
+  },
+  required: [
+    "captureRef",
+    "target",
+    "targetRevision",
+    "configuration",
+    "direction",
+    "bytesPerSecond",
+    "bytesBase64",
+    "spans",
+    "previewDigest",
+  ],
+  title: "ReplayTransmitPreview",
+  type: "object",
+};
+function validate2786(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.captureRef === void 0 || !func0.call(data, "captureRef")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "captureRef" },
+        message: "must have required property 'captureRef'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.target === void 0 || !func0.call(data, "target")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "target" },
+        message: "must have required property 'target'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.targetRevision === void 0 || !func0.call(data, "targetRevision")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "targetRevision" },
+        message: "must have required property 'targetRevision'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    if (data.configuration === void 0 || !func0.call(data, "configuration")) {
+      const err3 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "configuration" },
+        message: "must have required property 'configuration'",
+      };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
+    if (data.direction === void 0 || !func0.call(data, "direction")) {
+      const err4 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "direction" },
+        message: "must have required property 'direction'",
+      };
+      if (vErrors === null) {
+        vErrors = [err4];
+      } else {
+        vErrors.push(err4);
+      }
+      errors++;
+    }
+    if (data.bytesPerSecond === void 0 || !func0.call(data, "bytesPerSecond")) {
+      const err5 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "bytesPerSecond" },
+        message: "must have required property 'bytesPerSecond'",
+      };
+      if (vErrors === null) {
+        vErrors = [err5];
+      } else {
+        vErrors.push(err5);
+      }
+      errors++;
+    }
+    if (data.bytesBase64 === void 0 || !func0.call(data, "bytesBase64")) {
+      const err6 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "bytesBase64" },
+        message: "must have required property 'bytesBase64'",
+      };
+      if (vErrors === null) {
+        vErrors = [err6];
+      } else {
+        vErrors.push(err6);
+      }
+      errors++;
+    }
+    if (data.spans === void 0 || !func0.call(data, "spans")) {
+      const err7 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "spans" },
+        message: "must have required property 'spans'",
+      };
+      if (vErrors === null) {
+        vErrors = [err7];
+      } else {
+        vErrors.push(err7);
+      }
+      errors++;
+    }
+    if (data.previewDigest === void 0 || !func0.call(data, "previewDigest")) {
+      const err8 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "previewDigest" },
+        message: "must have required property 'previewDigest'",
+      };
+      if (vErrors === null) {
+        vErrors = [err8];
+      } else {
+        vErrors.push(err8);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!func0.call(schema671.properties, key0)) {
+        const err9 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err9];
+        } else {
+          vErrors.push(err9);
+        }
+        errors++;
+      }
+    }
+    if (data.bytesBase64 !== void 0 && func0.call(data, "bytesBase64")) {
+      if (
+        !validate256(data.bytesBase64, {
+          instancePath: instancePath + "/bytesBase64",
+          parentData: data,
+          parentDataProperty: "bytesBase64",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate256.errors
+            : vErrors.concat(validate256.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.bytesPerSecond !== void 0 && func0.call(data, "bytesPerSecond")) {
+      if (
+        !validate32(data.bytesPerSecond, {
+          instancePath: instancePath + "/bytesPerSecond",
+          parentData: data,
+          parentDataProperty: "bytesPerSecond",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.captureRef !== void 0 && func0.call(data, "captureRef")) {
+      if (
+        !validate119(data.captureRef, {
+          instancePath: instancePath + "/captureRef",
+          parentData: data,
+          parentDataProperty: "captureRef",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate119.errors
+            : vErrors.concat(validate119.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.configuration !== void 0 && func0.call(data, "configuration")) {
+      if (
+        !validate597(data.configuration, {
+          instancePath: instancePath + "/configuration",
+          parentData: data,
+          parentDataProperty: "configuration",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate597.errors
+            : vErrors.concat(validate597.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.direction !== void 0 && func0.call(data, "direction")) {
+      if (
+        !validate409(data.direction, {
+          instancePath: instancePath + "/direction",
+          parentData: data,
+          parentDataProperty: "direction",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate409.errors
+            : vErrors.concat(validate409.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.previewDigest !== void 0 && func0.call(data, "previewDigest")) {
+      if (
+        !validate30(data.previewDigest, {
+          instancePath: instancePath + "/previewDigest",
+          parentData: data,
+          parentDataProperty: "previewDigest",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate30.errors
+            : vErrors.concat(validate30.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.spans !== void 0 && func0.call(data, "spans")) {
+      let data6 = data.spans;
+      if (Array.isArray(data6)) {
+        const len0 = data6.length;
+        for (let i0 = 0; i0 < len0; i0++) {
+          if (
+            !validate973(data6[i0], {
+              instancePath: instancePath + "/spans/" + i0,
+              parentData: data6,
+              parentDataProperty: i0,
+              rootData,
+            })
+          ) {
+            vErrors =
+              vErrors === null
+                ? validate973.errors
+                : vErrors.concat(validate973.errors);
+            errors = vErrors.length;
+          }
+        }
+      } else {
+        const err10 = {
+          instancePath: instancePath + "/spans",
+          schemaPath: "#/properties/spans/type",
+          keyword: "type",
+          params: { type: "array" },
+          message: "must be array",
+        };
+        if (vErrors === null) {
+          vErrors = [err10];
+        } else {
+          vErrors.push(err10);
+        }
+        errors++;
+      }
+    }
+    if (data.target !== void 0 && func0.call(data, "target")) {
+      if (
+        !validate582(data.target, {
+          instancePath: instancePath + "/target",
+          parentData: data,
+          parentDataProperty: "target",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate582.errors
+            : vErrors.concat(validate582.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.targetRevision !== void 0 && func0.call(data, "targetRevision")) {
+      if (
+        !validate32(data.targetRevision, {
+          instancePath: instancePath + "/targetRevision",
+          parentData: data,
+          parentDataProperty: "targetRevision",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err11 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err11];
+    } else {
+      vErrors.push(err11);
+    }
+    errors++;
+  }
+  validate2786.errors = vErrors;
+  return errors === 0;
+}
+var validateReplayTransmitSelection = validate2796;
+function validate2796(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.captureRef === void 0 || !func0.call(data, "captureRef")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "captureRef" },
+        message: "must have required property 'captureRef'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.direction === void 0 || !func0.call(data, "direction")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "direction" },
+        message: "must have required property 'direction'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.bytesPerSecond === void 0 || !func0.call(data, "bytesPerSecond")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "bytesPerSecond" },
+        message: "must have required property 'bytesPerSecond'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(
+        key0 === "bytesPerSecond" ||
+        key0 === "captureRef" ||
+        key0 === "direction" ||
+        key0 === "sourceRange"
+      )) {
+        const err3 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
+    if (data.bytesPerSecond !== void 0 && func0.call(data, "bytesPerSecond")) {
+      if (
+        !validate32(data.bytesPerSecond, {
+          instancePath: instancePath + "/bytesPerSecond",
+          parentData: data,
+          parentDataProperty: "bytesPerSecond",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.captureRef !== void 0 && func0.call(data, "captureRef")) {
+      if (
+        !validate119(data.captureRef, {
+          instancePath: instancePath + "/captureRef",
+          parentData: data,
+          parentDataProperty: "captureRef",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate119.errors
+            : vErrors.concat(validate119.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.direction !== void 0 && func0.call(data, "direction")) {
+      if (
+        !validate409(data.direction, {
+          instancePath: instancePath + "/direction",
+          parentData: data,
+          parentDataProperty: "direction",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate409.errors
+            : vErrors.concat(validate409.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.sourceRange !== void 0 && func0.call(data, "sourceRange")) {
+      if (
+        !validate976(data.sourceRange, {
+          instancePath: instancePath + "/sourceRange",
+          parentData: data,
+          parentDataProperty: "sourceRange",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate976.errors
+            : vErrors.concat(validate976.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err4 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err4];
+    } else {
+      vErrors.push(err4);
+    }
+    errors++;
+  }
+  validate2796.errors = vErrors;
+  return errors === 0;
+}
+var validateReplayTransmitSpan = validate2801;
+function validate2801(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.recordOrdinal === void 0 || !func0.call(data, "recordOrdinal")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "recordOrdinal" },
+        message: "must have required property 'recordOrdinal'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.source === void 0 || !func0.call(data, "source")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "source" },
+        message: "must have required property 'source'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.outputOffset === void 0 || !func0.call(data, "outputOffset")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "outputOffset" },
+        message: "must have required property 'outputOffset'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(
+        key0 === "outputOffset" ||
+        key0 === "recordOrdinal" ||
+        key0 === "source"
+      )) {
+        const err3 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
+    if (data.outputOffset !== void 0 && func0.call(data, "outputOffset")) {
+      if (
+        !validate32(data.outputOffset, {
+          instancePath: instancePath + "/outputOffset",
+          parentData: data,
+          parentDataProperty: "outputOffset",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.recordOrdinal !== void 0 && func0.call(data, "recordOrdinal")) {
+      if (
+        !validate32(data.recordOrdinal, {
+          instancePath: instancePath + "/recordOrdinal",
+          parentData: data,
+          parentDataProperty: "recordOrdinal",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.source !== void 0 && func0.call(data, "source")) {
+      if (
+        !validate976(data.source, {
+          instancePath: instancePath + "/source",
+          parentData: data,
+          parentDataProperty: "source",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate976.errors
+            : vErrors.concat(validate976.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err4 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err4];
+    } else {
+      vErrors.push(err4);
+    }
+    errors++;
+  }
+  validate2801.errors = vErrors;
+  return errors === 0;
+}
+var validateRequestId = validate2805;
+function validate2805(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -155996,11 +158116,11 @@ function validate2760(
     }
     errors++;
   }
-  validate2760.errors = vErrors;
+  validate2805.errors = vErrors;
   return errors === 0;
 }
-var validateResourceKind = validate1528;
-function validate1528(
+var validateResourceKind = validate1544;
+function validate1544(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156041,11 +158161,11 @@ function validate1528(
     }
     errors++;
   }
-  validate1528.errors = vErrors;
+  validate1544.errors = vErrors;
   return errors === 0;
 }
-var validateResultReference = validate2761;
-function validate2761(
+var validateResultReference = validate2806;
+function validate2806(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156115,11 +158235,11 @@ function validate2761(
     }
     errors++;
   }
-  validate2761.errors = vErrors;
+  validate2806.errors = vErrors;
   return errors === 0;
 }
-var validateRetentionMs = validate1744;
-function validate1744(
+var validateRetentionMs = validate1761;
+function validate1761(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156198,11 +158318,11 @@ function validate1744(
     }
     errors++;
   }
-  validate1744.errors = vErrors;
+  validate1761.errors = vErrors;
   return errors === 0;
 }
-var validateRevealTarget = validate2763;
-function validate2763(
+var validateRevealTarget = validate2808;
+function validate2808(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156342,11 +158462,11 @@ function validate2763(
     }
     errors++;
   }
-  validate2763.errors = vErrors;
+  validate2808.errors = vErrors;
   return errors === 0;
 }
-var validateRevokeParams = validate1897;
-function validate1897(
+var validateRevokeParams = validate1914;
+function validate1914(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156523,11 +158643,11 @@ function validate1897(
     }
     errors++;
   }
-  validate1897.errors = vErrors;
+  validate1914.errors = vErrors;
   return errors === 0;
 }
-var validateRpcReply = validate1599;
-function validate1599(
+var validateRpcReply = validate1615;
+function validate1615(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156602,7 +158722,7 @@ function validate1599(
     }
     if (data.result !== void 0 && func0.call(data, "result")) {
       if (
-        !validate1601(data.result, {
+        !validate1617(data.result, {
           instancePath: instancePath + "/result",
           parentData: data,
           parentDataProperty: "result",
@@ -156611,8 +158731,8 @@ function validate1599(
       ) {
         vErrors =
           vErrors === null
-            ? validate1601.errors
-            : vErrors.concat(validate1601.errors);
+            ? validate1617.errors
+            : vErrors.concat(validate1617.errors);
         errors = vErrors.length;
       }
     }
@@ -156757,11 +158877,11 @@ function validate1599(
       }
     }
   }
-  validate1599.errors = vErrors;
+  validate1615.errors = vErrors;
   return errors === 0;
 }
-var validateRpcRequest = validate1393;
-function validate1393(
+var validateRpcRequest = validate1409;
+function validate1409(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -156854,7 +158974,7 @@ function validate1393(
     }
     if (data.params !== void 0 && func0.call(data, "params")) {
       if (
-        !validate1394(data.params, {
+        !validate1410(data.params, {
           instancePath: instancePath + "/params",
           parentData: data,
           parentDataProperty: "params",
@@ -156863,8 +158983,8 @@ function validate1393(
       ) {
         vErrors =
           vErrors === null
-            ? validate1394.errors
-            : vErrors.concat(validate1394.errors);
+            ? validate1410.errors
+            : vErrors.concat(validate1410.errors);
         errors = vErrors.length;
       }
     }
@@ -156972,7 +159092,7 @@ function validate1393(
     }
     if (data.params !== void 0 && func0.call(data, "params")) {
       if (
-        !validate1398(data.params, {
+        !validate1414(data.params, {
           instancePath: instancePath + "/params",
           parentData: data,
           parentDataProperty: "params",
@@ -156981,8 +159101,8 @@ function validate1393(
       ) {
         vErrors =
           vErrors === null
-            ? validate1398.errors
-            : vErrors.concat(validate1398.errors);
+            ? validate1414.errors
+            : vErrors.concat(validate1414.errors);
         errors = vErrors.length;
       }
     }
@@ -157094,7 +159214,7 @@ function validate1393(
       }
       if (data.params !== void 0 && func0.call(data, "params")) {
         if (
-          !validate1430(data.params, {
+          !validate1446(data.params, {
             instancePath: instancePath + "/params",
             parentData: data,
             parentDataProperty: "params",
@@ -157103,8 +159223,8 @@ function validate1393(
         ) {
           vErrors =
             vErrors === null
-              ? validate1430.errors
-              : vErrors.concat(validate1430.errors);
+              ? validate1446.errors
+              : vErrors.concat(validate1446.errors);
           errors = vErrors.length;
         }
       }
@@ -157216,7 +159336,7 @@ function validate1393(
         }
         if (data.params !== void 0 && func0.call(data, "params")) {
           if (
-            !validate1435(data.params, {
+            !validate1451(data.params, {
               instancePath: instancePath + "/params",
               parentData: data,
               parentDataProperty: "params",
@@ -157225,8 +159345,8 @@ function validate1393(
           ) {
             vErrors =
               vErrors === null
-                ? validate1435.errors
-                : vErrors.concat(validate1435.errors);
+                ? validate1451.errors
+                : vErrors.concat(validate1451.errors);
             errors = vErrors.length;
           }
         }
@@ -157338,7 +159458,7 @@ function validate1393(
           }
           if (data.params !== void 0 && func0.call(data, "params")) {
             if (
-              !validate1447(data.params, {
+              !validate1463(data.params, {
                 instancePath: instancePath + "/params",
                 parentData: data,
                 parentDataProperty: "params",
@@ -157347,8 +159467,8 @@ function validate1393(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1447.errors
-                  : vErrors.concat(validate1447.errors);
+                  ? validate1463.errors
+                  : vErrors.concat(validate1463.errors);
               errors = vErrors.length;
             }
           }
@@ -157460,7 +159580,7 @@ function validate1393(
             }
             if (data.params !== void 0 && func0.call(data, "params")) {
               if (
-                !validate1451(data.params, {
+                !validate1467(data.params, {
                   instancePath: instancePath + "/params",
                   parentData: data,
                   parentDataProperty: "params",
@@ -157469,8 +159589,8 @@ function validate1393(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1451.errors
-                    : vErrors.concat(validate1451.errors);
+                    ? validate1467.errors
+                    : vErrors.concat(validate1467.errors);
                 errors = vErrors.length;
               }
             }
@@ -157582,7 +159702,7 @@ function validate1393(
               }
               if (data.params !== void 0 && func0.call(data, "params")) {
                 if (
-                  !validate1455(data.params, {
+                  !validate1471(data.params, {
                     instancePath: instancePath + "/params",
                     parentData: data,
                     parentDataProperty: "params",
@@ -157591,8 +159711,8 @@ function validate1393(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1455.errors
-                      : vErrors.concat(validate1455.errors);
+                      ? validate1471.errors
+                      : vErrors.concat(validate1471.errors);
                   errors = vErrors.length;
                 }
               }
@@ -157704,7 +159824,7 @@ function validate1393(
                 }
                 if (data.params !== void 0 && func0.call(data, "params")) {
                   if (
-                    !validate1466(data.params, {
+                    !validate1482(data.params, {
                       instancePath: instancePath + "/params",
                       parentData: data,
                       parentDataProperty: "params",
@@ -157713,8 +159833,8 @@ function validate1393(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1466.errors
-                        : vErrors.concat(validate1466.errors);
+                        ? validate1482.errors
+                        : vErrors.concat(validate1482.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -157826,7 +159946,7 @@ function validate1393(
                   }
                   if (data.params !== void 0 && func0.call(data, "params")) {
                     if (
-                      !validate1477(data.params, {
+                      !validate1493(data.params, {
                         instancePath: instancePath + "/params",
                         parentData: data,
                         parentDataProperty: "params",
@@ -157835,8 +159955,8 @@ function validate1393(
                     ) {
                       vErrors =
                         vErrors === null
-                          ? validate1477.errors
-                          : vErrors.concat(validate1477.errors);
+                          ? validate1493.errors
+                          : vErrors.concat(validate1493.errors);
                       errors = vErrors.length;
                     }
                   }
@@ -157948,7 +160068,7 @@ function validate1393(
                     }
                     if (data.params !== void 0 && func0.call(data, "params")) {
                       if (
-                        !validate1466(data.params, {
+                        !validate1482(data.params, {
                           instancePath: instancePath + "/params",
                           parentData: data,
                           parentDataProperty: "params",
@@ -157957,8 +160077,8 @@ function validate1393(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1466.errors
-                            : vErrors.concat(validate1466.errors);
+                            ? validate1482.errors
+                            : vErrors.concat(validate1482.errors);
                         errors = vErrors.length;
                       }
                     }
@@ -158086,7 +160206,7 @@ function validate1393(
                         func0.call(data, "params")
                       ) {
                         if (
-                          !validate1405(data.params, {
+                          !validate1421(data.params, {
                             instancePath: instancePath + "/params",
                             parentData: data,
                             parentDataProperty: "params",
@@ -158095,8 +160215,8 @@ function validate1393(
                         ) {
                           vErrors =
                             vErrors === null
-                              ? validate1405.errors
-                              : vErrors.concat(validate1405.errors);
+                              ? validate1421.errors
+                              : vErrors.concat(validate1421.errors);
                           errors = vErrors.length;
                         }
                       }
@@ -158224,7 +160344,7 @@ function validate1393(
                           func0.call(data, "params")
                         ) {
                           if (
-                            !validate1485(data.params, {
+                            !validate1501(data.params, {
                               instancePath: instancePath + "/params",
                               parentData: data,
                               parentDataProperty: "params",
@@ -158233,8 +160353,8 @@ function validate1393(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1485.errors
-                                : vErrors.concat(validate1485.errors);
+                                ? validate1501.errors
+                                : vErrors.concat(validate1501.errors);
                             errors = vErrors.length;
                           }
                         }
@@ -158363,7 +160483,7 @@ function validate1393(
                             func0.call(data, "params")
                           ) {
                             if (
-                              !validate1466(data.params, {
+                              !validate1482(data.params, {
                                 instancePath: instancePath + "/params",
                                 parentData: data,
                                 parentDataProperty: "params",
@@ -158372,8 +160492,8 @@ function validate1393(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1466.errors
-                                  : vErrors.concat(validate1466.errors);
+                                  ? validate1482.errors
+                                  : vErrors.concat(validate1482.errors);
                               errors = vErrors.length;
                             }
                           }
@@ -158504,7 +160624,7 @@ function validate1393(
                               func0.call(data, "params")
                             ) {
                               if (
-                                !validate1405(data.params, {
+                                !validate1421(data.params, {
                                   instancePath: instancePath + "/params",
                                   parentData: data,
                                   parentDataProperty: "params",
@@ -158513,8 +160633,8 @@ function validate1393(
                               ) {
                                 vErrors =
                                   vErrors === null
-                                    ? validate1405.errors
-                                    : vErrors.concat(validate1405.errors);
+                                    ? validate1421.errors
+                                    : vErrors.concat(validate1421.errors);
                                 errors = vErrors.length;
                               }
                             }
@@ -158650,7 +160770,7 @@ function validate1393(
                                 func0.call(data, "params")
                               ) {
                                 if (
-                                  !validate1466(data.params, {
+                                  !validate1482(data.params, {
                                     instancePath: instancePath + "/params",
                                     parentData: data,
                                     parentDataProperty: "params",
@@ -158659,8 +160779,8 @@ function validate1393(
                                 ) {
                                   vErrors =
                                     vErrors === null
-                                      ? validate1466.errors
-                                      : vErrors.concat(validate1466.errors);
+                                      ? validate1482.errors
+                                      : vErrors.concat(validate1482.errors);
                                   errors = vErrors.length;
                                 }
                               }
@@ -158798,7 +160918,7 @@ function validate1393(
                                   func0.call(data, "params")
                                 ) {
                                   if (
-                                    !validate1466(data.params, {
+                                    !validate1482(data.params, {
                                       instancePath: instancePath + "/params",
                                       parentData: data,
                                       parentDataProperty: "params",
@@ -158807,8 +160927,8 @@ function validate1393(
                                   ) {
                                     vErrors =
                                       vErrors === null
-                                        ? validate1466.errors
-                                        : vErrors.concat(validate1466.errors);
+                                        ? validate1482.errors
+                                        : vErrors.concat(validate1482.errors);
                                     errors = vErrors.length;
                                   }
                                 }
@@ -158946,7 +161066,7 @@ function validate1393(
                                     func0.call(data, "params")
                                   ) {
                                     if (
-                                      !validate1466(data.params, {
+                                      !validate1482(data.params, {
                                         instancePath: instancePath + "/params",
                                         parentData: data,
                                         parentDataProperty: "params",
@@ -158955,8 +161075,8 @@ function validate1393(
                                     ) {
                                       vErrors =
                                         vErrors === null
-                                          ? validate1466.errors
-                                          : vErrors.concat(validate1466.errors);
+                                          ? validate1482.errors
+                                          : vErrors.concat(validate1482.errors);
                                       errors = vErrors.length;
                                     }
                                   }
@@ -159096,7 +161216,7 @@ function validate1393(
                                       func0.call(data, "params")
                                     ) {
                                       if (
-                                        !validate1466(data.params, {
+                                        !validate1482(data.params, {
                                           instancePath:
                                             instancePath + "/params",
                                           parentData: data,
@@ -159106,9 +161226,9 @@ function validate1393(
                                       ) {
                                         vErrors =
                                           vErrors === null
-                                            ? validate1466.errors
+                                            ? validate1482.errors
                                             : vErrors.concat(
-                                                validate1466.errors,
+                                                validate1482.errors,
                                               );
                                         errors = vErrors.length;
                                       }
@@ -159253,7 +161373,7 @@ function validate1393(
                                         func0.call(data, "params")
                                       ) {
                                         if (
-                                          !validate1466(data.params, {
+                                          !validate1482(data.params, {
                                             instancePath:
                                               instancePath + "/params",
                                             parentData: data,
@@ -159263,9 +161383,9 @@ function validate1393(
                                         ) {
                                           vErrors =
                                             vErrors === null
-                                              ? validate1466.errors
+                                              ? validate1482.errors
                                               : vErrors.concat(
-                                                  validate1466.errors,
+                                                  validate1482.errors,
                                                 );
                                           errors = vErrors.length;
                                         }
@@ -159415,7 +161535,7 @@ function validate1393(
                                           func0.call(data, "params")
                                         ) {
                                           if (
-                                            !validate1466(data.params, {
+                                            !validate1482(data.params, {
                                               instancePath:
                                                 instancePath + "/params",
                                               parentData: data,
@@ -159425,9 +161545,9 @@ function validate1393(
                                           ) {
                                             vErrors =
                                               vErrors === null
-                                                ? validate1466.errors
+                                                ? validate1482.errors
                                                 : vErrors.concat(
-                                                    validate1466.errors,
+                                                    validate1482.errors,
                                                   );
                                             errors = vErrors.length;
                                           }
@@ -159578,7 +161698,7 @@ function validate1393(
                                             func0.call(data, "params")
                                           ) {
                                             if (
-                                              !validate1466(data.params, {
+                                              !validate1482(data.params, {
                                                 instancePath:
                                                   instancePath + "/params",
                                                 parentData: data,
@@ -159588,9 +161708,9 @@ function validate1393(
                                             ) {
                                               vErrors =
                                                 vErrors === null
-                                                  ? validate1466.errors
+                                                  ? validate1482.errors
                                                   : vErrors.concat(
-                                                      validate1466.errors,
+                                                      validate1482.errors,
                                                     );
                                               errors = vErrors.length;
                                             }
@@ -159663,11 +161783,11 @@ function validate1393(
       }
     }
   }
-  validate1393.errors = vErrors;
+  validate1409.errors = vErrors;
   return errors === 0;
 }
-var validateRpcResult = validate2769;
-function validate2769(
+var validateRpcResult = validate2814;
+function validate2814(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -159677,7 +161797,7 @@ function validate2769(
   let valid0 = false;
   const _errs1 = errors;
   if (
-    !validate1602(data, {
+    !validate1618(data, {
       instancePath,
       parentData,
       parentDataProperty,
@@ -159686,8 +161806,8 @@ function validate2769(
   ) {
     vErrors =
       vErrors === null
-        ? validate1602.errors
-        : vErrors.concat(validate1602.errors);
+        ? validate1618.errors
+        : vErrors.concat(validate1618.errors);
     errors = vErrors.length;
   }
   var _valid0 = _errs1 === errors;
@@ -159695,7 +161815,7 @@ function validate2769(
   if (!valid0) {
     const _errs2 = errors;
     if (
-      !validate1612(data, {
+      !validate1628(data, {
         instancePath,
         parentData,
         parentDataProperty,
@@ -159704,8 +161824,8 @@ function validate2769(
     ) {
       vErrors =
         vErrors === null
-          ? validate1612.errors
-          : vErrors.concat(validate1612.errors);
+          ? validate1628.errors
+          : vErrors.concat(validate1628.errors);
       errors = vErrors.length;
     }
     var _valid0 = _errs2 === errors;
@@ -159713,7 +161833,7 @@ function validate2769(
     if (!valid0) {
       const _errs3 = errors;
       if (
-        !validate1618(data, {
+        !validate1634(data, {
           instancePath,
           parentData,
           parentDataProperty,
@@ -159722,8 +161842,8 @@ function validate2769(
       ) {
         vErrors =
           vErrors === null
-            ? validate1618.errors
-            : vErrors.concat(validate1618.errors);
+            ? validate1634.errors
+            : vErrors.concat(validate1634.errors);
         errors = vErrors.length;
       }
       var _valid0 = _errs3 === errors;
@@ -159749,7 +161869,7 @@ function validate2769(
         if (!valid0) {
           const _errs5 = errors;
           if (
-            !validate1628(data, {
+            !validate1644(data, {
               instancePath,
               parentData,
               parentDataProperty,
@@ -159758,8 +161878,8 @@ function validate2769(
           ) {
             vErrors =
               vErrors === null
-                ? validate1628.errors
-                : vErrors.concat(validate1628.errors);
+                ? validate1644.errors
+                : vErrors.concat(validate1644.errors);
             errors = vErrors.length;
           }
           var _valid0 = _errs5 === errors;
@@ -159767,7 +161887,7 @@ function validate2769(
           if (!valid0) {
             const _errs6 = errors;
             if (
-              !validate1631(data, {
+              !validate1647(data, {
                 instancePath,
                 parentData,
                 parentDataProperty,
@@ -159776,8 +161896,8 @@ function validate2769(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1631.errors
-                  : vErrors.concat(validate1631.errors);
+                  ? validate1647.errors
+                  : vErrors.concat(validate1647.errors);
               errors = vErrors.length;
             }
             var _valid0 = _errs6 === errors;
@@ -159785,7 +161905,7 @@ function validate2769(
             if (!valid0) {
               const _errs7 = errors;
               if (
-                !validate1683(data, {
+                !validate1700(data, {
                   instancePath,
                   parentData,
                   parentDataProperty,
@@ -159794,8 +161914,8 @@ function validate2769(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1683.errors
-                    : vErrors.concat(validate1683.errors);
+                    ? validate1700.errors
+                    : vErrors.concat(validate1700.errors);
                 errors = vErrors.length;
               }
               var _valid0 = _errs7 === errors;
@@ -159803,7 +161923,7 @@ function validate2769(
               if (!valid0) {
                 const _errs8 = errors;
                 if (
-                  !validate1127(data, {
+                  !validate1143(data, {
                     instancePath,
                     parentData,
                     parentDataProperty,
@@ -159812,8 +161932,8 @@ function validate2769(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1127.errors
-                      : vErrors.concat(validate1127.errors);
+                      ? validate1143.errors
+                      : vErrors.concat(validate1143.errors);
                   errors = vErrors.length;
                 }
                 var _valid0 = _errs8 === errors;
@@ -159821,7 +161941,7 @@ function validate2769(
                 if (!valid0) {
                   const _errs9 = errors;
                   if (
-                    !validate1123(data, {
+                    !validate1139(data, {
                       instancePath,
                       parentData,
                       parentDataProperty,
@@ -159830,8 +161950,8 @@ function validate2769(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1123.errors
-                        : vErrors.concat(validate1123.errors);
+                        ? validate1139.errors
+                        : vErrors.concat(validate1139.errors);
                     errors = vErrors.length;
                   }
                   var _valid0 = _errs9 === errors;
@@ -159839,7 +161959,7 @@ function validate2769(
                   if (!valid0) {
                     const _errs10 = errors;
                     if (
-                      !validate1312(data, {
+                      !validate1328(data, {
                         instancePath,
                         parentData,
                         parentDataProperty,
@@ -159848,8 +161968,8 @@ function validate2769(
                     ) {
                       vErrors =
                         vErrors === null
-                          ? validate1312.errors
-                          : vErrors.concat(validate1312.errors);
+                          ? validate1328.errors
+                          : vErrors.concat(validate1328.errors);
                       errors = vErrors.length;
                     }
                     var _valid0 = _errs10 === errors;
@@ -159857,7 +161977,7 @@ function validate2769(
                     if (!valid0) {
                       const _errs11 = errors;
                       if (
-                        !validate1319(data, {
+                        !validate1335(data, {
                           instancePath,
                           parentData,
                           parentDataProperty,
@@ -159866,8 +161986,8 @@ function validate2769(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1319.errors
-                            : vErrors.concat(validate1319.errors);
+                            ? validate1335.errors
+                            : vErrors.concat(validate1335.errors);
                         errors = vErrors.length;
                       }
                       var _valid0 = _errs11 === errors;
@@ -159875,7 +161995,7 @@ function validate2769(
                       if (!valid0) {
                         const _errs12 = errors;
                         if (
-                          !validate1322(data, {
+                          !validate1338(data, {
                             instancePath,
                             parentData,
                             parentDataProperty,
@@ -159884,8 +162004,8 @@ function validate2769(
                         ) {
                           vErrors =
                             vErrors === null
-                              ? validate1322.errors
-                              : vErrors.concat(validate1322.errors);
+                              ? validate1338.errors
+                              : vErrors.concat(validate1338.errors);
                           errors = vErrors.length;
                         }
                         var _valid0 = _errs12 === errors;
@@ -159893,7 +162013,7 @@ function validate2769(
                         if (!valid0) {
                           const _errs13 = errors;
                           if (
-                            !validate1707(data, {
+                            !validate1724(data, {
                               instancePath,
                               parentData,
                               parentDataProperty,
@@ -159902,8 +162022,8 @@ function validate2769(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1707.errors
-                                : vErrors.concat(validate1707.errors);
+                                ? validate1724.errors
+                                : vErrors.concat(validate1724.errors);
                             errors = vErrors.length;
                           }
                           var _valid0 = _errs13 === errors;
@@ -159911,7 +162031,7 @@ function validate2769(
                           if (!valid0) {
                             const _errs14 = errors;
                             if (
-                              !validate1047(data, {
+                              !validate1072(data, {
                                 instancePath,
                                 parentData,
                                 parentDataProperty,
@@ -159920,8 +162040,8 @@ function validate2769(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1047.errors
-                                  : vErrors.concat(validate1047.errors);
+                                  ? validate1072.errors
+                                  : vErrors.concat(validate1072.errors);
                               errors = vErrors.length;
                             }
                             var _valid0 = _errs14 === errors;
@@ -159929,7 +162049,7 @@ function validate2769(
                             if (!valid0) {
                               const _errs15 = errors;
                               if (
-                                !validate1079(data, {
+                                !validate1095(data, {
                                   instancePath,
                                   parentData,
                                   parentDataProperty,
@@ -159938,8 +162058,8 @@ function validate2769(
                               ) {
                                 vErrors =
                                   vErrors === null
-                                    ? validate1079.errors
-                                    : vErrors.concat(validate1079.errors);
+                                    ? validate1095.errors
+                                    : vErrors.concat(validate1095.errors);
                                 errors = vErrors.length;
                               }
                               var _valid0 = _errs15 === errors;
@@ -159982,11 +162102,11 @@ function validate2769(
       }
     }
   }
-  validate2769.errors = vErrors;
+  validate2814.errors = vErrors;
   return errors === 0;
 }
-var validateRxPayload = validate2785;
-function validate2785(
+var validateRxPayload = validate2830;
+function validate2830(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -160139,11 +162259,11 @@ function validate2785(
     }
     errors++;
   }
-  validate2785.errors = vErrors;
+  validate2830.errors = vErrors;
   return errors === 0;
 }
-var validateSafeInteger = validate2790;
-function validate2790(
+var validateSafeInteger = validate2835;
+function validate2835(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -160201,11 +162321,11 @@ function validate2790(
       errors++;
     }
   }
-  validate2790.errors = vErrors;
+  validate2835.errors = vErrors;
   return errors === 0;
 }
-var validateSerialConfiguration = validate1998;
-function validate1998(
+var validateSerialConfiguration = validate2015;
+function validate2015(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -160507,11 +162627,11 @@ function validate1998(
     }
     errors++;
   }
-  validate1998.errors = vErrors;
+  validate2015.errors = vErrors;
   return errors === 0;
 }
-var validateSessionInputs = validate2791;
-function validate2791(
+var validateSessionInputs = validate2836;
+function validate2836(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -160811,11 +162931,11 @@ function validate2791(
     }
     errors++;
   }
-  validate2791.errors = vErrors;
+  validate2836.errors = vErrors;
   return errors === 0;
 }
-var validateSessionMetrics = validate2796;
-var schema674 = {
+var validateSessionMetrics = validate2841;
+var schema681 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   description:
@@ -160861,7 +162981,7 @@ var schema674 = {
   title: "SessionMetrics",
   type: "object",
 };
-function validate2796(
+function validate2841(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -161145,7 +163265,7 @@ function validate2796(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema674.properties, key0)) {
+      if (!func0.call(schema681.properties, key0)) {
         const err17 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -161469,11 +163589,11 @@ function validate2796(
     }
     errors++;
   }
-  validate2796.errors = vErrors;
+  validate2841.errors = vErrors;
   return errors === 0;
 }
-var validateSessionSnapshot = validate2009;
-var schema464 = {
+var validateSessionSnapshot = validate2026;
+var schema466 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -161511,7 +163631,7 @@ var schema464 = {
   title: "SessionSnapshot",
   type: "object",
 };
-function validate2009(
+function validate2026(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -161687,7 +163807,7 @@ function validate2009(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema464.properties, key0)) {
+      if (!func0.call(schema466.properties, key0)) {
         const err11 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -161930,17 +164050,17 @@ function validate2009(
     }
     errors++;
   }
-  validate2009.errors = vErrors;
+  validate2026.errors = vErrors;
   return errors === 0;
 }
-var validateSessionState = validate1988;
-var schema452 = {
+var validateSessionState = validate2005;
+var schema454 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["closed", "opening", "open", "disconnected", "closing"],
   title: "SessionState",
   type: "string",
 };
-function validate1988(
+function validate2005(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -161972,7 +164092,7 @@ function validate1988(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema452.enum },
+      params: { allowedValues: schema454.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -161982,11 +164102,11 @@ function validate1988(
     }
     errors++;
   }
-  validate1988.errors = vErrors;
+  validate2005.errors = vErrors;
   return errors === 0;
 }
-var validateSetReadOnlyParams = validate2098;
-function validate2098(
+var validateSetReadOnlyParams = validate2115;
+function validate2115(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -162057,11 +164177,11 @@ function validate2098(
     }
     errors++;
   }
-  validate2098.errors = vErrors;
+  validate2115.errors = vErrors;
   return errors === 0;
 }
-var validateSettingsDocumentResult = validate1936;
-function validate1936(
+var validateSettingsDocumentResult = validate1953;
+function validate1953(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -162162,11 +164282,11 @@ function validate1936(
     }
     errors++;
   }
-  validate1936.errors = vErrors;
+  validate1953.errors = vErrors;
   return errors === 0;
 }
-var validateSettingsSaveParams = validate1927;
-function validate1927(
+var validateSettingsSaveParams = validate1944;
+function validate1944(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -162236,11 +164356,11 @@ function validate1927(
     }
     errors++;
   }
-  validate1927.errors = vErrors;
+  validate1944.errors = vErrors;
   return errors === 0;
 }
-var validateSettingsSnapshot = validate2814;
-function validate2814(
+var validateSettingsSnapshot = validate2859;
+function validate2859(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -162341,11 +164461,11 @@ function validate2814(
     }
     errors++;
   }
-  validate2814.errors = vErrors;
+  validate2859.errors = vErrors;
   return errors === 0;
 }
-var validateSharedSettings = validate1908;
-var schema429 = {
+var validateSharedSettings = validate1925;
+var schema431 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -162386,7 +164506,7 @@ var schema429 = {
   title: "SharedSettings",
   type: "object",
 };
-function validate1908(
+function validate1925(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -162613,7 +164733,7 @@ function validate1908(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema429.properties, key0)) {
+      if (!func0.call(schema431.properties, key0)) {
         const err14 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -162952,17 +165072,17 @@ function validate1908(
     }
     errors++;
   }
-  validate1908.errors = vErrors;
+  validate1925.errors = vErrors;
   return errors === 0;
 }
-var validateShutdownMode = validate2817;
-var schema676 = {
+var validateShutdownMode = validate2862;
+var schema683 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["settle", "cancel_and_settle"],
   title: "ShutdownMode",
   type: "string",
 };
-function validate2817(
+function validate2862(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -162988,7 +165108,7 @@ function validate2817(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema676.enum },
+      params: { allowedValues: schema683.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -162998,12 +165118,12 @@ function validate2817(
     }
     errors++;
   }
-  validate2817.errors = vErrors;
+  validate2862.errors = vErrors;
   return errors === 0;
 }
-var validateShutdownReport = validate2818;
-var schema678 = { enum: ["settle", "cancel_and_settle"], type: "string" };
-function validate2822(
+var validateShutdownReport = validate2863;
+var schema685 = { enum: ["settle", "cancel_and_settle"], type: "string" };
+function validate2867(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163029,7 +165149,7 @@ function validate2822(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema678.enum },
+      params: { allowedValues: schema685.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -163039,10 +165159,10 @@ function validate2822(
     }
     errors++;
   }
-  validate2822.errors = vErrors;
+  validate2867.errors = vErrors;
   return errors === 0;
 }
-function validate2818(
+function validate2863(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163280,7 +165400,7 @@ function validate2818(
     }
     if (data.mode !== void 0 && func0.call(data, "mode")) {
       if (
-        !validate2822(data.mode, {
+        !validate2867(data.mode, {
           instancePath: instancePath + "/mode",
           parentData: data,
           parentDataProperty: "mode",
@@ -163289,8 +165409,8 @@ function validate2818(
       ) {
         vErrors =
           vErrors === null
-            ? validate2822.errors
-            : vErrors.concat(validate2822.errors);
+            ? validate2867.errors
+            : vErrors.concat(validate2867.errors);
         errors = vErrors.length;
       }
     }
@@ -163387,11 +165507,11 @@ function validate2818(
     }
     errors++;
   }
-  validate2818.errors = vErrors;
+  validate2863.errors = vErrors;
   return errors === 0;
 }
-var validateShutdownRequested = validate1900;
-function validate1900(
+var validateShutdownRequested = validate1917;
+function validate1917(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163461,11 +165581,11 @@ function validate1900(
     }
     errors++;
   }
-  validate1900.errors = vErrors;
+  validate1917.errors = vErrors;
   return errors === 0;
 }
-var validateSignedDecimal = validate2826;
-function validate2826(
+var validateSignedDecimal = validate2871;
+function validate2871(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163502,11 +165622,11 @@ function validate2826(
     }
     errors++;
   }
-  validate2826.errors = vErrors;
+  validate2871.errors = vErrors;
   return errors === 0;
 }
-var validateSnapshot = validate2827;
-function validate2827(
+var validateSnapshot = validate2872;
+function validate2872(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163613,7 +165733,7 @@ function validate2827(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -163622,8 +165742,8 @@ function validate2827(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -163728,11 +165848,11 @@ function validate2827(
     }
     errors++;
   }
-  validate2827.errors = vErrors;
+  validate2872.errors = vErrors;
   return errors === 0;
 }
-var validateSourceGap = validate2833;
-function validate2833(
+var validateSourceGap = validate2878;
+function validate2878(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163894,17 +166014,17 @@ function validate2833(
     }
     errors++;
   }
-  validate2833.errors = vErrors;
+  validate2878.errors = vErrors;
   return errors === 0;
 }
-var validateSourceGapReason = validate2838;
-var schema682 = {
+var validateSourceGapReason = validate2883;
+var schema689 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["network_loss", "backend_loss", "purge", "source_unknown"],
   title: "SourceGapReason",
   type: "string",
 };
-function validate2838(
+function validate2883(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -163935,7 +166055,7 @@ function validate2838(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema682.enum },
+      params: { allowedValues: schema689.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -163945,11 +166065,11 @@ function validate2838(
     }
     errors++;
   }
-  validate2838.errors = vErrors;
+  validate2883.errors = vErrors;
   return errors === 0;
 }
-var validateSourceRange = validate2151;
-function validate2151(
+var validateSourceRange = validate2168;
+function validate2168(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164200,11 +166320,11 @@ function validate2151(
     }
     errors++;
   }
-  validate2151.errors = vErrors;
+  validate2168.errors = vErrors;
   return errors === 0;
 }
-var validateStartupConfigSnapshot = validate2839;
-function validate2839(
+var validateStartupConfigSnapshot = validate2884;
+function validate2884(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164378,17 +166498,17 @@ function validate2839(
     }
     errors++;
   }
-  validate2839.errors = vErrors;
+  validate2884.errors = vErrors;
   return errors === 0;
 }
-var validateStartupConfigSource = validate2844;
-var schema684 = {
+var validateStartupConfigSource = validate2889;
+var schema691 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["argument", "environment", "default"],
   title: "StartupConfigSource",
   type: "string",
 };
-function validate2844(
+function validate2889(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164414,7 +166534,7 @@ function validate2844(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema684.enum },
+      params: { allowedValues: schema691.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -164424,17 +166544,17 @@ function validate2844(
     }
     errors++;
   }
-  validate2844.errors = vErrors;
+  validate2889.errors = vErrors;
   return errors === 0;
 }
-var validateStartupLogLevel = validate2845;
-var schema685 = {
+var validateStartupLogLevel = validate2890;
+var schema692 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["off", "error", "warn", "info", "debug", "trace"],
   title: "StartupLogLevel",
   type: "string",
 };
-function validate2845(
+function validate2890(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164467,7 +166587,7 @@ function validate2845(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema685.enum },
+      params: { allowedValues: schema692.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -164477,17 +166597,17 @@ function validate2845(
     }
     errors++;
   }
-  validate2845.errors = vErrors;
+  validate2890.errors = vErrors;
   return errors === 0;
 }
-var validateStartupProfileReference = validate2846;
-var schema686 = {
+var validateStartupProfileReference = validate2891;
+var schema693 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["host:profile"],
   title: "StartupProfileReference",
   type: "string",
 };
-function validate2846(
+function validate2891(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164513,7 +166633,7 @@ function validate2846(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema686.enum },
+      params: { allowedValues: schema693.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -164523,11 +166643,11 @@ function validate2846(
     }
     errors++;
   }
-  validate2846.errors = vErrors;
+  validate2891.errors = vErrors;
   return errors === 0;
 }
-var validateStateScopeRef = validate1931;
-function validate1931(
+var validateStateScopeRef = validate1948;
+function validate1948(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164628,11 +166748,11 @@ function validate1931(
     }
     errors++;
   }
-  validate1931.errors = vErrors;
+  validate1948.errors = vErrors;
   return errors === 0;
 }
-var validateStateScopesResult = validate1934;
-function validate1934(
+var validateStateScopesResult = validate1951;
+function validate1951(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164722,11 +166842,11 @@ function validate1934(
     }
     errors++;
   }
-  validate1934.errors = vErrors;
+  validate1951.errors = vErrors;
   return errors === 0;
 }
-var validateStateSnapshotParams = validate2847;
-function validate2847(
+var validateStateSnapshotParams = validate2892;
+function validate2892(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164796,11 +166916,11 @@ function validate2847(
     }
     errors++;
   }
-  validate2847.errors = vErrors;
+  validate2892.errors = vErrors;
   return errors === 0;
 }
-var validateStateSubscribeParams = validate2849;
-function validate2849(
+var validateStateSubscribeParams = validate2894;
+function validate2894(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164856,7 +166976,7 @@ function validate2849(
     }
     if (data.after !== void 0 && func0.call(data, "after")) {
       if (
-        !validate1015(data.after, {
+        !validate1040(data.after, {
           instancePath: instancePath + "/after",
           parentData: data,
           parentDataProperty: "after",
@@ -164865,8 +166985,8 @@ function validate2849(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -164901,17 +167021,17 @@ function validate2849(
     }
     errors++;
   }
-  validate2849.errors = vErrors;
+  validate2894.errors = vErrors;
   return errors === 0;
 }
-var validateStopBits = validate1904;
-var schema426 = {
+var validateStopBits = validate1921;
+var schema428 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["one", "onePointFive", "two"],
   title: "StopBits",
   type: "string",
 };
-function validate1904(
+function validate1921(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -164937,7 +167057,7 @@ function validate1904(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema426.enum },
+      params: { allowedValues: schema428.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -164947,11 +167067,11 @@ function validate1904(
     }
     errors++;
   }
-  validate1904.errors = vErrors;
+  validate1921.errors = vErrors;
   return errors === 0;
 }
-var validateStreamCreditParams = validate2188;
-function validate2188(
+var validateStreamCreditParams = validate2205;
+function validate2205(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -165029,7 +167149,7 @@ function validate2188(
     }
     if (data.ackCursor !== void 0 && func0.call(data, "ackCursor")) {
       if (
-        !validate1015(data.ackCursor, {
+        !validate1040(data.ackCursor, {
           instancePath: instancePath + "/ackCursor",
           parentData: data,
           parentDataProperty: "ackCursor",
@@ -165038,8 +167158,8 @@ function validate2188(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -165093,11 +167213,11 @@ function validate2188(
     }
     errors++;
   }
-  validate2188.errors = vErrors;
+  validate2205.errors = vErrors;
   return errors === 0;
 }
-var validateStreamCreditResult = validate2192;
-function validate2192(
+var validateStreamCreditResult = validate2209;
+function validate2209(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -165194,7 +167314,7 @@ function validate2192(
     }
     if (data.ackCursor !== void 0 && func0.call(data, "ackCursor")) {
       if (
-        !validate1015(data.ackCursor, {
+        !validate1040(data.ackCursor, {
           instancePath: instancePath + "/ackCursor",
           parentData: data,
           parentDataProperty: "ackCursor",
@@ -165203,8 +167323,8 @@ function validate2192(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -165277,11 +167397,11 @@ function validate2192(
     }
     errors++;
   }
-  validate2192.errors = vErrors;
+  validate2209.errors = vErrors;
   return errors === 0;
 }
-var validateStreamCursorResult = validate2852;
-function validate2852(
+var validateStreamCursorResult = validate2897;
+function validate2897(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -165337,7 +167457,7 @@ function validate2852(
     }
     if (data.cursor !== void 0 && func0.call(data, "cursor")) {
       if (
-        !validate1015(data.cursor, {
+        !validate1040(data.cursor, {
           instancePath: instancePath + "/cursor",
           parentData: data,
           parentDataProperty: "cursor",
@@ -165346,8 +167466,8 @@ function validate2852(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -165382,11 +167502,11 @@ function validate2852(
     }
     errors++;
   }
-  validate2852.errors = vErrors;
+  validate2897.errors = vErrors;
   return errors === 0;
 }
-var validateStreamItem = validate2855;
-function validate2855(
+var validateStreamItem = validate2900;
+function validate2900(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -165660,11 +167780,11 @@ function validate2855(
       }
     }
   }
-  validate2855.errors = vErrors;
+  validate2900.errors = vErrors;
   return errors === 0;
 }
-var validateStreamReadParams = validate2145;
-function validate2145(
+var validateStreamReadParams = validate2162;
+function validate2162(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -165864,11 +167984,11 @@ function validate2145(
     }
     errors++;
   }
-  validate2145.errors = vErrors;
+  validate2162.errors = vErrors;
   return errors === 0;
 }
-var validateStreamReadResult = validate2177;
-function validate2177(
+var validateStreamReadResult = validate2194;
+function validate2194(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166025,11 +168145,11 @@ function validate2177(
     }
     errors++;
   }
-  validate2177.errors = vErrors;
+  validate2194.errors = vErrors;
   return errors === 0;
 }
-var validateStreamSubscribeParams = validate2180;
-function validate2180(
+var validateStreamSubscribeParams = validate2197;
+function validate2197(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166139,7 +168259,7 @@ function validate2180(
     }
     if (data.after !== void 0 && func0.call(data, "after")) {
       if (
-        !validate1015(data.after, {
+        !validate1040(data.after, {
           instancePath: instancePath + "/after",
           parentData: data,
           parentDataProperty: "after",
@@ -166148,8 +168268,8 @@ function validate2180(
       ) {
         vErrors =
           vErrors === null
-            ? validate1015.errors
-            : vErrors.concat(validate1015.errors);
+            ? validate1040.errors
+            : vErrors.concat(validate1040.errors);
         errors = vErrors.length;
       }
     }
@@ -166174,7 +168294,7 @@ function validate2180(
     }
     if (data.overflowPolicy !== void 0 && func0.call(data, "overflowPolicy")) {
       if (
-        !validate1277(data.overflowPolicy, {
+        !validate1293(data.overflowPolicy, {
           instancePath: instancePath + "/overflowPolicy",
           parentData: data,
           parentDataProperty: "overflowPolicy",
@@ -166183,8 +168303,8 @@ function validate2180(
       ) {
         vErrors =
           vErrors === null
-            ? validate1277.errors
-            : vErrors.concat(validate1277.errors);
+            ? validate1293.errors
+            : vErrors.concat(validate1293.errors);
         errors = vErrors.length;
       }
     }
@@ -166235,11 +168355,11 @@ function validate2180(
     }
     errors++;
   }
-  validate2180.errors = vErrors;
+  validate2197.errors = vErrors;
   return errors === 0;
 }
-var validateStreamSubscribeResult = validate2186;
-function validate2186(
+var validateStreamSubscribeResult = validate2203;
+function validate2203(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166309,11 +168429,11 @@ function validate2186(
     }
     errors++;
   }
-  validate2186.errors = vErrors;
+  validate2203.errors = vErrors;
   return errors === 0;
 }
-var validateSubscriptionCloseParams = validate2858;
-function validate2858(
+var validateSubscriptionCloseParams = validate2903;
+function validate2903(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166383,11 +168503,11 @@ function validate2858(
     }
     errors++;
   }
-  validate2858.errors = vErrors;
+  validate2903.errors = vErrors;
   return errors === 0;
 }
-var validateSubscriptionResult = validate2860;
-function validate2860(
+var validateSubscriptionResult = validate2905;
+function validate2905(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166457,12 +168577,12 @@ function validate2860(
     }
     errors++;
   }
-  validate2860.errors = vErrors;
+  validate2905.errors = vErrors;
   return errors === 0;
 }
-var validateTakeoverParams = validate2108;
-var schema491 = { enum: ["user"], type: "string" };
-function validate2110(
+var validateTakeoverParams = validate2125;
+var schema493 = { enum: ["user"], type: "string" };
+function validate2127(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166488,7 +168608,7 @@ function validate2110(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema491.enum },
+      params: { allowedValues: schema493.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -166498,10 +168618,10 @@ function validate2110(
     }
     errors++;
   }
-  validate2110.errors = vErrors;
+  validate2127.errors = vErrors;
   return errors === 0;
 }
-function validate2108(
+function validate2125(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166573,7 +168693,7 @@ function validate2108(
     }
     if (data.reason !== void 0 && func0.call(data, "reason")) {
       if (
-        !validate2110(data.reason, {
+        !validate2127(data.reason, {
           instancePath: instancePath + "/reason",
           parentData: data,
           parentDataProperty: "reason",
@@ -166582,8 +168702,8 @@ function validate2108(
       ) {
         vErrors =
           vErrors === null
-            ? validate2110.errors
-            : vErrors.concat(validate2110.errors);
+            ? validate2127.errors
+            : vErrors.concat(validate2127.errors);
         errors = vErrors.length;
       }
     }
@@ -166602,17 +168722,17 @@ function validate2108(
     }
     errors++;
   }
-  validate2108.errors = vErrors;
+  validate2125.errors = vErrors;
   return errors === 0;
 }
-var validateTakeoverReason = validate1997;
-var schema461 = {
+var validateTakeoverReason = validate2014;
+var schema463 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["user"],
   title: "TakeoverReason",
   type: "string",
 };
-function validate1997(
+function validate2014(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166638,7 +168758,7 @@ function validate1997(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema461.enum },
+      params: { allowedValues: schema463.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -166648,11 +168768,11 @@ function validate1997(
     }
     errors++;
   }
-  validate1997.errors = vErrors;
+  validate2014.errors = vErrors;
   return errors === 0;
 }
-var validateTakeoverReceipt = validate2112;
-function validate2112(
+var validateTakeoverReceipt = validate2129;
+function validate2129(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -166748,11 +168868,11 @@ function validate2112(
     }
     errors++;
   }
-  validate2112.errors = vErrors;
+  validate2129.errors = vErrors;
   return errors === 0;
 }
-var validateTarget = validate2862;
-function validate2862(
+var validateTarget = validate2907;
+function validate2907(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167059,17 +169179,17 @@ function validate2862(
     }
     errors++;
   }
-  validate2862.errors = vErrors;
+  validate2907.errors = vErrors;
   return errors === 0;
 }
-var validateTerminalMode = validate2868;
-var schema694 = {
+var validateTerminalMode = validate2913;
+var schema701 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["text", "hex"],
   title: "TerminalMode",
   type: "string",
 };
-function validate2868(
+function validate2913(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167095,7 +169215,7 @@ function validate2868(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema694.enum },
+      params: { allowedValues: schema701.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -167105,11 +169225,11 @@ function validate2868(
     }
     errors++;
   }
-  validate2868.errors = vErrors;
+  validate2913.errors = vErrors;
   return errors === 0;
 }
-var validateTerminalSettings = validate1509;
-function validate1509(
+var validateTerminalSettings = validate1525;
+function validate1525(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167349,11 +169469,11 @@ function validate1509(
     }
     errors++;
   }
-  validate1509.errors = vErrors;
+  validate1525.errors = vErrors;
   return errors === 0;
 }
-var validateTerminalTypography = validate2869;
-function validate2869(
+var validateTerminalTypography = validate2914;
+function validate2914(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167658,12 +169778,12 @@ function validate2869(
     }
     errors++;
   }
-  validate2869.errors = vErrors;
+  validate2914.errors = vErrors;
   return errors === 0;
 }
-var validateTextExportParams = validate2870;
-var schema697 = { enum: ["jsonl", "csv"], type: "string" };
-function validate2872(
+var validateTextExportParams = validate2915;
+var schema704 = { enum: ["jsonl", "csv"], type: "string" };
+function validate2917(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167689,7 +169809,7 @@ function validate2872(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema697.enum },
+      params: { allowedValues: schema704.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -167699,10 +169819,10 @@ function validate2872(
     }
     errors++;
   }
-  validate2872.errors = vErrors;
+  validate2917.errors = vErrors;
   return errors === 0;
 }
-function validate2870(
+function validate2915(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167778,7 +169898,7 @@ function validate2870(
     }
     if (data.format !== void 0 && func0.call(data, "format")) {
       if (
-        !validate2872(data.format, {
+        !validate2917(data.format, {
           instancePath: instancePath + "/format",
           parentData: data,
           parentDataProperty: "format",
@@ -167787,8 +169907,8 @@ function validate2870(
       ) {
         vErrors =
           vErrors === null
-            ? validate2872.errors
-            : vErrors.concat(validate2872.errors);
+            ? validate2917.errors
+            : vErrors.concat(validate2917.errors);
         errors = vErrors.length;
       }
     }
@@ -167823,17 +169943,17 @@ function validate2870(
     }
     errors++;
   }
-  validate2870.errors = vErrors;
+  validate2915.errors = vErrors;
   return errors === 0;
 }
-var validateTheme = validate2875;
-var schema698 = {
+var validateTheme = validate2920;
+var schema705 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["light", "dark", "system"],
   title: "Theme",
   type: "string",
 };
-function validate2875(
+function validate2920(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -167859,7 +169979,7 @@ function validate2875(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema698.enum },
+      params: { allowedValues: schema705.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -167869,11 +169989,11 @@ function validate2875(
     }
     errors++;
   }
-  validate2875.errors = vErrors;
+  validate2920.errors = vErrors;
   return errors === 0;
 }
-var validateTimePrecision = validate2876;
-function validate2876(
+var validateTimePrecision = validate2921;
+function validate2921(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168064,17 +170184,17 @@ function validate2876(
     }
     errors++;
   }
-  validate2876.errors = vErrors;
+  validate2921.errors = vErrors;
   return errors === 0;
 }
-var validateTimeSource = validate2882;
-var schema700 = {
+var validateTimeSource = validate2927;
+var schema707 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["host_read", "device", "line_capture", "sample_clock"],
   title: "TimeSource",
   type: "string",
 };
-function validate2882(
+function validate2927(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168105,7 +170225,7 @@ function validate2882(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema700.enum },
+      params: { allowedValues: schema707.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -168115,11 +170235,11 @@ function validate2882(
     }
     errors++;
   }
-  validate2882.errors = vErrors;
+  validate2927.errors = vErrors;
   return errors === 0;
 }
-var validateTimestamp = validate1536;
-function validate1536(
+var validateTimestamp = validate1552;
+function validate1552(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168160,11 +170280,11 @@ function validate1536(
     }
     errors++;
   }
-  validate1536.errors = vErrors;
+  validate1552.errors = vErrors;
   return errors === 0;
 }
-var validateToolHandoffParams = validate1554;
-function validate1554(
+var validateToolHandoffParams = validate1570;
+function validate1570(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168370,11 +170490,11 @@ function validate1554(
     }
     errors++;
   }
-  validate1554.errors = vErrors;
+  validate1570.errors = vErrors;
   return errors === 0;
 }
-var validateToolHandoffResult = validate2883;
-function validate2883(
+var validateToolHandoffResult = validate2928;
+function validate2928(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168526,11 +170646,11 @@ function validate2883(
     }
     errors++;
   }
-  validate2883.errors = vErrors;
+  validate2928.errors = vErrors;
   return errors === 0;
 }
-var validateTransformReference = validate2057;
-function validate2057(
+var validateTransformReference = validate2074;
+function validate2074(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168673,11 +170793,11 @@ function validate2057(
     }
     errors++;
   }
-  validate2057.errors = vErrors;
+  validate2074.errors = vErrors;
   return errors === 0;
 }
-var validateTransportCapabilities = validate2007;
-var schema463 = {
+var validateTransportCapabilities = validate2024;
+var schema465 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -168705,7 +170825,7 @@ var schema463 = {
   title: "TransportCapabilities",
   type: "object",
 };
-function validate2007(
+function validate2024(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -168848,7 +170968,7 @@ function validate2007(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema463.properties, key0)) {
+      if (!func0.call(schema465.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -169031,17 +171151,17 @@ function validate2007(
     }
     errors++;
   }
-  validate2007.errors = vErrors;
+  validate2024.errors = vErrors;
   return errors === 0;
 }
-var validateTransportSemantics = validate1987;
-var schema451 = {
+var validateTransportSemantics = validate2004;
+var schema453 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["stream", "message"],
   title: "TransportSemantics",
   type: "string",
 };
-function validate1987(
+function validate2004(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -169067,7 +171187,7 @@ function validate1987(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema451.enum },
+      params: { allowedValues: schema453.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -169077,11 +171197,11 @@ function validate1987(
     }
     errors++;
   }
-  validate1987.errors = vErrors;
+  validate2004.errors = vErrors;
   return errors === 0;
 }
-var validateTxDispatchWindow = validate2885;
-function validate2885(
+var validateTxDispatchWindow = validate2930;
+function validate2930(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -169182,11 +171302,11 @@ function validate2885(
     }
     errors++;
   }
-  validate2885.errors = vErrors;
+  validate2930.errors = vErrors;
   return errors === 0;
 }
-var validateTxGate = validate2888;
-var schema703 = {
+var validateTxGate = validate2933;
+var schema710 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "ready",
@@ -169198,7 +171318,7 @@ var schema703 = {
   title: "TxGate",
   type: "string",
 };
-function validate2888(
+function validate2933(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -169230,7 +171350,7 @@ function validate2888(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema703.enum },
+      params: { allowedValues: schema710.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -169240,11 +171360,11 @@ function validate2888(
     }
     errors++;
   }
-  validate2888.errors = vErrors;
+  validate2933.errors = vErrors;
   return errors === 0;
 }
-var validateTxIntent = validate2135;
-function validate2135(
+var validateTxIntent = validate2152;
+function validate2152(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -169412,17 +171532,17 @@ function validate2135(
     }
     errors++;
   }
-  validate2135.errors = vErrors;
+  validate2152.errors = vErrors;
   return errors === 0;
 }
-var validateTxOutcome = validate2889;
-var schema704 = {
+var validateTxOutcome = validate2934;
+var schema711 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["accepted", "partial", "rejected", "unknown"],
   title: "TxOutcome",
   type: "string",
 };
-function validate2889(
+function validate2934(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -169453,7 +171573,7 @@ function validate2889(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema704.enum },
+      params: { allowedValues: schema711.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -169463,11 +171583,11 @@ function validate2889(
     }
     errors++;
   }
-  validate2889.errors = vErrors;
+  validate2934.errors = vErrors;
   return errors === 0;
 }
-var validateTxParams = validate2060;
-function validate2060(
+var validateTxParams = validate2077;
+function validate2077(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -169690,7 +171810,7 @@ function validate2060(
     }
     if (data.dispatchWindow !== void 0 && func0.call(data, "dispatchWindow")) {
       if (
-        !validate1232(data.dispatchWindow, {
+        !validate1248(data.dispatchWindow, {
           instancePath: instancePath + "/dispatchWindow",
           parentData: data,
           parentDataProperty: "dispatchWindow",
@@ -169699,8 +171819,8 @@ function validate2060(
       ) {
         vErrors =
           vErrors === null
-            ? validate1232.errors
-            : vErrors.concat(validate1232.errors);
+            ? validate1248.errors
+            : vErrors.concat(validate1248.errors);
         errors = vErrors.length;
       }
     }
@@ -169738,7 +171858,7 @@ function validate2060(
     }
     if (data.sourceText !== void 0 && func0.call(data, "sourceText")) {
       if (
-        !validate1238(data.sourceText, {
+        !validate1254(data.sourceText, {
           instancePath: instancePath + "/sourceText",
           parentData: data,
           parentDataProperty: "sourceText",
@@ -169747,8 +171867,8 @@ function validate2060(
       ) {
         vErrors =
           vErrors === null
-            ? validate1238.errors
-            : vErrors.concat(validate1238.errors);
+            ? validate1254.errors
+            : vErrors.concat(validate1254.errors);
         errors = vErrors.length;
       }
     }
@@ -169758,7 +171878,7 @@ function validate2060(
         const len0 = data5.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1252(data5[i0], {
+            !validate1268(data5[i0], {
               instancePath: instancePath + "/transforms/" + i0,
               parentData: data5,
               parentDataProperty: i0,
@@ -169767,8 +171887,8 @@ function validate2060(
           ) {
             vErrors =
               vErrors === null
-                ? validate1252.errors
-                : vErrors.concat(validate1252.errors);
+                ? validate1268.errors
+                : vErrors.concat(validate1268.errors);
             errors = vErrors.length;
           }
         }
@@ -169819,11 +171939,11 @@ function validate2060(
     }
     errors++;
   }
-  validate2060.errors = vErrors;
+  validate2077.errors = vErrors;
   return errors === 0;
 }
-var validateTxReceipt = validate1776;
-var schema410 = {
+var validateTxReceipt = validate1793;
+var schema412 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -169860,7 +171980,7 @@ var schema410 = {
   title: "TxReceipt",
   type: "object",
 };
-function validate1776(
+function validate1793(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -170021,7 +172141,7 @@ function validate1776(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema410.properties, key0)) {
+      if (!func0.call(schema412.properties, key0)) {
         const err10 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -170271,11 +172391,11 @@ function validate1776(
     }
     errors++;
   }
-  validate1776.errors = vErrors;
+  validate1793.errors = vErrors;
   return errors === 0;
 }
-var validateTxSourceText = validate2068;
-function validate2068(
+var validateTxSourceText = validate2085;
+function validate2085(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -170366,7 +172486,7 @@ function validate2068(
     }
     if (data.mapping !== void 0 && func0.call(data, "mapping")) {
       if (
-        !validate1240(data.mapping, {
+        !validate1256(data.mapping, {
           instancePath: instancePath + "/mapping",
           parentData: data,
           parentDataProperty: "mapping",
@@ -170375,8 +172495,8 @@ function validate2068(
       ) {
         vErrors =
           vErrors === null
-            ? validate1240.errors
-            : vErrors.concat(validate1240.errors);
+            ? validate1256.errors
+            : vErrors.concat(validate1256.errors);
         errors = vErrors.length;
       }
     }
@@ -170607,11 +172727,11 @@ function validate2068(
     }
     errors++;
   }
-  validate2068.errors = vErrors;
+  validate2085.errors = vErrors;
   return errors === 0;
 }
-var validateU64 = validate1534;
-function validate1534(
+var validateU64 = validate1550;
+function validate1550(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -170652,11 +172772,11 @@ function validate1534(
     }
     errors++;
   }
-  validate1534.errors = vErrors;
+  validate1550.errors = vErrors;
   return errors === 0;
 }
-var validateVerificationReport = validate2890;
-var schema705 = {
+var validateVerificationReport = validate2935;
+var schema712 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -170689,7 +172809,7 @@ var schema705 = {
   title: "VerificationReport",
   type: "object",
 };
-function validate2890(
+function validate2935(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -170829,7 +172949,7 @@ function validate2890(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema705.properties, key0)) {
+      if (!func0.call(schema712.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -171059,11 +173179,11 @@ function validate2890(
     }
     errors++;
   }
-  validate2890.errors = vErrors;
+  validate2935.errors = vErrors;
   return errors === 0;
 }
-var validateVerifiedNodePackageSource = validate2897;
-function validate2897(
+var validateVerifiedNodePackageSource = validate2942;
+function validate2942(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -171205,11 +173325,11 @@ function validate2897(
     }
     errors++;
   }
-  validate2897.errors = vErrors;
+  validate2942.errors = vErrors;
   return errors === 0;
 }
-var validateWaitBoundaryParams = validate2114;
-function validate2114(
+var validateWaitBoundaryParams = validate2131;
+function validate2131(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -171316,11 +173436,11 @@ function validate2114(
     }
     errors++;
   }
-  validate2114.errors = vErrors;
+  validate2131.errors = vErrors;
   return errors === 0;
 }
-var validateWaitBoundaryReceipt = validate2117;
-function validate2117(
+var validateWaitBoundaryReceipt = validate2134;
+function validate2134(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -171396,11 +173516,11 @@ function validate2117(
     }
     errors++;
   }
-  validate2117.errors = vErrors;
+  validate2134.errors = vErrors;
   return errors === 0;
 }
-var validateWireFrame = validate1852;
-function validate1853(
+var validateWireFrame = validate1869;
+function validate1870(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -171460,7 +173580,7 @@ function validate1853(
     }
     if (data.request !== void 0 && func0.call(data, "request")) {
       if (
-        !validate1789(data.request, {
+        !validate1806(data.request, {
           instancePath: instancePath + "/request",
           parentData: data,
           parentDataProperty: "request",
@@ -171469,8 +173589,8 @@ function validate1853(
       ) {
         vErrors =
           vErrors === null
-            ? validate1789.errors
-            : vErrors.concat(validate1789.errors);
+            ? validate1806.errors
+            : vErrors.concat(validate1806.errors);
         errors = vErrors.length;
       }
     }
@@ -171601,7 +173721,7 @@ function validate1853(
     }
     if (data.clientNonce !== void 0 && func0.call(data, "clientNonce")) {
       if (
-        !validate1416(data.clientNonce, {
+        !validate1432(data.clientNonce, {
           instancePath: instancePath + "/clientNonce",
           parentData: data,
           parentDataProperty: "clientNonce",
@@ -171610,8 +173730,8 @@ function validate1853(
       ) {
         vErrors =
           vErrors === null
-            ? validate1416.errors
-            : vErrors.concat(validate1416.errors);
+            ? validate1432.errors
+            : vErrors.concat(validate1432.errors);
         errors = vErrors.length;
       }
     }
@@ -171882,7 +174002,7 @@ function validate1853(
       }
       if (data.proof !== void 0 && func0.call(data, "proof")) {
         if (
-          !validate1416(data.proof, {
+          !validate1432(data.proof, {
             instancePath: instancePath + "/proof",
             parentData: data,
             parentDataProperty: "proof",
@@ -171891,8 +174011,8 @@ function validate1853(
         ) {
           vErrors =
             vErrors === null
-              ? validate1416.errors
-              : vErrors.concat(validate1416.errors);
+              ? validate1432.errors
+              : vErrors.concat(validate1432.errors);
           errors = vErrors.length;
         }
       }
@@ -171901,7 +174021,7 @@ function validate1853(
         func0.call(data, "protocolVersion")
       ) {
         if (
-          !validate1414(data.protocolVersion, {
+          !validate1430(data.protocolVersion, {
             instancePath: instancePath + "/protocolVersion",
             parentData: data,
             parentDataProperty: "protocolVersion",
@@ -171910,14 +174030,14 @@ function validate1853(
         ) {
           vErrors =
             vErrors === null
-              ? validate1414.errors
-              : vErrors.concat(validate1414.errors);
+              ? validate1430.errors
+              : vErrors.concat(validate1430.errors);
           errors = vErrors.length;
         }
       }
       if (data.serverNonce !== void 0 && func0.call(data, "serverNonce")) {
         if (
-          !validate1416(data.serverNonce, {
+          !validate1432(data.serverNonce, {
             instancePath: instancePath + "/serverNonce",
             parentData: data,
             parentDataProperty: "serverNonce",
@@ -171926,8 +174046,8 @@ function validate1853(
         ) {
           vErrors =
             vErrors === null
-              ? validate1416.errors
-              : vErrors.concat(validate1416.errors);
+              ? validate1432.errors
+              : vErrors.concat(validate1432.errors);
           errors = vErrors.length;
         }
       }
@@ -172059,7 +174179,7 @@ function validate1853(
         }
         if (data.credential !== void 0 && func0.call(data, "credential")) {
           if (
-            !validate1416(data.credential, {
+            !validate1432(data.credential, {
               instancePath: instancePath + "/credential",
               parentData: data,
               parentDataProperty: "credential",
@@ -172068,8 +174188,8 @@ function validate1853(
           ) {
             vErrors =
               vErrors === null
-                ? validate1416.errors
-                : vErrors.concat(validate1416.errors);
+                ? validate1432.errors
+                : vErrors.concat(validate1432.errors);
             errors = vErrors.length;
           }
         }
@@ -172216,7 +174336,7 @@ function validate1853(
           }
           if (data.credential !== void 0 && func0.call(data, "credential")) {
             if (
-              !validate1416(data.credential, {
+              !validate1432(data.credential, {
                 instancePath: instancePath + "/credential",
                 parentData: data,
                 parentDataProperty: "credential",
@@ -172225,8 +174345,8 @@ function validate1853(
             ) {
               vErrors =
                 vErrors === null
-                  ? validate1416.errors
-                  : vErrors.concat(validate1416.errors);
+                  ? validate1432.errors
+                  : vErrors.concat(validate1432.errors);
               errors = vErrors.length;
             }
           }
@@ -172390,7 +174510,7 @@ function validate1853(
             }
             if (data.clientKind !== void 0 && func0.call(data, "clientKind")) {
               if (
-                !validate1479(data.clientKind, {
+                !validate1495(data.clientKind, {
                   instancePath: instancePath + "/clientKind",
                   parentData: data,
                   parentDataProperty: "clientKind",
@@ -172399,14 +174519,14 @@ function validate1853(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1479.errors
-                    : vErrors.concat(validate1479.errors);
+                    ? validate1495.errors
+                    : vErrors.concat(validate1495.errors);
                 errors = vErrors.length;
               }
             }
             if (data.credential !== void 0 && func0.call(data, "credential")) {
               if (
-                !validate1416(data.credential, {
+                !validate1432(data.credential, {
                   instancePath: instancePath + "/credential",
                   parentData: data,
                   parentDataProperty: "credential",
@@ -172415,14 +174535,14 @@ function validate1853(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1416.errors
-                    : vErrors.concat(validate1416.errors);
+                    ? validate1432.errors
+                    : vErrors.concat(validate1432.errors);
                 errors = vErrors.length;
               }
             }
             if (data.route !== void 0 && func0.call(data, "route")) {
               if (
-                !validate1813(data.route, {
+                !validate1830(data.route, {
                   instancePath: instancePath + "/route",
                   parentData: data,
                   parentDataProperty: "route",
@@ -172431,8 +174551,8 @@ function validate1853(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1813.errors
-                    : vErrors.concat(validate1813.errors);
+                    ? validate1830.errors
+                    : vErrors.concat(validate1830.errors);
                 errors = vErrors.length;
               }
             }
@@ -172604,7 +174724,7 @@ function validate1853(
                 func0.call(data, "pairingCode")
               ) {
                 if (
-                  !validate1416(data.pairingCode, {
+                  !validate1432(data.pairingCode, {
                     instancePath: instancePath + "/pairingCode",
                     parentData: data,
                     parentDataProperty: "pairingCode",
@@ -172613,8 +174733,8 @@ function validate1853(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1416.errors
-                      : vErrors.concat(validate1416.errors);
+                      ? validate1432.errors
+                      : vErrors.concat(validate1432.errors);
                   errors = vErrors.length;
                 }
               }
@@ -172623,7 +174743,7 @@ function validate1853(
                 func0.call(data, "reconnectCredential")
               ) {
                 if (
-                  !validate1416(data.reconnectCredential, {
+                  !validate1432(data.reconnectCredential, {
                     instancePath: instancePath + "/reconnectCredential",
                     parentData: data,
                     parentDataProperty: "reconnectCredential",
@@ -172632,8 +174752,8 @@ function validate1853(
                 ) {
                   vErrors =
                     vErrors === null
-                      ? validate1416.errors
-                      : vErrors.concat(validate1416.errors);
+                      ? validate1432.errors
+                      : vErrors.concat(validate1432.errors);
                   errors = vErrors.length;
                 }
               }
@@ -172755,7 +174875,7 @@ function validate1853(
                   func0.call(data, "credential")
                 ) {
                   if (
-                    !validate1416(data.credential, {
+                    !validate1432(data.credential, {
                       instancePath: instancePath + "/credential",
                       parentData: data,
                       parentDataProperty: "credential",
@@ -172764,8 +174884,8 @@ function validate1853(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1416.errors
-                        : vErrors.concat(validate1416.errors);
+                        ? validate1432.errors
+                        : vErrors.concat(validate1432.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -172774,7 +174894,7 @@ function validate1853(
                   func0.call(data, "rawAttachToken")
                 ) {
                   if (
-                    !validate1416(data.rawAttachToken, {
+                    !validate1432(data.rawAttachToken, {
                       instancePath: instancePath + "/rawAttachToken",
                       parentData: data,
                       parentDataProperty: "rawAttachToken",
@@ -172783,8 +174903,8 @@ function validate1853(
                   ) {
                     vErrors =
                       vErrors === null
-                        ? validate1416.errors
-                        : vErrors.concat(validate1416.errors);
+                        ? validate1432.errors
+                        : vErrors.concat(validate1432.errors);
                     errors = vErrors.length;
                   }
                 }
@@ -173097,7 +175217,7 @@ function validate1853(
                     }
                     if (data.token !== void 0 && func0.call(data, "token")) {
                       if (
-                        !validate1416(data.token, {
+                        !validate1432(data.token, {
                           instancePath: instancePath + "/token",
                           parentData: data,
                           parentDataProperty: "token",
@@ -173106,8 +175226,8 @@ function validate1853(
                       ) {
                         vErrors =
                           vErrors === null
-                            ? validate1416.errors
-                            : vErrors.concat(validate1416.errors);
+                            ? validate1432.errors
+                            : vErrors.concat(validate1432.errors);
                         errors = vErrors.length;
                       }
                     }
@@ -173324,7 +175444,7 @@ function validate1853(
                           func0.call(data, "request")
                         ) {
                           if (
-                            !validate1719(data.request, {
+                            !validate1736(data.request, {
                               instancePath: instancePath + "/request",
                               parentData: data,
                               parentDataProperty: "request",
@@ -173333,8 +175453,8 @@ function validate1853(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1719.errors
-                                : vErrors.concat(validate1719.errors);
+                                ? validate1736.errors
+                                : vErrors.concat(validate1736.errors);
                             errors = vErrors.length;
                           }
                         }
@@ -173459,7 +175579,7 @@ function validate1853(
                             func0.call(data, "reply")
                           ) {
                             if (
-                              !validate1826(data.reply, {
+                              !validate1843(data.reply, {
                                 instancePath: instancePath + "/reply",
                                 parentData: data,
                                 parentDataProperty: "reply",
@@ -173468,8 +175588,8 @@ function validate1853(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1826.errors
-                                  : vErrors.concat(validate1826.errors);
+                                  ? validate1843.errors
+                                  : vErrors.concat(validate1843.errors);
                               errors = vErrors.length;
                             }
                           }
@@ -173740,7 +175860,7 @@ function validate1853(
                                 func0.call(data, "batch")
                               ) {
                                 if (
-                                  !validate1833(data.batch, {
+                                  !validate1850(data.batch, {
                                     instancePath: instancePath + "/batch",
                                     parentData: data,
                                     parentDataProperty: "batch",
@@ -173749,8 +175869,8 @@ function validate1853(
                                 ) {
                                   vErrors =
                                     vErrors === null
-                                      ? validate1833.errors
-                                      : vErrors.concat(validate1833.errors);
+                                      ? validate1850.errors
+                                      : vErrors.concat(validate1850.errors);
                                   errors = vErrors.length;
                                 }
                               }
@@ -173909,7 +176029,7 @@ function validate1853(
                                   func0.call(data, "delta")
                                 ) {
                                   if (
-                                    !validate1839(data.delta, {
+                                    !validate1856(data.delta, {
                                       instancePath: instancePath + "/delta",
                                       parentData: data,
                                       parentDataProperty: "delta",
@@ -173918,8 +176038,8 @@ function validate1853(
                                   ) {
                                     vErrors =
                                       vErrors === null
-                                        ? validate1839.errors
-                                        : vErrors.concat(validate1839.errors);
+                                        ? validate1856.errors
+                                        : vErrors.concat(validate1856.errors);
                                     errors = vErrors.length;
                                   }
                                 }
@@ -174431,11 +176551,11 @@ function validate1853(
       }
     }
   }
-  validate1853.errors = vErrors;
+  validate1870.errors = vErrors;
   return errors === 0;
 }
-var schema420 = { enum: ["control", "raw", "state"], type: "string" };
-function validate1890(
+var schema422 = { enum: ["control", "raw", "state"], type: "string" };
+function validate1907(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -174461,7 +176581,7 @@ function validate1890(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema420.enum },
+      params: { allowedValues: schema422.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -174471,10 +176591,10 @@ function validate1890(
     }
     errors++;
   }
-  validate1890.errors = vErrors;
+  validate1907.errors = vErrors;
   return errors === 0;
 }
-function validate1852(
+function validate1869(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -174545,7 +176665,7 @@ function validate1852(
     }
     if (data.body !== void 0 && func0.call(data, "body")) {
       if (
-        !validate1853(data.body, {
+        !validate1870(data.body, {
           instancePath: instancePath + "/body",
           parentData: data,
           parentDataProperty: "body",
@@ -174554,14 +176674,14 @@ function validate1852(
       ) {
         vErrors =
           vErrors === null
-            ? validate1853.errors
-            : vErrors.concat(validate1853.errors);
+            ? validate1870.errors
+            : vErrors.concat(validate1870.errors);
         errors = vErrors.length;
       }
     }
     if (data.channel !== void 0 && func0.call(data, "channel")) {
       if (
-        !validate1890(data.channel, {
+        !validate1907(data.channel, {
           instancePath: instancePath + "/channel",
           parentData: data,
           parentDataProperty: "channel",
@@ -174570,14 +176690,14 @@ function validate1852(
       ) {
         vErrors =
           vErrors === null
-            ? validate1890.errors
-            : vErrors.concat(validate1890.errors);
+            ? validate1907.errors
+            : vErrors.concat(validate1907.errors);
         errors = vErrors.length;
       }
     }
     if (data.requestId !== void 0 && func0.call(data, "requestId")) {
       if (
-        !validate979(data.requestId, {
+        !validate1003(data.requestId, {
           instancePath: instancePath + "/requestId",
           parentData: data,
           parentDataProperty: "requestId",
@@ -174586,8 +176706,8 @@ function validate1852(
       ) {
         vErrors =
           vErrors === null
-            ? validate979.errors
-            : vErrors.concat(validate979.errors);
+            ? validate1003.errors
+            : vErrors.concat(validate1003.errors);
         errors = vErrors.length;
       }
     }
@@ -174606,11 +176726,11 @@ function validate1852(
     }
     errors++;
   }
-  validate1852.errors = vErrors;
+  validate1869.errors = vErrors;
   return errors === 0;
 }
-var validateWorkerMemorySample = validate2197;
-function validate2197(
+var validateWorkerMemorySample = validate2214;
+function validate2214(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -174758,11 +176878,11 @@ function validate2197(
     }
     errors++;
   }
-  validate2197.errors = vErrors;
+  validate2214.errors = vErrors;
   return errors === 0;
 }
-var validateWorkerObservation = validate2201;
-function validate2201(
+var validateWorkerObservation = validate2218;
+function validate2218(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -174822,7 +176942,7 @@ function validate2201(
     }
     if (data.lastMemory !== void 0 && func0.call(data, "lastMemory")) {
       if (
-        !validate1211(data.lastMemory, {
+        !validate1227(data.lastMemory, {
           instancePath: instancePath + "/lastMemory",
           parentData: data,
           parentDataProperty: "lastMemory",
@@ -174831,8 +176951,8 @@ function validate2201(
       ) {
         vErrors =
           vErrors === null
-            ? validate1211.errors
-            : vErrors.concat(validate1211.errors);
+            ? validate1227.errors
+            : vErrors.concat(validate1227.errors);
         errors = vErrors.length;
       }
     }
@@ -174883,11 +177003,11 @@ function validate2201(
     }
     errors++;
   }
-  validate2201.errors = vErrors;
+  validate2218.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceConfigurationExportParams = validate2901;
-function validate2901(
+var validateWorkspaceConfigurationExportParams = validate2946;
+function validate2946(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175059,11 +177179,11 @@ function validate2901(
     }
     errors++;
   }
-  validate2901.errors = vErrors;
+  validate2946.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceConfigurationImportParams = validate2906;
-function validate2906(
+var validateWorkspaceConfigurationImportParams = validate2951;
+function validate2951(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175153,11 +177273,11 @@ function validate2906(
     }
     errors++;
   }
-  validate2906.errors = vErrors;
+  validate2951.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceConfigurationImportResult = validate2908;
-function validate2908(
+var validateWorkspaceConfigurationImportResult = validate2953;
+function validate2953(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175246,11 +177366,11 @@ function validate2908(
     }
     errors++;
   }
-  validate2908.errors = vErrors;
+  validate2953.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceConfigurationInspection = validate2911;
-function validate2911(
+var validateWorkspaceConfigurationInspection = validate2956;
+function validate2956(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175432,11 +177552,11 @@ function validate2911(
     }
     errors++;
   }
-  validate2911.errors = vErrors;
+  validate2956.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceDocument = validate1921;
-function validate1921(
+var validateWorkspaceDocument = validate1938;
+function validate1938(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175773,11 +177893,11 @@ function validate1921(
     }
     errors++;
   }
-  validate1921.errors = vErrors;
+  validate1938.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceDocumentResult = validate1939;
-function validate1939(
+var validateWorkspaceDocumentResult = validate1956;
+function validate1956(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175878,11 +177998,11 @@ function validate1939(
     }
     errors++;
   }
-  validate1939.errors = vErrors;
+  validate1956.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceListParams = validate1965;
-function validate1965(
+var validateWorkspaceListParams = validate1982;
+function validate1982(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -175987,11 +178107,11 @@ function validate1965(
     }
     errors++;
   }
-  validate1965.errors = vErrors;
+  validate1982.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceListResult = validate1970;
-function validate1970(
+var validateWorkspaceListResult = validate1987;
+function validate1987(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176102,7 +178222,7 @@ function validate1970(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1030(data1[i0], {
+            !validate1055(data1[i0], {
               instancePath: instancePath + "/workspaces/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -176111,8 +178231,8 @@ function validate1970(
           ) {
             vErrors =
               vErrors === null
-                ? validate1030.errors
-                : vErrors.concat(validate1030.errors);
+                ? validate1055.errors
+                : vErrors.concat(validate1055.errors);
             errors = vErrors.length;
           }
         }
@@ -176147,11 +178267,11 @@ function validate1970(
     }
     errors++;
   }
-  validate1970.errors = vErrors;
+  validate1987.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceSaveParams = validate1929;
-function validate1929(
+var validateWorkspaceSaveParams = validate1946;
+function validate1946(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176221,11 +178341,11 @@ function validate1929(
     }
     errors++;
   }
-  validate1929.errors = vErrors;
+  validate1946.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceSnapshot = validate2916;
-function validate2916(
+var validateWorkspaceSnapshot = validate2961;
+function validate2961(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176326,11 +178446,11 @@ function validate2916(
     }
     errors++;
   }
-  validate2916.errors = vErrors;
+  validate2961.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceStartupPlan = validate2919;
-function validate2919(
+var validateWorkspaceStartupPlan = validate2964;
+function validate2964(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176492,11 +178612,11 @@ function validate2919(
     }
     errors++;
   }
-  validate2919.errors = vErrors;
+  validate2964.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceStartupPlanParams = validate2923;
-function validate2923(
+var validateWorkspaceStartupPlanParams = validate2968;
+function validate2968(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176572,11 +178692,11 @@ function validate2923(
     }
     errors++;
   }
-  validate2923.errors = vErrors;
+  validate2968.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceSummary = validate1967;
-function validate1967(
+var validateWorkspaceSummary = validate1984;
+function validate1984(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176709,11 +178829,11 @@ function validate1967(
     }
     errors++;
   }
-  validate1967.errors = vErrors;
+  validate1984.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceView = validate2925;
-var schema714 = {
+var validateWorkspaceView = validate2970;
+var schema721 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -176750,7 +178870,7 @@ var schema714 = {
   title: "WorkspaceView",
   type: "object",
 };
-function validate2925(
+function validate2970(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -176878,7 +178998,7 @@ function validate2925(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema714.properties, key0)) {
+      if (!func0.call(schema721.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -177126,7 +179246,7 @@ function validate2925(
     }
     errors++;
   }
-  validate2925.errors = vErrors;
+  validate2970.errors = vErrors;
   return errors === 0;
 }
 export {
@@ -177382,6 +179502,10 @@ export {
   validateReplaySearchPage,
   validateReplaySearchParams,
   validateReplaySearchResult,
+  validateReplayTransmitParams,
+  validateReplayTransmitPreview,
+  validateReplayTransmitSelection,
+  validateReplayTransmitSpan,
   validateRequestId,
   validateResourceKind,
   validateResultReference,

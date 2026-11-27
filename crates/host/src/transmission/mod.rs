@@ -329,6 +329,7 @@ impl TransmissionService {
             "session.tx"
                 | "transfer.file"
                 | "transfer.paste"
+                | "replay.transmit"
                 | "session.configure"
                 | "session.control"
                 | "session.break"
@@ -344,6 +345,8 @@ impl TransmissionService {
                             .get(),
                     )
                     .map_err(|_| invalid())?
+                } else if call.action_id.as_str() == "replay.transmit" {
+                    file_transfer::REPLAY_CHUNK_MAX as usize
                 } else if let Some(paste) = &paste {
                     paste.len()
                 } else {
@@ -414,7 +417,7 @@ impl TransmissionService {
                     actor_id: operation.actor_id.clone(),
                     is_tx: matches!(
                         operation.action_id.as_str(),
-                        "session.tx" | "transfer.file" | "transfer.paste"
+                        "session.tx" | "transfer.file" | "transfer.paste" | "replay.transmit"
                     ),
                     cancelled: Arc::new(AtomicBool::new(should_cancel)),
                     dispatch: tokio::sync::Mutex::new(()),
@@ -616,7 +619,7 @@ impl TransmissionService {
         let runtime = self.runtime(&accepted.call.target)?;
         match accepted.call.action_id.as_str() {
             "session.toolHandoff" => self.tool_handoff(accepted, token, session, &runtime).await,
-            "transfer.file" | "transfer.paste" => {
+            "transfer.file" | "transfer.paste" | "replay.transmit" => {
                 self.transfer(
                     accepted,
                     token,
@@ -676,6 +679,7 @@ impl TransmissionService {
     ) -> BackendAdmission {
         BackendAdmission {
             dispatch_fence: None,
+            source_grants: None,
             session_epoch: accepted.call.target.session_epoch.expect("session target"),
             actor_id: accepted.actor.id().clone(),
             lease_id: accepted.call.lease_id.clone(),
@@ -734,6 +738,7 @@ impl TransmissionService {
             action,
             "session.tx"
                 | "transfer.paste"
+                | "replay.transmit"
                 | "lease.acquire"
                 | "session.control"
                 | "session.break"
@@ -1211,6 +1216,15 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
                 file_transfer::validate_params(&params)?;
                 object(&params)
             }
+        }
+        BuiltinAction::ReplayTransmit => {
+            if call.execution_mode != Some(ExecutionMode::Independent)
+                || call.expected_revision.is_none()
+                || call.lease_id.is_some()
+            {
+                return Err(invalid());
+            }
+            norm::<ReplayTransmitParams>(&call.params)
         }
         BuiltinAction::DeviceOpen => norm::<OpenParams>(&call.params),
         BuiltinAction::ToolHandoff => {

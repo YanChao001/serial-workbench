@@ -62,6 +62,7 @@ export function operationText(
       "replay.peer.open": t("workbench.replayPeer.open"),
       "replay.peer.submit": t("workbench.replayPeer.submit"),
       "replay.peer.close": t("workbench.closeSession"),
+      "replay.transmit": t("workbench.replayTransmit.title"),
       "swb.builtin.automation.loopback": t("loopback.title"),
       "operation.cancel": t("workbench.cancel"),
     },

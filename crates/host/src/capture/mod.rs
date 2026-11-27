@@ -3,6 +3,7 @@ mod recorded_peer;
 pub mod recovery;
 pub(crate) mod redaction;
 pub mod replay;
+mod replay_transmit;
 pub mod text_export;
 pub mod verify;
 pub mod writer;

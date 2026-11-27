@@ -1974,3 +1974,324 @@ async fn recorded_peer_replays_confirmed_bytes_only_in_its_own_simulated_session
     );
     f.finish().await;
 }
+
+#[tokio::test]
+async fn replay_transmit_keeps_preview_offline_and_sends_only_confirmed_bytes() {
+    let f = Fixture::new().await;
+    let target = f.open().await;
+    let destination = f.register("replay-transmit-source").await;
+    let (recording, live) = f.start(&f.user, &target, &destination).await;
+    let recorded = f
+        .action(
+            &f.user,
+            "session.tx",
+            target.clone(),
+            json!({"bytesBase64":"AQID","writeWaitMs":"100"}),
+        )
+        .await;
+    assert_eq!(recorded.state, OperationState::Succeeded);
+    f.wait_written(&live, 3).await;
+    let source = f.stop_capture(&recording, &live).await.capture_ref;
+    let raw = f.user.connect_raw().await.unwrap();
+    let cursor = || async {
+        let request = f.query(&f.user, "stream.cursor", target.clone(), json!({}));
+        let RpcResult::Query(QueryResult::StreamCursor(position)) =
+            success(raw.request(RpcRequest::Query(request)).await.unwrap())
+        else {
+            panic!("raw device cursor")
+        };
+        position.cursor.position
+    };
+    let before = cursor().await;
+    let selection = json!({"captureRef":source,"direction":"tx","bytesPerSecond":"1024"});
+    let request = f.query(
+        &f.user,
+        "replay.transmit.preview",
+        target.clone(),
+        selection.clone(),
+    );
+    let RpcResult::Query(QueryResult::ReplayTransmitPreview(preview)) =
+        success(f.user.request(RpcRequest::Query(request)).await.unwrap())
+    else {
+        panic!("confirmed recording preview")
+    };
+    assert_eq!(preview.target, target);
+    assert_eq!(preview.direction, Direction::Tx);
+    assert_eq!(preview.bytes_base64.as_str(), "AQID");
+    assert_eq!(preview.bytes_per_second, 1024.into());
+    assert_eq!(preview.spans.len(), 1);
+    assert_eq!(cursor().await, before);
+
+    let invoke = |selection: Value, preview_digest: &Digest, revision: U64| {
+        let mut call = f.call(
+            &f.user,
+            "replay.transmit",
+            target.clone(),
+            json!({"selection":selection,"previewDigest":preview_digest}),
+        );
+        call.expected_revision = Some(revision);
+        call.execution_mode = Some(ExecutionMode::Independent);
+        call
+    };
+    let run = |call| async {
+        let RpcResult::Operation(receipt) =
+            success(f.user.request(RpcRequest::Invoke(call)).await.unwrap())
+        else {
+            panic!("replay transmit admission")
+        };
+        f.wait(&receipt.operation, false).await
+    };
+    let mut changed = selection.clone();
+    changed["bytesPerSecond"] = json!("1025");
+    let rejected = run(invoke(
+        changed,
+        &preview.preview_digest,
+        preview.target_revision,
+    ))
+    .await;
+    assert_eq!(rejected.error.unwrap().code, "REPLAY_PREVIEW_CHANGED");
+    assert_eq!(cursor().await, before);
+
+    let manifest = f.dir.path().join("replay-transmit-source/manifest.json");
+    let original = std::fs::read(&manifest).unwrap();
+    let mut tampered = original.clone();
+    tampered.push(b' ');
+    std::fs::write(&manifest, tampered).unwrap();
+    let changed_source = run(invoke(
+        selection.clone(),
+        &preview.preview_digest,
+        preview.target_revision,
+    ))
+    .await;
+    assert_eq!(changed_source.error.unwrap().code, "SOURCE_CHANGED");
+    assert_eq!(cursor().await, before);
+    std::fs::write(&manifest, original).unwrap();
+
+    let approved = invoke(
+        selection.clone(),
+        &preview.preview_digest,
+        preview.target_revision,
+    );
+    let accepted = run(approved.clone()).await;
+    assert_eq!(accepted.state, OperationState::Succeeded, "{accepted:?}");
+    let Some(ActionResult::FileTransfer(transfer)) = &accepted.result else {
+        panic!("settled replay transmission")
+    };
+    assert_eq!(transfer.accepted, 3.into());
+    assert_eq!(transfer.unknown, 0.into());
+    assert_eq!(transfer.requested, 3.into());
+    assert_eq!(run(approved).await.operation_id, accepted.operation_id);
+    let operation_id = &accepted.operation_id;
+    let public = f.query(
+        &f.user,
+        "operation.get",
+        f.target("operation", operation_id.as_str()),
+        json!({"operationId":operation_id}),
+    );
+    let RpcResult::Operation(public) = success(
+        f.user
+            .request(RpcRequest::OperationGet(public))
+            .await
+            .unwrap(),
+    ) else {
+        panic!("public recorded send receipt")
+    };
+    assert_eq!(public.operation.result, accepted.result);
+    let read_receipts = |client| {
+        RpcRequest::Query(f.query(client, "transfer.receiptsRead", f.reference_target(&transfer.receipts_ref), json!({"receiptsRef":transfer.receipts_ref,"startOrdinal":"0","maxReceipts":"4","maxBytes":"65536"})))
+    };
+    let RpcResult::Query(QueryResult::FileTransferReceipts(receipts)) =
+        success(raw.request(read_receipts(&f.user)).await.unwrap())
+    else {
+        panic!("independent recorded send journal")
+    };
+    assert_eq!(receipts.receipts[0].receipt.bytes_base64.as_str(), "AQID");
+    assert_eq!(
+        receipts.receipts[0].replay_spans.as_deref(),
+        Some(preview.spans.as_slice())
+    );
+    f.grant("content.read", f.reference_target(&destination));
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.observer.attachment().actor_id.clone(),
+                permissions: vec!["metadata.read".into()],
+                targets: vec![target.clone()],
+            },
+        )
+        .unwrap();
+    let observer_raw = f.observer.connect_raw().await.unwrap();
+    assert_eq!(
+        failure(
+            observer_raw
+                .request(read_receipts(&f.observer))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED"
+    );
+    drop(observer_raw);
+    let settled = tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let current = cursor().await;
+            if current.get() >= before.get() + 3 {
+                break current;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(settled > before);
+    let read = f.query(
+        &f.user, "stream.read", target.clone(),
+        json!({"sessionId":target.session_id,"sessionEpoch":target.session_epoch,"startEventSeq":before.checked_next().unwrap(),"maxEvents":"32","maxBytes":"65536"}),
+    );
+    let RpcResult::Query(QueryResult::StreamRead(page)) =
+        success(raw.request(RpcRequest::Query(read)).await.unwrap())
+    else {
+        panic!("raw replay transmission evidence")
+    };
+    let writes = page
+        .events
+        .iter()
+        .filter_map(|event| match &event.payload {
+            RawPayload::TxIntent(intent) => {
+                Some((&intent.operation_id, intent.bytes_base64.as_str()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(writes, [(&accepted.operation_id, "AQID")]);
+
+    let stale = run(invoke(
+        selection,
+        &preview.preview_digest,
+        preview.target_revision,
+    ))
+    .await;
+    assert_eq!(stale.error.unwrap().code, "REPLAY_PREVIEW_CHANGED");
+    assert_eq!(cursor().await, settled);
+    drop(raw);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn replay_transmit_cancel_keeps_the_actual_prefix_and_stops_later_chunks() {
+    let f = Fixture::new().await;
+    let target = f.open().await;
+    let destination = f.register("replay-cancel-source").await;
+    let (recording, live) = f.start(&f.user, &target, &destination).await;
+    let bytes = STANDARD.encode((1..=24_u8).collect::<Vec<_>>());
+    let original = f
+        .action(
+            &f.user,
+            "session.tx",
+            target.clone(),
+            json!({"bytesBase64":bytes,"writeWaitMs":"100"}),
+        )
+        .await;
+    assert_eq!(original.state, OperationState::Succeeded);
+    f.wait_written(&live, 3).await;
+    let fixed = f.stop_capture(&recording, &live).await.capture_ref;
+    let selection = json!({"captureRef":fixed,"direction":"tx","bytesPerSecond":"1"});
+    let request = f.query(
+        &f.user,
+        "replay.transmit.preview",
+        target.clone(),
+        selection.clone(),
+    );
+    let RpcResult::Query(QueryResult::ReplayTransmitPreview(preview)) =
+        success(f.user.request(RpcRequest::Query(request)).await.unwrap())
+    else {
+        panic!("paced preview expected")
+    };
+    let mut confirmed = f.call(
+        &f.user,
+        "replay.transmit",
+        target,
+        json!({"selection":selection,"previewDigest":preview.preview_digest}),
+    );
+    confirmed.expected_revision = Some(preview.target_revision);
+    confirmed.execution_mode = Some(ExecutionMode::Independent);
+    let RpcResult::Operation(started) =
+        success(f.user.request(RpcRequest::Invoke(confirmed)).await.unwrap())
+    else {
+        panic!("paced replay acceptance expected")
+    };
+    let operation_id = &started.operation.operation_id;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let current = f.store.get(&f.operator, operation_id).unwrap();
+            assert!(!current.state.is_terminal(), "paced transfer stopped before first confirmed chunk: {current:?}");
+            if matches!(current.result, Some(ActionResult::FileTransfer(result)) if result.accepted.get() > 0) { break; }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }).await.unwrap();
+    let cancel = f.call(
+        &f.user,
+        "operation.cancel",
+        f.target("operation", operation_id.as_str()),
+        json!({"reason":"user"}),
+    );
+    success(
+        f.user
+            .request(RpcRequest::OperationCancel(cancel))
+            .await
+            .unwrap(),
+    );
+    let terminal = f.wait(&started.operation, false).await;
+    assert_eq!(terminal.state, OperationState::Cancelled, "{terminal:?}");
+    let Some(ActionResult::FileTransfer(transfer)) = terminal.result else {
+        panic!("confirmed prefix receipt")
+    };
+    assert_eq!(transfer.requested, 24.into());
+    assert!(transfer.accepted.get() >= 1 && transfer.accepted.get() < 24);
+    assert_eq!(transfer.unknown, 0.into());
+
+    let raw = f.user.connect_raw().await.unwrap();
+    let receipts_request = || {
+        RpcRequest::Query(f.query(&f.user, "transfer.receiptsRead", f.reference_target(&transfer.receipts_ref), json!({"receiptsRef":transfer.receipts_ref,"startOrdinal":"0","maxReceipts":"32","maxBytes":"65536"})))
+    };
+    let response = success(raw.request(receipts_request()).await.unwrap());
+    let RpcResult::Query(QueryResult::FileTransferReceipts(receipts)) = response else {
+        panic!("sealed recorded send journal")
+    };
+    let written: Vec<_> = receipts
+        .receipts
+        .iter()
+        .filter(|item| item.receipt.outcome == TxOutcome::Accepted)
+        .flat_map(|item| STANDARD.decode(item.receipt.bytes_base64.as_str()).unwrap())
+        .collect();
+    assert_eq!(
+        written,
+        (1..=transfer.accepted.get() as u8).collect::<Vec<_>>()
+    );
+    for receipt in receipts
+        .receipts
+        .iter()
+        .filter(|item| item.receipt.outcome == TxOutcome::Accepted)
+    {
+        let [span] = receipt.replay_spans.as_deref().unwrap() else {
+            panic!("one clipped source range per byte")
+        };
+        assert_eq!(span.output_offset, receipt.source_offset);
+        assert_eq!(span.source.byte_start, Some(receipt.source_offset));
+        assert_eq!(
+            span.source.byte_end,
+            Some(receipt.source_offset.checked_next().unwrap())
+        );
+    }
+    assert!(receipts.sealed);
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let RpcResult::Query(QueryResult::FileTransferReceipts(after)) =
+        success(raw.request(receipts_request()).await.unwrap())
+    else {
+        panic!("sealed journal reread")
+    };
+    assert_eq!(receipts, after);
+    drop(raw);
+    f.finish().await;
+}

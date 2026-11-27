@@ -1122,6 +1122,107 @@ impl ReplayService {
         Ok(())
     }
 }
+/// Rebuilds the same source plan for preview and actual admission.
+pub(crate) fn transmit_preview(
+    files: &FileService,
+    actor: &AuthenticatedActor,
+    target: &Target,
+    snapshot: &SessionSnapshot,
+    selection: &ReplayTransmitSelection,
+) -> HostResult<ReplayTransmitPreview> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sha2::{Digest as _, Sha256};
+
+    if selection.direction != Direction::Tx
+        || selection.capture_ref.revision.is_none()
+        || selection.bytes_per_second.get() == 0
+        || selection.bytes_per_second.get() > 16 * 1024 * 1024
+        || target.kind.as_str() != "session"
+        || target.session_id.as_ref() != Some(&snapshot.session_id)
+        || target.session_epoch != Some(snapshot.session_epoch)
+    {
+        return Err(super::invalid());
+    }
+    if snapshot.state != SessionState::Open
+        || snapshot.read_only
+        || snapshot.tx_gate != TxGate::Ready
+    {
+        return Err(HostError::new(
+            "WRITE_UNAVAILABLE",
+            "Choose an open writable target session",
+        ));
+    }
+    if snapshot.capabilities.semantics != TransportSemantics::Stream {
+        return Err(HostError::new(
+            "UNSUPPORTED_CAPABILITY",
+            "Recorded TX requires a stream target",
+        ));
+    }
+    let source = || {
+        files
+            .resolve_replay_source(&selection.capture_ref, actor, REPLAY_PEER_SOURCE_BYTES)
+            .map_err(transmit_source_error)
+    };
+    let guard = source()?;
+    let reader = ReplayReader::open_with_budget(
+        guard.checked_path(),
+        ReplayMode::Fastest,
+        Some(REPLAY_PEER_SOURCE_BYTES),
+    )
+    .map_err(transmit_source_error)?;
+    reader.archive.ensure_directory()?;
+    let plan = super::replay_transmit::accepted_bytes(
+        (0..reader.archive.index.records.len()).map(|index| {
+            reader
+                .archive
+                .read_verified_record(index)
+                .map(|(record, _, _)| record)
+        }),
+        selection.source_range.as_ref(),
+    )?;
+    reader.archive.ensure_directory()?;
+    source()?;
+
+    let bytes_base64 = Bytes::try_from(STANDARD.encode(plan.bytes).as_str())?;
+    let digest_input = serde_json::to_vec(&(
+        actor.id(),
+        actor.client_id(),
+        selection,
+        target,
+        snapshot.revision,
+        &snapshot.configuration,
+        &bytes_base64,
+        &plan.spans,
+    ))
+    .map_err(|_| super::invalid())?;
+    let preview_digest = Digest::try_from(format!("{:x}", Sha256::digest(digest_input)).as_str())?;
+    Ok(ReplayTransmitPreview {
+        capture_ref: selection.capture_ref.clone(),
+        target: target.clone(),
+        target_revision: snapshot.revision,
+        configuration: snapshot.configuration.clone(),
+        direction: selection.direction,
+        bytes_per_second: selection.bytes_per_second,
+        bytes_base64,
+        spans: plan.spans,
+        preview_digest,
+    })
+}
+
+fn transmit_source_error(error: HostError) -> HostError {
+    match error.code.as_str() {
+        "REPLAY_PEER_LIMIT" => HostError::new(
+            "REPLAY_TRANSMIT_LIMIT",
+            "Recorded TX source exceeds the verification budget",
+        ),
+        "REPLAY_PEER_INELIGIBLE" => HostError::new(
+            "CAPTURE_INCOMPLETE",
+            "Recorded TX requires a sealed recording",
+        ),
+        _ => error,
+    }
+}
+
 fn peer_mode_required() -> HostError {
     HostError::new(
         "UNSUPPORTED_CAPABILITY",

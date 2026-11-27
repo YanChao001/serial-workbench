@@ -1,11 +1,14 @@
 //! 分片发送持有同一 Transmission owner，逐块持久保留意图和真实回执。
 use super::*;
+use crate::auth::{AuthService, AuthenticatedActor, GrantStamp};
+use crate::capture::format::REPLAY_PEER_SOURCE_BYTES;
 use crate::dispatch::browser_file::Upload;
 use crate::files::{FileService, FixedFile};
 use crate::storage::Store;
 use serde::{Deserialize, Serialize};
 
 const MAX_CHUNK: u64 = 16384;
+pub(super) const REPLAY_CHUNK_MAX: u64 = 4096;
 const MAX_RATE: u64 = 16 * 1024 * 1024;
 const MAX_BATCH: usize = 256 * 1024;
 const LEASE_NS: u64 = 30_000_000_000;
@@ -24,6 +27,8 @@ pub(crate) struct ReceiptJournalManifest {
     pub format_version: String,
     pub source_ref: ObjectRef,
     pub authority: Target,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_authority: Option<Target>,
     pub count: U64,
     pub sealed: bool,
 }
@@ -123,13 +128,52 @@ pub(super) enum PreparedTransfer {
     Browser(Box<Upload>),
 }
 
+struct RecordedTransferSource {
+    files: FileService,
+    actor: AuthenticatedActor,
+    reference: ObjectRef,
+    bytes: Arc<[u8]>,
+    spans: Vec<ReplayTransmitSpan>,
+    grants: Option<(AuthService, GrantStamp)>,
+}
+
 enum TransferSource {
     File(Box<FixedFile>),
     Paste(Arc<[u8]>),
     Browser(Box<Upload>),
+    Replay(Box<RecordedTransferSource>),
 }
 
 impl TransferSource {
+    fn replay_spans(&self, offset: u64, length: usize) -> Option<Vec<ReplayTransmitSpan>> {
+        let Self::Replay(replay) = self else {
+            return None;
+        };
+        let end = offset + length as u64;
+        Some(
+            replay
+                .spans
+                .iter()
+                .filter_map(|span| {
+                    let first = span.source.byte_start?.get();
+                    let last = span.source.byte_end?.get();
+                    let output = span.output_offset.get();
+                    let start = offset.max(output);
+                    let stop = end.min(output + (last - first));
+                    (stop > start).then(|| ReplayTransmitSpan {
+                        record_ordinal: span.record_ordinal,
+                        output_offset: start.into(),
+                        source: SourceRange {
+                            byte_start: Some((first + (start - output)).into()),
+                            byte_end: Some((first + (stop - output)).into()),
+                            ..span.source.clone()
+                        },
+                    })
+                })
+                .collect(),
+        )
+    }
+
     async fn read_chunk(self, offset: u64, length: usize) -> HostResult<(Self, Arc<[u8]>)> {
         match self {
             Self::File(mut file) => {
@@ -147,10 +191,12 @@ impl TransferSource {
                 .await
             }
             Self::Paste(paste) => {
-                let start = usize::try_from(offset).map_err(|_| invalid())?;
-                let end = start.checked_add(length).ok_or_else(invalid)?;
-                let bytes = paste.get(start..end).ok_or_else(invalid)?.into();
+                let bytes = read_buffer_chunk(&paste, offset, length)?;
                 Ok((Self::Paste(paste), bytes))
+            }
+            Self::Replay(replay) => {
+                let bytes = read_buffer_chunk(&replay.bytes, offset, length)?;
+                Ok((Self::Replay(replay), bytes))
             }
         }
     }
@@ -161,6 +207,20 @@ impl TransferSource {
         length: usize,
         sent: &[u8],
     ) -> HostResult<(Self, HostResult<()>)> {
+        if let Self::Replay(replay) = self {
+            return blocking(move || {
+                let verified = replay
+                    .files
+                    .resolve_replay_source(
+                        &replay.reference,
+                        &replay.actor,
+                        REPLAY_PEER_SOURCE_BYTES,
+                    )
+                    .map(|_| ());
+                Ok((Self::Replay(replay), verified))
+            })
+            .await;
+        }
         let Self::File(mut file) = self else {
             return Ok((self, Ok(())));
         };
@@ -181,6 +241,12 @@ impl TransferSource {
         });
         Ok((Self::File(file), verified))
     }
+}
+
+fn read_buffer_chunk(bytes: &[u8], offset: u64, length: usize) -> HostResult<Arc<[u8]>> {
+    let start = usize::try_from(offset).map_err(|_| invalid())?;
+    let end = start.checked_add(length).ok_or_else(invalid)?;
+    Ok(bytes.get(start..end).ok_or_else(invalid)?.into())
 }
 
 struct TransferInput {
@@ -243,6 +309,84 @@ impl TransmissionService {
         })
     }
 
+    async fn open_replay_transfer(
+        &self,
+        accepted: &AcceptedCall,
+        snapshot: SessionSnapshot,
+    ) -> HostResult<TransferInput> {
+        let params: ReplayTransmitParams = decode(&accepted.call.params)?;
+        let files = FileService::new(
+            self.devices.inner.store.clone(),
+            self.devices.inner.auth.clone(),
+            self.devices.inner.identity.clone(),
+        );
+        let auth = self.devices.inner.auth.clone();
+        let actor = accepted.actor.clone();
+        let target = accepted.call.target.clone();
+        blocking(move || {
+            let authority = files.authorization_target(
+                &params.selection.capture_ref,
+                &actor,
+                "content.read",
+            )?;
+            let authorization = auth.snapshot(&actor)?;
+            authorization.require("content.read", &authority)?;
+            authorization.require("device.modify", &target)?;
+            let stamp = if actor.is_user_control() || authorization.is_lan_peer() {
+                authorization.capture_grants()
+            } else {
+                Some(authorization.capture_bound_grants(&[
+                    ("content.read", &authority),
+                    ("device.modify", &target),
+                ])?)
+            };
+            let preview = crate::capture::replay::transmit_preview(
+                &files,
+                &actor,
+                &target,
+                &snapshot,
+                &params.selection,
+            )?;
+            if preview.preview_digest != params.preview_digest {
+                return Err(HostError::new(
+                    "REPLAY_PREVIEW_CHANGED",
+                    "Review the current recorded TX preview before sending",
+                ));
+            }
+            if let Some(stamp) = &stamp {
+                auth.validate_grants(stamp)?;
+            }
+            let bytes: Arc<[u8]> = STANDARD
+                .decode(preview.bytes_base64.as_str())
+                .map_err(|_| invalid())?
+                .into();
+            let rate = preview.bytes_per_second.get();
+            let plan = TransferPlan {
+                offset: 0,
+                length: bytes.len() as u64,
+                chunk_bytes: rate.div_ceil(20).min(REPLAY_CHUNK_MAX),
+                bytes_per_second: rate,
+                inter_chunk_ms: 0,
+                write_wait_ms: DurationMs::try_from(U64::from(1000))?,
+            };
+            let reference = preview.capture_ref;
+            Ok(TransferInput {
+                source: TransferSource::Replay(Box::new(RecordedTransferSource {
+                    files,
+                    actor,
+                    reference: reference.clone(),
+                    bytes,
+                    spans: preview.spans,
+                    grants: stamp.map(|stamp| (auth, stamp)),
+                })),
+                reference,
+                authority,
+                plan,
+            })
+        })
+        .await
+    }
+
     pub(super) async fn transfer(
         &self,
         accepted: &AcceptedCall,
@@ -266,6 +410,10 @@ impl TransmissionService {
             },
             Some(PreparedTransfer::Browser(upload)) => {
                 self.open_file_transfer(accepted, Some(upload)).await?
+            }
+            None if accepted.call.action_id.as_str() == "replay.transmit" => {
+                self.open_replay_transfer(accepted, session.snapshot()?)
+                    .await?
             }
             None => self.open_file_transfer(accepted, None).await?,
         };
@@ -551,10 +699,12 @@ impl FileRun<'_> {
             }],
             backend_error: None,
         };
+        let replay_spans = source.replay_spans(offset, length);
         let appended = journal
             .append(&FileTransferReceipt {
                 source_offset: offset.into(),
                 receipt: intent.receipt(&pending)?,
+                replay_spans: replay_spans.clone(),
             })
             .await;
         let ordinal = match appended {
@@ -584,17 +734,19 @@ impl FileRun<'_> {
         let outcome = match ready {
             Ok(()) => {
                 // session.write内部投递不跨await；释放dispatch锁使用户取消能到达native owner。
+                let mut admission =
+                    self.service
+                        .backend_admission(&self.accepted, self.token, &self.runtime);
+                if let TransferSource::Replay(replay) = &source {
+                    admission.source_grants.clone_from(&replay.grants);
+                }
                 drop(dispatch);
                 write_settlement(
                     self.session
                         .write(
                             intent.write_payload(),
                             Duration::from_millis(self.plan.write_wait_ms.get()),
-                            self.service.backend_admission(
-                                &self.accepted,
-                                self.token,
-                                &self.runtime,
-                            ),
+                            admission,
                         )
                         .await,
                     length,
@@ -629,6 +781,7 @@ impl FileRun<'_> {
                 &FileTransferReceipt {
                     source_offset: offset.into(),
                     receipt: receipt.clone(),
+                    replay_spans,
                 },
             )
             .await
@@ -692,6 +845,8 @@ impl ReceiptJournal {
                 format_version: "0.1".into(),
                 source_ref,
                 authority,
+                target_authority: (operation.action_id.as_str() == "replay.transmit")
+                    .then(|| operation.target.clone()),
                 count: 0.into(),
                 sealed: false,
             },

@@ -1283,6 +1283,38 @@ export const en = {
   "workbench.tools.configurationFileName": "workspace-configuration.json",
   "workbench.configuration.importContents": "Configuration package contents",
   "workbench.configuration.commandCount": "Quick commands to add ({count})",
+  "workbench.replayTransmit.title": "Transmit recorded TX",
+  "workbench.replayTransmit.source": "Recording",
+  "workbench.replayTransmit.pick": "Choose recording",
+  "workbench.replayTransmit.target": "Writable session",
+  "workbench.replayTransmit.chooseTarget": "Select a writable session",
+  "workbench.replayTransmit.rate": "Speed (bytes/s)",
+  "workbench.replayTransmit.range": "Recorded source range",
+  "workbench.replayTransmit.hostId": "Source Host ID",
+  "workbench.replayTransmit.sessionId": "Source session ID",
+  "workbench.replayTransmit.sessionEpoch": "Source session epoch",
+  "workbench.replayTransmit.eventStart": "First source event",
+  "workbench.replayTransmit.eventEnd": "End event (exclusive)",
+  "workbench.replayTransmit.rangeInvalid":
+    "Enter the source identity and a complete event range, or leave all range fields empty.",
+  "workbench.replayTransmit.finalBytes": "Final bytes",
+  "workbench.replayTransmit.bytesSummary": "TX · {bytes} bytes at {rate} B/s",
+  "workbench.replayTransmit.span":
+    "Record {record} · source bytes [{from}, {to})",
+  "workbench.replayTransmit.preview": "Generate preview",
+  "workbench.replayTransmit.send": "Confirm and transmit",
+  "workbench.replayTransmit.stop": "Stop transmission",
+  "workbench.replayTransmit.settled":
+    "Accepted {accepted} of {requested} bytes · {unknown} unknown",
+  "workbench.replayTransmit.limit":
+    "Choose a smaller recording or a shorter confirmed TX range.",
+  "workbench.replayTransmit.changed":
+    "The preview is stale. Generate a new preview before transmitting.",
+  "workbench.replayTransmit.empty":
+    "This range contains no confirmed TX bytes.",
+  "workbench.replayTransmit.ambiguous":
+    "The recording contains multiple TX sources. Select one source range.",
+  "workbench.replayTransmit.unwritable": "Select an open, writable session.",
   "workbench.replayPeer.open": "Simulate recorded peer",
   "workbench.replayPeer.closed": "The simulated peer is closed.",
   "workbench.replayPeer.ineligible":

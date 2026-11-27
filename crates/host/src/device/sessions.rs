@@ -3,7 +3,7 @@ use super::{
     serial::SerialHandoff,
 };
 use crate::{
-    auth::{AuthService, AuthenticatedActor, HostIdentity},
+    auth::{AuthService, AuthenticatedActor, GrantStamp, HostIdentity},
     state::ProjectionStore,
     storage::Store,
     stream::{SourceBoundary, SourceMeta, StreamHub, StreamKey, StreamSource},
@@ -162,6 +162,7 @@ impl TxDispatchFence {
 
 pub(crate) struct BackendAdmission {
     pub dispatch_fence: Option<TxDispatchFence>,
+    pub source_grants: Option<(AuthService, GrantStamp)>,
     pub session_epoch: U64,
     pub actor_id: Id,
     pub lease_id: Option<Id>,
@@ -170,6 +171,19 @@ pub(crate) struct BackendAdmission {
 }
 impl BackendAdmission {
     fn begin(
+        &self,
+        snapshot: &Mutex<SessionSnapshot>,
+        clock: &dyn Clock,
+        asserting_break: bool,
+    ) -> HostResult<()> {
+        let admit = || self.begin_authorized(snapshot, clock, asserting_break);
+        if let Some((auth, stamp)) = &self.source_grants {
+            auth.commit_grant_stamp(stamp, admit)
+        } else {
+            admit()
+        }
+    }
+    fn begin_authorized(
         &self,
         snapshot: &Mutex<SessionSnapshot>,
         clock: &dyn Clock,
@@ -2198,6 +2212,7 @@ mod mailbox_tests {
                 Duration::from_secs(1),
                 BackendAdmission {
                     dispatch_fence: None,
+                    source_grants: None,
                     session_epoch: target.session_epoch.unwrap(),
                     actor_id: h.actor.id().clone(),
                     lease_id: None,
@@ -2473,6 +2488,7 @@ mod mailbox_tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
             dispatch_fence: None,
+            source_grants: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2533,6 +2549,7 @@ mod mailbox_tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
             dispatch_fence: None,
+            source_grants: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2593,6 +2610,7 @@ mod mailbox_tests {
         };
         let admission = BackendAdmission {
             dispatch_fence: None,
+            source_grants: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,

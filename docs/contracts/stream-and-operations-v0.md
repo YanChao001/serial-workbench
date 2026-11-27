@@ -176,7 +176,9 @@ volumeResults 项包含 volumeId、`status: verified|missing|corrupt` 和 verifi
 
 参数与结果见[生成目录](../../packages/contracts/src/generated/catalog.json)。
 
-**后续设计（未注册）：** `replay.transmit` 拟按源方向和 SourceRange 选择数据，速率包含正十进制字符串和单位；预览固定目标、源 TX 接受区间、最终字节、速率和范围摘要。默认仅可选已确认 accepted 字节；unknown 尾段不可推定重放。用户选择发送其他捕获字节必须作为新的明确发送意图独立预览授权，不修改原始 TX 事实。设备模拟另登记独立任务，查看 capture 不启动模拟。执行前重新校验 previewDigest、源指纹、目标 epoch 与权限。
+发送式回放使用 `replay.transmit.preview` 读取并校验固定录制与目标，返回当前目标修订、线路配置、TX 最终字节、速率、逐段 SourceRange 和 `previewDigest`。调用者可选一段明确的源范围，省略范围时使用录制内唯一有已确认 TX 的来源。字节来自同一 TX 意图及其结算的 `acceptedRanges`，未知区间保留在原始录制证据。范围支持最多 512 段，最终字节上限沿用单次手动 TX，速率以 `bytesPerSecond` 正十进制字符串传递。
+
+用户确认后用 `replay.transmit` 携带同一 `selection`、`previewDigest`、目标修订和独立执行方式。Host 重新校验文件指纹、当前源读取权、目标写入权和会话代次。在独占会话内分片发送，取消、源变更和不完整写入会停止后续分片。结果借用传输回执，`sourceOffset` 从零定位预览最终字节，分片回执保存该片的 `replaySpans`，可沿 `outputOffset` 和 SourceRange 反查录制。被动回放只读取原数据，交互模拟复用自己的 `replay.peer.*` 动作。
 
 ## 可迁为测试的验收向量
 

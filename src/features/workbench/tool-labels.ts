@@ -416,6 +416,7 @@ export function workbenchToolLabels(t: Translate) {
     repeatSend: t("repeatSend.title"),
     calendarSchedule: t("calendar.title"),
     broadcastSend: t("broadcastSend.title"),
+    replayTransmit: t("workbench.replayTransmit.title"),
     commandSequence: t("commandSequence.title"),
     testSuite: t("testSuite.title"),
     ruleTrigger: t("ruleTrigger.title"),

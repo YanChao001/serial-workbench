@@ -86,6 +86,7 @@ export function WorkbenchConnection({
   canRestoreAccess,
   canSave,
   canReplay,
+  canReplayTransmit,
   toolsAvailable,
   onDeviceChange,
   onTool,
@@ -121,6 +122,7 @@ export function WorkbenchConnection({
   canRestoreAccess: boolean;
   canSave: boolean;
   canReplay: boolean;
+  canReplayTransmit?: boolean;
   toolsAvailable: boolean;
   onDeviceChange: (id: string) => void;
   onTool: (
@@ -565,6 +567,15 @@ export function WorkbenchConnection({
             <DropdownMenuItem onSelect={onReplayPeer}>
               <Clapperboard aria-hidden="true" />
               {t("workbench.replayPeer.open")}
+            </DropdownMenuItem>
+          )}
+          {canReplayTransmit && (
+            <DropdownMenuItem
+              disabled={!toolsAvailable}
+              onSelect={() => selectToolFromMenu("replayTransmit")}
+            >
+              <Play aria-hidden="true" />
+              {t("workbench.replayTransmit.title")}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem

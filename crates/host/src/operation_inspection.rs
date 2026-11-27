@@ -192,6 +192,12 @@ fn authorize_inspection(
             let input: ReplayOpenParams = decode(stored()?)?;
             file_read(&input.capture_ref)?;
         }
+        "replay.transmit" => {
+            let input: ReplayTransmitParams = decode(stored()?)?;
+            auth.require(actor, "metadata.read", &operation.target)?;
+            file_read(&input.selection.capture_ref)?;
+            authorize_transfer_result(files, actor, operation)?;
+        }
         "replay.peer.open" => {
             let input: ReplayPeerOpenParams = decode(stored()?)?;
             file_read(&input.capture_ref)?;

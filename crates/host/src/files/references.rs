@@ -199,9 +199,20 @@ impl FileService {
         {
             return Err(revision_changed());
         }
-        self.auth
-            .require(actor, "content.read", &manifest.authority)?;
+        self.require_receipt_authority(&manifest, actor)?;
         Ok(manifest)
+    }
+    fn require_receipt_authority(
+        &self,
+        manifest: &ReceiptJournalManifest,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<()> {
+        let authorization = self.auth.snapshot(actor)?;
+        authorization.require("content.read", &manifest.authority)?;
+        if let Some(target) = &manifest.target_authority {
+            authorization.require("metadata.read", target)?;
+        }
+        Ok(())
     }
     pub fn authorize_receipts(
         &self,
@@ -233,8 +244,7 @@ impl FileService {
                     })
             })
             .transpose()?;
-        self.auth
-            .require(actor, "content.read", &manifest.authority)?;
+        self.require_receipt_authority(&manifest, actor)?;
         let mut receipts_ref = reference.clone();
         receipts_ref.revision = manifest.sealed.then_some(1.into());
         Ok(FileTransferReadProgress { receipts_ref, read })
@@ -302,8 +312,7 @@ impl FileService {
                 break;
             }
         }
-        self.auth
-            .require(actor, "content.read", &manifest.authority)?;
+        self.require_receipt_authority(&manifest, actor)?;
         Ok(result)
     }
     fn record_document(
