@@ -2778,6 +2778,7 @@ mod tests {
     #[derive(Default)]
     struct BundledSlavePeer {
         serving: AtomicBool,
+        read_fails: AtomicBool,
         incoming: Mutex<VecDeque<Vec<u8>>>,
         replies: Mutex<Vec<Vec<u8>>>,
         retry_response: Mutex<Option<(Vec<u8>, Vec<u8>)>>,
@@ -2793,6 +2794,11 @@ mod tests {
             self.inner.capabilities()
         }
         fn read(&mut self, limit: usize, wait: std::time::Duration) -> BackendResult<ReadBlock> {
+            if self.peer.read_fails.load(Ordering::Acquire) {
+                return Err(
+                    HostError::new("BACKEND_DISCONNECTED", "Test peer disconnected").into(),
+                );
+            }
             let echo = self.inner.read(limit, wait)?;
             if !self.peer.serving.load(Ordering::Acquire) {
                 return Ok(echo);
@@ -3427,7 +3433,7 @@ mod tests {
             kind: ResourceKind::try_from("session").unwrap(),
             session_id: Some(open.session_id),
             session_epoch: Some(open.session_epoch),
-            ..device
+            host_id: device.host_id.clone(),
         };
         let definition = r#"{"version":"1","byteLength":1,"fields":[{"id":"reading","kind":"integer","byteOffset":0,"width":1,"order":"big","calibration":{"kind":"table","revision":"probe-2","interpolation":"linear","points":[{"raw":"64","value":"33"},{"raw":"66","value":"34"}]}}]}"#;
         let decode_params = serde_json::json!({"definition":definition,"bytesBase64":"QQ=="});
@@ -4298,6 +4304,195 @@ mod tests {
         peer.serving.store(false, Ordering::Release);
         eprintln!(
             "bundled_auto_response delay_ms={response_delay_ms} fixed_request=PING peer_writes=MANUAL,PONG"
+        );
+
+        let read_events = |target: &Target, start_event_seq| {
+            let streams = &host.inner.streams;
+            let actor = &actor;
+            let params = StreamReadParams {
+                session_id: target.id.clone(),
+                session_epoch: target.session_epoch.unwrap(),
+                start_event_seq,
+                max_events: 32.into(),
+                max_bytes: 4096.into(),
+            };
+            async move {
+                streams
+                    .read_prepared(actor, params)
+                    .await
+                    .unwrap()
+                    .into_parts()
+                    .0
+                    .events
+            }
+        };
+        let previous_writes = peer.replies.lock().unwrap().len();
+        peer.serving.store(true, Ordering::Release);
+        let cursor = host.inner.streams.current_cursor(&session).unwrap();
+        let start_event_seq = cursor.position.checked_next().unwrap();
+        let definition = serde_json::json!({
+            "version": 1,
+            "steps": [{
+                "kind": "send", "hex": "55",
+                "expect": {"hex": "A6", "timeoutMs": 5000, "retry": [{"hex": "56", "expectHex": "A7"}]}
+            }]
+        });
+        let sequence_before_reopen = host
+            .invoke(
+                &actor,
+                call(
+                    &session,
+                    sequence,
+                    serde_json::json!({
+                        "definition": definition.to_string(),
+                        "startEventSeq": start_event_seq
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        let original_write = tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                if let Some(receipt) = read_events(&session, start_event_seq)
+                    .await
+                    .into_iter()
+                    .find_map(|event| match event.payload {
+                        RawPayload::Tx(receipt) if receipt.bytes_base64.as_str() == "VQ==" => {
+                            Some(*receipt)
+                        }
+                        _ => None,
+                    })
+                {
+                    break receipt;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("First sequence write must be confirmed before the disconnect");
+        assert_eq!(original_write.outcome, TxOutcome::Accepted);
+        assert_eq!(Some(original_write.session_epoch), session.session_epoch);
+        assert!(
+            !store
+                .get(&actor, &sequence_before_reopen.operation_id)
+                .unwrap()
+                .state
+                .is_terminal()
+        );
+        peer.read_fails.store(true, Ordering::Release);
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while host.devices().snapshot(&session).await.unwrap().state
+                != SessionState::Disconnected
+            {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("The first transport must disconnect");
+        peer.read_fails.store(false, Ordering::Release);
+
+        let reopened = host
+            .invoke(
+                &actor,
+                call(
+                    &device,
+                    "device.open",
+                    serde_json::json!({"configuration": SerialConfiguration::default()}),
+                ),
+            )
+            .await
+            .unwrap();
+        let ActionResult::Opened(reopened) = settled(reopened).await else {
+            panic!("Expected a new transport for the same device");
+        };
+        assert!(!reopened.reused);
+        assert_eq!(reopened.session_id, session.id);
+        assert_eq!(
+            reopened.session_epoch,
+            session.session_epoch.unwrap().checked_next().unwrap()
+        );
+        let session = Target {
+            session_epoch: Some(reopened.session_epoch),
+            ..session
+        };
+        grant("content.read", &session);
+        grant("device.modify", &session);
+        let cursor = host.inner.streams.current_cursor(&session).unwrap();
+        let next_event_seq = cursor.position.checked_next().unwrap();
+        peer.incoming.lock().unwrap().push_back(vec![0xa6]);
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                if read_events(&session, next_event_seq).await.into_iter().any(|event| {
+                    event.session_epoch == reopened.session_epoch &&
+                        matches!(event.payload, RawPayload::Rx(rx) if rx.bytes_base64.as_str() == "pg==")
+                }) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        }).await.expect("The late reply must reach the new session epoch");
+
+        let terminal = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let operation = store
+                    .get(&actor, &sequence_before_reopen.operation_id)
+                    .unwrap();
+                if operation.state.is_terminal() {
+                    break operation;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("The sequence must settle on its original session");
+        if terminal.state == OperationState::Succeeded {
+            let report = read_automation_report(terminal.result.unwrap());
+            assert!(
+                matches!(
+                    report["outcome"].as_str(),
+                    Some("source_changed" | "response_timeout")
+                ),
+                "{report}"
+            );
+        }
+        assert_eq!(
+            &peer.replies.lock().unwrap()[previous_writes..],
+            &[vec![0x55]]
+        );
+        let query = Query {
+            protocol_version: ProtocolVersion::V1_0,
+            host_id: identity.host_id.clone(),
+            instance_epoch: identity.instance_epoch,
+            actor_id: actor.id().clone(),
+            request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+            action_id: id("operation.get"),
+            target: Target {
+                host_id: identity.host_id.clone(),
+                kind: ResourceKind::try_from("operation").unwrap(),
+                id: original_write.operation_id.clone(),
+                session_id: None,
+                session_epoch: None,
+            },
+            params: serde_json::from_value(
+                serde_json::json!({"operationId":original_write.operation_id}),
+            )
+            .unwrap(),
+            reveal_target: BuiltinAction::OperationGet.spec().reveal_target.clone(),
+        };
+        let QueryResult::Operation(retained) = host.query(&actor, query).await.unwrap() else {
+            panic!("Expected the original write through operation.get");
+        };
+        assert_eq!(
+            retained.operation.root_operation_id,
+            sequence_before_reopen.operation_id
+        );
+        assert_eq!(
+            retained.operation.result,
+            Some(ActionResult::Tx(original_write))
+        );
+        peer.serving.store(false, Ordering::Release);
+        eprintln!(
+            "bundled_retry_reopen same_session=true next_epoch=true late_reply_on_new_epoch=true peer_writes=1 retained_original_tx=true"
         );
 
         let calendar = "swb.builtin.automation.calendar";
