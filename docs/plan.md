@@ -22,6 +22,10 @@
 
 - 候选 `78c0c38` 在隔离 X11 实际拖入文件。偏移 1、长度 2 的样本为 `FE 23`，确认前 Raw 无写入，确认后一次接纳并精确回显。作业随后因弹窗关闭控件的测试定位失败，命令槽没有执行。下一批修正定位，统一高缩放落点单位，采用 Wry 0.57.1 处理 macOS 逐项文件 URL，并用同一原生预检覆盖其余桌面目标。 [X11 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45943296148/job/140322208274) · [预览截图和失败现场](https://github.com/YanChao001/serial-workbench/actions/runs/45943296148/artifacts/15174350372)
 
+- 候选 `e5be906` 的 X11（设备像素比 2）与 macOS arm64 原生收据都确认样本 `FE 23`、一次接纳和同字节回显。命令槽步骤在列表初始化时找不到新建编辑器。夹具改为等待新建动作可用，并在关闭前等待 Host 保存后回读到的命令。同一候选的真实配对 Chromium 通过文件交接，命令保存后重开为 `09 FF 00 41`，收据和宽窄截图位于本机 `.cache/io18/e5be906-paired-browser/`。文件引用的 14 项桌面库测试通过，覆盖引用归属、撤权和不重新授权。 [原生预检](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174056960) · [macOS arm64 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174133513)
+
+- 同一候选的 Windows 系统拖放已进入源文件初始样本。修改偏移时原范围暂时无效，输出节点被移除，测试继续读取旧节点得到 `null`。夹具改为重新查找渲染的范围与样本。无头回归覆盖无效期间移除旧范围和样本，以及合法范围重新显示。Windows 的确认发送和命令槽原生收据待复验。 [Windows 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/job/140325537497) · [失败现场](https://github.com/YanChao001/serial-workbench/actions/runs/45944353067/artifacts/15174900233)
+
 - IO-17 软件验收通过。4 项单元测试和 1 项无头浏览器回归通过。同源 Host、CLI、MCP 与工作台在固定 Node 和无头 Chromium 实际配对。TCP 未接入时 Virtual Echo 回显 `00 A5 FF 0A`，TCP 零接纳、零未确认。接入后两路各确认 `00 FF 0D 0A 80`。独立 CLI 持有 TCP 事务租约时，Virtual Echo 先完成 `43 00 54`，TCP 路接纳意图后由工作台单独停止，原始及公开查询回执均为零接纳、零未确认。重开查看保持「已停止」和原操作 ID；释放租约后对端仍未收到被停止的帧。双物理对端和正式签名安装待验。 [多端口广播专项](./acceptance.md#多端口广播io-17)
 
 - IO-16 软件验收通过。59 项本地脚本和 11 项无头用例覆盖通用命令序列、Modbus 重试和随包自动化。Windows 固定 Node 的签名专项核对首次 `53` 超时、第二次 `54` 匹配 `A5` 及不同 TX 操作标识。首笔 `55` 确认后断线重开，新代次收到迟到的 `A6`，旧任务结算且对端未收到任何补发。公开查询返回原 TX 回执。物理串口需要能独立控制应答和断线的对端，正式签名安装按同一场景复验。 [响应匹配与重试专项](./acceptance.md#响应匹配与重试io-16)
