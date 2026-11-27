@@ -16,7 +16,7 @@
 
 ### 本轮交付与验收
 
-- IO-10 软件验收通过。30 项本地 Node 检查覆盖延时、等待应答、分支、循环、变量、迟到应答、部分写入和取消。14 项无头 Chromium 用例核对命令序列和定时发送的工作台入口、预览、拒权、重开与终态。当前产品树与候选 `521057c` 相同，四平台签名 Host 收据均确认两笔匹配应答及 Raw 区间，超时补救后停止后续步骤。首方动作通过首次启动、重启和真实写入授权检查。实机缺已接线的独立对端，恢复后复验匹配、超时、错误及分段应答。正式签名候选可用后，在独立环境断网安装并重跑专项。 [PR #71](https://github.com/YanChao001/serial-workbench/pull/71) · [四目标门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45927017928) · [命令序列专项](./acceptance.md#命令序列io-10)
+- IO-10 软件验收通过。30 项本地 Node 检查覆盖延时、等待应答、分支、循环、变量、迟到应答、部分写入和取消。14 项无头 Chromium 用例核对命令序列和定时发送的工作台入口、预览、拒权、重开与终态。当前产品树与候选 `521057c` 相同，四平台签名 Host 收据均确认两笔匹配应答及 Raw 区间，超时补救后停止后续步骤。首方动作通过首次启动、重启和真实写入授权检查。实机缺已接线的独立对端，恢复后复验匹配、超时、错误及分段应答。正式签名候选可用后，在独立环境断网安装并重跑专项，包括命令序列自己的系统另存对话框和落盘回执。 [PR #71](https://github.com/YanChao001/serial-workbench/pull/71) · [四目标门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45927017928) · [命令序列专项](./acceptance.md#命令序列io-10)
 
 - IO-09 软件验收通过。17 项本地 Node 定向测试覆盖单调调度、计划时隙、抖动、拆分起止标记、逐轮应答、次数和取消。3 项无头 Chromium 用例核对工作台预览、独立任务、拒权和重开取消。候选 `521057c` 的 Windows、Ubuntu 及两种 macOS 签名 Host 收据均确认三次完整 TX、逐轮应答和终止条件，首方自动化动作在首次启动和重启均登记成功。实机缺已接线的独立对端，恢复后以对端接收时刻和 Host 逐轮回执核对漂移与抖动。正式签名候选可用后，在独立环境断网安装并重跑专项。 [PR #70](https://github.com/YanChao001/serial-workbench/pull/70) · [四目标门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45927017928) · [定时发送专项](./acceptance.md#定时与循环发送io-09)
 

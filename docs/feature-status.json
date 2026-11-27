@@ -1084,7 +1084,8 @@
         "status": "passed",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/49",
-          "https://github.com/YanChao001/serial-workbench/pull/71"
+          "https://github.com/YanChao001/serial-workbench/pull/71",
+          "https://github.com/YanChao001/serial-workbench/pull/89"
         ]
       },
       "hardware": {
