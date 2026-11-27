@@ -344,6 +344,12 @@ mod desktop {
         {
             active.revision = revision;
             active.enabled = enabled && active.bound;
+            #[cfg(feature = "e2e")]
+            log::debug!(
+                "E2E global send target: window={} revision={revision} enabled={}",
+                window.label(),
+                active.enabled
+            );
         }
     }
 
@@ -374,6 +380,13 @@ mod desktop {
             // Windows 已用 MOD_NOREPEAT 过滤长按，释放通知可能晚于下一次物理按键。
             let first_press = pressed && (cfg!(windows) || !active.pressed);
             active.pressed = pressed;
+            #[cfg(feature = "e2e")]
+            log::debug!(
+                "E2E global send input: window={} pressed={pressed} first={first_press} revision={} enabled={}",
+                WINDOWS[active.owner],
+                active.revision,
+                active.enabled
+            );
             if !first_press || !active.enabled || updating {
                 return;
             }

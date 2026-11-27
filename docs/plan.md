@@ -16,6 +16,8 @@
 
 ### 本轮交付与验收
 
+- 候选 `e5fa13d` 的 KDE Wayland v1/v2 均通过。两份重载收据都确认授权弹窗消失、新文档及草稿恢复、同一门户连接的请求和会话关闭、热键关闭及 Raw 零新增写入。Intel macOS 同轮前台测试确认进程获焦和 F9 仍被工作台独占，投递后 Raw 无事件且等待超时，尚未区分原生输入和目标授权时序。复验先观察关闭速查后的原生目标授权，再以一次真实按压周期投递。前台失败后仍收集跨应用证据并核对释放。 [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45921945976/artifacts/15165196152) · [Intel 桌面故障收据](https://github.com/YanChao001/serial-workbench/actions/runs/45921945976/artifacts/15165711380)
+
 - 候选 `b306ed3` 完成 Apple Silicon 的窗口恢复复验。主窗保存时未最大化，尺寸为 `880×600`，位置是 `(30,55)`。重启恢复相同尺寸和位置，后续居中检查通过。Windows、X11 和两种 macOS 架构的原生桌面作业均通过，前台收据确认一笔已接纳 TX、精确回显和焦点保持。 [Apple Silicon 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162822568) · [Intel 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15161994666) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162653474) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162846763)
 
 - 同一候选的 KDE Wayland v2 专项通过。v1 在重载前已确认授权弹窗存在，重载后 AT-SPI 枚举返回空窗口节点，观察脚本在确认关闭之前退出。本机以相同的空节点复现异常，验证观察脚本等待下一次完整扫描才报告关闭或控件缺失。真实门户请求关闭、会话关闭和新文档仍按原专项核对。 [Wayland 原始收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162424268)

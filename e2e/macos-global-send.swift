@@ -284,7 +284,11 @@ final class GlobalSendPeer: NSObject, NSApplicationDelegate {
             shiftUp.post(tap: tap)
             commandUp.post(tap: tap)
         }
-        guard repeating else { return }
+        guard repeating else {
+            // One physical cycle in the foreground workbench, with no autorepeat.
+            if expectedPID != nil { Thread.sleep(forTimeInterval: 0.12) }
+            return
+        }
         for _ in 0..<4 {
             Thread.sleep(forTimeInterval: 0.2)
             guard targetIsForeground() else { throw ProbeError("The expected test application lost foreground.") }

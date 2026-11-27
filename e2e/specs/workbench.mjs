@@ -325,15 +325,27 @@ async function checkWorkbenchForegroundSend(receipt, press, bytes) {
   });
   const read = await globalSendRawReader();
   receipt.workbenchFocus = await press();
-  await browser.waitUntil(async () => {
-    receipt.workbenchFocusedRaw = await read();
-    return rawRxBytes(receipt.workbenchFocusedRaw).length >= bytes.length;
-  });
+  await browser.waitUntil(
+    async () => {
+      receipt.workbenchFocusedRaw = await read();
+      return rawRxBytes(receipt.workbenchFocusedRaw).length >= bytes.length;
+    },
+    {
+      timeoutMsg:
+        "No matching Virtual Echo write and echo with the workbench in the foreground",
+    },
+  );
   await delay(300);
   receipt.workbenchFocusedRaw = await read();
   checkGlobalSendRaw(receipt.workbenchFocusedRaw, bytes);
   receipt.workbenchKeptFocus = await focused();
   assert.equal(receipt.workbenchKeptFocus, true);
+}
+
+function readGlobalSendNativeTrace(directory) {
+  return readFileSync(join(directory, "native.log"), "utf8")
+    .split("\n")
+    .filter((line) => line.includes("E2E global send "));
 }
 
 export async function checkTrayHiddenGlobalSend(receipt, press) {
@@ -752,23 +764,53 @@ export function workbenchChecks() {
             await command("retained");
             receipt.retained = true;
             await clickEnabled("button=Cancel");
+            const traceStart = readGlobalSendNativeTrace(directory).length;
             await closeShortcutHelp();
 
             let dispatchFailure;
             try {
               if (peer.canPost) {
-                const pid = Number(process.env.STARTER_E2E_APP_PID);
-                assert.ok(Number.isSafeInteger(pid) && pid > 0);
-                await checkWorkbenchForegroundSend(
-                  receipt,
-                  async () => {
-                    const posted = await command("press-workbench");
-                    assert.equal(posted.foreground, true);
-                    assert.equal(posted.foregroundPID, pid);
-                    return posted;
-                  },
-                  bytes,
-                );
+                try {
+                  await browser.waitUntil(
+                    () => {
+                      receipt.workbenchTarget = readGlobalSendNativeTrace(
+                        directory,
+                      )
+                        .slice(traceStart)
+                        .findLast((line) =>
+                          line.includes("target: window=main"),
+                        );
+                      return (
+                        receipt.workbenchTarget
+                          ?.trimEnd()
+                          .endsWith("enabled=true") ?? false
+                      );
+                    },
+                    {
+                      timeoutMsg:
+                        "The native global send target was not enabled after closing the dialog",
+                    },
+                  );
+                  const pid = Number(process.env.STARTER_E2E_APP_PID);
+                  assert.ok(Number.isSafeInteger(pid) && pid > 0);
+                  await checkWorkbenchForegroundSend(
+                    receipt,
+                    async () => {
+                      const posted = await command("press-workbench");
+                      assert.equal(posted.foreground, true);
+                      assert.equal(posted.foregroundPID, pid);
+                      return posted;
+                    },
+                    bytes,
+                  );
+                } catch (error) {
+                  dispatchFailure = { error };
+                  receipt.workbenchFailure =
+                    error instanceof Error ? error.message : String(error);
+                } finally {
+                  receipt.workbenchNativeTrace =
+                    readGlobalSendNativeTrace(directory).slice(traceStart);
+                }
                 const read = await globalSendRawReader();
                 receipt.focus = await command("focus");
                 await browser.waitUntil(
@@ -839,7 +881,9 @@ export function workbenchChecks() {
                 );
               }
             } catch (error) {
-              dispatchFailure = { error };
+              receipt.crossAppFailure =
+                error instanceof Error ? error.message : String(error);
+              dispatchFailure ??= { error };
             }
             try {
               await disableGlobalSend();
