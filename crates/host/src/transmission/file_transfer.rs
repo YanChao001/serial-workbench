@@ -2,6 +2,7 @@
 use super::*;
 use crate::auth::{AuthService, AuthenticatedActor, GrantStamp};
 use crate::capture::format::REPLAY_PEER_SOURCE_BYTES;
+use crate::device::sessions::BackendReplaySource;
 use crate::dispatch::browser_file::Upload;
 use crate::files::{FileService, FixedFile};
 use crate::storage::Store;
@@ -201,26 +202,27 @@ impl TransferSource {
         }
     }
 
+    async fn prove_replay(&self) -> HostResult<Option<BackendReplaySource>> {
+        let Self::Replay(replay) = self else {
+            return Ok(None);
+        };
+        let files = replay.files.clone();
+        let reference = replay.reference.clone();
+        let actor = replay.actor.clone();
+        let grants = replay.grants.clone();
+        blocking(move || {
+            let proof = files.prove_replay_source(&reference, &actor, REPLAY_PEER_SOURCE_BYTES)?;
+            Ok(Some(BackendReplaySource { grants, proof }))
+        })
+        .await
+    }
+
     async fn verify_chunk(
         self,
         offset: u64,
         length: usize,
         sent: &[u8],
     ) -> HostResult<(Self, HostResult<()>)> {
-        if let Self::Replay(replay) = self {
-            return blocking(move || {
-                let verified = replay
-                    .files
-                    .resolve_replay_source(
-                        &replay.reference,
-                        &replay.actor,
-                        REPLAY_PEER_SOURCE_BYTES,
-                    )
-                    .map(|_| ());
-                Ok((Self::Replay(replay), verified))
-            })
-            .await;
-        }
         let Self::File(mut file) = self else {
             return Ok((self, Ok(())));
         };
@@ -719,27 +721,27 @@ impl FileRun<'_> {
             self.reject_intent(&intent, &error)?;
             return Err(error);
         }
-        // 与取消协商共享dispatch guard，但不让RX或capture等待文件读或native完成。
+        // 先读取录制指纹，停止请求无需等待外部目录的扫描。
+        let replay_source = source.prove_replay().await;
         let dispatch = self.token.dispatch.lock().await;
-        let ready = self.gate().await;
+        let ready = self.gate().await.and(replay_source);
         let (source, ready) = if ready.is_ok() {
-            source.verify_chunk(offset, length, &bytes).await?
+            let (source, verified) = source.verify_chunk(offset, length, &bytes).await?;
+            (source, verified.and(ready))
         } else {
             (source, ready)
         };
         let ready = match ready {
-            Ok(()) => self.gate().await,
-            other => other,
+            Ok(replay_source) => self.gate().await.map(|()| replay_source),
+            Err(error) => Err(error),
         };
         let outcome = match ready {
-            Ok(()) => {
+            Ok(replay_source) => {
                 // session.write内部投递不跨await；释放dispatch锁使用户取消能到达native owner。
                 let mut admission =
                     self.service
                         .backend_admission(&self.accepted, self.token, &self.runtime);
-                if let TransferSource::Replay(replay) = &source {
-                    admission.source_grants.clone_from(&replay.grants);
-                }
+                admission.replay_source = replay_source;
                 drop(dispatch);
                 write_settlement(
                     self.session

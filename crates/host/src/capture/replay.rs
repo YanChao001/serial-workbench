@@ -1122,7 +1122,7 @@ impl ReplayService {
         Ok(())
     }
 }
-/// Rebuilds the same source plan for preview and actual admission.
+/// 预览和实际接纳均重建同一发送计划。
 pub(crate) fn transmit_preview(
     files: &FileService,
     actor: &AuthenticatedActor,

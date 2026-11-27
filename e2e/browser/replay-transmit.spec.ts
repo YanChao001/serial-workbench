@@ -251,6 +251,25 @@ test("previews recorded TX before allowing confirmed transmission to the chosen 
   await expect(send).toBeEnabled();
   await send.click();
   await expect(tool.getByRole("status")).toContainText("Accepted 3 of 3 bytes");
+
+  const menu = page.getByRole("button", {
+    name: "Workspace menu",
+    exact: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(tool).toBeHidden();
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+  const tasks = page.getByRole("dialog", { name: "Tasks", exact: true });
+  await expect(
+    tasks.getByText("Transmit recorded TX", { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tasks).toBeHidden();
+  await menu.click();
+  await page.getByRole("menuitem", { name: "Transmit recorded TX" }).click();
+  await expect(tool.getByRole("status")).toContainText("Accepted 3 of 3 bytes");
+
   expect(await invocations()).toEqual([
     {
       target: {

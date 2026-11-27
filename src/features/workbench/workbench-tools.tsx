@@ -466,8 +466,9 @@ export function WorkbenchTools({
     return (
       <Suspense>
         <ReplayTransmitTool
-          key={generation}
+          key={JSON.stringify([generation, context.replayOperationId])}
           host={host}
+          revealedOperationId={context.replayOperationId}
           cancel={onCancelOperation}
         />
       </Suspense>

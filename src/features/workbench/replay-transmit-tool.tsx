@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import type {
   Operation,
+  OperationSummary,
+  OperationState,
   ReplayTransmitPreview,
   ReplayTransmitSelection,
   SourceRange,
@@ -58,19 +60,19 @@ function sourceRange(fields: typeof emptySource): SourceRange | undefined {
   return { ...fields, direction: "tx" };
 }
 
-function active(operation: Operation | undefined): operation is Operation {
+function active(state: OperationState | undefined): boolean {
   return (
-    operation?.state === "queued" ||
-    operation?.state === "running" ||
-    operation?.state === "cancel_requested"
+    state === "queued" || state === "running" || state === "cancel_requested"
   );
 }
 
 export default function ReplayTransmitTool({
   host,
   cancel,
+  revealedOperationId,
 }: {
   host: HostContextValue;
+  revealedOperationId?: string;
   cancel?: (operation: Operation, signal?: AbortSignal) => Promise<void>;
 }) {
   const { t } = useI18n();
@@ -84,7 +86,7 @@ export default function ReplayTransmitTool({
     value: ReplayTransmitPreview;
     selection: ReplayTransmitSelection;
   }>();
-  const [accepted, setAccepted] = useState<Operation>();
+  const [acceptedId, setAcceptedId] = useState<string>();
   const [availability, setAvailability] = useState<{
     scope: object;
     canRead: boolean;
@@ -178,11 +180,26 @@ export default function ReplayTransmitTool({
     );
   }, [prepared, plannedParams, watchActions]);
 
+  const { operations, operationSummaries } = host.state;
+  const actorId = host.connection?.attachment.actorId;
+  const latest = [...operations, ...operationSummaries].reduce<
+    OperationSummary | undefined
+  >((current, item) => {
+    if (item.actorId !== actorId || item.actionId !== "replay.transmit")
+      return current;
+    return !current || item.acceptedAt > current.acceptedAt ? item : current;
+  }, undefined);
+  const operationId = acceptedId ?? revealedOperationId ?? latest?.operationId;
+  const detail = operations.find((item) => item.operationId === operationId);
+  const summary = operationSummaries.find(
+    (item) => item.operationId === operationId,
+  );
   const operation =
-    host.state.operations.find(
-      (item) => item.operationId === accepted?.operationId,
-    ) ?? accepted;
-  const busy = prepare.busy || transmit.busy || active(operation);
+    detail && (!summary || BigInt(detail.revision) >= BigInt(summary.revision))
+      ? detail
+      : undefined;
+  const operationState = operation?.state ?? summary?.state;
+  const busy = prepare.busy || transmit.busy || active(operationState);
   const visible =
     availability?.scope === plannedParams && availability?.canRead === true;
   const bytes = useMemo(
@@ -384,17 +401,15 @@ export default function ReplayTransmitTool({
                 signal,
               );
               signal.throwIfAborted();
-              setAccepted(pending);
+              setAcceptedId(pending.operationId);
               setPreview(undefined);
-              const settled = await host.waitForOperation(pending, signal);
-              signal.throwIfAborted();
-              setAccepted(settled);
+              await host.waitForOperation(pending, signal);
             });
           }}
         >
           {t("workbench.replayTransmit.send")}
         </Button>
-        {cancel && active(operation) && (
+        {cancel && operation && active(operationState) && (
           <Button
             size="sm"
             variant="outline"
@@ -405,10 +420,10 @@ export default function ReplayTransmitTool({
           </Button>
         )}
       </div>
-      {operation && (
+      {operationState && (
         <p role="status" className="text-sm text-muted-foreground">
-          {operationText(t, () => "").states[operation.state]}
-          {operation.result?.kind === "file_transfer"
+          {operationText(t, () => "").states[operationState]}
+          {operation?.result?.kind === "file_transfer"
             ? " · " +
               t("workbench.replayTransmit.settled", {
                 accepted: operation.result.value.accepted,

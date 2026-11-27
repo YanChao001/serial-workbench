@@ -49,12 +49,15 @@ impl Fixture {
         }
     }
     fn running(&self) -> Operation {
+        self.running_action("transfer.file")
+    }
+    fn running_action(&self, action_id: &str) -> Operation {
         let identity = self.store.identity().unwrap();
         let call: Call = serde_json::from_value(serde_json::json!({
             "protocolVersion":"1.0", "hostId":identity.host_id, "instanceEpoch":identity.instance_epoch,
             "actorId":self.actor.id(), "requestId":uuid::Uuid::new_v4().to_string(),
             "requestContext":self.store.issue_context(&self.actor).unwrap().token,
-            "actionId":"transfer.file", "executionMode":"independent",
+            "actionId":action_id, "executionMode":"independent",
             "target":{"hostId":identity.host_id,"kind":"session","id":"session","sessionId":"session","sessionEpoch":"1"},
             "params":{}, "revealTarget":{"pageId":"workbench"}
         })).unwrap();
@@ -158,9 +161,12 @@ fn transfer_evidence_persists_progress_through_cancel_and_recovery() {
 fn retention_removes_only_expired_operations_exact_receipt_journals() {
     let f = Fixture::new();
     let expired = f.running();
-    let removed = f.journal(&expired);
+    let mut removed = f.journal(&expired);
     f.terminal(&expired);
-    let running = f.running();
+    let expired_replay = f.running_action("replay.transmit");
+    removed.extend(f.journal(&expired_replay));
+    f.terminal(&expired_replay);
+    let running = f.running_action("replay.transmit");
     let mut retained = f.journal(&running);
     f.advance_days(6);
     let recent = f.running();

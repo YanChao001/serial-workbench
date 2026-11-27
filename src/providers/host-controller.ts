@@ -1876,12 +1876,27 @@ export function createHostWorkspace(
       !(until === "running" && operation.state === "running")
     ) {
       await pause(pollIntervalMs, waiting);
-      const result = await connection.client.query(
-        connection.buildQuery("operation.get", connection.hostTarget, {
-          operationId: operation.operationId,
-        }),
-        waiting,
-      );
+      const id = operation.operationId;
+      const result = await connection.client
+        .query(
+          connection.buildQuery("operation.get", connection.hostTarget, {
+            operationId: id,
+          }),
+          waiting,
+        )
+        .catch((error: unknown) => {
+          if (
+            !waiting.aborted &&
+            error instanceof HostRequestError &&
+            error.code === "PERMISSION_DENIED"
+          )
+            change({
+              operations: state.operations.filter(
+                (candidate) => candidate.operationId !== id,
+              ),
+            });
+          throw error;
+        });
       waiting.throwIfAborted();
       if (
         result.kind !== "operation" ||

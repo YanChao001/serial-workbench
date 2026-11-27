@@ -160,9 +160,14 @@ impl TxDispatchFence {
     }
 }
 
+pub(crate) struct BackendReplaySource {
+    pub grants: Option<(AuthService, GrantStamp)>,
+    pub proof: crate::capture::format::ReplaySourceProof,
+}
+
 pub(crate) struct BackendAdmission {
     pub dispatch_fence: Option<TxDispatchFence>,
-    pub source_grants: Option<(AuthService, GrantStamp)>,
+    pub replay_source: Option<BackendReplaySource>,
     pub session_epoch: U64,
     pub actor_id: Id,
     pub lease_id: Option<Id>,
@@ -177,11 +182,13 @@ impl BackendAdmission {
         asserting_break: bool,
     ) -> HostResult<()> {
         let admit = || self.begin_authorized(snapshot, clock, asserting_break);
-        if let Some((auth, stamp)) = &self.source_grants {
-            auth.commit_grant_stamp(stamp, admit)
-        } else {
-            admit()
+        if let Some(source) = &self.replay_source {
+            source.proof.check()?;
+            if let Some((auth, stamp)) = &source.grants {
+                return auth.commit_grant_stamp(stamp, admit);
+            }
         }
+        admit()
     }
     fn begin_authorized(
         &self,
@@ -1799,7 +1806,16 @@ fn owner_loop(
                     admission.begin(&snapshot, clock.as_ref(), false)
                 };
                 let length = bytes.len();
-                match admitted.map_err(BackendError::from).and_then(|()| {
+                if let Err(error) = admitted {
+                    // 后端尚未开始写入，拒绝时保留可确认的零接纳区间。
+                    let _ = send.send(Ok(BackendWrite {
+                        accepted_ranges: vec![],
+                        unknown_ranges: vec![],
+                        error: Some(error),
+                    }));
+                    continue;
+                }
+                let started = (|| {
                     let result =
                         backend.begin_write(bytes, wait, native_cancelled.clone(), closing.clone());
                     if let Err(error) = &result {
@@ -1809,7 +1825,8 @@ fn owner_loop(
                             .write_error(&error.error);
                     }
                     result
-                }) {
+                })();
+                match started {
                     Ok(job) => {
                         writing = Some(PendingWriteReply {
                             job,
@@ -2212,7 +2229,7 @@ mod mailbox_tests {
                 Duration::from_secs(1),
                 BackendAdmission {
                     dispatch_fence: None,
-                    source_grants: None,
+                    replay_source: None,
                     session_epoch: target.session_epoch.unwrap(),
                     actor_id: h.actor.id().clone(),
                     lease_id: None,
@@ -2474,6 +2491,54 @@ mod mailbox_tests {
     }
 
     #[tokio::test]
+    async fn replay_source_changed_after_mailbox_submission_is_known_zero_write() {
+        use crate::{capture::format, files::references::PathGuard};
+
+        let h = support::Harness::new().await;
+        let target = h.open("replay-source-owner-fence").await;
+        let session = h.host.devices().session(&target).unwrap();
+        let recording = tempfile::tempdir().unwrap();
+        std::fs::write(recording.path().join("manifest.json"), b"before").unwrap();
+        let directory = PathGuard::new(recording.path()).unwrap();
+        let (_, proof) =
+            format::prove_replay_source(directory, format::REPLAY_PEER_SOURCE_BYTES).unwrap();
+        h.probe.steps.lock().unwrap().push_back(support::WriteStep {
+            accepted: 3,
+            unknown: false,
+            gate: None,
+            advance_ms: 0,
+        });
+        let read = hold_read(&h).await;
+        let mut submitted = Box::pin(session.write(
+            WritePayload::owned(Arc::from([1, 2, 3])),
+            Duration::from_millis(100),
+            BackendAdmission {
+                dispatch_fence: None,
+                replay_source: Some(BackendReplaySource {
+                    grants: None,
+                    proof,
+                }),
+                session_epoch: target.session_epoch.unwrap(),
+                actor_id: h.actor.id().clone(),
+                lease_id: None,
+                lease: Arc::new(Mutex::new(None)),
+                cancelled: Arc::new(AtomicBool::new(false)),
+            },
+        ));
+        poll_pending(submitted.as_mut()).await;
+        let changed = std::fs::write(recording.path().join("added.swbs"), b"new");
+        read.release();
+        changed.unwrap();
+        let result = submitted.await.unwrap();
+        assert!(result.accepted_ranges.is_empty());
+        assert!(result.unknown_ranges.is_empty());
+        assert_eq!(result.error.unwrap().code, "SOURCE_CHANGED");
+        assert_eq!(h.probe.steps.lock().unwrap().len(), 1);
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::Ready);
+        h.host.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn write_deadline_requests_cancel_then_settles_without_advancing_domain_clock_again() {
         let h = support::Harness::new().await;
         let target = h.open("write-domain-deadline").await;
@@ -2488,7 +2553,7 @@ mod mailbox_tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
             dispatch_fence: None,
-            source_grants: None,
+            replay_source: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2549,7 +2614,7 @@ mod mailbox_tests {
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
             dispatch_fence: None,
-            source_grants: None,
+            replay_source: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2610,7 +2675,7 @@ mod mailbox_tests {
         };
         let admission = BackendAdmission {
             dispatch_fence: None,
-            source_grants: None,
+            replay_source: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,

@@ -733,7 +733,7 @@ mod tests {
         let writing_session = session.clone();
         let admission = crate::device::sessions::BackendAdmission {
             dispatch_fence: None,
-            source_grants: None,
+            replay_source: None,
             session_epoch: session.snapshot().unwrap().session_epoch,
             actor_id: Id::try_from("operator").unwrap(),
             lease_id: None,

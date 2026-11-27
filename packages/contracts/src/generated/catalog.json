@@ -23580,7 +23580,7 @@
       "permissions": ["metadata.read"],
       "revealTarget": {
         "pageId": "workbench",
-        "panelId": "transfer"
+        "panelId": "replayTransmit"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["session"]
@@ -23769,7 +23769,7 @@
       "permissions": ["device.modify"],
       "revealTarget": {
         "pageId": "workbench",
-        "panelId": "transfer"
+        "panelId": "replayTransmit"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]

@@ -117,7 +117,11 @@ export function operationProgress(
   return `${progress.completed}${progress.total === undefined ? "" : ` / ${progress.total}`}${unit ? ` ${unit}` : ""}`;
 }
 export function isTransfer(actionId: string) {
-  return actionId === "transfer.file" || actionId === "transfer.paste";
+  return (
+    actionId === "transfer.file" ||
+    actionId === "transfer.paste" ||
+    actionId === "replay.transmit"
+  );
 }
 
 export function isBusinessTask(actionId: string): boolean {

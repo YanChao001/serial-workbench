@@ -733,10 +733,9 @@ impl BuiltinAction {
             | Self::TxDrain => Some("controls"),
             Self::TransferFile
             | Self::TransferPaste
-            | Self::ReplayTransmitPreview
-            | Self::ReplayTransmit
             | Self::TransferReceiptsRead
             | Self::TransferReadProgress => Some("transfer"),
+            Self::ReplayTransmitPreview | Self::ReplayTransmit => Some("replayTransmit"),
             Self::OperationGet
             | Self::OperationInput
             | Self::OperationCancel

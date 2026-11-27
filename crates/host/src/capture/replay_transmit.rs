@@ -1,4 +1,4 @@
-//! Builds a transmit preview exclusively from recorded TX intent and confirmed byte ranges.
+//! 仅从录制的 TX 意图和已确认的接纳区间构建发送预览。
 use super::format::{SettlementKey, SourceIdentity};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serial_workbench_core::*;
