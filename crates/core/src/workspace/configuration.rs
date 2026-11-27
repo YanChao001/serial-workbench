@@ -10,6 +10,7 @@ use std::collections::HashSet;
 pub const WORKSPACE_CONFIGURATION_FORMAT: &str = "serial-workbench-configuration";
 pub const WORKSPACE_CONFIGURATION_VERSION: u32 = 1;
 pub const WORKSPACE_CONFIGURATION_BYTES: usize = 192 * 1024;
+pub const WORKSPACE_CONFIGURATION_COMMANDS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -65,13 +66,82 @@ pub enum WorkspaceScriptStatus {
     Unavailable,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceConfigurationImportParams {
+    pub json: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "U64")]
+    #[specta(type = U64, optional)]
+    pub command_revision: Option<U64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceConfigurationImportResult {
+    pub workspace: crate::WorkspaceDocumentResult,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "U64")]
+    #[specta(type = U64, optional)]
+    pub command_revision: Option<U64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceConfigurationExportParams {
+    pub workspace_revision: U64,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "U64")]
+    #[specta(type = U64, optional)]
+    pub command_revision: Option<U64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub command_ids: Vec<Id>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "Vec<WorkspaceScriptReference>")]
+    #[specta(type = Vec<WorkspaceScriptReference>, optional)]
+    pub scripts: Option<Vec<WorkspaceScriptReference>>,
+}
+
+impl WorkspaceConfigurationExportParams {
+    pub fn validate(&self) -> HostResult<()> {
+        if self.command_ids.len() > WORKSPACE_CONFIGURATION_COMMANDS
+            || self
+                .scripts
+                .as_ref()
+                .is_some_and(|scripts| scripts.len() > WORKSPACE_CONFIGURATION_COMMANDS)
+        {
+            return Err(configuration_size_error());
+        }
+        if self.command_ids.is_empty() == self.command_revision.is_some()
+            || self.command_ids.iter().collect::<HashSet<_>>().len() != self.command_ids.len()
+        {
+            return Err(invalid_configuration());
+        }
+        Ok(())
+    }
+}
+
 impl WorkspaceConfiguration {
     pub fn parse(json: &str) -> HostResult<Self> {
         if json.len() > WORKSPACE_CONFIGURATION_BYTES {
-            return Err(HostError::new(
-                "LIMIT_EXCEEDED",
-                "Workspace configuration package exceeds the size limit",
-            ));
+            return Err(configuration_size_error());
         }
 
         // 先判断格式和版本，避免把未来版本新增的字段误报为损坏。
@@ -98,6 +168,20 @@ impl WorkspaceConfiguration {
         let value: Self = serde_json::from_str(json).map_err(|_| invalid_configuration())?;
         value.validate_sections()?;
         Ok(value)
+    }
+
+    pub fn to_json(&self) -> HostResult<String> {
+        if self.format != WORKSPACE_CONFIGURATION_FORMAT
+            || self.version != WORKSPACE_CONFIGURATION_VERSION
+        {
+            return Err(invalid_configuration());
+        }
+        self.validate_sections()?;
+        let json = serde_json::to_string(self).map_err(|_| invalid_configuration())?;
+        if json.len() > WORKSPACE_CONFIGURATION_BYTES {
+            return Err(configuration_size_error());
+        }
+        Ok(json)
     }
 
     fn validate_sections(&self) -> HostResult<()> {
@@ -138,6 +222,13 @@ impl WorkspaceConfiguration {
         }
         Ok(())
     }
+}
+
+fn configuration_size_error() -> HostError {
+    HostError::new(
+        "LIMIT_EXCEEDED",
+        "Workspace configuration package exceeds the size limit",
+    )
 }
 
 fn invalid_configuration() -> HostError {

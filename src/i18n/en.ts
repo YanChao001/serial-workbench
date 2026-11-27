@@ -1281,6 +1281,42 @@ export const en = {
   "workbench.tools.chooseWorkspace": "Choose workspace",
   "workbench.tools.defaultWorkspace": "Default workspace",
   "workbench.tools.configurationFileName": "workspace-configuration.json",
+  "workbench.configuration.importContents": "Configuration package contents",
+  "workbench.configuration.commandCount": "Quick commands to add ({count})",
+  "workbench.configuration.scripts": "Script dependencies",
+  "workbench.configuration.script.matched": "Installed and trusted",
+  "workbench.configuration.script.missing": "Install the signed package",
+  "workbench.configuration.script.changed":
+    "Check the package version or action",
+  "workbench.configuration.script.unavailable":
+    "Check access and execution trust",
+  "workbench.configuration.credentials": "Credential references",
+  "workbench.configuration.export": "Export configuration package",
+  "workbench.configuration.fileName": "workspace.swb-config.json",
+  "workbench.configuration.exportConflict":
+    "The workspace or commands changed. Reopen the configuration package and review your selection.",
+  "workbench.configuration.exportError":
+    "The configuration could not be saved. Check the selection and try again.",
+  "workbench.configuration.quickCommands": "Quick commands",
+  "workbench.configuration.chooseCommands": "Choose quick commands",
+  "workbench.configuration.refreshCommands": "Refresh command library",
+  "workbench.configuration.commandGroup": "Command group",
+  "workbench.configuration.moreGroups": "More command groups",
+  "workbench.configuration.moreCommands": "More commands",
+  "workbench.configuration.noCommands": "No quick commands here.",
+  "workbench.configuration.includedCommandBodies":
+    "Command bodies to include ({count})",
+  "workbench.configuration.chooseScripts": "Choose signed scripts",
+  "workbench.configuration.choosePackage": "Signed package",
+  "workbench.configuration.noScripts": "No trusted script actions here.",
+  "workbench.configuration.keepScripts":
+    "Saved script and credential references will carry over.",
+  "workbench.configuration.selectedScripts":
+    "Script references selected ({count})",
+  "workbench.configuration.savePackage": "Save configuration package",
+  "workbench.configuration.credential.local":
+    "Verify this reference on the current Host",
+  "workbench.configuration.credential.remote": "Bind a credential on this Host",
   "workbench.experiment.title": "Experiment package",
   "workbench.experiment.export": "Export package",
   "workbench.experiment.import": "Import package",

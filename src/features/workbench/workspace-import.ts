@@ -1,5 +1,21 @@
 import type { WorkspaceDocument } from "@serial-workbench/contracts";
 
+/** 仅选择 Host 查询，文件内容和版本继续由 Host 校验。 */
+export function isWorkspaceConfiguration(json: string): boolean {
+  try {
+    const value: unknown = JSON.parse(json);
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "format" in value &&
+      value.format === "serial-workbench-configuration"
+    );
+  } catch {
+    // 普通导入查询会返回统一的格式错误。
+    return false;
+  }
+}
+
 export type WorkspaceImportChange = {
   section: Exclude<keyof WorkspaceDocument, "archived">;
   key: string;

@@ -284,6 +284,8 @@ impl BuiltinAction {
             Self::TransferPaste => typed!(PasteTransferParams),
             Self::SettingsSave => typed!(SettingsSaveParams),
             Self::WorkspaceSave => typed!(WorkspaceSaveParams),
+            Self::WorkspaceConfigurationImport => typed!(WorkspaceConfigurationImportParams),
+            Self::WorkspaceConfigurationExport => typed!(WorkspaceConfigurationExportParams),
             Self::ExperimentExport => typed!(ExperimentExportParams),
             Self::ExperimentInspect | Self::WorkspaceConfigurationInspect => {
                 typed!(DocumentImportParams)

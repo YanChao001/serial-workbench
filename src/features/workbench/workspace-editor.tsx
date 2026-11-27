@@ -8,6 +8,7 @@ import {
 } from "react";
 import type {
   SerialConfiguration,
+  WorkspaceConfigurationInspection,
   WorkspaceDocument,
   WorkspaceDocumentResult,
   WorkspaceView,
@@ -37,6 +38,8 @@ import { useUnsavedWork } from "@/providers/unsaved-work";
 import { stateScopeKey } from "@/lib/host-scope";
 import { receiveEncodingFor } from "@/lib/text-encoding";
 import { diffWorkspaceImport } from "./workspace-import";
+import { WorkspaceConfigurationSummary } from "./workspace-configuration-summary";
+import { WorkspaceConfigurationExport } from "./workspace-configuration-export";
 import {
   SerialConfigurationFields,
   type SerialConfigurationLabels,
@@ -167,12 +170,19 @@ export type WorkspaceEditorProps = {
   onReload?: (signal?: AbortSignal) => Promise<WorkspaceDocumentResult>;
   onPreviewImport?: (
     json: string,
-    signal?: AbortSignal,
-  ) => Promise<WorkspaceDocument>;
+    signal: AbortSignal,
+  ) => Promise<WorkspaceDocument | WorkspaceConfigurationInspection>;
+  onApplyConfiguration?: (
+    base: WorkspaceDocumentResult,
+    preview: WorkspaceConfigurationInspection,
+    json: string,
+    signal: AbortSignal,
+  ) => Promise<WorkspaceDocumentResult>;
   onExport?: (
     base: WorkspaceDocumentResult,
     signal?: AbortSignal,
   ) => Promise<void>;
+  configurationExport?: boolean;
   experimentEntry?: {
     label: string;
     ref: RefObject<HTMLButtonElement | null>;
@@ -236,6 +246,8 @@ function WorkspaceEditorDraft({
   onReload,
   onExport,
   onPreviewImport,
+  onApplyConfiguration,
+  configurationExport,
   experimentEntry,
 }: WorkspaceEditorProps) {
   const [original, setOriginal] = useState(base);
@@ -256,7 +268,18 @@ function WorkspaceEditorDraft({
   const [importJson, setImportJson] = useState("");
   const [importFileName, setImportFileName] = useState<string>();
   const importFileControl = useRef<HTMLInputElement | null>(null);
-  const [candidate, setCandidate] = useState<WorkspaceDocument>();
+  const [importCandidate, setCandidate] = useState<
+    WorkspaceDocument | WorkspaceConfigurationInspection
+  >();
+  const packagePreview =
+    importCandidate && "configuration" in importCandidate
+      ? importCandidate
+      : undefined;
+  const candidate =
+    importCandidate && "configuration" in importCandidate
+      ? importCandidate.configuration.workspace
+      : importCandidate;
+  const canApplyImport = packagePreview ? onApplyConfiguration : onSave;
   const importGeneration = useRef(0);
   const importPending = useRef(false);
   const pending = useRef<AbortController | null>(null);
@@ -448,15 +471,17 @@ function WorkspaceEditorDraft({
     }
   }
   async function applyImport(signal?: AbortSignal) {
-    if (!onSave || !candidate || disabled) return;
+    if (!candidate || disabled) return;
+    const submit = packagePreview
+      ? onApplyConfiguration &&
+        ((signal: AbortSignal) =>
+          onApplyConfiguration(original, packagePreview, importJson, signal))
+      : onSave &&
+        ((signal: AbortSignal) => onSave(original, candidate, signal));
+    if (!submit) return;
     const snapshot = latest.current;
-    const imported = candidate;
     const generation = importGeneration.current;
-    const result = await request(
-      (requestSignal) => onSave(original, imported, requestSignal),
-      signal,
-      true,
-    );
+    const result = await request(submit, signal, true);
     setOriginal(result);
     const unchanged = sameWorkspace(latest.current, snapshot);
     if (unchanged) change(result.document.value);
@@ -503,7 +528,7 @@ function WorkspaceEditorDraft({
     dirty: dirty || Boolean(importOpen && importJson),
     save:
       importOpen && importJson
-        ? candidate && onSave
+        ? candidate && canApplyImport
           ? applyImport
           : undefined
         : save,
@@ -925,83 +950,106 @@ function WorkspaceEditorDraft({
               </PopoverContent>
             </Popover>
             {candidate && (
-              <section
-                aria-label={labels.changes}
-                className="grid min-w-0 gap-2"
-              >
-                <h3 className="text-sm font-medium">{labels.changes}</h3>
-                {importChanges.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {labels.noChanges ?? "No changes"}
-                  </p>
-                ) : (
-                  <ul className="grid max-h-64 gap-3 overflow-auto text-sm">
-                    {importChanges.map((item) => (
-                      <li
-                        key={`${item.section}/${item.key}`}
-                        className="grid min-w-0 gap-1"
-                      >
-                        <p>
-                          {sectionLabels[item.section]} · {changeName(item)} ·{" "}
-                          <span>
-                            {labels[item.kind] ??
-                              {
-                                added: "Added",
-                                removed: "Removed",
-                                changed: "Changed",
-                              }[item.kind]}
-                          </span>
-                        </p>
-                        {item.section === "name" && item.kind !== "added" && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              {labels.before ?? "Current draft"}
-                            </span>
-                            <p>
-                              {typeof item.before === "string"
-                                ? item.before
-                                : ""}
-                            </p>
-                          </div>
-                        )}
-                        {item.section === "name" && item.kind !== "removed" && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              {labels.after ?? "Import candidate"}
-                            </span>
-                            <p>
-                              {typeof item.after === "string" ? item.after : ""}
-                            </p>
-                          </div>
-                        )}
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <WorkbenchIconButton label={labels.details}>
-                              <Info aria-hidden="true" />
-                            </WorkbenchIconButton>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="workbench-detail-popover"
-                            aria-label={labels.details}
+              <div className="@container/configuration-preview min-w-0">
+                <div
+                  className={
+                    packagePreview
+                      ? "grid min-w-0 items-start gap-4 @min-[32rem]/configuration-preview:grid-cols-2"
+                      : "min-w-0"
+                  }
+                >
+                  <section
+                    aria-label={labels.changes}
+                    className="grid min-w-0 gap-2"
+                  >
+                    <h3 className="text-sm font-medium">{labels.changes}</h3>
+                    {importChanges.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {labels.noChanges ?? "No changes"}
+                      </p>
+                    ) : (
+                      <ul className="grid max-h-64 gap-3 overflow-auto text-sm">
+                        {importChanges.map((item) => (
+                          <li
+                            key={`${item.section}/${item.key}`}
+                            className="grid min-w-0 gap-1"
                           >
-                            <Textarea
-                              readOnly
-                              aria-label={labels.details}
-                              rows={8}
-                              value={JSON.stringify(
-                                { before: item.before, after: item.after },
-                                null,
-                                2,
+                            <p>
+                              {sectionLabels[item.section]} · {changeName(item)}{" "}
+                              ·{" "}
+                              <span>
+                                {labels[item.kind] ??
+                                  {
+                                    added: "Added",
+                                    removed: "Removed",
+                                    changed: "Changed",
+                                  }[item.kind]}
+                              </span>
+                            </p>
+                            {item.section === "name" &&
+                              item.kind !== "added" && (
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    {labels.before ?? "Current draft"}
+                                  </span>
+                                  <p>
+                                    {typeof item.before === "string"
+                                      ? item.before
+                                      : ""}
+                                  </p>
+                                </div>
                               )}
-                              onFocus={(event) => event.currentTarget.select()}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+                            {item.section === "name" &&
+                              item.kind !== "removed" && (
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    {labels.after ?? "Import candidate"}
+                                  </span>
+                                  <p>
+                                    {typeof item.after === "string"
+                                      ? item.after
+                                      : ""}
+                                  </p>
+                                </div>
+                              )}
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <WorkbenchIconButton label={labels.details}>
+                                  <Info aria-hidden="true" />
+                                </WorkbenchIconButton>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                className="workbench-detail-popover"
+                                aria-label={labels.details}
+                              >
+                                <Textarea
+                                  readOnly
+                                  aria-label={labels.details}
+                                  rows={8}
+                                  value={JSON.stringify(
+                                    { before: item.before, after: item.after },
+                                    null,
+                                    2,
+                                  )}
+                                  onFocus={(event) =>
+                                    event.currentTarget.select()
+                                  }
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                  {packagePreview && (
+                    <WorkspaceConfigurationSummary
+                      preview={packagePreview}
+                      hostId={original.scope.target.hostId}
+                    />
+                  )}
+                </div>
+              </div>
             )}
           </section>
         )}
@@ -1042,7 +1090,7 @@ function WorkspaceEditorDraft({
                 locked ||
                 !importJson.trim() ||
                 !onPreviewImport ||
-                (!!candidate && !onSave)
+                (!!candidate && !canApplyImport)
               }
               onClick={() =>
                 void (candidate ? applyImport() : previewImport()).catch(
@@ -1123,6 +1171,9 @@ function WorkspaceEditorDraft({
             >
               <FileUp aria-hidden="true" />
             </WorkbenchIconButton>
+            {configurationExport && (
+              <WorkspaceConfigurationExport base={original} disabled={locked} />
+            )}
             {experimentEntry && (
               <Button
                 ref={experimentEntry.ref}

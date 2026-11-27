@@ -202,6 +202,9 @@ function readyHost(): HostContextValue {
       .mockResolvedValue({ revision: "0", entries: [] }),
     exportWorkspace: vi.fn(),
     previewWorkspaceImport: vi.fn(),
+    inspectWorkspaceConfiguration: vi.fn(),
+    importWorkspaceConfiguration: vi.fn(),
+    exportWorkspaceConfiguration: vi.fn(),
     waitForOperation: vi.fn(),
     checkAction: vi.fn(
       async (
@@ -2451,6 +2454,9 @@ describe("Serial Workbench 首页", () => {
         .mockResolvedValue({ revision: "0", entries: [] }),
       exportWorkspace: vi.fn(),
       previewWorkspaceImport: vi.fn(),
+      inspectWorkspaceConfiguration: vi.fn(),
+      importWorkspaceConfiguration: vi.fn(),
+      exportWorkspaceConfiguration: vi.fn(),
       waitForOperation: vi.fn(),
       checkAction: vi.fn(
         async (
@@ -2552,6 +2558,9 @@ describe("Serial Workbench 首页", () => {
         .mockResolvedValue({ revision: "0", entries: [] }),
       exportWorkspace: vi.fn(),
       previewWorkspaceImport: vi.fn(),
+      inspectWorkspaceConfiguration: vi.fn(),
+      importWorkspaceConfiguration: vi.fn(),
+      exportWorkspaceConfiguration: vi.fn(),
       waitForOperation: vi.fn(),
       checkAction: vi.fn(
         async (

@@ -55,6 +55,9 @@ const empty = (status: HostState["status"]): HostContextValue => ({
   recentConnections: async () => unavailable(),
   exportWorkspace: async () => unavailable(),
   previewWorkspaceImport: async () => unavailable(),
+  inspectWorkspaceConfiguration: async () => unavailable(),
+  importWorkspaceConfiguration: async () => unavailable(),
+  exportWorkspaceConfiguration: async () => unavailable(),
   waitForOperation: async () => unavailable(),
   checkAction: async () => unavailable(),
   watchActions: (inputs, listener) => {
@@ -81,6 +84,9 @@ function withLocalWorkspace(
     rebindDevice: local.rebindDevice,
     exportWorkspace: local.exportWorkspace,
     previewWorkspaceImport: local.previewWorkspaceImport,
+    inspectWorkspaceConfiguration: local.inspectWorkspaceConfiguration,
+    importWorkspaceConfiguration: local.importWorkspaceConfiguration,
+    exportWorkspaceConfiguration: local.exportWorkspaceConfiguration,
   };
 }
 

@@ -19,6 +19,11 @@ pub(crate) enum LocalDocumentIntent {
         expected_revision: U64,
         params: WorkspaceSaveParams,
     },
+    WorkspaceConfigurationImport {
+        workspace_id: Id,
+        expected_revision: U64,
+        params: WorkspaceConfigurationImportParams,
+    },
     CommandLibraryChange {
         workspace_id: Id,
         expected_revision: U64,
@@ -67,6 +72,18 @@ impl DesktopHostBridge {
                 params,
             } => (
                 "workspace.save",
+                "workspace",
+                workspace_id,
+                "workspace.modify",
+                expected_revision,
+                document_params(params)?,
+            ),
+            LocalDocumentIntent::WorkspaceConfigurationImport {
+                workspace_id,
+                expected_revision,
+                params,
+            } => (
+                "workspace.configuration.import",
                 "workspace",
                 workspace_id,
                 "workspace.modify",

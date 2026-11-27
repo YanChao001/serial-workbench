@@ -1327,6 +1327,46 @@ async fn configuration_inspection_reads_current_revisions_without_saving_or_gran
             },
         )
         .unwrap();
+    let read_only = read(
+        &f.second,
+        &bench,
+        "workspace.configuration.inspect",
+        params.clone(),
+    )
+    .await;
+    assert_eq!(read_only["commandRevision"], "1");
+    let export = query(
+        &f.second,
+        &bench,
+        "workspace.configuration.export",
+        json!({"workspaceRevision":"1","commandRevision":"1","commandIds":["read"]}),
+    );
+    assert!(matches!(
+        f.second.request(RpcRequest::Query(export)).await.unwrap(),
+        RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"
+    ));
+    assert!(matches!(
+        f.second
+            .request(RpcRequest::Query(query(
+                &f.second,
+                &bench,
+                "workspace.commands.read",
+                read_groups.clone(),
+            )))
+            .await
+            .unwrap(),
+        RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"
+    ));
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.second.attachment().actor_id.clone(),
+                permissions: vec!["metadata.read".into()],
+                targets: vec![bench.clone()],
+            },
+        )
+        .unwrap();
     let request = query(
         &f.second,
         &bench,
@@ -1352,6 +1392,143 @@ async fn configuration_inspection_reads_current_revisions_without_saving_or_gran
     assert_eq!(
         read(&f.first, &bench, "workspace.commands.read", read_groups).await,
         commands_before
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn configuration_import_checks_both_revisions_and_preserves_command_collisions() {
+    let f = Fixture::new(0).await;
+    let bench = f.target("workspace", "bench");
+    f.grant("document-a", "workspace.modify", &bench);
+    f.grant("document-a", "content.read", &bench);
+    for (action, params) in [
+        (
+            "workspace.save",
+            json!({"value":preview_document("Current workspace")}),
+        ),
+        (
+            "workspace.commands.change",
+            json!({"kind":"saveGroup","group":{"id":"group","name":"Existing"}}),
+        ),
+    ] {
+        let admitted = invoke(
+            &f.first,
+            call(&f.first, &bench, action, Some(0.into()), params),
+        )
+        .await;
+        assert_eq!(
+            settled(&f.first, &f.host_target(), admitted).await.state,
+            OperationState::Succeeded
+        );
+    }
+    let groups = json!({"selection":{"view":"groups"}});
+    let workspace_before = read(&f.first, &bench, "workspace.read", json!({})).await;
+    let commands_before = read(&f.first, &bench, "workspace.commands.read", groups.clone()).await;
+    let workspace = preview_document("Imported configuration");
+    let json = json!({
+        "format":"serial-workbench-configuration",
+        "version":1,
+        "workspace":workspace,
+        "groups":[{"id":"group","name":"Imported"}],
+        "commands":[{
+            "summary":{"id":"read","groupId":"group","name":"Read","note":""},
+            "body":"01 03 00 00",
+            "mode":"hex",
+            "encoding":"utf-8"
+        }],
+        "scripts":[],
+        "credentialRefs":[{
+            "slot":"gateway",
+            "hostId":"other-host",
+            "referenceId":"opaque-reference"
+        }]
+    })
+    .to_string();
+    let request = |workspace_revision: u64, command_revision: &str| {
+        call(
+            &f.first,
+            &bench,
+            "workspace.configuration.import",
+            Some(workspace_revision.into()),
+            json!({"json":json,"commandRevision":command_revision}),
+        )
+    };
+    for (workspace_revision, command_revision) in [(1, "0"), (0, "1")] {
+        let admitted = invoke(&f.first, request(workspace_revision, command_revision)).await;
+        let terminal = settled(&f.first, &f.host_target(), admitted).await;
+        assert_eq!(terminal.state, OperationState::Failed);
+        assert_eq!(terminal.error.unwrap().code, "REVISION_CONFLICT");
+        assert_eq!(
+            read(&f.first, &bench, "workspace.read", json!({})).await,
+            workspace_before
+        );
+        assert_eq!(
+            read(&f.first, &bench, "workspace.commands.read", groups.clone()).await,
+            commands_before
+        );
+    }
+
+    let request = request(1, "1");
+    let admitted = invoke(&f.first, request.clone()).await;
+    let terminal = settled(&f.first, &f.host_target(), admitted).await;
+    assert_eq!(terminal.state, OperationState::Succeeded, "{terminal:?}");
+    let Some(ActionResult::WorkspaceConfigurationImport(saved)) = terminal.result else {
+        panic!("Missing workspace configuration receipt")
+    };
+    assert_eq!(saved.workspace.document.revision, 2.into());
+    assert_eq!(saved.workspace.document.value, workspace);
+    assert_eq!(saved.command_revision, Some(2.into()));
+    let readback = read(&f.first, &bench, "workspace.read", json!({})).await;
+    assert_eq!(
+        readback["document"]["value"],
+        serde_json::to_value(workspace).unwrap()
+    );
+
+    let readback = read(&f.first, &bench, "workspace.commands.read", groups).await;
+    assert_eq!(readback["revision"], "2");
+    let entries = readback["records"]["groups"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0]["id"], "group");
+    assert_eq!(entries[0]["name"], "Existing");
+    assert_eq!(entries[1]["name"], "Imported");
+    let assigned_id = &entries[1]["id"];
+    assert_ne!(assigned_id, "group");
+    let command = read(
+        &f.first,
+        &bench,
+        "workspace.commands.read",
+        json!({"selection":{"view":"entry","id":"read"}}),
+    )
+    .await;
+    assert_eq!(command["records"]["command"]["body"], "01 03 00 00");
+    assert_eq!(
+        command["records"]["command"]["summary"]["groupId"],
+        *assigned_id
+    );
+
+    let exported = read(
+        &f.first,
+        &bench,
+        "workspace.configuration.export",
+        json!({"workspaceRevision":"2","commandRevision":"2","commandIds":["read"]}),
+    )
+    .await;
+    let package = WorkspaceConfiguration::parse(exported["json"].as_str().unwrap()).unwrap();
+    assert_eq!(package.workspace, saved.workspace.document.value);
+    assert_eq!(package.groups.len(), 1);
+    assert_eq!(package.groups[0].name, "Imported");
+    assert_eq!(package.commands[0].body, "01 03 00 00");
+    assert_eq!(
+        package.credential_refs[0].reference_id.as_str(),
+        "opaque-reference"
+    );
+
+    let repeated = invoke(&f.first, request).await;
+    assert_eq!(repeated.operation_id, terminal.operation_id);
+    assert_eq!(
+        repeated.result,
+        Some(ActionResult::WorkspaceConfigurationImport(saved))
     );
     f.finish().await;
 }

@@ -308,6 +308,9 @@ impl DocumentService {
             BuiltinAction::CommandLibraryImport => self
                 .import_command_archive(files, actor, call, operation_id)
                 .map(|revision| (ActionResult::CommandLibraryRevision(revision), None)),
+            BuiltinAction::WorkspaceConfigurationImport => {
+                self.import_workspace_configuration(actor, call, operation_id)
+            }
             BuiltinAction::CommandLibraryExport => self
                 .export_command_archive(files, actor, call)
                 .map(|result_ref| {
@@ -361,6 +364,65 @@ impl DocumentService {
                 )
             })
     }
+    fn import_workspace_configuration(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        operation_id: &Id,
+    ) -> HostResult<(ActionResult, Option<HostError>)> {
+        let params: WorkspaceConfigurationImportParams = decode(&call.params)?;
+        let configuration = WorkspaceConfiguration::parse(&params.json)?;
+        let reference = Self::reference(&call.target)?;
+        let lock = self.document_lock(&reference)?;
+        let _document = lock.lock().map_err(|_| unavailable())?;
+        let expected = call.expected_revision.ok_or_else(invalid)?;
+        let service = WorkspaceService::new(self.store.clone(), call.target.id.clone());
+        let Document::Workspace(current) = self.load(reference.clone())? else {
+            return Err(invalid());
+        };
+        if current.document.value.archived {
+            return Err(HostError::new("WORKSPACE_DELETED", "Workspace was removed"));
+        }
+        self.synchronize(&Document::Workspace(current))?;
+        let document = WorkspaceDocumentResult {
+            scope: reference,
+            document: WorkspaceSnapshot {
+                revision: expected.checked_next()?,
+                value: configuration.workspace.clone(),
+            },
+        };
+        let state = object(&document)?;
+        wire_budget(&state)?;
+        self.projections.preflight_document(
+            &document.scope.scope_id,
+            Id::try_from("workspace.changed").expect("event"),
+            &state,
+        )?;
+
+        let write = service.prepare_configuration(
+            expected,
+            params.command_revision,
+            configuration,
+            document,
+            operation_id.clone(),
+        )?;
+        let spec = BuiltinAction::WorkspaceConfigurationImport.spec();
+        let saved = self
+            .auth
+            .commit_authorized(actor, &spec.permissions, &call.target, || {
+                if self.store.identity()?.instance_epoch != call.instance_epoch {
+                    return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
+                }
+                self.store.commit_workspace_configuration(write)
+            })?;
+        let error =
+            self.publish_saved_document(&Document::Workspace(saved.workspace.clone()), state);
+        Ok((
+            ActionResult::WorkspaceConfigurationImport(Box::new(saved)),
+            error,
+        ))
+    }
+
     fn save(
         &self,
         actor: &AuthenticatedActor,
@@ -478,12 +540,16 @@ impl DocumentService {
                 })?;
         #[cfg(test)]
         self.after_commit.arrive();
-        let error = self.projections.commit(&saved.reference().scope_id, saved.event(), state.clone(), state).err().map(|mut error| {
+        let error = self.publish_saved_document(&saved, state);
+        Ok((saved.result(), error))
+    }
+
+    fn publish_saved_document(&self, saved: &Document, state: JsonObject) -> Option<HostError> {
+        self.projections.commit(&saved.reference().scope_id, saved.event(), state.clone(), state).err().map(|mut error| {
             error.message = "Document persisted, but projection publication failed; read the document to recover".into();
             error.details = Some(Box::new([("documentPersisted".into(), JsonValue::Bool(true))].into()));
             error
-        });
-        Ok((saved.result(), error))
+        })
     }
 }
 pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonObject> {
@@ -507,6 +573,9 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
         BuiltinAction::DeviceRebind => object(&decode::<RebindParams>(&call.params)?),
         BuiltinAction::FavoritesSave => object(&decode::<FavoritesSaveParams>(&call.params)?),
         BuiltinAction::SettingsSave => object(&decode::<SettingsSaveParams>(&call.params)?),
+        BuiltinAction::WorkspaceConfigurationImport => {
+            object(&decode::<WorkspaceConfigurationImportParams>(&call.params)?)
+        }
         BuiltinAction::WorkspaceSave => {
             let params: WorkspaceSaveParams = decode(&call.params)?;
             params.value.validate()?;

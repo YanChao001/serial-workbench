@@ -28,6 +28,7 @@ import type {
   HostInvocation,
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
+import { isWorkspaceConfiguration } from "./workspace-import";
 import { isTauri, saveTextExport } from "@/lib/tauri";
 import { isRecord } from "@/lib/settings-model";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
@@ -623,9 +624,23 @@ export function WorkbenchTools({
               onLoaded(result);
               return result;
             }}
-            onPreviewImport={(json, signal) =>
-              host.previewWorkspaceImport(base.scope.target.id, json, signal)
-            }
+            onPreviewImport={(json, signal) => {
+              return isWorkspaceConfiguration(json)
+                ? host.inspectWorkspaceConfiguration(
+                    base.scope.target.id,
+                    json,
+                    signal,
+                  )
+                : host.previewWorkspaceImport(
+                    base.scope.target.id,
+                    json,
+                    signal,
+                  );
+            }}
+            onApplyConfiguration={host.importWorkspaceConfiguration}
+            configurationExport={catalog.some(
+              (entry) => entry.actionId === "workspace.configuration.export",
+            )}
             onExport={async (current, signal) => {
               const result = await host.exportWorkspace(
                 current.scope.target.id,

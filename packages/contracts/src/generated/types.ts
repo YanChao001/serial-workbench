@@ -55,6 +55,10 @@ export type ActionResult_Deserialize =
   | { kind: "file_transfer"; value: FileTransferResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
+  | {
+      kind: "workspace_configuration_import";
+      value: WorkspaceConfigurationImportResult_Deserialize;
+    }
   | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Deserialize }
@@ -86,6 +90,10 @@ export type ActionResult_Serialize =
   | { kind: "file_transfer"; value: FileTransferResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
+  | {
+      kind: "workspace_configuration_import";
+      value: WorkspaceConfigurationImportResult_Serialize;
+    }
   | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Serialize }
@@ -5881,6 +5889,52 @@ export type WorkerObservation_Serialize = {
 
 export type WorkspaceConfiguration =
   WorkspaceConfiguration_Serialize | WorkspaceConfiguration_Deserialize;
+
+export type WorkspaceConfigurationExportParams =
+  | WorkspaceConfigurationExportParams_Serialize
+  | WorkspaceConfigurationExportParams_Deserialize;
+
+export type WorkspaceConfigurationExportParams_Deserialize = {
+  workspaceRevision: U64;
+  commandRevision?: U64;
+  commandIds?: Id[];
+  scripts?: WorkspaceScriptReference[];
+};
+
+export type WorkspaceConfigurationExportParams_Serialize = {
+  workspaceRevision: U64;
+  commandRevision?: U64;
+  commandIds?: Id[];
+  scripts?: WorkspaceScriptReference[];
+};
+
+export type WorkspaceConfigurationImportParams =
+  | WorkspaceConfigurationImportParams_Serialize
+  | WorkspaceConfigurationImportParams_Deserialize;
+
+export type WorkspaceConfigurationImportParams_Deserialize = {
+  json: string;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationImportParams_Serialize = {
+  json: string;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationImportResult =
+  | WorkspaceConfigurationImportResult_Serialize
+  | WorkspaceConfigurationImportResult_Deserialize;
+
+export type WorkspaceConfigurationImportResult_Deserialize = {
+  workspace: WorkspaceDocumentResult_Deserialize;
+  commandRevision?: U64;
+};
+
+export type WorkspaceConfigurationImportResult_Serialize = {
+  workspace: WorkspaceDocumentResult_Serialize;
+  commandRevision?: U64;
+};
 
 export type WorkspaceConfigurationInspection =
   | WorkspaceConfigurationInspection_Serialize

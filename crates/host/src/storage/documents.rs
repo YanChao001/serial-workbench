@@ -118,21 +118,37 @@ impl Database {
             .map_err(|_| unavailable())?;
         let revision = Self::write_document(&transaction, id, expected, value)?;
         if let Some(workspace_id) = workspace_id {
-            if archived {
-                transaction
-                    .execute(
-                        "DELETE FROM workspace_directory WHERE workspace_id=?1 AND document_id=?2",
-                        params![workspace_id.as_str(), id.as_str()],
-                    )
-                    .map_err(|_| unavailable())?;
-            } else {
-                transaction.execute("INSERT INTO workspace_directory(workspace_id,document_id) VALUES(?1,?2) ON CONFLICT(workspace_id) DO UPDATE SET document_id=excluded.document_id", params![workspace_id.as_str(), id.as_str()]).map_err(|_| unavailable())?;
-            }
+            Self::update_workspace_directory(&transaction, id, workspace_id, archived)?;
         }
         transaction.commit().map_err(|_| unavailable())?;
         Ok(revision)
     }
-    fn write_document<T: Serialize>(
+    pub(super) fn update_workspace_directory(
+        transaction: &Transaction<'_>,
+        document: &Id,
+        workspace: &Id,
+        archived: bool,
+    ) -> HostResult<()> {
+        if archived {
+            transaction
+                .execute(
+                    "DELETE FROM workspace_directory WHERE workspace_id=?1 AND document_id=?2",
+                    params![workspace.as_str(), document.as_str()],
+                )
+                .map_err(|_| unavailable())?;
+        } else {
+            transaction
+                .execute(
+                    "INSERT INTO workspace_directory(workspace_id,document_id) VALUES(?1,?2)
+                     ON CONFLICT(workspace_id) DO UPDATE SET document_id=excluded.document_id",
+                    params![workspace.as_str(), document.as_str()],
+                )
+                .map_err(|_| unavailable())?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn write_document<T: Serialize>(
         transaction: &Transaction<'_>,
         id: &Id,
         expected: U64,

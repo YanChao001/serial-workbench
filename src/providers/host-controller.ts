@@ -30,6 +30,8 @@ import type {
   Target,
   WorkspaceDocument,
   WorkspaceDocumentResult,
+  WorkspaceConfigurationExportParams,
+  WorkspaceConfigurationInspection,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import { bytesToBase64 } from "@/lib/base64";
@@ -767,9 +769,25 @@ export function createHostWorkspace(
     updateOperation(initial);
     const operation = await waitForOperation(initial, waiting);
     waiting.throwIfAborted();
-    if (operation.result?.kind !== "workspace")
-      throw new ContractValidationError();
-    const receipt = checkedWorkspace(operation.result.value, target);
+    let workspace: WorkspaceDocumentResult;
+    if (intent.kind === "workspaceConfigurationImport") {
+      if (operation.result?.kind !== "workspace_configuration_import")
+        throw new ContractValidationError();
+      const expected = intent.params.commandRevision;
+      const actual = operation.result.value.commandRevision;
+      if (
+        expected == null
+          ? actual != null
+          : actual !== (BigInt(expected) + 1n).toString()
+      )
+        throw new ContractValidationError();
+      workspace = operation.result.value.workspace;
+    } else {
+      if (operation.result?.kind !== "workspace")
+        throw new ContractValidationError();
+      workspace = operation.result.value;
+    }
+    const receipt = checkedWorkspace(workspace, target);
     if (BigInt(receipt.document.revision) <= BigInt(base.document.revision))
       throw new ContractValidationError(
         "Saved workspace revision did not advance",
@@ -1051,6 +1069,76 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
+  async function inspectWorkspaceConfiguration(
+    workspaceId: string,
+    json: string,
+    signal: AbortSignal,
+  ) {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    const result = await connection.client.query(
+      connection.buildQuery(
+        "workspace.configuration.inspect",
+        workspaceTarget(workspaceId),
+        { json },
+      ),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (result.kind !== "workspace_configuration_inspection")
+      throw new ContractValidationError();
+    return result.value;
+  }
+
+  async function importWorkspaceConfiguration(
+    base: WorkspaceDocumentResult,
+    preview: WorkspaceConfigurationInspection,
+    json: string,
+    signal?: AbortSignal,
+  ) {
+    if (preview.workspaceRevision !== base.document.revision)
+      throw failure(
+        "REVISION_CONFLICT",
+        "Workspace changed since it was opened",
+      );
+    return saveDocument(
+      base,
+      "workspace.configuration.import",
+      {
+        kind: "workspaceConfigurationImport",
+        workspaceId: base.scope.target.id,
+        expectedRevision: preview.workspaceRevision,
+        params: {
+          json,
+          ...(preview.commandRevision == null
+            ? {}
+            : { commandRevision: preview.commandRevision }),
+        },
+      },
+      signal,
+    );
+  }
+
+  async function exportWorkspaceConfiguration(
+    workspaceId: string,
+    params: WorkspaceConfigurationExportParams,
+    signal: AbortSignal,
+  ) {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    const result = await connection.client.query(
+      connection.buildQuery(
+        "workspace.configuration.export",
+        workspaceTarget(workspaceId),
+        rpcJsonObject(params),
+      ),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (result.kind !== "document_json") throw new ContractValidationError();
+    return result.value;
+  }
+
   async function checkAction(
     input: HostActionCheckInput,
     signal?: AbortSignal,
@@ -1988,6 +2076,9 @@ export function createHostWorkspace(
     recentConnections,
     exportWorkspace,
     previewWorkspaceImport,
+    inspectWorkspaceConfiguration,
+    importWorkspaceConfiguration,
+    exportWorkspaceConfiguration,
     waitForOperation,
     checkAction,
     watchActions,

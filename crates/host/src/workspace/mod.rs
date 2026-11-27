@@ -1,8 +1,12 @@
 use crate::{
     settings::{encode, export_document, import_document, read_document},
-    storage::Store,
+    storage::{StagedCommandArchive, Store, WorkspaceConfigurationCommit},
 };
-use serial_workbench_core::{HostResult, Id, U64, WorkspaceDocument, WorkspaceSnapshot};
+use serde::{Deserialize, Serialize};
+use serial_workbench_core::{
+    HostError, HostResult, Id, U64, WorkspaceConfiguration, WorkspaceCredentialReference,
+    WorkspaceDocument, WorkspaceDocumentResult, WorkspaceScriptReference, WorkspaceSnapshot,
+};
 use sha2::{Digest, Sha256};
 #[derive(Clone)]
 pub struct WorkspaceService {
@@ -10,6 +14,13 @@ pub struct WorkspaceService {
     id: Id,
     workspace_id: Id,
 }
+#[derive(Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ConfigurationReferences {
+    pub(crate) scripts: Vec<WorkspaceScriptReference>,
+    pub(crate) credentials: Vec<WorkspaceCredentialReference>,
+}
+
 impl WorkspaceService {
     pub fn new(store: Store, id: Id) -> Self {
         let workspace_id = id.clone();
@@ -69,6 +80,56 @@ impl WorkspaceService {
             value,
         })
     }
+    pub(crate) fn prepare_configuration(
+        &self,
+        expected_workspace_revision: U64,
+        expected_command_revision: Option<U64>,
+        configuration: WorkspaceConfiguration,
+        document: WorkspaceDocumentResult,
+        operation_id: Id,
+    ) -> HostResult<WorkspaceConfigurationCommit> {
+        let commands = match expected_command_revision {
+            Some(expected) if !configuration.groups.is_empty() => Some((
+                expected,
+                StagedCommandArchive::from_configuration(
+                    configuration.groups,
+                    configuration.commands,
+                )?,
+            )),
+            None if configuration.groups.is_empty() => None,
+            _ => {
+                return Err(HostError::new(
+                    "INVALID_ARGUMENT",
+                    "Expected command library revision does not match the configuration",
+                ));
+            }
+        };
+        let references_document_id = self.references_document_id();
+        let (expected_references_revision, _) = self.configuration_references()?;
+        let (references, _) = encode(ConfigurationReferences {
+            scripts: configuration.scripts,
+            credentials: configuration.credential_refs,
+        })?;
+        Ok(WorkspaceConfigurationCommit {
+            workspace_document_id: self.id.clone(),
+            references_document_id,
+            expected_workspace_revision,
+            expected_references_revision,
+            document,
+            references,
+            commands,
+            operation_id,
+        })
+    }
+
+    fn references_document_id(&self) -> Id {
+        Id::try_from(format!("{}:configuration", self.id).as_str()).expect("reference document ID")
+    }
+
+    pub(crate) fn configuration_references(&self) -> HostResult<(U64, ConfigurationReferences)> {
+        read_document(&self.store, &self.references_document_id())
+    }
+
     pub fn export_json(&self) -> HostResult<String> {
         let mut value = self.read()?.value;
         value.archived = false;
