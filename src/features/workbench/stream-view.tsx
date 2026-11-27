@@ -163,6 +163,7 @@ import {
   RECEIVE_IDLE_MS,
   ReceiveHistoryBuffer,
   historyAfter,
+  historyTxRecordKey,
   type ReceiveHistory,
   type ReceiveIdleMs,
   type HistoryStreamItem,
@@ -902,6 +903,7 @@ export function StreamView({
     locationTarget?.source === displayed ? locationTarget : undefined;
   const locatedItem = location?.itemIndex;
   const locatedOffset = location?.sourceOffset;
+  const locateRequest = useMemo(() => location && {}, [location]);
   function locateRecord(
     kind: StreamLocationKind,
     input: string,
@@ -1125,10 +1127,25 @@ export function StreamView({
       currentSearch?.ranges,
     ],
   );
-  const firstVisibleItem = displayed[visibleRows[0]?.itemIndex ?? -1];
+  const rowKey = useCallback(
+    (row: (typeof rows)[number]) => {
+      const item = displayed[row.itemIndex]!;
+      const identity =
+        item.displayRecord ??
+        historyTxRecordKey(item) ??
+        streamItemIdentity(item);
+      return JSON.stringify([row.kind, identity, row.offset]);
+    },
+    [displayed],
+  );
+  const findVisibleRow = useCallback(
+    (key: string) => visibleRows.findIndex((row) => rowKey(row) === key),
+    [rowKey, visibleRows],
+  );
+  const firstVisibleRow = visibleRows[0];
   const rowWindow = useStreamRowWindow({
     count: showAnsi || mappedProjection ? 0 : visibleRows.length,
-    sourceKey: firstVisibleItem && streamItemIdentity(firstVisibleItem),
+    sourceKey: firstVisibleRow && rowKey(firstVisibleRow),
     layoutKey: JSON.stringify({
       receiveCodec,
       sendCodec,
@@ -1144,6 +1161,7 @@ export function StreamView({
     following,
     viewport,
     body: content,
+    findRow: findVisibleRow,
   });
   const revealUnmounted = useEffectEvent((itemIndex: number) => {
     if (!rowWindow.enabled || rowRefs.current.has(itemIndex)) return;
@@ -1353,206 +1371,223 @@ export function StreamView({
   }
 
   // 输入和权限续检不重建接收列表；只有源数据或显示偏好改变才重新呈现。
-  const renderedRows = useMemo(
-    () =>
-      visibleRows.slice(rowWindow.first, rowWindow.end).map((row) => (
-        <div
-          key={streamItemIdentity(displayed[row.itemIndex]!)}
-          ref={(element) => {
-            for (const itemIndex of row.itemIndexes) {
-              if (element) rowRefs.current.set(itemIndex, element);
-              else rowRefs.current.delete(itemIndex);
-            }
-          }}
-          tabIndex={-1}
-          data-offset={row.offset}
-          data-stream-context-item={row.itemIndex}
-          data-location-target={
-            (locatedItem !== undefined &&
-              row.itemIndexes.includes(locatedItem)) ||
-            undefined
+  const renderedRows = useMemo(() => {
+    const renderRow = (row: (typeof rows)[number], index: number) => (
+      <div
+        key={rowKey(row)}
+        data-stream-row-key={rowKey(row)}
+        data-stream-row-index={index}
+        ref={(element) => {
+          for (const itemIndex of row.itemIndexes) {
+            if (element) rowRefs.current.set(itemIndex, element);
+            else rowRefs.current.delete(itemIndex);
           }
-          data-direction={row.kind}
-          data-outcome={row.kind === "tx" ? row.receipt?.outcome : undefined}
-          data-continuation={row.continuation || undefined}
-          data-continues={row.continues || undefined}
-          className={`workbench-stream-row ${row.kind === "gap" ? "workbench-gap" : ""}`}
-          data-theme-snapshot-block=""
+        }}
+        tabIndex={-1}
+        data-offset={row.offset}
+        data-stream-context-item={row.itemIndex}
+        data-location-target={
+          (locatedItem !== undefined &&
+            row.itemIndexes.includes(locatedItem)) ||
+          undefined
+        }
+        data-direction={row.kind}
+        data-outcome={row.kind === "tx" ? row.receipt?.outcome : undefined}
+        data-continuation={row.continuation || undefined}
+        data-continues={row.continues || undefined}
+        className={`workbench-stream-row ${row.kind === "gap" ? "workbench-gap" : ""}`}
+        data-theme-snapshot-block=""
+      >
+        <span className="workbench-offset sr-only">
+          {labels.offset} {row.offset ?? "—"}
+        </span>
+        <span
+          className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
         >
-          <span className="workbench-offset sr-only">
-            {labels.offset} {row.offset ?? "—"}
-          </span>
-          <span
-            className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
-          >
-            {replay && presentationLabels
-              ? `${presentationLabels.replay} · `
-              : ""}
-            {row.kind === "rx" && !row.continuation && (
-              <Download aria-hidden="true" />
-            )}
-            {row.kind === "tx" && (
-              <TxStreamReceipt
-                receipt={row.receipt}
-                byteStart={row.offset!}
-                byteEnd={row.byteEnd!}
-                labels={labels}
-              />
-            )}
-            {row.kind === "rx" || row.kind === "tx" ? (
-              <span className="sr-only">
-                {row.kind === "rx" ? labels.terminal : labels.transmitSource}
-              </span>
-            ) : row.kind === "gap" ? (
-              <>
-                <TriangleAlert aria-hidden="true" />
-                <span className="sr-only">{labels.gap}</span>
-              </>
-            ) : (
-              <Info aria-hidden="true" />
-            )}
-          </span>
-          {presentationLabels && !row.continues && (
-            <div className="workbench-stream-meta">
-              <time
-                className="workbench-stream-time"
-                dateTime={times[row.displayIndex]!.absolute ?? undefined}
-                title={receivePacketTiming(
-                  displayed[projected[row.displayIndex]!.itemIndex]!,
-                  labels,
-                )}
-              >
-                {timeMode === "absolute"
-                  ? times[row.displayIndex]!.absolute
-                    ? compactStreamTime(times[row.displayIndex]!.absolute!)
-                    : presentationLabels.missingTime
-                  : (timeMode === "relative"
-                        ? times[row.displayIndex]!.relativeNs
-                        : times[row.displayIndex]!.intervalNs) === null
-                    ? presentationLabels.missingTime
-                    : (timeMode === "relative"
-                        ? times[row.displayIndex]!.relativeNs
-                        : times[row.displayIndex]!.intervalNs) + " ns"}
-              </time>
-              {(row.kind === "rx" || row.kind === "tx") &&
-                row.offset !== undefined &&
-                row.byteEnd !== undefined && (
-                  <span
-                    title={`${BigInt(row.byteEnd) - BigInt(row.recordStart ?? row.offset)} B`}
-                  >
-                    {row.kind === "rx" ? "↓" : "↑"}{" "}
-                    {formatByteSize(
-                      (
-                        BigInt(row.byteEnd) -
-                        BigInt(row.recordStart ?? row.offset)
-                      ).toString(),
-                    )}
-                  </span>
-                )}
-            </div>
+          {replay && presentationLabels
+            ? `${presentationLabels.replay} · `
+            : ""}
+          {row.kind === "rx" && !row.continuation && (
+            <Download aria-hidden="true" />
           )}
-          {showRecordNumbers && (
-            <StreamRecordNumbers
-              row={locations?.get(row.itemIndex)}
+          {row.kind === "tx" && (
+            <TxStreamReceipt
+              receipt={row.receipt}
+              byteStart={row.offset!}
+              byteEnd={row.byteEnd!}
               labels={labels}
-              onCopy={copyLocation}
             />
           )}
-          <div
-            className="workbench-stream-content"
-            data-mode={mode}
-            style={terminalTypographyStyle(terminalSettings?.typography)}
-            hidden={row.kind === "tx" && !showTransmitEcho}
-          >
-            {row.longRecord ? (
-              <LongStreamRecordView
-                key={row.longRecord.key}
-                initialOffset={
-                  locatedItem !== undefined &&
-                  row.itemIndexes.includes(locatedItem)
-                    ? locatedOffset
-                    : undefined
-                }
-                record={row.longRecord}
-                remembered={longRecordReading}
-                labels={labels}
-                mode={mode}
-                encoding={row.kind === "tx" ? sendCodec : receiveCodec}
-                hexFormat={hexFormat}
-                hexSource={row.hexSource}
-                highlight={
-                  highlightEnabled
-                    ? { track: trackLongText, render: highlightText }
-                    : undefined
-                }
-                receipt={row.kind === "tx" ? row.receipt : undefined}
-              />
-            ) : row.kind === "rx" || row.kind === "tx" ? (
-              <>
+          {row.kind === "rx" || row.kind === "tx" ? (
+            <span className="sr-only">
+              {row.kind === "rx" ? labels.terminal : labels.transmitSource}
+            </span>
+          ) : row.kind === "gap" ? (
+            <>
+              <TriangleAlert aria-hidden="true" />
+              <span className="sr-only">{labels.gap}</span>
+            </>
+          ) : (
+            <Info aria-hidden="true" />
+          )}
+        </span>
+        {presentationLabels && !row.continues && (
+          <div className="workbench-stream-meta">
+            <time
+              className="workbench-stream-time"
+              dateTime={times[row.displayIndex]!.absolute ?? undefined}
+              title={receivePacketTiming(
+                displayed[projected[row.displayIndex]!.itemIndex]!,
+                labels,
+              )}
+            >
+              {timeMode === "absolute"
+                ? times[row.displayIndex]!.absolute
+                  ? compactStreamTime(times[row.displayIndex]!.absolute!)
+                  : presentationLabels.missingTime
+                : (timeMode === "relative"
+                      ? times[row.displayIndex]!.relativeNs
+                      : times[row.displayIndex]!.intervalNs) === null
+                  ? presentationLabels.missingTime
+                  : (timeMode === "relative"
+                      ? times[row.displayIndex]!.relativeNs
+                      : times[row.displayIndex]!.intervalNs) + " ns"}
+            </time>
+            {(row.kind === "rx" || row.kind === "tx") &&
+              row.offset !== undefined &&
+              row.byteEnd !== undefined && (
                 <span
-                  className={mode === "hex" ? "sr-only" : "workbench-payload"}
-                  data-unwrapped={
-                    mode !== "hex" && row.kind === "rx" && !wrapReceiveText
-                      ? true
-                      : undefined
-                  }
-                  tabIndex={
-                    mode !== "hex" && row.kind === "rx" && !wrapReceiveText
-                      ? 0
-                      : undefined
-                  }
+                  title={`${BigInt(row.byteEnd) - BigInt(row.recordStart ?? row.offset)} B`}
                 >
-                  {mode === "hex" ? row.text : highlightText(row.text)}
+                  {row.kind === "rx" ? "↓" : "↑"}{" "}
+                  {formatByteSize(
+                    (
+                      BigInt(row.byteEnd) -
+                      BigInt(row.recordStart ?? row.offset)
+                    ).toString(),
+                  )}
                 </span>
-                {mode !== "text" && (
-                  <span
-                    className="workbench-payload"
-                    dir="ltr"
-                    data-hex-source={row.hexSource}
-                    data-hex-byte-start={row.offset}
-                    data-hex-byte-count={hexByteCount(row.hex ?? "")}
-                    data-hex-grouped={hexFormat.columns !== "0" || undefined}
-                    tabIndex={hexFormat.columns !== "0" ? 0 : undefined}
-                  >
-                    {formatStreamHex(row.hex ?? "", row.offset!, hexFormat)}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="workbench-payload">{row.text}</span>
-            )}
+              )}
           </div>
+        )}
+        {showRecordNumbers && (
+          <StreamRecordNumbers
+            row={locations?.get(row.itemIndex)}
+            labels={labels}
+            onCopy={copyLocation}
+          />
+        )}
+        <div
+          className="workbench-stream-content"
+          data-mode={mode}
+          style={terminalTypographyStyle(terminalSettings?.typography)}
+          hidden={row.kind === "tx" && !showTransmitEcho}
+        >
+          {row.longRecord ? (
+            <LongStreamRecordView
+              key={row.longRecord.key}
+              revealRequest={locateRequest}
+              initialOffset={
+                locatedItem !== undefined &&
+                row.itemIndexes.includes(locatedItem)
+                  ? locatedOffset
+                  : undefined
+              }
+              record={row.longRecord}
+              remembered={longRecordReading}
+              labels={labels}
+              mode={mode}
+              encoding={row.kind === "tx" ? sendCodec : receiveCodec}
+              hexFormat={hexFormat}
+              hexSource={row.hexSource}
+              highlight={
+                highlightEnabled
+                  ? { track: trackLongText, render: highlightText }
+                  : undefined
+              }
+              receipt={row.kind === "tx" ? row.receipt : undefined}
+            />
+          ) : row.kind === "rx" || row.kind === "tx" ? (
+            <>
+              <span
+                className={mode === "hex" ? "sr-only" : "workbench-payload"}
+                data-unwrapped={
+                  mode !== "hex" && row.kind === "rx" && !wrapReceiveText
+                    ? true
+                    : undefined
+                }
+                tabIndex={
+                  mode !== "hex" && row.kind === "rx" && !wrapReceiveText
+                    ? 0
+                    : undefined
+                }
+              >
+                {mode === "hex" ? row.text : highlightText(row.text)}
+              </span>
+              {mode !== "text" && (
+                <span
+                  className="workbench-payload"
+                  dir="ltr"
+                  data-hex-source={row.hexSource}
+                  data-hex-byte-start={row.offset}
+                  data-hex-byte-count={hexByteCount(row.hex ?? "")}
+                  data-hex-grouped={hexFormat.columns !== "0" || undefined}
+                  tabIndex={hexFormat.columns !== "0" ? 0 : undefined}
+                >
+                  {formatStreamHex(row.hex ?? "", row.offset!, hexFormat)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="workbench-payload">{row.text}</span>
+          )}
         </div>
-      )),
-    [
-      visibleRows,
-      rowWindow.first,
-      rowWindow.end,
-      longRecordReading,
-      showRecordNumbers,
-      locations,
-      locatedItem,
-      locatedOffset,
-      copyLocation,
-      labels,
-      replay,
-      presentationLabels,
-      times,
-      displayed,
-      projected,
-      timeMode,
-      mode,
-      terminalSettings,
-      wrapReceiveText,
-      showTransmitEcho,
-      hexFormat,
-      receiveCodec,
-      sendCodec,
-      highlightEnabled,
-      highlightText,
-      trackLongText,
-    ],
-  );
+      </div>
+    );
+    return rowWindow.windows.flatMap(({ from, to, before }) => [
+      ...(before > 0
+        ? [
+            <div
+              key={`space-${from}`}
+              aria-hidden="true"
+              className="workbench-stream-spacer"
+              style={{ blockSize: before }}
+            />,
+          ]
+        : []),
+      ...visibleRows
+        .slice(from, to)
+        .map((row, index) => renderRow(row, from + index)),
+    ]);
+  }, [
+    visibleRows,
+    rowWindow.windows,
+    rowKey,
+    locateRequest,
+    longRecordReading,
+    showRecordNumbers,
+    locations,
+    locatedItem,
+    locatedOffset,
+    copyLocation,
+    labels,
+    replay,
+    presentationLabels,
+    times,
+    displayed,
+    projected,
+    timeMode,
+    mode,
+    terminalSettings,
+    wrapReceiveText,
+    showTransmitEcho,
+    hexFormat,
+    receiveCodec,
+    sendCodec,
+    highlightEnabled,
+    highlightText,
+    trackLongText,
+  ]);
   return (
     <section
       aria-label={labels.terminal}
@@ -2300,6 +2335,15 @@ export function StreamView({
               if (event.target !== event.currentTarget) return;
               const element = event.currentTarget;
               if (
+                rowWindow.enabled &&
+                (event.key === "Home" || event.key === "End")
+              ) {
+                event.preventDefault();
+                element.scrollTop =
+                  event.key === "Home" ? 0 : element.scrollHeight;
+                rowWindow.sync(element);
+              }
+              if (
                 ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
                 (event.key === " " && event.shiftKey)
               ) {
@@ -2386,24 +2430,14 @@ export function StreamView({
                 />
               ) : (
                 <>
-                  <div
-                    aria-hidden="true"
-                    className="workbench-stream-spacer"
-                    style={{ blockSize: rowWindow.before }}
-                  />
-                  {rowWindow.blocks.map((block) => (
-                    <div key={block.start} data-stream-block={block.start}>
-                      {renderedRows.slice(
-                        block.start - rowWindow.first,
-                        block.end - rowWindow.first,
-                      )}
-                    </div>
-                  ))}
-                  <div
-                    aria-hidden="true"
-                    className="workbench-stream-spacer"
-                    style={{ blockSize: rowWindow.after }}
-                  />
+                  {renderedRows}
+                  {rowWindow.after > 0 && (
+                    <div
+                      aria-hidden="true"
+                      className="workbench-stream-spacer"
+                      style={{ blockSize: rowWindow.after }}
+                    />
+                  )}
                 </>
               )}
             </div>

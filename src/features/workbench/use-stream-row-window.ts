@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -12,21 +13,23 @@ const ROWS_PER_BLOCK = 24;
 const WINDOW_THRESHOLD = 192;
 const ESTIMATED_ROW_HEIGHT = 40;
 const OVERSCAN_BLOCKS = 2;
+const STREAM_ROW = "[data-stream-row-index]";
 
-type RowMeasurement = { rows: number; height: number };
 type BlockRange = { start: number; end: number };
+type Interaction = { focused?: string; anchor?: string; focus?: string };
+type RowMeasurement = { rows: number; height: number };
 type ViewportAnchor = {
   row: HTMLElement;
+  key: string;
   inset: number;
   scrollTop: number;
-  sourceKey?: string;
+  waiting?: boolean;
 };
 
-function containingBlock(node: Node | null, body: HTMLDivElement) {
+function containingRowKey(node: Node | null, body: HTMLDivElement) {
   if (!node || !body.contains(node)) return;
   const element = node instanceof Element ? node : node.parentElement;
-  const block = element?.closest<HTMLElement>("[data-stream-block]");
-  if (block) return Number(block.dataset.streamBlock) / ROWS_PER_BLOCK;
+  return element?.closest<HTMLElement>(STREAM_ROW)?.dataset.streamRowKey;
 }
 
 function visibleAnchor(log: HTMLDivElement, body: HTMLDivElement) {
@@ -40,18 +43,11 @@ function visibleAnchor(log: HTMLDivElement, body: HTMLDivElement) {
     if (bounds.bottom > top && bounds.top < bottom)
       return { row: target, inset: bounds.top - top };
   }
-  for (const block of body.querySelectorAll<HTMLElement>(
-    "[data-stream-block]",
-  )) {
-    const bounds = block.getBoundingClientRect();
-    if (bounds.bottom <= top) continue;
+  for (const row of body.querySelectorAll<HTMLElement>(STREAM_ROW)) {
+    const bounds = row.getBoundingClientRect();
+    if (bounds.bottom > top && bounds.top < bottom)
+      return { row, inset: bounds.top - top };
     if (bounds.top >= bottom) return;
-    for (const row of block.children) {
-      if (!(row instanceof HTMLElement)) continue;
-      const bounds = row.getBoundingClientRect();
-      if (bounds.bottom > top && bounds.top < bottom)
-        return { row, inset: bounds.top - top };
-    }
   }
 }
 
@@ -80,7 +76,35 @@ function rangeAt(
   };
 }
 
-/** 按小组测量可变高记录，视口内的节点保持普通流式排版。 */
+function mergeRanges(
+  view: BlockRange,
+  interaction: Interaction,
+  findRow: (key: string) => number,
+) {
+  const blockFor = (key?: string) =>
+    key === undefined ? -1 : Math.floor(findRow(key) / ROWS_PER_BLOCK);
+  const focused = blockFor(interaction.focused);
+  const anchor = blockFor(interaction.anchor);
+  const focus = blockFor(interaction.focus);
+  const ranges = [view];
+  if (anchor >= 0 && focus >= 0)
+    ranges.push({
+      start: Math.min(anchor, focus),
+      end: Math.max(anchor, focus) + 1,
+    });
+  if (focused >= 0) ranges.push({ start: focused, end: focused + 1 });
+  ranges.sort((a, b) => a.start - b.start);
+  const merged: BlockRange[] = [];
+  for (const range of ranges) {
+    const previous = merged.at(-1);
+    if (previous && previous.end >= range.start)
+      previous.end = Math.max(previous.end, range.end);
+    else merged.push({ ...range });
+  }
+  return merged;
+}
+
+/** 测量临近行组的实际高度。所有行保持同一父节点，历史裁剪时保留原记录。 */
 export function useStreamRowWindow({
   count,
   layoutKey,
@@ -88,6 +112,7 @@ export function useStreamRowWindow({
   following,
   viewport,
   body,
+  findRow,
 }: {
   count: number;
   layoutKey: string;
@@ -95,6 +120,7 @@ export function useStreamRowWindow({
   following: boolean;
   viewport: RefObject<HTMLDivElement | null>;
   body: RefObject<HTMLDivElement | null>;
+  findRow: (key: string) => number;
 }) {
   const enabled = count > WINDOW_THRESHOLD;
   const [measurements, setMeasurements] = useState<{
@@ -104,8 +130,9 @@ export function useStreamRowWindow({
   const [height, setHeight] = useState(0);
   const [width, setWidth] = useState(0);
   const [position, setPosition] = useState<BlockRange>();
-  const [interaction, setInteraction] = useState<BlockRange>();
+  const [interaction, setInteraction] = useState<Interaction>({});
   const anchor = useRef<ViewportAnchor | undefined>(undefined);
+  const indexOfRow = useEffectEvent(findRow);
   const measurementKey = JSON.stringify({ layoutKey, sourceKey, width });
   const offsets = useMemo(() => {
     const stops = [0];
@@ -121,47 +148,61 @@ export function useStreamRowWindow({
     return stops;
   }, [count, measurementKey, measurements]);
   const endOffset = offsets[offsets.length - 1]!;
-  const tail = rangeAt(offsets, Math.max(0, endOffset - height), height);
-  const range = following || !position ? tail : position;
   const blockCount = offsets.length - 1;
-  const endBlock = enabled
-    ? Math.min(Math.max(range.end, interaction?.end ?? 0), blockCount)
-    : blockCount;
-  const startBlock = enabled
-    ? Math.min(range.start, interaction?.start ?? range.start, endBlock - 1)
-    : 0;
-  const first = startBlock * ROWS_PER_BLOCK;
-  const end = Math.min(count, endBlock * ROWS_PER_BLOCK);
-  const blocks = useMemo(
-    () =>
-      Array.from({ length: endBlock - startBlock }, (_, index) => {
-        const start = (startBlock + index) * ROWS_PER_BLOCK;
-        return { start, end: Math.min(end, start + ROWS_PER_BLOCK) };
-      }),
-    [end, endBlock, startBlock],
-  );
+  const render = useMemo(() => {
+    const tail = rangeAt(offsets, Math.max(0, endOffset - height), height);
+    const view = following || !position ? tail : position;
+    const ranges = enabled
+      ? mergeRanges(view, interaction, findRow)
+      : [{ start: 0, end: blockCount }];
+    let previousEnd = 0;
+    const windows = [];
+    for (const range of ranges) {
+      const start = Math.min(range.start, blockCount);
+      const end = Math.min(range.end, blockCount);
+      if (start === end) continue;
+      windows.push({
+        from: start * ROWS_PER_BLOCK,
+        to: Math.min(count, end * ROWS_PER_BLOCK),
+        before: offsets[start]! - offsets[previousEnd]!,
+      });
+      previousEnd = end;
+    }
+    return { windows, after: endOffset - offsets[previousEnd]! };
+  }, [
+    blockCount,
+    count,
+    enabled,
+    endOffset,
+    findRow,
+    following,
+    height,
+    interaction,
+    offsets,
+    position,
+  ]);
 
   const sync = useCallback(
     (node: HTMLDivElement) => {
-      setHeight(node.clientHeight);
-      setWidth(node.clientWidth);
+      if (enabled) {
+        setHeight(node.clientHeight);
+        setWidth(node.clientWidth);
+      }
       const currentBody = body.current;
       const previous = anchor.current;
       if (following) anchor.current = undefined;
       else if (
         currentBody &&
-        (!previous ||
-          previous.sourceKey !== sourceKey ||
-          previous.scrollTop !== node.scrollTop ||
-          !currentBody.contains(previous.row))
+        (!previous || previous.scrollTop !== node.scrollTop)
       ) {
         const visible = visibleAnchor(node, currentBody);
-        anchor.current = visible && {
-          ...visible,
-          scrollTop: node.scrollTop,
-          sourceKey,
-        };
+        const key = visible?.row.dataset.streamRowKey;
+        anchor.current =
+          visible && key !== undefined
+            ? { ...visible, key, scrollTop: node.scrollTop }
+            : undefined;
       }
+      if (!enabled && following) return;
       const next = rangeAt(offsets, node.scrollTop, node.clientHeight);
       setPosition((current) =>
         current?.start === next.start && current.end === next.end
@@ -169,57 +210,70 @@ export function useStreamRowWindow({
           : next,
       );
     },
-    [body, following, offsets, sourceKey],
+    [body, enabled, following, offsets],
   );
   useLayoutEffect(() => {
     const log = viewport.current;
-    if (!log) return;
+    const root = body.current;
+    if (!log || !root) return;
     const previous = anchor.current;
     if (
       !following &&
       previous &&
-      previous.sourceKey === sourceKey &&
-      Math.abs(log.scrollTop - previous.scrollTop) <= 1 &&
-      body.current?.contains(previous.row)
+      Math.abs(log.scrollTop - previous.scrollTop) <= 1
     ) {
-      const top = log.getBoundingClientRect().top + log.clientTop;
-      const bounds = previous.row.getBoundingClientRect();
-      const inset = Math.min(
-        previous.inset,
-        Math.max(0, log.clientHeight - bounds.height),
-      );
-      const change = bounds.top - top - inset;
-      if (Math.abs(change) > 0.5) {
-        log.scrollTop += change;
-        previous.scrollTop = log.scrollTop;
+      let row = root.contains(previous.row) ? previous.row : undefined;
+      if (!row) {
+        row = Array.from(root.querySelectorAll<HTMLElement>(STREAM_ROW)).find(
+          (candidate) => candidate.dataset.streamRowKey === previous.key,
+        );
+      }
+      if (row) {
+        previous.row = row;
+        previous.waiting = false;
+        const top = log.getBoundingClientRect().top + log.clientTop;
+        const bounds = row.getBoundingClientRect();
+        const inset = Math.min(
+          previous.inset,
+          Math.max(0, log.clientHeight - bounds.height),
+        );
+        const change = bounds.top - top - inset;
+        if (Math.abs(change) > 0.5) {
+          log.scrollTop += change;
+          previous.scrollTop = log.scrollTop;
+        }
+      } else if (!previous.waiting) {
+        const index = indexOfRow(previous.key);
+        if (index >= 0) {
+          log.scrollTop = offsets[Math.floor(index / ROWS_PER_BLOCK)]!;
+          previous.scrollTop = log.scrollTop;
+          previous.waiting = true;
+        } else anchor.current = undefined;
       }
     }
     const frame = requestAnimationFrame(() => sync(log));
     return () => cancelAnimationFrame(frame);
-  }, [body, following, height, sourceKey, sync, viewport]);
+  }, [body, following, height, offsets, render, sync, viewport]);
   useEffect(() => {
     const root = body.current;
     if (!root) return;
     const document = root.ownerDocument;
     let frame: number | undefined;
     const refresh = () => {
-      const selection = document.getSelection();
-      const blocks = [
-        containingBlock(document.activeElement, root),
-        ...(!selection?.isCollapsed
-          ? [
-              containingBlock(selection?.anchorNode ?? null, root),
-              containingBlock(selection?.focusNode ?? null, root),
-            ]
-          : []),
-      ].filter((index) => index !== undefined);
-      const next = blocks.length
-        ? { start: Math.min(...blocks), end: Math.max(...blocks) + 1 }
+      const native = document.getSelection();
+      const focused = containingRowKey(document.activeElement, root);
+      const anchor = !native?.isCollapsed
+        ? containingRowKey(native?.anchorNode ?? null, root)
+        : undefined;
+      const focus = !native?.isCollapsed
+        ? containingRowKey(native?.focusNode ?? null, root)
         : undefined;
       setInteraction((current) =>
-        current?.start === next?.start && current?.end === next?.end
+        current.focused === focused &&
+        current.anchor === anchor &&
+        current.focus === focus
           ? current
-          : next,
+          : { focused, anchor, focus },
       );
     };
     const schedule = () => {
@@ -228,6 +282,7 @@ export function useStreamRowWindow({
         refresh();
       });
     };
+    schedule();
     document.addEventListener("selectionchange", refresh);
     root.addEventListener("focusin", refresh);
     root.addEventListener("focusout", schedule);
@@ -237,68 +292,56 @@ export function useStreamRowWindow({
       root.removeEventListener("focusout", schedule);
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [body]);
+  }, [body, sourceKey]);
   useLayoutEffect(() => {
     const log = viewport.current;
-    const content = body.current;
-    if (!log || !content || !blocks.length) return;
-    const observer = new ResizeObserver((entries) => {
-      const measurements = entries.flatMap(({ target, borderBoxSize }) => {
-        if (!(target instanceof HTMLElement) || target === log) return [];
-        const start = Number(target.dataset.streamBlock);
-        const rows = target.childElementCount;
-        const height =
-          borderBoxSize?.[0]?.blockSize ??
-          target.getBoundingClientRect().height;
-        return Number.isInteger(start) && rows > 0 && height > 0
-          ? [{ start, rows, height }]
-          : [];
-      });
+    const root = body.current;
+    if (!enabled || !log || !root) return;
+    const observer = new ResizeObserver(() => {
+      const measured = new Map<number, RowMeasurement>();
+      for (const row of root.querySelectorAll<HTMLElement>(STREAM_ROW)) {
+        const index = Number(row.dataset.streamRowIndex);
+        const start = index - (index % ROWS_PER_BLOCK);
+        const block = measured.get(start) ?? { rows: 0, height: 0 };
+        block.rows++;
+        block.height += row.getBoundingClientRect().height;
+        measured.set(start, block);
+      }
       setHeight(log.clientHeight);
       setWidth(log.clientWidth);
-      if (!measurements.length) return;
       setMeasurements((current) => {
-        const previous =
-          current?.key === measurementKey ? current.sizes : undefined;
-        const sizes = new Map(previous);
+        const sizes = new Map(
+          current?.key === measurementKey ? current.sizes : undefined,
+        );
         let changed = false;
-        for (const measurement of measurements) {
-          const existing = sizes.get(measurement.start);
+        for (const [start, measurement] of measured) {
+          if (!measurement.height) continue;
+          const existing = sizes.get(start);
           if (
             existing?.rows === measurement.rows &&
             existing.height === measurement.height
-          ) {
+          )
             continue;
-          }
-          sizes.set(measurement.start, measurement);
+          sizes.set(start, measurement);
           changed = true;
         }
         return changed ? { key: measurementKey, sizes } : current;
       });
     });
     observer.observe(log);
-    for (const block of content.querySelectorAll("[data-stream-block]"))
-      observer.observe(block);
+    for (const row of root.querySelectorAll(STREAM_ROW)) observer.observe(row);
     return () => observer.disconnect();
-  }, [blocks, body, measurementKey, viewport]);
+  }, [body, enabled, measurementKey, render, viewport]);
 
   const reveal = useCallback(
     (row: number) => {
       const log = viewport.current;
       if (!enabled || !log || row < 0 || row >= count) return;
+      anchor.current = undefined;
       log.scrollTop = offsets[Math.floor(row / ROWS_PER_BLOCK)]!;
       sync(log);
     },
     [count, enabled, offsets, sync, viewport],
   );
-  return {
-    enabled,
-    first,
-    end,
-    blocks,
-    before: offsets[startBlock]!,
-    after: endOffset - offsets[endBlock]!,
-    sync,
-    reveal,
-  };
+  return { enabled, ...render, sync, reveal };
 }

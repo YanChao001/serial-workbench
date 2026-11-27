@@ -1,10 +1,22 @@
 /// <reference lib="dom" />
 import { writeFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 import { en } from "../../src/i18n/en";
 import { zhCN } from "../../src/i18n/zh-CN";
+
+function firstVisibleOffset(log: Locator) {
+  return log.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return Array.from(
+      element.querySelectorAll<HTMLElement>("[data-offset]"),
+    ).find((row) => {
+      const box = row.getBoundingClientRect();
+      return box.bottom > bounds.top && box.top < bounds.bottom;
+    })?.dataset.offset;
+  });
+}
 
 async function choose(page: Page, name: string, value: string) {
   await page.getByRole("combobox", { name, exact: true }).click();
@@ -104,17 +116,7 @@ test("large receive history keeps offscreen rows out of the DOM and locates reta
   });
   await expect(latest).toBeVisible();
   await expect(last).toHaveCount(0);
-  const firstVisibleOffset = () =>
-    log.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return Array.from(
-        element.querySelectorAll<HTMLElement>("[data-offset]"),
-      ).find((row) => {
-        const box = row.getBoundingClientRect();
-        return box.bottom > bounds.top && box.top < bounds.bottom;
-      })?.dataset.offset;
-    });
-  const readingOffset = await firstVisibleOffset();
+  const readingOffset = await firstVisibleOffset(log);
   expect(readingOffset).toBeDefined();
   const rowInset = () =>
     log.evaluate((element, offset) => {
@@ -180,12 +182,16 @@ test("large receive history keeps offscreen rows out of the DOM and locates reta
   });
 });
 
-test("keeps focused HEX boundaries through window activation and scroll", async ({
+test("keeps focused HEX boundaries through window activation and eviction", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1240, height: 760 });
   await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
   await page.goto("./#/");
+  const options = page.getByRole("button", { name: "Display options" });
+  await options.click();
+  await choose(page, en["workbench.historyRecords"], "500");
+  await options.click();
   await page.getByRole("button", { name: "Open Virtual serial" }).click();
   await expect
     .poll(() =>
@@ -234,12 +240,36 @@ test("keeps focused HEX boundaries through window activation and scroll", async 
   await expect.poll(edges).toEqual(["2280", "2292"]);
 
   await log.hover();
-  await page.mouse.wheel(0, -4800);
-  await expect(
-    terminal.getByRole("button", { name: en["workbench.returnToLatest"] }),
-  ).toBeVisible();
+  await page.mouse.wheel(0, -3500);
+  const latest = terminal.getByRole("button", {
+    name: en["workbench.returnToLatest"],
+  });
+  await expect(latest).toBeVisible();
   await expect.poll(edges).toEqual(["2280", "2292"]);
   await expect(first).toBeFocused();
+  await expect
+    .poll(() => log.evaluate((element) => element.scrollTop))
+    .toBeLessThan(5500);
+  const readOffset = await firstVisibleOffset(log);
+  expect(Number(readOffset)).toBeGreaterThan(600);
+  for (let start = 194; start <= 550; start += 51) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 51),
+    );
+  }
+  await expect(latest).toContainText("357");
+  await expect(log.locator(`[data-offset="${readOffset}"]`)).toBeInViewport();
+  await expect.poll(edges).toEqual(["2280", "2292"]);
+  await expect(first).toBeFocused();
+  await log.evaluate((element) =>
+    element.ownerDocument.getSelection()?.removeAllRanges(),
+  );
+  await log.hover();
+  await page.mouse.wheel(0, 30000);
+  await expect(log.locator('[data-offset="6588"]')).toBeInViewport();
+  await expect(first).toBeFocused();
+  expect(await log.locator(".workbench-stream-row").count()).toBeLessThan(192);
 });
 
 test("restores the selected page of a long record after returning to its row", async ({

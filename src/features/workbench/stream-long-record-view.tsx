@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { TextEncoding, TxReceipt } from "@serial-workbench/contracts";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +19,11 @@ import {
 } from "./stream-long-record";
 import { workbenchStatus } from "./stream-presentation";
 
-export type LongRecordReading = { opened: boolean; page: number };
+export type LongRecordReading = {
+  opened: boolean;
+  page: number;
+  request?: object;
+};
 
 type LongRecordHighlight = {
   track: (id: string, text?: string) => void;
@@ -22,6 +33,7 @@ type LongRecordHighlight = {
 export function LongStreamRecordView({
   record,
   remembered,
+  revealRequest,
   initialOffset,
   labels,
   mode,
@@ -33,6 +45,7 @@ export function LongStreamRecordView({
 }: {
   record: LongStreamRecord;
   remembered: Map<string, LongRecordReading>;
+  revealRequest?: object;
   labels: WorkbenchLabels;
   mode: LongRecordMode;
   encoding: TextEncoding;
@@ -48,14 +61,27 @@ export function LongStreamRecordView({
     initialOffset < record.end
       ? Number((initialOffset - record.offset) / BigInt(LONG_RECORD_PAGE_BYTES))
       : undefined;
-  const [reading, setReading] = useState<LongRecordReading>(() =>
-    initialPage === undefined
-      ? (remembered.get(record.key) ?? { opened: false, page: 0 })
-      : { opened: true, page: initialPage },
-  );
+  const request = initialPage === undefined ? undefined : revealRequest;
+  const [reading, setReading] = useState<LongRecordReading>(() => {
+    const saved = remembered.get(record.key);
+    if (saved && (request === undefined || saved.request === request))
+      return saved;
+    return {
+      opened: initialPage !== undefined,
+      page: initialPage ?? 0,
+      request,
+    };
+  });
+  if (initialPage !== undefined && request !== reading.request)
+    setReading({ opened: true, page: initialPage, request });
+  useLayoutEffect(() => {
+    if (reading.opened || remembered.has(record.key))
+      remembered.set(record.key, reading);
+  }, [reading, record.key, remembered]);
   function updateReading(next: LongRecordReading) {
-    remembered.set(record.key, next);
-    setReading(next);
+    const value = { ...next, request: reading.request };
+    remembered.set(record.key, value);
+    setReading(value);
   }
   const length = record.end - record.offset;
   const declared = record.message
