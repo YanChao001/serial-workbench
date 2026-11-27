@@ -17,10 +17,13 @@ mod experiment_browser;
 mod hold_send_browser;
 #[path = "support/mapped_capture_browser.rs"]
 mod mapped_capture_browser;
+#[path = "support/million_row_workload.rs"]
+mod million_row_workload;
 #[path = "support/operation_source_host.rs"]
 mod operation_source_host;
 #[path = "support/replay_search_host.rs"]
 mod replay_search_host;
+mod support;
 
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
@@ -46,6 +49,13 @@ impl Fixture {
     async fn with_runtime(
         bundled: bool,
         runtime: Option<serial_workbench_host::node_runtime::VerifiedNodeRuntime>,
+    ) -> Self {
+        Self::with_device(bundled, runtime, None).await
+    }
+    async fn with_device(
+        bundled: bool,
+        runtime: Option<serial_workbench_host::node_runtime::VerifiedNodeRuntime>,
+        opener: Option<serial_workbench_host::device::TransportOpener>,
     ) -> Self {
         let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         if runtime.is_some() {
@@ -76,6 +86,15 @@ impl Fixture {
                 auth.clone(),
                 Arc::new(serial_workbench_host::clock::SystemClock::new().unwrap()),
                 runtime,
+            )
+            .await
+            .unwrap()
+        } else if let Some(opener) = opener {
+            Host::with_runtime(
+                store.clone(),
+                auth.clone(),
+                Arc::new(serial_workbench_host::clock::SystemClock::new().unwrap()),
+                opener,
             )
             .await
             .unwrap()

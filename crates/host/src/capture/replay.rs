@@ -475,10 +475,20 @@ impl ReplayArchive {
     ) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
         let location = self.index.records.get(position).ok_or_else(changed)?;
         let (record, observed, json) = read_record_bytes(&self.path, location, self.format)?;
-        if self.record_digests.get(position) != Some(&record_digest(observed, &json)) {
+        self.ensure_record_digest(position, observed, &json)?;
+        Ok((record, observed, json))
+    }
+
+    fn ensure_record_digest(
+        &self,
+        position: usize,
+        observed: Option<u64>,
+        json: &[u8],
+    ) -> HostResult<()> {
+        if self.record_digests.get(position) != Some(&record_digest(observed, json)) {
             return Err(changed());
         }
-        Ok((record, observed, json))
+        Ok(())
     }
 }
 

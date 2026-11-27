@@ -1089,7 +1089,17 @@ Modbus 主站和从站分别从 0.1.0 升到 0.1.1。通过 `pnpm plugin-sdk:fix
 
 运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts --grep "indexed replay" --workers=1`，在英文宽窗与中文窄窗用可控的已附着回放。选择「浏览归档」，按序号跳到最后 100 条，检查首条位置、滚动到尾条、禁用下一页、返回上一页、重叠页复位、翻页键焦点及撤权收回。页面仅保留当前归档页。用 raw Host 录制搜索用例核对命中序号、原字节范围、分页读回与源授权。用组件用例核对搜索命中大记录的引用读回、脱敏页复位、读取发现源已变化时的清理，以及退出浏览后继续从原播放位置操作。 [浏览草稿](./ui-design.md#归档浏览草稿disp-15perf-06)
 
-百万行基准由两个需求共享。使用相同的、有明确顺序和字节范围的数据集，在读取、滚动和搜索期间持续从真实 Host 接收并录制。分别核对首尾、深处精确搜索及跨页位置、录制终态、独立读回的条数和字节摘要。记录追加到显示、滚动到画面、搜索到命中和落盘的延迟分布，以及 Host 与客户端的进程 RSS、源流、读者和录制队列峰值。记录采样范围、源码提交、平台、客户端、运行方式、参数和收据摘要。保留实测留存裁剪或缺口的范围与原因。
+百万行基准由两个需求共享。隔离 profile 使用实际 Host RPC、设备读取线程和录制服务。确定性输入以 `SWB0000001\n` 开始，每条含 11 字节，收到当前批次的已写水位后放行下一批。配对 Chromium 经工作台活动定位到实时会话，抽样核对尾条已出现在视口中。
+
+```powershell
+pnpm build:web
+$env:SWB_MILLION_ROWS_OUTPUT = Join-Path (Get-Location).Path ('artifacts/million-row-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+cargo test --locked -p serial-workbench-host --test capture_api_host paired_browser_million_rows_search_scroll_and_record_together -- --ignored --nocapture --test-threads=1
+```
+
+在已核验的百万条录制上打开回放，并在同一设备会话上录制序列后续数据。浏览器逐次验证首段、中段、末页、反向翻页和原始字节搜索。滚动与搜索各记录同期持续增长的已写水位。滚动期间还从同一 Host 的独立 Raw 连接执行精确字节搜索，核对查找和滚动的时间交叠。独立 Node 读者逐卷核对两个录制的分卷索引、序号、原字节范围、连续性及 SHA-256。配置 `SWB_MILLION_ROWS_PILOT` 可以先试跑指定行数。
+
+`host-receipt.json` 保留输入尾条至可见、已写和已同步水位的观测样本，以及 Host RSS、源流、读者和录制队列峰值。`browser-receipt.json` 保留滚动至目标可见及搜索至命中的耗时、采样的挂载行数和 Chromium 进程 RSS。两个 `*-readback.json` 保留独立读回的字节范围和摘要。观测延迟包含采样轮询和测试进程间转发。登记运行候选、平台、浏览器版本、样本数量和分位数，并记录源流留存裁剪与取证范围。
 
 ### 发送历史（IO-06）
 

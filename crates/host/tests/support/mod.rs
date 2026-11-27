@@ -77,8 +77,11 @@ impl Gate {
         until(|| self.entered.load(Ordering::SeqCst)).await;
     }
 }
+type ReadSource = Box<dyn Fn(usize, Duration) -> BackendResult<ReadBlock> + Send + Sync>;
+
 #[derive(Default)]
 pub struct Probe {
+    pub read_source: Option<ReadSource>,
     pub drain_hold: AtomicBool,
     pub drain_started: AtomicBool,
     pub write_cancelled: Mutex<Option<Arc<AtomicBool>>>,
@@ -492,6 +495,9 @@ impl Transport for ScriptedTransport {
         }
         assert!(limit <= 16384);
         assert!(wait <= Duration::from_millis(20));
+        if let Some(read) = &self.probe.read_source {
+            return read(limit, wait);
+        }
         Ok(ReadBlock {
             bytes: if self.probe.drain_started.load(Ordering::SeqCst)
                 && !self.probe.drain_release.load(Ordering::SeqCst)
