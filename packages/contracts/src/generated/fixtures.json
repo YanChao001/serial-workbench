@@ -936,6 +936,31 @@
       }
     },
     {
+      "name": "replay-archive-requires-an-exact-record",
+      "schema": "ReplayReadParams",
+      "value": {
+        "archive": {
+          "kind": "from",
+          "record": 1000000
+        },
+        "maxBytes": "65536",
+        "maxRecords": "100",
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-null-archive",
+      "schema": "ReplayReadParams",
+      "value": {
+        "archive": null,
+        "maxBytes": "65536",
+        "maxRecords": "100",
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
       "name": "replay-control-rejects-query-only-state",
       "schema": "ReplayControlParams",
       "value": {
@@ -12159,6 +12184,31 @@
         "maxRecords": "1",
         "sessionEpoch": "1",
         "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-archive-before",
+      "schema": "ReplayReadParams",
+      "value": {
+        "archive": {
+          "kind": "before",
+          "record": "1000000"
+        },
+        "maxBytes": "65536",
+        "maxRecords": "100",
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-empty-archive",
+      "schema": "ReplayReadResult",
+      "value": {
+        "archiveTotalRecords": "0",
+        "atEnd": true,
+        "nextRecord": "1",
+        "readerGeneration": "3",
+        "records": []
       }
     },
     {

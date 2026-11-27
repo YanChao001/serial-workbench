@@ -168,15 +168,15 @@ fn indexed_append_leaves_the_previous_volume_and_index_byte_exact() {
     assert_eq!(fs::read(path.join("index-000001.swbi")).unwrap(), index);
 }
 
-#[test]
+#[tokio::test]
 #[ignore = "Writes and verifies one million native capture records"]
-fn native_indexed_recording_replays_the_millionth_record() {
-    use serial_workbench_host::capture::replay::ReplayReader;
+async fn native_indexed_recording_replays_the_millionth_record() {
+    use serial_workbench_host::{capture::replay::ReplayService, files::FileService};
     use std::time::Instant;
 
     const RECORDS: u64 = 1_000_000;
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().canonicalize().unwrap().join("million");
+    let h = support::Harness::new().await;
+    let path = h.dir.path().canonicalize().unwrap().join("million");
     let started = Instant::now();
     let mut writer =
         CaptureWriter::create(&path, vec![source()], CaptureLimits::default()).unwrap();
@@ -202,13 +202,66 @@ fn native_indexed_recording_replays_the_millionth_record() {
     assert_eq!(summary.state, CaptureState::Complete);
     assert_eq!(summary.watermarks.verified.get(), RECORDS);
 
+    let identity = h.store.identity().unwrap();
+    let user = h
+        .auth
+        .authenticate_user_control(
+            &support::id("operator"),
+            &ContextToken::try_from("test-user-control").unwrap(),
+        )
+        .unwrap();
+    let files = FileService::new(h.store.clone(), h.auth.clone(), identity.clone());
+    let registered = Instant::now();
+    let capture_ref = files
+        .register(
+            RegisterFileParams {
+                path: path.to_string_lossy().into_owned(),
+                purpose: FilePurpose::CaptureSource,
+            },
+            &user,
+        )
+        .unwrap();
+    let register_ms = registered.elapsed().as_millis();
+    let replay = ReplayService::new(files, identity, h.clock.clone());
     let started = Instant::now();
-    let mut replay = ReplayReader::open(&path, ReplayMode::Fastest).unwrap();
+    let opened = replay
+        .open(
+            ReplayOpenParams {
+                capture_ref,
+                mode: ReplayMode::Fastest,
+            },
+            &h.actor,
+        )
+        .await
+        .unwrap();
     let open_ms = started.elapsed().as_millis();
+    let read = |archive, max_records: u64| ReplayReadParams {
+        session_id: opened.session_id.clone(),
+        session_epoch: opened.session_epoch,
+        max_records: max_records.into(),
+        max_bytes: 65536.into(),
+        single_step: None,
+        inspect_playback: None,
+        report_playback: None,
+        archive,
+    };
     let started = Instant::now();
-    replay.seek(RECORDS.into(), RECORDS).unwrap();
-    let page = replay.read(1, RECORDS).unwrap();
+    let page = replay
+        .read(
+            read(
+                Some(ReplayArchiveRange::From {
+                    record: RECORDS.into(),
+                }),
+                100,
+            ),
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    let last_page_us = started.elapsed().as_micros();
     assert!(page.at_end);
+    assert_eq!(page.archive_total_records, Some(RECORDS.into()));
+    assert_eq!(page.next_record, (RECORDS + 1).into());
     let [ReplayRecord::Inline { record }] = page.records.as_slice() else {
         panic!("the last record must fit in an inline replay page")
     };
@@ -223,7 +276,41 @@ fn native_indexed_recording_replays_the_millionth_record() {
     assert_eq!(payload.byte_start.get(), (RECORDS - 1) * 3);
     assert_eq!(payload.byte_end.get(), RECORDS * 3);
     assert_eq!(payload.bytes_base64.as_str(), "AQID");
-    let last_page_us = started.elapsed().as_micros();
+    let started = Instant::now();
+    let previous = replay
+        .read(
+            read(
+                Some(ReplayArchiveRange::Before {
+                    record: RECORDS.into(),
+                }),
+                100,
+            ),
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    let previous_page_us = started.elapsed().as_micros();
+    assert_eq!(previous.records.len(), 100);
+    assert_eq!(previous.next_record, RECORDS.into());
+    assert!(!previous.at_end);
+    assert!(matches!(
+        previous.records.as_slice(),
+        [ReplayRecord::Inline { record: first }, .., ReplayRecord::Inline { record: last }]
+            if first.record_ordinal.get() == RECORDS - 100 && last.record_ordinal.get() == RECORDS - 1
+    ));
+    let inspected = replay
+        .read(
+            ReplayReadParams {
+                inspect_playback: Some(true),
+                ..read(None, 1)
+            },
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(inspected.next_record.get(), 1);
+    assert_eq!(inspected.reader_generation, page.reader_generation);
+    assert_eq!(h.write_count(), 0);
 
     let indexes: Vec<_> = fs::read_dir(&path)
         .unwrap()
@@ -240,7 +327,8 @@ fn native_indexed_recording_replays_the_millionth_record() {
         "{}",
         serde_json::json!({
             "records": RECORDS, "volumes": indexes.len(), "indexBytes": indexes.iter().sum::<u64>(),
-            "writeMs": write_ms, "finishMs": finish_ms, "openMs": open_ms, "lastPageUs": last_page_us,
+            "writeMs": write_ms, "finishMs": finish_ms, "registerMs": register_ms, "openMs": open_ms,
+            "lastPageUs": last_page_us, "previousPageUs": previous_page_us,
         })
     );
 }
@@ -588,6 +676,7 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
                 single_step: None,
                 inspect_playback: None,
                 report_playback: None,
+                archive: None,
             },
             &h.actor,
         )
@@ -632,6 +721,7 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
         single_step: None,
         inspect_playback: None,
         report_playback: None,
+        archive: None,
     };
     assert!(
         replay
@@ -641,9 +731,76 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
             .records
             .is_empty()
     );
+    let browse = |archive, max_records: u64| ReplayReadParams {
+        archive: Some(archive),
+        max_records: max_records.into(),
+        ..read.clone()
+    };
+    let tail = replay
+        .read(
+            browse(ReplayArchiveRange::From { record: 2.into() }, 1),
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(tail.records, records.records[1..2]);
+    assert_eq!(tail.reader_generation, reset.reader_generation);
+    assert_eq!(tail.next_record, U64::from(3));
+    assert!(tail.at_end);
+    assert_eq!(tail.archive_total_records, Some(2.into()));
+    assert!(tail.playback.is_none());
+    let previous = replay
+        .read(
+            browse(ReplayArchiveRange::Before { record: 2.into() }, 1),
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(previous.records, records.records[0..1]);
+    assert_eq!(previous.next_record, U64::from(2));
+    assert!(!previous.at_end);
+    let backwards = replay
+        .read(
+            browse(ReplayArchiveRange::Before { record: 3.into() }, 2),
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(backwards.records, records.records);
+    assert!(backwards.at_end);
+    let beyond_end = replay
+        .read(
+            browse(ReplayArchiveRange::From { record: 4.into() }, 1),
+            &h.actor,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(beyond_end.code, "INVALID_ARGUMENT");
+    let conflicting = ReplayReadParams {
+        inspect_playback: Some(true),
+        ..browse(ReplayArchiveRange::From { record: 1.into() }, 1)
+    };
+    assert_eq!(
+        replay.read(conflicting, &h.actor).await.unwrap_err().code,
+        "INVALID_ARGUMENT"
+    );
+    let unchanged = replay
+        .read(
+            ReplayReadParams {
+                inspect_playback: Some(true),
+                ..read.clone()
+            },
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(unchanged.next_record, reset.next_record);
+    assert_eq!(unchanged.reader_generation, reset.reader_generation);
+    assert!(unchanged.playback.unwrap().paused);
+
     let stale = ReplayReadParams {
         session_epoch: 0.into(),
-        ..read.clone()
+        ..browse(ReplayArchiveRange::From { record: 1.into() }, 2)
     };
     assert_eq!(
         replay.read(stale, &h.actor).await.unwrap_err().code,

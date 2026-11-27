@@ -236,6 +236,7 @@ import type {
   ReconnectStatus,
   RecoverPrefixParams,
   RegisterFileParams,
+  ReplayArchiveRange,
   ReplayControlParams,
   ReplayOpenParams,
   ReplayPeerClosed,
@@ -959,6 +960,9 @@ export declare function validateRecoverPrefixParams(
 export declare function validateRegisterFileParams(
   value: unknown,
 ): value is RegisterFileParams;
+export declare function validateReplayArchiveRange(
+  value: unknown,
+): value is ReplayArchiveRange;
 export declare function validateReplayControlParams(
   value: unknown,
 ): value is ReplayControlParams;

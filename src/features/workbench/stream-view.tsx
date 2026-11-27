@@ -196,6 +196,7 @@ export type StreamViewProps = {
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
   replay?: boolean;
+  fixedPageKey?: number;
   allowTerminalLinks?: boolean;
   mappedReceive?: { rules: CharacterRemapRules; label: string };
   initialMode?: "text" | "hex";
@@ -242,6 +243,7 @@ export function StreamView({
   terminalSettings,
   presentationLabels,
   replay = false,
+  fixedPageKey,
   allowTerminalLinks = false,
   mappedReceive,
   onOpenCapture,
@@ -571,13 +573,14 @@ export function StreamView({
         : 0,
     [pendingBoundary, items],
   );
-  const following = !frozen && !reviewed;
+  const fixedPage = fixedPageKey !== undefined;
+  const following = !fixedPage && !frozen && !reviewed;
   const followingActive = useRef(true);
   const reviewHistory = () => {
-    if (frozen) return;
+    if (frozen || fixedPage) return;
     setReviewed((current) => current ?? new Set(items.map(streamItemIdentity)));
   };
-  const resume = () => {
+  const resume = useCallback(() => {
     scrollIntent.current = null;
     searching.current?.abort();
     found.current = undefined;
@@ -588,7 +591,16 @@ export function StreamView({
     setLocationTarget(undefined);
     setFreeze(null);
     setReviewed(null);
-  };
+  }, []);
+  const previousFixedPage = useRef(fixedPageKey);
+  useLayoutEffect(() => {
+    const wasFixed = previousFixedPage.current !== undefined;
+    previousFixedPage.current = fixedPageKey;
+    if (fixedPageKey === undefined && !wasFixed) return;
+    resume();
+    if (fixedPageKey !== undefined && viewport.current)
+      viewport.current.scrollTop = 0;
+  }, [fixedPageKey, resume]);
   const projected = useMemo(() => projectStreamItems(displayed), [displayed]);
   const detectEncoding = encoding === null || encodingMenuOpen;
   const mappedSource = freeze?.source ?? rawItems;
@@ -1146,6 +1158,7 @@ export function StreamView({
   const rowWindow = useStreamRowWindow({
     count: showAnsi || mappedProjection ? 0 : visibleRows.length,
     sourceKey: firstVisibleRow && rowKey(firstVisibleRow),
+    scrollResetKey: fixedPageKey,
     layoutKey: JSON.stringify({
       receiveCodec,
       sendCodec,
@@ -1404,7 +1417,7 @@ export function StreamView({
         <span
           className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
         >
-          {replay && presentationLabels
+          {replay && !fixedPage && presentationLabels
             ? `${presentationLabels.replay} · `
             : ""}
           {row.kind === "rx" && !row.continuation && (
@@ -1572,6 +1585,7 @@ export function StreamView({
     copyLocation,
     labels,
     replay,
+    fixedPage,
     presentationLabels,
     times,
     displayed,
@@ -2308,6 +2322,7 @@ export function StreamView({
             className="workbench-stream-log app-scroll-region"
             data-surface="transparent"
             data-following={following}
+            data-fixed-page={fixedPage || undefined}
             data-stream-windowed={rowWindow.enabled || undefined}
             data-locating={locatedItem !== undefined || undefined}
             onWheel={(event) => {
@@ -2335,7 +2350,7 @@ export function StreamView({
               if (event.target !== event.currentTarget) return;
               const element = event.currentTarget;
               if (
-                rowWindow.enabled &&
+                (rowWindow.enabled || fixedPage) &&
                 (event.key === "Home" || event.key === "End")
               ) {
                 event.preventDefault();

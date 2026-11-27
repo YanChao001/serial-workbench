@@ -203,6 +203,10 @@
   flex: 0 0 auto;
   flex-wrap: nowrap;
 }
+.workbench-replay-toolbar .workbench-icon-button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
 .workbench-replay-seek {
   flex: 0 1 7rem;
   width: 7rem;
@@ -380,6 +384,7 @@
   overflow-anchor: auto;
 }
 .workbench-stream-log[data-locating="true"],
+.workbench-stream-log[data-fixed-page],
 .workbench-stream-log[data-stream-windowed] {
   overflow-anchor: none;
 }
@@ -406,7 +411,8 @@
 .workbench-stream-spacer {
   overflow-anchor: none;
 }
-[data-stream-windowed] .workbench-stream-row {
+[data-stream-windowed] .workbench-stream-row,
+[data-fixed-page] .workbench-stream-row {
   content-visibility: visible;
 }
 .workbench-stream-row[data-continues="true"] {

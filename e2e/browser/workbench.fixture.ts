@@ -74,6 +74,7 @@ export type CaptureTailFixture = {
 export type ReplayLayoutFixture = {
   session: SessionSnapshot;
   page: ReplayReadResult;
+  archivePages?: Record<string, ReplayReadResult>;
   searchPages?: ReplaySearchPage[];
   files: Record<
     string,
@@ -395,28 +396,28 @@ export async function seedWorkbenchFixture(
   const replayCatalog = catalogItems.filter(
     (item) => item.actionId !== "replay.search" || replay?.searchPages,
   );
-  const workbenchCatalog = replay?.page.playback
-    ? replayCatalog
-    : replayCatalog.map((item) => {
-        const properties = item.inputSchema.properties;
-        if (
-          (item.actionId !== "replay.read" &&
-            item.actionId !== "replay.control") ||
-          !properties ||
-          typeof properties !== "object" ||
-          Array.isArray(properties)
-        )
-          return item;
-        const legacyProperties = { ...properties };
-        delete legacyProperties.singleStep;
-        delete legacyProperties.reportPlayback;
-        delete legacyProperties.inspectPlayback;
-        delete legacyProperties.playback;
-        return {
-          ...item,
-          inputSchema: { ...item.inputSchema, properties: legacyProperties },
-        };
-      });
+  const workbenchCatalog = replayCatalog.map((item) => {
+    const properties = item.inputSchema.properties;
+    if (
+      (item.actionId !== "replay.read" && item.actionId !== "replay.control") ||
+      !properties ||
+      typeof properties !== "object" ||
+      Array.isArray(properties)
+    )
+      return item;
+    const fields = { ...properties };
+    if (!replay?.page.playback) {
+      delete fields.singleStep;
+      delete fields.reportPlayback;
+      delete fields.inspectPlayback;
+      delete fields.playback;
+    }
+    if (!replay?.archivePages) delete fields.archive;
+    return {
+      ...item,
+      inputSchema: { ...item.inputSchema, properties: fields },
+    };
+  });
   const replayScope = replay
     ? {
         scopeId: "session.replay-layout",
@@ -3212,6 +3213,37 @@ export async function seedWorkbenchFixture(
                 };
               }
               if (replayProfile && query.actionId === "replay.read") {
+                const archive = query.params.archive;
+                if (archive !== undefined) {
+                  if (
+                    command !== "host_raw_request" ||
+                    args.generation !== hostAttachment.generation ||
+                    !validReplayTarget(query.target) ||
+                    query.params.sessionId !==
+                      replayProfile.session.sessionId ||
+                    query.params.sessionEpoch !==
+                      replayProfile.session.sessionEpoch ||
+                    query.params.maxBytes !== "65536" ||
+                    query.params.maxRecords !== "100" ||
+                    query.params.singleStep !== undefined ||
+                    query.params.inspectPlayback !== undefined ||
+                    query.params.reportPlayback !== undefined ||
+                    archive === null ||
+                    typeof archive !== "object" ||
+                    !("record" in archive) ||
+                    typeof archive.record !== "string" ||
+                    !("kind" in archive) ||
+                    (archive.kind !== "from" && archive.kind !== "before")
+                  )
+                    throw new Error("Invalid replay archive request");
+                  const value =
+                    replayProfile.archivePages?.[
+                      `${archive.kind}:${archive.record}`
+                    ];
+                  if (!value)
+                    throw new Error("Missing replay archive fixture page");
+                  return { ok: true, result: { kind: "replay_read", value } };
+                }
                 const singleStep = query.params.singleStep === true;
                 const inspect = query.params.inspectPlayback === true;
                 if (

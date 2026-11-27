@@ -314,6 +314,7 @@ async fn maximum_record_replays_through_bounded_refs_without_changing_original_j
         single_step: Some(true),
         inspect_playback: None,
         report_playback: Some(true),
+        archive: None,
     };
     let conflicting_modes = ReplayReadParams {
         inspect_playback: Some(true),
@@ -354,11 +355,25 @@ async fn maximum_record_replays_through_bounded_refs_without_changing_original_j
         replay.read(tiny, &h.actor).await.unwrap_err().code,
         "LIMIT_EXCEEDED"
     );
-    let batch = replay.read(step, &h.actor).await.unwrap();
-    assert!(serde_json::to_vec(&batch).unwrap().len() <= 256 * 1024);
+    let archive = ReplayReadParams {
+        max_bytes: 65536.into(),
+        single_step: None,
+        report_playback: None,
+        archive: Some(ReplayArchiveRange::Before { record: 2.into() }),
+        ..step.clone()
+    };
+    let batch = replay.read(archive, &h.actor).await.unwrap();
+    assert!(serde_json::to_vec(&batch).unwrap().len() <= 65536);
+    assert_eq!(batch.archive_total_records, Some(1.into()));
+    assert_eq!(batch.reader_generation, inspected.reader_generation);
+    assert!(batch.playback.is_none());
+
+    let stepped = replay.read(step, &h.actor).await.unwrap();
+    assert_eq!(stepped.records.len(), 1);
+    assert!(stepped.at_end);
+    assert!(stepped.playback.as_ref().is_some_and(|state| state.paused));
     assert_eq!(batch.records.len(), 1);
     assert!(batch.at_end);
-    assert!(batch.playback.as_ref().is_some_and(|state| state.paused));
     let ReplayRecord::Reference {
         record_ref,
         record_ordinal,

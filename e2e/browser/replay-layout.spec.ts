@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import type { CaptureRecord, ReplayRecord } from "@serial-workbench/contracts";
+import type {
+  CaptureRecord,
+  ReplayReadResult,
+  ReplayRecord,
+} from "@serial-workbench/contracts";
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { operation, session } from "../../src/features/workbench/test-fixtures";
 import { en } from "../../src/i18n/en";
@@ -819,6 +823,205 @@ test("attached replay keeps fixed receive and send rectangles through large-reco
     ),
   );
 });
+
+for (const {
+  language,
+  width,
+  height,
+  browse,
+  seek,
+  previous,
+  next,
+  receiveName,
+  firstRange,
+  lastRange,
+  previousRange,
+} of [
+  {
+    language: "en" as const,
+    width: 1240,
+    height: 760,
+    browse: "Browse archive",
+    seek: "Seek to record",
+    previous: "Previous archive page",
+    next: "Next archive page",
+    receiveName: "Receive",
+    firstRange: "1–100 / 1000000",
+    lastRange: "999901–1000000 / 1000000",
+    previousRange: "999801–999900 / 1000000",
+  },
+  {
+    language: "zh" as const,
+    width: 420,
+    height: 530,
+    browse: "浏览归档",
+    seek: "定位记录",
+    previous: "上一页归档",
+    next: "下一页归档",
+    receiveName: "接收",
+    firstRange: "第 1–100 条，共 1000000 条",
+    lastRange: "第 999901–1000000 条，共 1000000 条",
+    previousRange: "第 999801–999900 条，共 1000000 条",
+  },
+]) {
+  test(`indexed replay displays only the requested archive page at ${width}px (${language})`, async ({
+    page,
+  }) => {
+    const hostId = "workbench-gui-host";
+    const replaySession = {
+      ...session("archive-replay"),
+      sessionEpoch: "7",
+      readOnly: true,
+    };
+    const scope = {
+      sessionId: replaySession.sessionId,
+      sessionEpoch: replaySession.sessionEpoch,
+    };
+    const archivePage = (start: number): ReplayReadResult => {
+      const records: ReplayRecord[] = Array.from(
+        { length: 100 },
+        (_, index) => {
+          const ordinal = start + index;
+          const bytes = Buffer.from(
+            `ARCHIVE-${String(ordinal).padStart(7, "0")}\r\n`,
+          );
+          return {
+            kind: "inline",
+            record: {
+              recordOrdinal: String(ordinal),
+              entry: {
+                kind: "event",
+                value: {
+                  hostId,
+                  ...scope,
+                  instanceEpoch: "1",
+                  eventSeq: String(ordinal),
+                  configurationRevision: "1",
+                  time: {
+                    clockId: "archive-fixture-clock",
+                    sourceMonoNs: String(ordinal * 200_000_000),
+                    receivedWallTime: "2026-11-10T10:00:00Z",
+                    precision: {
+                      source: "host_read",
+                      resolutionNs: "1",
+                      syncMethod: "none",
+                    },
+                  },
+                  kind: "rx",
+                  payload: {
+                    bytesBase64: bytes.toString("base64"),
+                    byteStart: String((ordinal - 1) * bytes.length),
+                    byteEnd: String(ordinal * bytes.length),
+                  },
+                },
+              },
+            },
+          };
+        },
+      );
+      return {
+        records,
+        readerGeneration: "1",
+        nextRecord: String(start + records.length),
+        atEnd: start + records.length === 1000001,
+        archiveTotalRecords: "1000000",
+      };
+    };
+    await page.setViewportSize({ width, height });
+    await seedWorkbenchFixture(page, {
+      language,
+      sidebarCollapsed: width <= 420,
+      hostStart: "pending",
+      replay: {
+        session: replaySession,
+        files: {},
+        page: {
+          records: [],
+          readerGeneration: "1",
+          nextRecord: "1",
+          atEnd: true,
+        },
+        archivePages: {
+          "from:1": archivePage(1),
+          "from:999901": archivePage(999901),
+          "before:999901": archivePage(999801),
+          "from:999851": archivePage(999851),
+        },
+      },
+    });
+    await page.goto("./#/");
+    await expect(page.locator(".workbench")).toBeVisible();
+    await page.evaluate(() => window.workbenchFixture.releaseHost());
+    await page
+      .getByRole("button", {
+        name: language === "en" ? "Activity" : "活动",
+        exact: true,
+      })
+      .click();
+    await page.getByRole("button", { name: /fixture-attached-replay/ }).click();
+    const panel = page.locator(".workbench-replay");
+    const status = panel.getByRole("status");
+    const toggle = panel.getByRole("button", { name: browse, exact: true });
+    const receive = panel.getByRole("log", { name: receiveName, exact: true });
+    await toggle.focus();
+    await toggle.press("Enter");
+    await expect(status).toHaveText(firstRange);
+    await expect(toggle).toBeFocused();
+    await expect(panel.getByRole("button", { name: previous })).toBeDisabled();
+    await expect(
+      receive.getByText("ARCHIVE-0000001", { exact: true }),
+    ).toBeInViewport();
+    const ordinal = panel.getByRole("textbox", { name: seek });
+    await ordinal.fill("999901");
+    await ordinal.press("Enter");
+    await expect(status).toHaveText(lastRange);
+    await expect(
+      receive.getByText("ARCHIVE-0999901", { exact: true }),
+    ).toBeInViewport();
+    await expect(
+      receive.getByText("ARCHIVE-0000001", { exact: true }),
+    ).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: next })).toBeDisabled();
+    await expect(receive.locator("[data-stream-row-index]")).toHaveCount(100);
+    await receive.press("End");
+    await expect(
+      receive.getByText("ARCHIVE-1000000", { exact: true }),
+    ).toBeInViewport();
+    const previousButton = panel.getByRole("button", { name: previous });
+    await previousButton.focus();
+    await previousButton.press("Enter");
+    await expect(status).toHaveText(previousRange);
+    await expect(previousButton).toBeFocused();
+    await expect(
+      receive.getByText("ARCHIVE-0999801", { exact: true }),
+    ).toBeInViewport();
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
+    const nextButton = panel.getByRole("button", { name: next });
+    await nextButton.press("Enter");
+    await expect(status).toHaveText(lastRange);
+    await expect(
+      receive.getByText("ARCHIVE-0999901", { exact: true }),
+    ).toBeInViewport();
+    await ordinal.fill("999851");
+    await ordinal.press("Enter");
+    await expect(
+      receive.getByText("ARCHIVE-0999851", { exact: true }),
+    ).toBeInViewport();
+    await nextButton.focus();
+    await page.evaluate(() => {
+      window.workbenchFixture.deniedReplayReads.push("archive-replay");
+    });
+    await expect(toggle).toBeDisabled();
+    await expect(toggle).toBeFocused();
+    await expect(
+      receive.getByText("ARCHIVE-0999851", { exact: true }),
+    ).toHaveCount(0);
+  });
+}
 
 test("attached read-only replay steps, changes speed and stops before its breakpoint", async ({
   page,

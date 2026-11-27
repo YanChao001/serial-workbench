@@ -22,6 +22,7 @@ import {
 import type { Translate } from "@/i18n/translate";
 import { bytesToBase64 } from "@/lib/base64";
 import { nativeErrorCode } from "@/lib/native-error";
+import { replaySourceUnavailable } from "./replay-source-unavailable";
 import { encodeText, prepareTextEncoding } from "@/lib/text-encoding";
 import type { HostContextValue } from "@/providers/host-context";
 import { TextEncodingSelect } from "./text-encoding-select";
@@ -71,16 +72,6 @@ type View = {
 };
 const initial: View = { phase: "idle" };
 
-function accessLost(error: unknown) {
-  const code = nativeErrorCode(error);
-  return (
-    code === "PERMISSION_DENIED" ||
-    code === "NOT_FOUND" ||
-    code === "SOURCE_CHANGED" ||
-    code === "EPOCH_MISMATCH"
-  );
-}
-
 /** Cancel now and reconcile a start that the Host may accept after the first stop. */
 function release(attempt: Attempt) {
   attempt.cancelled = true;
@@ -112,6 +103,8 @@ export function ReplaySearchTool({
   initialEncoding,
   closeLabel,
   jumpDisabled,
+  fallbackFocus,
+  onSourceUnavailable,
   onJump,
 }: {
   search: ReplaySearchOptions;
@@ -120,6 +113,8 @@ export function ReplaySearchTool({
   initialEncoding: TextEncoding;
   closeLabel: string;
   jumpDisabled: boolean;
+  fallbackFocus?: React.RefObject<HTMLElement | null>;
+  onSourceUnavailable?: () => void;
   onJump: (hit: ReplaySearchHit, signal: AbortSignal) => Promise<boolean>;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
@@ -188,6 +183,16 @@ export function ReplaySearchTool({
       phase: "error",
     }));
   }
+  function showRequestError(error: unknown, fallback: Failure) {
+    const code = nativeErrorCode(error);
+    const unavailable = replaySourceUnavailable(code);
+    // NOT_FOUND can mean that the search cursor expired. Archive reads still work.
+    if (unavailable && code !== "NOT_FOUND") onSourceUnavailable?.();
+    showError(
+      unavailable ? "workbench.replaySearchUnavailable" : fallback,
+      unavailable,
+    );
+  }
   function scan(attempt: Attempt, first: ReplaySearchCommand) {
     const work = (async () => {
       let command = first;
@@ -219,12 +224,7 @@ export function ReplaySearchTool({
         }
       } catch (error) {
         if (!attempt.cancelled && active.current === attempt)
-          showError(
-            accessLost(error)
-              ? "workbench.replaySearchUnavailable"
-              : "workbench.replaySearchFailed",
-            accessLost(error),
-          );
+          showRequestError(error, "workbench.replaySearchFailed");
       }
     })();
     attempt.work = work;
@@ -266,11 +266,7 @@ export function ReplaySearchTool({
         ...(direction === "both" ? {} : { direction }),
       });
     } catch (error) {
-      if (started === revision.current)
-        showError(
-          accessLost(error) ? "workbench.replaySearchUnavailable" : failure,
-          accessLost(error),
-        );
+      if (started === revision.current) showRequestError(error, failure);
     } finally {
       launching.current = false;
     }
@@ -299,12 +295,7 @@ export function ReplaySearchTool({
         setView((before) => ({ ...before, phase: "stopped" }));
     } catch (error) {
       if (started === revision.current)
-        showError(
-          accessLost(error)
-            ? "workbench.replaySearchUnavailable"
-            : "workbench.replaySearchStopFailed",
-          accessLost(error),
-        );
+        showRequestError(error, "workbench.replaySearchStopFailed");
     }
   }
   async function locate(hit: ReplaySearchHit) {
@@ -361,7 +352,13 @@ export function ReplaySearchTool({
         title={title}
         closeLabel={closeLabel}
         scopeKey={target.sessionId + ":" + target.sessionEpoch}
-        returnFocus={trigger}
+        returnFocus={{
+          get current() {
+            return trigger.current?.isConnected
+              ? trigger.current
+              : (fallbackFocus?.current ?? null);
+          },
+        }}
         onRequestClose={close}
       >
         <form

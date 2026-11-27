@@ -1085,7 +1085,9 @@ Modbus 主站和从站分别从 0.1.0 升到 0.1.1。通过 `pnpm plugin-sdk:fix
 
 先用 `pnpm test:ui e2e/browser/receive-history.spec.ts e2e/browser/receive-follow-geometry.spec.ts --workers=1` 验证已有留存缓冲。分批追加 600 条互相分开的 12 字节 RX，核对尾部在视口内并记录已挂载行数。上滚后追加第 601 条，核对继续接收和待看数。按事件 14 跳转到偏移 36，关闭定位后检查焦点，恢复后核对尾部偏移 7200。搜索屏外的 `packet-0011`，确认偏移 120 的匹配在 1240 × 760 与 420 × 530 的窗口可见。中英留存测试用键盘滚动检查 1500 条的两端，接着检查暂停、缩容与恢复。短报文历史视口反复切换宽窄窗口，检查同一记录的位置差在 1 像素以内。用 420 条 640 字节折行记录测量多段历史，再从窄窗拉宽，核对仍留存的中段原始偏移保持可见。第 193 条到达并滚动后，检查键盘焦点和 HEX 选区起止偏移。展开长记录到第 2 页，滚离并重新挂载后核对页码。 [宽窄草稿](./ui-design.md#大缓冲接收区草稿disp-15perf-06)
 
-录制容器的规模检查运行 `cargo test --locked -p serial-workbench-host --test capture_integrity native_indexed_recording_replays_the_millionth_record -- --ignored --nocapture`。用例写入 1,000,000 条连续合成 RX，在真实文件上完成结算和回放打开，核对尾条原始序号、字节范围与内容，并报告卷数、位置索引字节数和各阶段耗时。日常定向测试覆盖检查点原地追加、断写前缀恢复、孤立新卷、旧格式和新卷未创建时的容量拒绝。 [0.4 格式](./contracts/capture-container-v0.md#原始卷和分卷索引-04)
+录制容器的规模检查运行 `cargo test --locked -p serial-workbench-host --test capture_integrity native_indexed_recording_replays_the_millionth_record -- --ignored --nocapture`。用例写入 1,000,000 条连续合成 RX，经 Host 回放服务登记、打开并直接读尾页及反向页。核对尾条原始序号、字节范围与内容，以及浏览后序号仍为 1 的播放游标。记录卷数、位置索引字节数和各阶段耗时。日常定向测试覆盖检查点原地追加、断写前缀恢复、孤立新卷、旧格式和新卷未创建时的容量拒绝。 [0.4 格式](./contracts/capture-container-v0.md#原始卷和分卷索引-04)
+
+运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts --grep "indexed replay" --workers=1`，在英文宽窗与中文窄窗用可控的已附着回放。选择「浏览归档」，按序号跳到最后 100 条，检查首条位置、滚动到尾条、禁用下一页、返回上一页、重叠页复位、翻页键焦点及撤权收回。页面仅保留当前归档页。用 raw Host 录制搜索用例核对命中序号、原字节范围、分页读回与源授权。用组件用例核对搜索命中大记录的引用读回、脱敏页复位、读取发现源已变化时的清理，以及退出浏览后继续从原播放位置操作。 [浏览草稿](./ui-design.md#归档浏览草稿disp-15perf-06)
 
 百万行基准由两个需求共享。使用相同的、有明确顺序和字节范围的数据集，在读取、滚动和搜索期间持续从真实 Host 接收并录制。分别核对首尾、深处精确搜索及跨页位置、录制终态、独立读回的条数和字节摘要。记录追加到显示、滚动到画面、搜索到命中和落盘的延迟分布，以及 Host 与客户端的进程 RSS、源流、读者和录制队列峰值。记录采样范围、源码提交、平台、客户端、运行方式、参数和收据摘要。保留实测留存裁剪或缺口的范围与原因。
 

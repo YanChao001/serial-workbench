@@ -771,6 +771,439 @@ function searchPage(
   };
 }
 
+it("browses exact archive ordinals and locates search hits without moving playback", async () => {
+  const play: ReplayReadResult = {
+    records: [],
+    readerGeneration: "3",
+    nextRecord: "17",
+    atEnd: false,
+    playback: {
+      rate: { kind: "fastest" },
+      paused: false,
+      breakpointHit: false,
+    },
+  };
+  const byteBase = BigInt(match.byteStart) - 42n * 4n;
+  const captureRx = (ordinal: string): CaptureRecord => ({
+    recordOrdinal: ordinal,
+    entry: {
+      kind: "event",
+      value: {
+        hostId: "host",
+        instanceEpoch: "1",
+        sessionId: "session",
+        sessionEpoch: "1",
+        eventSeq: ordinal,
+        configurationRevision: "1",
+        time: {
+          clockId: "clock",
+          sourceMonoNs: ordinal,
+          receivedWallTime: "2026-11-08T00:00:00Z",
+          precision: {
+            source: "host_read",
+            resolutionNs: "1",
+            syncMethod: "none",
+          },
+        },
+        kind: "rx",
+        payload: {
+          bytesBase64: ordinal === "43" ? "UElORw==" : "TkVYVA==",
+          byteStart: String(byteBase + (BigInt(ordinal) - 1n) * 4n),
+          byteEnd: String(byteBase + BigInt(ordinal) * 4n),
+        },
+      },
+    },
+  });
+  const readRecord = vi.fn(
+    async ({ recordOrdinal }: { recordOrdinal: string }) =>
+      captureRx(recordOrdinal),
+  );
+  const read = vi.fn(
+    async (params: ReplayReadParams): Promise<ReplayReadResult> => {
+      if (!params.archive) return play;
+      const first =
+        BigInt(params.archive.record) -
+        (params.archive.kind === "before" ? 1n : 0n);
+      const records: ReplayReadResult["records"] =
+        first === 43n
+          ? [
+              {
+                kind: "reference",
+                recordOrdinal: "43",
+                jsonBytes: "200",
+                jsonSha256: "a".repeat(64),
+                recordRef: {
+                  hostId: "host",
+                  kind: "capture_record",
+                  id: "archive-record",
+                  revision: "1",
+                },
+              },
+              { kind: "inline", record: captureRx("44") },
+            ]
+          : [{ kind: "inline", record: captureRx(String(first)) }];
+      return {
+        records,
+        readerGeneration: "3",
+        nextRecord: String(first + BigInt(records.length)),
+        atEnd: first === 1000000n,
+        archiveTotalRecords: "1000000",
+      };
+    },
+  );
+  const control = vi.fn();
+  const run = vi.fn(
+    async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> =>
+      command.kind === "stop"
+        ? { kind: "stopped", searchId: command.searchId, stopped: true }
+        : searchPage(
+            command.searchId,
+            "1",
+            [{ ...match, lastRecord: "43" }],
+            true,
+          ),
+  );
+  const archiveAccess = { hostId: "host", watchActions: allowSearch };
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      archiveAccess={archiveAccess}
+      read={read}
+      readRecord={readRecord}
+      control={control}
+      search={{ ...archiveAccess, run, t: searchLabels }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.readReplay }));
+  expect(
+    await screen.findByText(labels.replayNextRecord + " 17"),
+  ).toBeVisible();
+  const toggle = screen.getByRole("button", { name: labels.browseReplay });
+  fireEvent.click(toggle);
+  expect(await screen.findByText("1–1 / 1000000")).toBeVisible();
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByRole("button", { name: labels.previousReplayPage }),
+  ).toHaveAttribute("aria-disabled", "true");
+  const seek = screen.getByRole("textbox", { name: labels.seekRecord });
+  fireEvent.change(seek, { target: { value: "1000000" } });
+  fireEvent.keyDown(seek, { key: "Enter" });
+  expect(await screen.findByText("1000000–1000000 / 1000000")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: labels.nextReplayPage }),
+  ).toHaveAttribute("aria-disabled", "true");
+  fireEvent.click(
+    screen.getByRole("button", { name: labels.previousReplayPage }),
+  );
+  expect(await screen.findByText("999999–999999 / 1000000")).toBeVisible();
+  expect(read.mock.lastCall?.[0].archive).toEqual({
+    kind: "before",
+    record: "1000000",
+  });
+  fireEvent.click(screen.getByRole("button", { name: labels.nextReplayPage }));
+  expect(await screen.findByText("1000000–1000000 / 1000000")).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "Search recording" }));
+  const dialog = screen.getByRole("dialog", { name: "Search recording" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search content" }),
+    {
+      target: { value: "PING" },
+    },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start search" }));
+  fireEvent.click(
+    await within(dialog).findByRole("button", { name: "Go to record" }),
+  );
+  expect(
+    await screen.findByText(/43–44 \/ 1000000.*Located record 43/),
+  ).toBeVisible();
+  expect(readRecord).toHaveBeenCalledWith(
+    expect.objectContaining({ recordOrdinal: "43" }),
+    expect.any(AbortSignal),
+  );
+  const log = screen.getByRole("log", { name: "Receive" });
+  expect(log).toHaveTextContent(/PING.*NEXT/s);
+  expect(read.mock.lastCall?.[0].archive).toEqual({
+    kind: "from",
+    record: "43",
+  });
+  expect(control).not.toHaveBeenCalled();
+  fireEvent.click(toggle);
+  expect(screen.getByText(labels.replayNextRecord + " 17")).toBeVisible();
+  expect(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
+it("aborts a pending archive page on source revocation and discards the late result", async () => {
+  let publishAccess = (_allowed: boolean) => {};
+  const watchActions: HostContextValue["watchActions"] = (inputs, publish) => {
+    publishAccess = (allowed) =>
+      publish(
+        inputs.map((input) => ({
+          input,
+          result: { actionId: input.actionId, target: input.target, allowed },
+          error: null,
+        })),
+      );
+    publishAccess(true);
+    return () => {};
+  };
+  let finish: ((value: ReplayReadResult) => void) | undefined;
+  const read = vi.fn((params: ReplayReadParams, _signal?: AbortSignal) => {
+    if (params.archive) {
+      return new Promise<ReplayReadResult>((resolve) => {
+        finish = resolve;
+      });
+    }
+    return Promise.resolve<ReplayReadResult>({
+      readerGeneration: "1",
+      nextRecord: "17",
+      atEnd: false,
+      records: [],
+      playback: {
+        rate: { kind: "fastest" },
+        paused: false,
+        breakpointHit: false,
+      },
+    });
+  });
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      archiveAccess={{ hostId: "host", watchActions }}
+      read={read}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.readReplay }));
+  expect(
+    await screen.findByText(labels.replayNextRecord + " 17"),
+  ).toBeVisible();
+  const toggle = screen.getByRole("button", { name: labels.browseReplay });
+  fireEvent.click(toggle);
+  const signal = read.mock.lastCall?.[1];
+  expect(signal?.aborted).toBe(false);
+  await act(async () => publishAccess(false));
+  expect(signal?.aborted).toBe(true);
+  expect(
+    screen.queryByText(labels.replayNextRecord + " 17"),
+  ).not.toBeInTheDocument();
+  await act(async () =>
+    finish?.({
+      readerGeneration: "1",
+      nextRecord: "1",
+      archiveTotalRecords: "0",
+      atEnd: true,
+      records: [],
+    }),
+  );
+  await act(async () => publishAccess(true));
+  expect(
+    screen.getByRole("button", { name: labels.browseReplay }),
+  ).toHaveAttribute("aria-pressed", "false");
+  expect(
+    screen.queryByRole("button", { name: labels.nextReplayPage }),
+  ).not.toBeInTheDocument();
+});
+
+it("retracts a visible archive immediately when a read detects a changed source", async () => {
+  const gap: CaptureRecord = {
+    recordOrdinal: "1",
+    entry: {
+      kind: "reader_gap",
+      value: {
+        hostId: "host",
+        instanceEpoch: "1",
+        sessionId: "original",
+        sessionEpoch: "1",
+        reason: "capture_overflow",
+        missingEventRange: { start: "1", end: "2" },
+      },
+    },
+  };
+  const first: ReplayReadResult = {
+    mode: "redacted",
+    records: [{ kind: "inline", record: gap }],
+    readerGeneration: "1",
+    nextRecord: "2",
+    atEnd: false,
+    archiveTotalRecords: "3",
+  };
+  const second: ReplayReadResult = {
+    ...first,
+    nextRecord: "3",
+    records: [
+      {
+        kind: "inline",
+        record: { ...gap, recordOrdinal: "2" },
+      },
+    ],
+  };
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(second)
+    .mockRejectedValueOnce({ code: "SOURCE_CHANGED" });
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      archiveAccess={{ hostId: "host", watchActions: allowSearch }}
+      read={read}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+    />,
+  );
+  const toggle = screen.getByRole("button", { name: labels.browseReplay });
+  fireEvent.click(toggle);
+  const original = await screen.findByRole("list", {
+    name: labels.captureRedacted,
+  });
+  original.scrollTop = 50;
+  const next = screen.getByRole("button", { name: labels.nextReplayPage });
+  fireEvent.click(next);
+  const updated = await screen.findByText("#2");
+  const list = screen.getByRole("list", { name: labels.captureRedacted });
+  expect(list).toContainElement(updated);
+  expect(list.scrollTop).toBe(0);
+  expect(list).not.toBe(original);
+
+  next.focus();
+  fireEvent.click(next);
+  await waitFor(() => {
+    expect(list).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).toHaveFocus();
+  });
+  expect(toggle).toHaveAttribute("aria-disabled", "false");
+});
+
+it.each(["scan", "locate", "revoke", "capability"] as const)(
+  "clears the archive and keeps a focus target when search loses source access during %s",
+  async (phase) => {
+    const initial: ReplayReadResult = {
+      archiveTotalRecords: "1",
+      readerGeneration: "1",
+      nextRecord: "2",
+      atEnd: true,
+      records: [
+        {
+          kind: "inline",
+          record: {
+            recordOrdinal: "1",
+            entry: {
+              kind: "reader_gap",
+              value: {
+                hostId: "host",
+                instanceEpoch: "1",
+                sessionId: "prior",
+                sessionEpoch: "1",
+                reason: "capture_overflow",
+                missingEventRange: { start: "1", end: "2" },
+              },
+            },
+          },
+        },
+      ],
+    };
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce(initial)
+      .mockRejectedValue({ code: "SOURCE_CHANGED" });
+    const run = vi.fn(
+      async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> => {
+        if (command.kind === "stop")
+          return { kind: "stopped", searchId: command.searchId, stopped: true };
+        if (phase === "scan") throw { code: "SOURCE_CHANGED" };
+        return searchPage(command.searchId, "1", [match], true);
+      },
+    );
+    let publishAccess = (_allowed: boolean) => {};
+    const watchActions: HostContextValue["watchActions"] = (
+      inputs,
+      publish,
+    ) => {
+      publishAccess = (allowed) =>
+        publish(
+          inputs.map((input) => ({
+            input,
+            result: { actionId: input.actionId, target: input.target, allowed },
+            error: null,
+          })),
+        );
+      publishAccess(true);
+      return () => {};
+    };
+    const archiveAccess = { hostId: "host", watchActions };
+    const props = {
+      session: session(),
+      labels,
+      disabled: false,
+      playbackSupported: true,
+      archiveAccess,
+      read,
+      readRecord: vi.fn(),
+      control: vi.fn(),
+      search: { ...archiveAccess, run, t: searchLabels },
+    };
+    const { rerender } = render(<ReplayPanel {...props} />);
+    const seek = screen.getByRole("textbox", { name: labels.seekRecord });
+    const toggle = screen.getByRole("button", { name: labels.browseReplay });
+    fireEvent.click(toggle);
+    expect(await screen.findByText("1–1 / 1")).toBeVisible();
+    const trigger = screen.getByRole("button", { name: "Search recording" });
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Search recording" });
+    if (phase === "revoke") {
+      await act(async () => publishAccess(false));
+    } else if (phase === "capability") {
+      rerender(
+        <ReplayPanel {...props} archiveAccess={undefined} search={undefined} />,
+      );
+    } else {
+      fireEvent.change(
+        within(dialog).getByRole("textbox", { name: "Search content" }),
+        {
+          target: { value: "PING" },
+        },
+      );
+      fireEvent.click(
+        within(dialog).getByRole("button", { name: "Start search" }),
+      );
+      if (phase === "locate") {
+        fireEvent.click(
+          await within(dialog).findByRole("button", { name: "Go to record" }),
+        );
+      } else {
+        await within(dialog).findByText(
+          en["workbench.replaySearchUnavailable"],
+        );
+        fireEvent.keyDown(
+          within(dialog).getByRole("textbox", { name: "Search content" }),
+          {
+            key: "Escape",
+          },
+        );
+      }
+    }
+    await waitFor(() => {
+      expect(dialog).not.toBeInTheDocument();
+      expect(screen.queryByText("1–1 / 1")).not.toBeInTheDocument();
+      const focus =
+        phase === "scan" ? trigger : phase === "capability" ? seek : toggle;
+      expect(focus).toHaveFocus();
+    });
+  },
+);
+
 it("scans to a hit, reads its first record without resuming playback and restores focus", async () => {
   const run = vi.fn(
     async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> => {

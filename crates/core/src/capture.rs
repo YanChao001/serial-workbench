@@ -454,6 +454,13 @@ pub struct ReplayControlParams {
     #[specta(type=ReplayPlaybackControl,optional)]
     pub playback: Option<ReplayPlaybackControl>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ReplayArchiveRange {
+    From { record: U64 },
+    Before { record: U64 },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplayReadParams {
@@ -485,6 +492,14 @@ pub struct ReplayReadParams {
     #[schemars(with = "bool")]
     #[specta(type=bool,optional)]
     pub report_playback: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "ReplayArchiveRange")]
+    #[specta(type=ReplayArchiveRange,optional)]
+    pub archive: Option<ReplayArchiveRange>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -504,6 +519,14 @@ pub struct ReplayReadResult {
     #[schemars(with = "ReplayPlaybackState")]
     #[specta(type=ReplayPlaybackState,optional)]
     pub playback: Option<ReplayPlaybackState>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "U64")]
+    #[specta(type=U64,optional)]
+    pub archive_total_records: Option<U64>,
 }
 pub const REPLAY_SEARCH_MAX_BYTES: usize = 256;
 

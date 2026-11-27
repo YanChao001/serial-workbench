@@ -7,6 +7,7 @@ import type {
 /** Supplied by the application dictionary; components never choose a locale. */
 export type WorkbenchLabels = {
   replayComparison?: (count: number) => string;
+  replayArchiveRange: (first: string, last: string, total: string) => string;
   captureRedactionOmitted: Record<CaptureRedactionOmission, string>;
   preprocess: {
     title: string;
@@ -69,6 +70,9 @@ export type WorkbenchLabels = {
   | "pauseReplay"
   | "resumeReplay"
   | "readReplay"
+  | "browseReplay"
+  | "previousReplayPage"
+  | "nextReplayPage"
   | "seekRecord"
   | "stepReplay"
   | "replayPlayback"

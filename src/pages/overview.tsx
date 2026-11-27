@@ -373,6 +373,11 @@ export default function Overview({
       resumeReplay: t("workbench.resumeReplay"),
       readReplay: t("workbench.readReplay"),
       seekRecord: t("workbench.seekRecord"),
+      browseReplay: t("workbench.browseReplay"),
+      previousReplayPage: t("workbench.previousReplayPage"),
+      nextReplayPage: t("workbench.nextReplayPage"),
+      replayArchiveRange: (first, last, total) =>
+        t("workbench.replayArchiveRange", { first, last, total }),
       stepReplay: t("workbench.stepReplay"),
       replayPlayback: t("workbench.replayPlayback"),
       replayFieldChart: t("workbench.fieldChart.replayTitle"),
@@ -983,6 +988,14 @@ export default function Overview({
           readRecord: host.readReplayRecord,
           control: replayControl,
           playbackSupported: replayPlaybackSupported,
+          archiveAccess:
+            host.connection &&
+            advertisesReplayParam(host.state.catalog, "replay.read", "archive")
+              ? {
+                  hostId: host.connection.attachment.hostId,
+                  watchActions: host.watchActions,
+                }
+              : undefined,
           search:
             host.connection &&
             host.state.catalog.some(

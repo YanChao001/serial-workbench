@@ -1,10 +1,20 @@
-import type { CaptureRecord, StreamItem } from "@serial-workbench/contracts";
+import type { CaptureRecord } from "@serial-workbench/contracts";
+import type { HistoryStreamItem } from "@/lib/receive-history";
 export function captureRecordItems(
   records: readonly CaptureRecord[],
-): StreamItem[] {
-  return records.flatMap<StreamItem>((record) =>
+  preserveRecordBoundaries = false,
+): HistoryStreamItem[] {
+  return records.flatMap<HistoryStreamItem>((record) =>
     record.entry.kind === "event"
-      ? [{ kind: "source", event: record.entry.value }]
+      ? [
+          {
+            kind: "source",
+            event: record.entry.value,
+            ...(preserveRecordBoundaries && {
+              displayRecord: record.recordOrdinal,
+            }),
+          },
+        ]
       : record.entry.kind === "reader_gap"
         ? [{ kind: "reader_gap", gap: record.entry.value }]
         : [],
