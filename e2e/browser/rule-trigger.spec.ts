@@ -66,6 +66,12 @@ test("arms the exact session only on explicit action and shows a verified match 
   );
   await expect(status).toContainText("Bench alert received");
   await expect(status).toContainText("[2, 8)");
+  expect(
+    await page.evaluate(() => window.workbenchFixture.backgroundRuleAlerts),
+  ).toEqual([]);
+  await expect(
+    dialog.getByRole("switch", { name: en["ruleTrigger.backgroundAlert"] }),
+  ).toBeDisabled();
   await status.screenshot({ path: info.outputPath("rule-status-narrow.png") });
   const calls = await invocations(page);
   expect(calls).toHaveLength(1);
@@ -356,14 +362,98 @@ test("an armed rule notifies after closing the panel and restores its verified r
   await expect(reopened.getByRole("status")).toContainText("[2, 8)");
 });
 
+for (const viewport of [
+  { width: 420, height: 550, submitted: true },
+  { width: 1240, height: 760, submitted: false },
+]) {
+  test(`tray alert requests the native action once after the rule panel is closed at ${viewport.width}px`, async ({
+    page,
+  }, info) => {
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    await seedWorkbenchFixture(page, {
+      sharedSettings: { runInBackground: true },
+      automation: { action, state: "held" },
+    });
+    const dialog = await openRule(page);
+    const alertSwitch = dialog.getByRole("switch", {
+      name: en["ruleTrigger.backgroundAlert"],
+    });
+    await expect(alertSwitch).toBeEnabled();
+    await expect(alertSwitch).not.toBeChecked();
+    await alertSwitch.press("Space");
+    await expect(alertSwitch).toBeFocused();
+    await expect(alertSwitch).toBeChecked();
+    await dialog
+      .getByRole("button", { name: "Save JSON", exact: true })
+      .click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.workbenchFixture.savedTextExports.length),
+      )
+      .toBe(1);
+    await dialog.getByRole("button", { name: "Arm rule", exact: true }).click();
+    const status = dialog.getByRole("status");
+    await expect(status).toContainText(en["ruleTrigger.backgroundAlert.armed"]);
+    await expect(alertSwitch).toBeDisabled();
+    await status.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: info.outputPath(`tray-alert-${viewport.width}.png`),
+    });
+    const alerts = () =>
+      page.evaluate(() => window.workbenchFixture.backgroundRuleAlerts);
+    expect(await alerts()).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await page.evaluate((submitted) => {
+      window.workbenchFixture.backgroundRuleAlertResult = submitted;
+      window.workbenchFixture.holdBackgroundRuleAlert = submitted;
+      window.workbenchFixture.finishRuleNotification();
+    }, viewport.submitted);
+    await expect.poll(alerts).toEqual(["Bench alert received"]);
+    const reopened = await openRuleMenu(page);
+    const reopenedStatus = reopened.getByRole("status");
+    await expect(reopenedStatus).toContainText(
+      "Rule matched and returned a notification.",
+    );
+    await expect(reopenedStatus).toContainText("[2, 8)");
+    if (viewport.submitted) {
+      await expect(reopenedStatus).toContainText(
+        en["ruleTrigger.backgroundAlert.requesting"],
+      );
+      await reopened
+        .getByRole("button", { name: "Load example", exact: true })
+        .click();
+      await expect(
+        reopened.getByRole("button", { name: "Arm rule", exact: true }),
+      ).toBeEnabled();
+      await page.evaluate(() =>
+        window.workbenchFixture.releaseBackgroundRuleAlert(),
+      );
+    }
+    await expect(reopenedStatus).toContainText(
+      en[
+        `ruleTrigger.backgroundAlert.${viewport.submitted ? "submitted" : "skipped"}`
+      ],
+    );
+    expect(await alerts()).toEqual(["Bench alert received"]);
+  });
+}
+
 test("a late admission receipt preserves the verified result already seen in the operation stream", async ({
   page,
 }) => {
   await seedWorkbenchFixture(page, {
     sendHistory: true,
+    sharedSettings: { runInBackground: true },
     automation: { action, state: "held", delayRuleReply: "admission" },
   });
   const dialog = await openRule(page);
+  await dialog
+    .getByRole("switch", { name: en["ruleTrigger.backgroundAlert"] })
+    .click();
   const arm = dialog.getByRole("button", { name: "Arm rule", exact: true });
   const status = dialog.getByRole("status");
   await arm.click();
@@ -380,11 +470,16 @@ test("a late admission receipt preserves the verified result already seen in the
   await expect(status).toContainText(
     "Rule matched and returned a notification.",
   );
+  const alerts = () =>
+    page.evaluate(() => window.workbenchFixture.backgroundRuleAlerts);
+  expect(await alerts()).toEqual([]);
   await page.evaluate(() =>
     window.workbenchFixture.releaseAutomationRuleReply(),
   );
   await expect(arm).toBeEnabled();
   await expect(status).toContainText("[2, 8)");
+  await expect(status).toContainText(en["ruleTrigger.backgroundAlert.skipped"]);
+  expect(await alerts()).toEqual(["Bench alert received"]);
 });
 
 test("closing the panel during cancellation authorization preserves the explicit stop", async ({

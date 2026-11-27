@@ -140,6 +140,10 @@ export type WorkbenchFixture = {
     generation: string;
     captureNameHint: CaptureNameHint | null;
   }[];
+  backgroundRuleAlerts: string[];
+  backgroundRuleAlertResult: boolean;
+  holdBackgroundRuleAlert: boolean;
+  releaseBackgroundRuleAlert: () => void;
   automationCursorPosition: string;
   suiteConfigurationRevision?: string;
   calendarSessionRevision?: string;
@@ -755,6 +759,7 @@ export async function seedWorkbenchFixture(
     let releaseCancellationReply: (() => void) | undefined;
     let delayedRuleReply = automation?.delayRuleReply;
     let releaseRuleReply: (() => void) | undefined;
+    let releaseBackgroundAlert: (() => void) | undefined;
     async function holdRuleReply(
       phase: "preflight" | "admission" | "cancelCheck",
     ) {
@@ -1216,6 +1221,14 @@ export async function seedWorkbenchFixture(
       clientStateWrites: [],
       workspaceWrites: [],
       filePickerCalls: [],
+      backgroundRuleAlerts: [],
+      backgroundRuleAlertResult: false,
+      holdBackgroundRuleAlert: false,
+      releaseBackgroundRuleAlert() {
+        if (!releaseBackgroundAlert)
+          throw new Error("Expected a held background alert");
+        releaseBackgroundAlert();
+      },
       automationCursorPosition: "0",
       automationObserveFailures: 0,
       emitRuleOperation(markMatched = false) {
@@ -3908,6 +3921,18 @@ export async function seedWorkbenchFixture(
               return false;
             case "get_desktop_status":
               return desktop;
+            case "present_background_rule_alert":
+              if (typeof args.message !== "string")
+                throw new Error("Expected a rule alert message");
+              fixture.backgroundRuleAlerts.push(args.message);
+              if (fixture.holdBackgroundRuleAlert) {
+                fixture.holdBackgroundRuleAlert = false;
+                await new Promise<void>((resolve) => {
+                  releaseBackgroundAlert = resolve;
+                });
+                releaseBackgroundAlert = undefined;
+              }
+              return fixture.backgroundRuleAlertResult;
             case "get_window_geometry":
               return windowGeometry;
             case "recovery_status":

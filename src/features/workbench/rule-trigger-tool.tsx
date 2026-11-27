@@ -1,10 +1,19 @@
-import { useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ContractValidationError,
   type ActionSpec,
   type Operation,
 } from "@serial-workbench/contracts";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { nativeErrorText } from "@/lib/native-error";
 import { rpcJsonObject } from "@/lib/rpc-json";
@@ -14,6 +23,7 @@ import type {
   HostInvocation,
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
+import { useSettings } from "@/providers/settings";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
   inspectRuleDefinition,
@@ -79,6 +89,8 @@ function pending(operation: Operation) {
   return ["queued", "running", "cancel_requested"].includes(operation.state);
 }
 
+const subscribeToNoAlerts = () => () => {};
+
 export function RuleTriggerTool({
   access,
   actionId,
@@ -91,9 +103,11 @@ export function RuleTriggerTool({
   catalog: readonly ActionSpec[];
 }) {
   const { t } = useI18n();
+  const { settings } = useSettings();
   const observations = useContext(RuleTaskObservationsContext);
   const id = useId();
   const [definition, setDefinition] = useState("");
+  const [backgroundAlert, setBackgroundAlert] = useState(false);
   const [saved, setSaved] = useState("");
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState<ArmRequest["phase"]>();
@@ -122,6 +136,9 @@ export function RuleTriggerTool({
     () => inspectRuleDefinition(definition),
     [definition],
   );
+  const offerBackgroundAlert = isTauri() && validated?.effect === "notify";
+  const enableBackgroundAlert =
+    offerBackgroundAlert && settings.runInBackground;
   const effect = validated?.effect === "action" ? validated.action : undefined;
   const spec =
     effect && catalog.find((entry) => entry.actionId === effect.actionId);
@@ -169,6 +186,13 @@ export function RuleTriggerTool({
     refreshing ||
     (shown ? pending(shown) && !finished?.terminal : false);
   const observedId = watched?.operationId;
+  const alertStatus = useSyncExternalStore(
+    observations?.subscribeBackgroundAlerts ?? subscribeToNoAlerts,
+    () =>
+      access && watched
+        ? observations?.backgroundAlert(access, watched)
+        : undefined,
+  );
   const latest = useRef({ access, watched });
   latest.current = { access, watched };
 
@@ -246,7 +270,11 @@ export function RuleTriggerTool({
         throw new ContractValidationError(
           "Rule acceptance belongs to another session",
         );
-      void observations.observe(access, operation);
+      void observations.observe(
+        access,
+        operation,
+        enableBackgroundAlert && backgroundAlert,
+      );
       if (!signal.aborted) {
         admitted.current = operation.operationId;
         setAccepted(operation);
@@ -397,6 +425,32 @@ export function RuleTriggerTool({
           })}
         </p>
       ) : null}
+      {offerBackgroundAlert && (
+        <div className="grid gap-1 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Switch
+              id={id + "-background-alert"}
+              aria-describedby={id + "-background-alert-hint"}
+              checked={enableBackgroundAlert && backgroundAlert}
+              disabled={!enableBackgroundAlert || busy || saving}
+              onCheckedChange={setBackgroundAlert}
+            />
+            <label htmlFor={id + "-background-alert"}>
+              {t("ruleTrigger.backgroundAlert")}
+            </label>
+          </div>
+          <p
+            id={id + "-background-alert-hint"}
+            className="text-muted-foreground wrap-anywhere"
+          >
+            {t(
+              enableBackgroundAlert
+                ? "ruleTrigger.backgroundAlertHint"
+                : "ruleTrigger.backgroundAlertEnable",
+            )}
+          </p>
+        </div>
+      )}
       {validated?.effect === "send" && (
         <dl className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
           {validated.requestHex && (
@@ -528,6 +582,9 @@ export function RuleTriggerTool({
                   : "ruleTrigger.preparing",
             )}
           </p>
+        ) : null}
+        {alertStatus ? (
+          <p>{t(`ruleTrigger.backgroundAlert.${alertStatus}`)}</p>
         ) : null}
         {watched ? (
           <p>{t("repeatSend.task", { id: watched.operationId })}</p>

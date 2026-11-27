@@ -47,6 +47,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             commands::set_window_size,
             commands::reset_window_geometry,
             commands::get_desktop_status,
+            commands::present_background_rule_alert,
             commands::get_autostart_enabled,
             commands::set_autostart_enabled,
             commands::record_frontend_error,

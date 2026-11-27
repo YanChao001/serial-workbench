@@ -13,6 +13,7 @@ use tauri::{
 };
 #[cfg(not(windows))]
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_notification::NotificationExt;
 
 use crate::{
     error::{ErrorCode, NativeError, NativeResult},
@@ -333,6 +334,67 @@ pub fn status(app: &tauri::AppHandle) -> DesktopStatus {
         autostart_supported: !cfg!(feature = "e2e"),
         run_in_background: app.state::<PlatformSettings>().run_in_background(),
     }
+}
+
+pub(crate) fn present_background_rule_alert(
+    window: &tauri::WebviewWindow,
+    instance: u64,
+    message: &str,
+) -> NativeResult<bool> {
+    crate::error::bounded_text(message, 768, "Rule alert message")?;
+    let app = window.app_handle();
+    if message.trim().is_empty()
+        || !app.state::<PlatformSettings>().run_in_background()
+        || !app
+            .state::<DesktopState>()
+            .tray_available
+            .load(Ordering::Acquire)
+    {
+        return Ok(false);
+    }
+    if window.is_visible().map_err(|error| {
+        NativeError::operation(
+            ErrorCode::WindowError,
+            "Cannot read rule window visibility",
+            error,
+        )
+    })? {
+        return Ok(false);
+    }
+    let notification = app.notification();
+    let permission = notification.permission_state().map_err(|error| {
+        NativeError::operation(
+            ErrorCode::PlatformUnavailable,
+            "Cannot check notification permission",
+            error,
+        )
+    })?;
+    if permission != tauri::plugin::PermissionState::Granted {
+        return Ok(false);
+    }
+    let sound = if cfg!(windows) {
+        "Default"
+    } else if cfg!(target_os = "macos") {
+        "NSUserNotificationDefaultSoundName"
+    } else {
+        "message-new-instant"
+    };
+    let notification = notification.builder().body(message).sound(sound);
+    if !app
+        .state::<crate::host_bridge::DesktopHostBridge>()
+        .bind_window(window)
+        .is_ok_and(|current| current == instance)
+    {
+        return Ok(false);
+    }
+    notification.show().map_err(|error| {
+        NativeError::operation(
+            ErrorCode::PlatformUnavailable,
+            "Cannot submit background rule alert",
+            error,
+        )
+    })?;
+    Ok(true)
 }
 
 pub fn get_autostart(app: &tauri::AppHandle) -> NativeResult<bool> {

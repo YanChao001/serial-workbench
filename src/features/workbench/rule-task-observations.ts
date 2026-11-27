@@ -6,6 +6,7 @@ import {
 } from "@serial-workbench/contracts";
 import { toast } from "sonner";
 import { isRecord } from "@/lib/settings-model";
+import { presentBackgroundRuleAlert } from "@/lib/tauri";
 import type { HostContextValue } from "@/providers/host-context";
 import {
   readRuleResult,
@@ -21,6 +22,9 @@ export type RuleTaskAccess = Pick<
   target: Target;
 };
 
+type BackgroundAlert =
+  "armed" | "requesting" | "submitted" | "skipped" | "unavailable";
+
 type RuleObservation =
   | { id: string; report: RuleResult; terminal: true }
   | { id: string; stopped: true; terminal: true }
@@ -31,6 +35,7 @@ type Entry = {
   operation: Operation;
   controller: AbortController;
   pending: boolean;
+  alert?: BackgroundAlert;
   outcome?: Promise<RuleObservation>;
 };
 
@@ -77,6 +82,29 @@ async function observeRule(
 
 export function createRuleTaskObservations() {
   const entries = new Map<string, Entry>();
+  const alertListeners = new Set<() => void>();
+  function setAlert(entry: Entry, alert?: BackgroundAlert) {
+    if (entry.controller.signal.aborted) return;
+    entry.alert = alert;
+    for (const listener of alertListeners) listener();
+  }
+  function requestAlert(entry: Entry, result: RuleObservation) {
+    if (
+      entry.alert !== "armed" ||
+      entry.controller.signal.aborted ||
+      !result.terminal
+    )
+      return;
+    if (!("report" in result) || result.report.outcome !== "notification") {
+      setAlert(entry);
+      return;
+    }
+    setAlert(entry, "requesting");
+    void presentBackgroundRuleAlert(result.report.message).then(
+      (submitted) => setAlert(entry, submitted ? "submitted" : "skipped"),
+      () => setAlert(entry, "unavailable"),
+    );
+  }
   const trim = () => {
     for (const [key, entry] of entries) {
       if (entries.size <= 64) break;
@@ -84,33 +112,51 @@ export function createRuleTaskObservations() {
     }
   };
   return {
-    observe(access: RuleTaskAccess, operation: Operation) {
+    observe(
+      access: RuleTaskAccess,
+      operation: Operation,
+      backgroundAlert = false,
+    ) {
       const key = JSON.stringify([access.scope, operation.operationId]);
-      const existing = entries.get(key);
-      if (existing?.outcome) return existing.outcome;
-      const entry: Entry = {
+      const entry: Entry = entries.get(key) ?? {
         scope: access.scope,
         operation,
         controller: new AbortController(),
         pending: true,
       };
-      entries.delete(key);
-      entries.set(key, entry);
-      entry.outcome = observeRule(
-        access,
-        operation,
-        entry.controller.signal,
-      ).then((result) => {
-        entry.pending = false;
-        if (entry.controller.signal.aborted) return result;
-        if (!result.terminal) entry.outcome = undefined;
-        if ("report" in result && result.report.outcome === "notification")
-          toast.info(result.report.message, { id: key });
+      if (!entry.outcome) {
+        entry.pending = true;
+        entries.delete(key);
+        entries.set(key, entry);
+        entry.outcome = observeRule(
+          access,
+          operation,
+          entry.controller.signal,
+        ).then((result) => {
+          entry.pending = false;
+          if (entry.controller.signal.aborted) return result;
+          if (!result.terminal) entry.outcome = undefined;
+          if ("report" in result && result.report.outcome === "notification")
+            toast.info(result.report.message, { id: key });
+          trim();
+          return result;
+        });
         trim();
-        return result;
-      });
-      trim();
+      }
+      if (backgroundAlert && !entry.alert) setAlert(entry, "armed");
+      if (entry.alert === "armed")
+        void entry.outcome.then((outcome) => requestAlert(entry, outcome));
       return entry.outcome;
+    },
+    backgroundAlert(access: RuleTaskAccess, operation: Operation) {
+      const key = JSON.stringify([access.scope, operation.operationId]);
+      return entries.get(key)?.alert;
+    },
+    subscribeBackgroundAlerts(listener: () => void) {
+      alertListeners.add(listener);
+      return () => {
+        alertListeners.delete(listener);
+      };
     },
     recent(access: RuleTaskAccess) {
       let result: Operation | undefined;

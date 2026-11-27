@@ -478,6 +478,10 @@ export function getDesktopStatus(): Promise<DesktopStatus> {
   return callNative((commands) => commands.getDesktopStatus());
 }
 
+export function presentBackgroundRuleAlert(message: string): Promise<boolean> {
+  return callNative((commands) => commands.presentBackgroundRuleAlert(message));
+}
+
 export function getAutostartEnabled(): Promise<boolean> {
   return callNative((commands) => commands.getAutostartEnabled());
 }

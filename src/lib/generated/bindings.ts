@@ -267,6 +267,10 @@ export const commands = {
     typedError<DesktopStatus, NativeError>(
       __TAURI_INVOKE("get_desktop_status"),
     ),
+  presentBackgroundRuleAlert: (message: string) =>
+    typedError<boolean, NativeError>(
+      __TAURI_INVOKE("present_background_rule_alert", { message }),
+    ),
   getAutostartEnabled: () =>
     typedError<boolean, NativeError>(__TAURI_INVOKE("get_autostart_enabled")),
   setAutostartEnabled: (enabled: boolean) =>
