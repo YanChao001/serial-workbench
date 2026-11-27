@@ -42,12 +42,15 @@ export const toolLabels = {
   writeWaitMs: "Write wait milliseconds",
   preview: "Range preview",
   sendFile: "Send file",
-  invalidRange: "Enter a valid byte range and positive chunk/rate",
+  invalidRange: "Enter a valid range within the selected file",
+  invalidTransferOptions:
+    "Check the chunk size, rate, interval and write wait.",
   browserFile: {
     unavailable:
       "Browser file sending requires permission to write to this session.",
     invalidFile: "Select one non-empty file up to 1 GiB.",
     sample: "Beginning of selected bytes",
+    samplePending: "Reading the selected bytes…",
     sampleUnavailable: "The selected bytes could not be previewed.",
     upload: "Uploading to Host",
     submitting: "Waiting for Host to accept the transfer…",

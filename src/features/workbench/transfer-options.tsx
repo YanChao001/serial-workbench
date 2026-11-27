@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatByteSize } from "./metric-format";
 import { nativeErrorCode } from "@/lib/native-error";
 import { parseU64, U64_MAX } from "@/lib/u64";
+import { decodeBytes } from "./stream-model";
 import { WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { OperationText } from "./operation-text";
@@ -53,6 +54,7 @@ export type TransferOptionsLabels = Record<
   | "preview"
   | "sendFile"
   | "invalidRange"
+  | "invalidTransferOptions"
   | "transferEvidence"
   | "unavailable"
   | "draft"
@@ -69,6 +71,7 @@ export type TransferOptionsLabels = Record<
     unavailable: string;
     invalidFile: string;
     sample: string;
+    samplePending: string;
     sampleUnavailable: string;
     upload: string;
     submitting: string;
@@ -192,13 +195,14 @@ function TransferOptionsForm({
     ? String(browserSource.size)
     : source?.length;
   const total = sourceLength ? parseU64(sourceLength) : undefined;
-  const valid =
+  const validRange =
     offset !== undefined &&
     length !== undefined &&
     total !== undefined &&
     (!isBrowser || length > 0n) &&
     offset + length <= total &&
-    offset + length <= U64_MAX &&
+    offset + length <= U64_MAX;
+  const validOptions =
     chunk !== undefined &&
     chunk > 0n &&
     rate !== undefined &&
@@ -208,9 +212,16 @@ function TransferOptionsForm({
     wait > 0n;
   const desktopSample = useDesktopTransferSample(
     source,
-    valid ? offset : undefined,
-    valid ? length : undefined,
+    validRange ? offset : undefined,
+    validRange ? length : undefined,
     readSource,
+  );
+  const desktopSampleLoading = Boolean(
+    source &&
+    readSource &&
+    validRange &&
+    length > 0n &&
+    desktopSample === undefined,
   );
   const locked = Boolean(disabled || action.busy || active);
   const needsReceipt = browserFile?.hasPending() ?? false;
@@ -229,7 +240,7 @@ function TransferOptionsForm({
   );
   const desktopInputs = useMemo<HostActionCheckInput[]>(
     () =>
-      target && source && valid
+      target && source && validRange && validOptions
         ? [
             {
               actionId: "transfer.file",
@@ -238,7 +249,7 @@ function TransferOptionsForm({
             },
           ]
         : [],
-    [target, source, valid, draft],
+    [target, source, validRange, validOptions, draft],
   );
   const inputs = isBrowser ? browserInputs : desktopInputs;
   const allowed = useToolActionAvailability(inputs, watchActions)(inputs[0]);
@@ -246,11 +257,13 @@ function TransferOptionsForm({
   const canSend =
     !locked &&
     allowed &&
-    valid &&
+    validRange &&
+    validOptions &&
     (isBrowser
       ? Boolean(browserSource && target && !needsReceipt)
       : Boolean(
           onTransfer &&
+          !desktopSampleLoading &&
           source?.reference.kind === "file" &&
           source.reference.revision,
         ));
@@ -366,7 +379,7 @@ function TransferOptionsForm({
       </label>
     ));
   }
-  const range = valid ? (
+  const range = validRange ? (
     <output
       aria-label={labels.preview}
       data-surface={isBrowser ? "transparent" : undefined}
@@ -376,7 +389,7 @@ function TransferOptionsForm({
           : undefined
       }
     >
-      [{draft.offset}, {(offset! + length!).toString()}) / {sourceLength}
+      [{draft.offset}, {(offset + length).toString()}) / {sourceLength}
     </output>
   ) : (
     sourceName && <p role="status">{labels.invalidRange}</p>
@@ -384,7 +397,10 @@ function TransferOptionsForm({
   const desktopPreview = source && (
     <div className="mt-2 grid min-w-0 gap-2">
       {range}
-      {valid && (
+      {desktopSampleLoading && (
+        <p role="status">{browserLabels.samplePending}</p>
+      )}
+      {validRange && desktopSample !== undefined && (
         <TransferSample
           hex={desktopSample}
           offset={String(offset)}
@@ -508,7 +524,7 @@ function TransferOptionsForm({
                 </div>
               </fieldset>
               {range}
-              {browserSource && valid && (
+              {browserSource && validRange && (
                 <BrowserTransferPreview
                   file={browserSource}
                   offset={Number(offset)}
@@ -546,6 +562,9 @@ function TransferOptionsForm({
               )}
             </div>
           </fieldset>
+          {sourceName && !validOptions && (
+            <p role="status">{labels.invalidTransferOptions}</p>
+          )}
           {!isBrowser && desktopPreview}
         </TabsContent>
       </Tabs>
@@ -661,17 +680,20 @@ function useDesktopTransferSample(
   length: bigint | undefined,
   readSource: TransferOptionsProps["readSource"],
 ) {
+  const request = useMemo(
+    () => ({ source, offset, length, readSource }),
+    [source, offset, length, readSource],
+  );
   const [sample, setSample] = useState<{
-    source: SelectedFileResource;
-    offset: bigint;
-    length: bigint;
+    request: typeof request;
     hex: string | null;
   }>();
   const pending = useRef(Promise.resolve());
   useEffect(() => {
+    const { source, offset, length, readSource } = request;
     if (!source || !readSource || offset === undefined || !length) return;
     let current = true;
-    // A stale read can still be checking the file on the Host. Let it finish before requesting the next range.
+    // 旧请求可能仍在 Host 核对文件，等它结束再读取新选区。
     pending.current = pending.current.then(async () => {
       if (!current) return;
       let hex: string | null = null;
@@ -696,28 +718,19 @@ function useDesktopTransferSample(
           page.atEnd === (nextOffset === source.length) &&
           page.bytesBase64.length === 4 * Math.ceil(Number(maxBytes) / 3)
         ) {
-          const bytes = atob(page.bytesBase64);
-          if (bytes.length === Number(maxBytes))
-            hex = formatHex(
-              Uint8Array.from(bytes, (byte) => byte.charCodeAt(0)),
-            );
+          const bytes = decodeBytes(page.bytesBase64);
+          if (bytes.length === Number(maxBytes)) hex = formatHex(bytes);
         }
       } catch {
-        // A failed read leaves the selected range visible.
+        // 样本读取失败时保留已选范围，发送仍由 Host 核对授权。
       }
-      if (current) setSample({ source, offset, length, hex });
+      if (current) setSample({ request, hex });
     });
     return () => {
       current = false;
     };
-  }, [source, offset, length, readSource]);
-  if (
-    sample &&
-    sample.source === source &&
-    sample.offset === offset &&
-    sample.length === length
-  )
-    return sample.hex;
+  }, [request]);
+  return sample?.request === request ? sample.hex : undefined;
 }
 
 function BrowserTransferPreview({
@@ -782,12 +795,11 @@ function TransferSample({
   truncated,
   labels,
 }: {
-  hex: string | null | undefined;
+  hex: string | null;
   offset: string;
   truncated: boolean;
   labels: TransferOptionsLabels["browserFile"];
 }) {
-  if (hex === undefined) return null;
   if (hex === null) return <p role="status">{labels.sampleUnavailable}</p>;
   return (
     <div className="grid min-w-0 gap-1 text-sm">

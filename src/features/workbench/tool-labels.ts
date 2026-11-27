@@ -238,10 +238,12 @@ export function workbenchToolLabels(t: Translate) {
     preview: t("workbench.tools.preview"),
     sendFile: t("workbench.tools.sendFile"),
     invalidRange: t("workbench.tools.invalidRange"),
+    invalidTransferOptions: t("workbench.tools.invalidTransferOptions"),
     browserFile: {
       unavailable: t("workbench.tools.browserFile.unavailable"),
       invalidFile: t("workbench.tools.browserFile.invalidFile"),
       sample: t("workbench.tools.browserFile.sample"),
+      samplePending: t("workbench.tools.browserFile.samplePending"),
       sampleUnavailable: t("workbench.tools.browserFile.sampleUnavailable"),
       upload: t("workbench.tools.browserFile.upload"),
       submitting: t("workbench.tools.browserFile.submitting"),

@@ -1431,11 +1431,14 @@ export const en = {
   "workbench.tools.sendFile": "Send file",
   "workbench.tools.invalidRange":
     "Enter a valid range within the selected file",
+  "workbench.tools.invalidTransferOptions":
+    "Check the chunk size, rate, interval and write wait.",
   "workbench.tools.browserFile.unavailable":
     "Browser file sending requires permission to write to this session.",
   "workbench.tools.browserFile.invalidFile":
     "Select one non-empty file up to 1 GiB.",
   "workbench.tools.browserFile.sample": "Beginning of selected bytes",
+  "workbench.tools.browserFile.samplePending": "Reading the selected bytes…",
   "workbench.tools.browserFile.sampleUnavailable":
     "The selected bytes could not be previewed.",
   "workbench.tools.browserFile.upload": "Uploading to Host",

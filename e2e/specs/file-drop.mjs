@@ -34,7 +34,7 @@ async function fillEditorName(name) {
 }
 
 async function waitForPreviewText(selector, expected) {
-  // An invalid intermediate range removes the output and the next valid range creates a new one.
+  // 中间选区无效时会卸载旧输出，合法后生成新节点。
   await browser.waitUntil(
     async () =>
       browser.execute(
@@ -61,6 +61,18 @@ async function closeDialog() {
 const writes = ({ events }) =>
   events.filter(({ kind }) => kind === "tx" || kind === "tx_intent");
 
+async function assertSourceStaysEmpty(source) {
+  // 原生拖放到 Host 领取之间有异步回调，观察本次尝试后再开始下一次。
+  const observeUntil = performance.now() + 500;
+  await browser.waitUntil(
+    async () => {
+      assert.equal(await source.getText(), "Drop one file here");
+      return performance.now() >= observeUntil;
+    },
+    { interval: 50 },
+  );
+}
+
 export function fileDropChecks(openTool) {
   const driver = fileDropDriver();
   if (!driver) return;
@@ -86,12 +98,12 @@ export function fileDropChecks(openTool) {
     const outside = await dropFiles("[role=dialog] [data-slot=dialog-title]", [
       transferPath,
     ]);
-    assert.equal(await source.getText(), "Drop one file here");
+    await assertSourceStaysEmpty(source);
     const multiple = await dropFiles(transferSource, [
       transferPath,
       commandPath,
     ]);
-    assert.equal(await source.getText(), "Drop one file here");
+    await assertSourceStaysEmpty(source);
     const transferPoint = await dropFiles(transferSource, [transferPath]);
     assert.equal(transferPoint.fileDataOffered, true);
     if (process.env.SWB_E2E_FILE_DRAG_SCALE)
@@ -183,7 +195,7 @@ export function fileDropChecks(openTool) {
     await replace.click();
     assert.equal(await body.getValue(), "09 FF 00 41");
     await clickDialogButton("Save");
-    // The entry appears only after the save and the subsequent Host page read.
+    // 保存后等 Host 回读到列表项，再打开核对。
     await (await dialogButton(commandName)).waitForDisplayed();
     await closeDialog();
     await launcher.waitForEnabled();

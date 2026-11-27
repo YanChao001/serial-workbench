@@ -120,8 +120,7 @@ async function dropFilesOnDesktop(binary, selector, paths) {
             win.outerPosition(),
             win.scaleFactor(),
           ]);
-          // The macOS workbench uses the Overlay title bar and fills the frame.
-          // CoreGraphics expects screen points, including on Retina displays.
+          // macOS 的 Overlay 标题栏让工作台填满窗口；CoreGraphics 在 Retina 上也使用屏幕点。
           return { x: (origin.x + x) / scale, y: (origin.y + y) / scale };
         }, point)
       : point;

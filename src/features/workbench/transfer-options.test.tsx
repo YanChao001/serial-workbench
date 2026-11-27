@@ -109,6 +109,11 @@ it("reads a bounded desktop sample and discards a late result for a previous ran
   expect(screen.getByLabelText("Range preview")).toHaveTextContent(
     "[0, 9007199254740999)",
   );
+  const confirm = screen.getByRole("button", { name: "Send file" });
+  expect(confirm).toBeDisabled();
+  expect(screen.getByText(toolLabels.browserFile.samplePending)).toBeVisible();
+  fireEvent.click(confirm);
+  expect(send).not.toHaveBeenCalled();
   await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Length"), { target: { value: "2" } });
   fireEvent.change(screen.getByLabelText("Offset"), {
@@ -133,7 +138,63 @@ it("reads a bounded desktop sample and discards a late result for a previous ran
     offset: "9007199254740997",
     maxBytes: "2",
   });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  fireEvent.change(screen.getByLabelText("Bytes per second"), {
+    target: { value: "" },
+  });
+  expect(confirm).toBeDisabled();
+  expect(screen.getByLabelText("Range preview")).toHaveTextContent(
+    "[9007199254740997, 9007199254740999)",
+  );
+  expect(
+    screen.getByLabelText("Beginning of selected bytes"),
+  ).toHaveTextContent("9007199254740997: FE 23");
+  expect(read).toHaveBeenCalledTimes(2);
   expect(send).not.toHaveBeenCalled();
+});
+
+it("retires the desktop sample when its reader changes and displays read failure without submitting", async () => {
+  const initial = vi.fn<HostContextValue["readFile"]>().mockResolvedValue({
+    fileRef: selectedFile.reference,
+    totalBytes: selectedFile.length,
+    fingerprint: "a".repeat(64),
+    offset: "0",
+    nextOffset: "16",
+    bytesBase64: "AAAAAAAAAAAAAAAAAAAAAA==",
+    atEnd: false,
+  });
+  const replacement = vi.fn<HostContextValue["readFile"]>();
+  let failRead!: (error: Error) => void;
+  replacement.mockImplementation(
+    () => new Promise((_resolve, reject) => (failRead = reject)),
+  );
+  const transfer = vi.fn().mockResolvedValue(operation());
+  const props = {
+    target,
+    watchActions: allowControlActions,
+    contextKey: "session:1",
+    labels: toolLabels,
+    pickSource: async () => selectedFile,
+    onTransfer: transfer,
+    writeWaitMs: "1000",
+  };
+  const view = render(<TransferOptions {...props} readSource={initial} />);
+  fireEvent.click(screen.getByRole("button", { name: "Select source" }));
+  const sample = toolLabels.browserFile.sample;
+  expect(await screen.findByLabelText(sample)).toHaveTextContent("0: 00");
+
+  view.rerender(<TransferOptions {...props} readSource={replacement} />);
+  expect(screen.queryByLabelText(sample)).not.toBeInTheDocument();
+  const confirm = screen.getByRole("button", { name: "Send file" });
+  expect(confirm).toBeDisabled();
+  await waitFor(() => expect(replacement).toHaveBeenCalledOnce());
+  await act(async () => failRead(new Error("File is no longer readable")));
+  expect(
+    screen.getByText(toolLabels.browserFile.sampleUnavailable),
+  ).toBeVisible();
+  expect(screen.getByLabelText(toolLabels.preview)).toBeVisible();
+  expect(confirm).toBeEnabled();
+  expect(transfer).not.toHaveBeenCalled();
 });
 
 it("keeps zero write wait out of an otherwise valid transfer request", async () => {

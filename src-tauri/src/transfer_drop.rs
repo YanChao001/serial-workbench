@@ -116,7 +116,7 @@ pub(crate) fn on_drop(webview: &Webview, event: &WebviewEvent) {
         .expect("transfer drops")
         .note(&label, instance, paths);
     let Some(ticket) = ticket else { return };
-    // Wry supplies logical points on GTK and WKWebView, but physical pixels on WebView2.
+    // GTK 和 WKWebView 提供逻辑坐标，WebView2 提供物理像素。
     let logical_scale = if cfg!(any(target_os = "linux", target_os = "macos")) {
         let Ok(scale) = window.scale_factor() else {
             return;
