@@ -229,7 +229,10 @@ async function checkSelectionDownloads(page, first, second) {
   await expect(
     preview.locator('[data-slot="dialog-description"]'),
   ).toContainText(new RegExp("(?:Event|事件) " + first.eventSeq + "$"));
-  await page.screenshot({ path: join(output, "receive-context-preview.png") });
+  await page.screenshot({
+    path: join(output, "receive-context-preview.png"),
+    animations: "disabled",
+  });
   await page.keyboard.press("Escape");
   await expect(preview).toHaveCount(0);
   await expect(log).toBeFocused();
