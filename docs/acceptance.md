@@ -320,7 +320,7 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 用 `node --test scripts/command-sequence.test.mjs` 核对循环顺序、匹配与超时分支、无写入拒绝、未确认写入和取消。签名后台用例 `native_automation_uses_exact_responses_and_keeps_capture_running` 还直接调用当前序列动作，核对两次匹配应答的源区间、实际 TX 终态，以及超时补救后停止后续步骤。独立对端分别提供匹配、超时、错误及分段应答，将发送日志与每次 TX 回执和源字节范围对照。在工作区菜单打开「命令序列」，载入示例或打开已有 UTF-8 JSON。检查目标会话、展开的发送字节、延时和匹配或超时分支，另存时核对版本与内容。点击运行后核对当前 Raw 游标、独立任务和回执中的接收区间。关闭并重开面板后，可以从原任务继续观察或停止。`pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/repeat-send.spec.ts --workers 1` 覆盖文件、预览、显式启动、最新游标、拒权和实际取消。取消选文件或导入错误保留编辑中的定义。桌面保存等待真实写盘回执，浏览器按钮只发起下载。任务状态查询失败后可重查或请求停止，错误 Raw 作用域在提交前被拒绝。
 
-首方 `swb.builtin.automation` 0.1.1 在同一包登记 `swb.builtin.automation.sequence` 和原有定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对 0.1.1 归档和组件描述。Windows 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式安装继续专项验收。
+首方 `swb.builtin.automation` 自 0.1.1 起在同一包登记 `swb.builtin.automation.sequence` 和定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对当前锁定归档和组件描述。四目标的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式签名包在独立环境断网安装后，复验动作登记、工作台入口和上述对端场景。
 
 ### 自动应答（PROTO-14）
 
