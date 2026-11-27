@@ -1157,6 +1157,7 @@ export function StreamView({
   const rowWindow = useStreamRowWindow({
     count: showAnsi || mappedProjection ? 0 : visibleRows.length,
     sourceKey: firstVisibleRow && rowKey(firstVisibleRow),
+    scrollResetKey: fixedPageKey,
     layoutKey: JSON.stringify({
       receiveCodec,
       sendCodec,

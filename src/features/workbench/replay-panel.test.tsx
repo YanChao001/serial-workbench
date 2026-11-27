@@ -783,29 +783,69 @@ it("browses exact archive ordinals and locates search hits without moving playba
       breakpointHit: false,
     },
   };
+  const byteBase = BigInt(match.byteStart) - 42n * 4n;
+  const captureRx = (ordinal: string): CaptureRecord => ({
+    recordOrdinal: ordinal,
+    entry: {
+      kind: "event",
+      value: {
+        hostId: "host",
+        instanceEpoch: "1",
+        sessionId: "session",
+        sessionEpoch: "1",
+        eventSeq: ordinal,
+        configurationRevision: "1",
+        time: {
+          clockId: "clock",
+          sourceMonoNs: ordinal,
+          receivedWallTime: "2026-11-08T00:00:00Z",
+          precision: {
+            source: "host_read",
+            resolutionNs: "1",
+            syncMethod: "none",
+          },
+        },
+        kind: "rx",
+        payload: {
+          bytesBase64: ordinal === "43" ? "UElORw==" : "TkVYVA==",
+          byteStart: String(byteBase + (BigInt(ordinal) - 1n) * 4n),
+          byteEnd: String(byteBase + BigInt(ordinal) * 4n),
+        },
+      },
+    },
+  });
+  const readRecord = vi.fn(
+    async ({ recordOrdinal }: { recordOrdinal: string }) =>
+      captureRx(recordOrdinal),
+  );
   const read = vi.fn(
     async (params: ReplayReadParams): Promise<ReplayReadResult> => {
       if (!params.archive) return play;
       const first =
         BigInt(params.archive.record) -
         (params.archive.kind === "before" ? 1n : 0n);
+      const records: ReplayReadResult["records"] =
+        first === 43n
+          ? [
+              {
+                kind: "reference",
+                recordOrdinal: "43",
+                jsonBytes: "200",
+                jsonSha256: "a".repeat(64),
+                recordRef: {
+                  hostId: "host",
+                  kind: "capture_record",
+                  id: "archive-record",
+                  revision: "1",
+                },
+              },
+              { kind: "inline", record: captureRx("44") },
+            ]
+          : [{ kind: "inline", record: captureRx(String(first)) }];
       return {
-        records: [
-          {
-            kind: "reference",
-            recordOrdinal: String(first),
-            jsonBytes: "200",
-            jsonSha256: "a".repeat(64),
-            recordRef: {
-              hostId: "host",
-              kind: "capture_record",
-              id: "archive-record",
-              revision: "1",
-            },
-          },
-        ],
+        records,
         readerGeneration: "3",
-        nextRecord: String(first + 1n),
+        nextRecord: String(first + BigInt(records.length)),
         atEnd: first === 1000000n,
         archiveTotalRecords: "1000000",
       };
@@ -816,7 +856,12 @@ it("browses exact archive ordinals and locates search hits without moving playba
     async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> =>
       command.kind === "stop"
         ? { kind: "stopped", searchId: command.searchId, stopped: true }
-        : searchPage(command.searchId, "1", [match], true),
+        : searchPage(
+            command.searchId,
+            "1",
+            [{ ...match, lastRecord: "43" }],
+            true,
+          ),
   );
   const archiveAccess = { hostId: "host", watchActions: allowSearch };
   render(
@@ -827,7 +872,7 @@ it("browses exact archive ordinals and locates search hits without moving playba
       playbackSupported
       archiveAccess={archiveAccess}
       read={read}
-      readRecord={vi.fn()}
+      readRecord={readRecord}
       control={control}
       search={{ ...archiveAccess, run, t: searchLabels }}
     />,
@@ -842,14 +887,14 @@ it("browses exact archive ordinals and locates search hits without moving playba
   expect(toggle).toHaveAttribute("aria-pressed", "true");
   expect(
     screen.getByRole("button", { name: labels.previousReplayPage }),
-  ).toBeDisabled();
+  ).toHaveAttribute("aria-disabled", "true");
   const seek = screen.getByRole("textbox", { name: labels.seekRecord });
   fireEvent.change(seek, { target: { value: "1000000" } });
   fireEvent.keyDown(seek, { key: "Enter" });
   expect(await screen.findByText("1000000–1000000 / 1000000")).toBeVisible();
   expect(
     screen.getByRole("button", { name: labels.nextReplayPage }),
-  ).toBeDisabled();
+  ).toHaveAttribute("aria-disabled", "true");
   fireEvent.click(
     screen.getByRole("button", { name: labels.previousReplayPage }),
   );
@@ -874,8 +919,14 @@ it("browses exact archive ordinals and locates search hits without moving playba
     await within(dialog).findByRole("button", { name: "Go to record" }),
   );
   expect(
-    await screen.findByText(/43–43 \/ 1000000.*Located record 43/),
+    await screen.findByText(/43–44 \/ 1000000.*Located record 43/),
   ).toBeVisible();
+  expect(readRecord).toHaveBeenCalledWith(
+    expect.objectContaining({ recordOrdinal: "43" }),
+    expect.any(AbortSignal),
+  );
+  const log = screen.getByRole("log", { name: "Receive" });
+  expect(log).toHaveTextContent(/PING.*NEXT/s);
   expect(read.mock.lastCall?.[0].archive).toEqual({
     kind: "from",
     record: "43",
@@ -941,6 +992,79 @@ it("aborts a pending archive page on source revocation and discards the late res
   expect(
     screen.queryByRole("button", { name: labels.nextReplayPage }),
   ).not.toBeInTheDocument();
+});
+
+it("retracts a visible archive immediately when a read detects a changed source", async () => {
+  const gap: CaptureRecord = {
+    recordOrdinal: "1",
+    entry: {
+      kind: "reader_gap",
+      value: {
+        hostId: "host",
+        instanceEpoch: "1",
+        sessionId: "original",
+        sessionEpoch: "1",
+        reason: "capture_overflow",
+        missingEventRange: { start: "1", end: "2" },
+      },
+    },
+  };
+  const first: ReplayReadResult = {
+    mode: "redacted",
+    records: [{ kind: "inline", record: gap }],
+    readerGeneration: "1",
+    nextRecord: "2",
+    atEnd: false,
+    archiveTotalRecords: "3",
+  };
+  const second: ReplayReadResult = {
+    ...first,
+    nextRecord: "3",
+    records: [
+      {
+        kind: "inline",
+        record: { ...gap, recordOrdinal: "2" },
+      },
+    ],
+  };
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(second)
+    .mockRejectedValueOnce({ code: "SOURCE_CHANGED" });
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      archiveAccess={{ hostId: "host", watchActions: allowSearch }}
+      read={read}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+    />,
+  );
+  const toggle = screen.getByRole("button", { name: labels.browseReplay });
+  fireEvent.click(toggle);
+  const original = await screen.findByRole("list", {
+    name: labels.captureRedacted,
+  });
+  original.scrollTop = 50;
+  const next = screen.getByRole("button", { name: labels.nextReplayPage });
+  fireEvent.click(next);
+  const updated = await screen.findByText("#2");
+  const list = screen.getByRole("list", { name: labels.captureRedacted });
+  expect(list).toContainElement(updated);
+  expect(list.scrollTop).toBe(0);
+  expect(list).not.toBe(original);
+
+  next.focus();
+  fireEvent.click(next);
+  await waitFor(() => {
+    expect(list).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).toHaveFocus();
+  });
+  expect(toggle).toHaveAttribute("aria-disabled", "false");
 });
 
 it("scans to a hit, reads its first record without resuming playback and restores focus", async () => {

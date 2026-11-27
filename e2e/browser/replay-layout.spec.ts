@@ -851,7 +851,7 @@ for (const {
     previousRange: "999801–999900 / 1000000",
   },
   {
-    language: "zh-CN" as const,
+    language: "zh" as const,
     width: 420,
     height: 530,
     browse: "浏览归档",
@@ -899,7 +899,7 @@ for (const {
                   configurationRevision: "1",
                   time: {
                     clockId: "archive-fixture-clock",
-                    sourceMonoNs: String(ordinal),
+                    sourceMonoNs: String(ordinal * 200_000_000),
                     receivedWallTime: "2026-11-10T10:00:00Z",
                     precision: {
                       source: "host_read",
@@ -944,6 +944,7 @@ for (const {
           "from:1": archivePage(1),
           "from:999901": archivePage(999901),
           "before:999901": archivePage(999801),
+          "from:999851": archivePage(999851),
         },
       },
     });
@@ -961,8 +962,10 @@ for (const {
     const status = panel.getByRole("status");
     const toggle = panel.getByRole("button", { name: browse, exact: true });
     const receive = panel.getByRole("log", { name: receiveName, exact: true });
-    await toggle.click();
+    await toggle.focus();
+    await toggle.press("Enter");
     await expect(status).toHaveText(firstRange);
+    await expect(toggle).toBeFocused();
     await expect(panel.getByRole("button", { name: previous })).toBeDisabled();
     await expect(
       receive.getByText("ARCHIVE-0000001", { exact: true }),
@@ -983,8 +986,11 @@ for (const {
     await expect(
       receive.getByText("ARCHIVE-1000000", { exact: true }),
     ).toBeInViewport();
-    await panel.getByRole("button", { name: previous }).click();
+    const previousButton = panel.getByRole("button", { name: previous });
+    await previousButton.focus();
+    await previousButton.press("Enter");
     await expect(status).toHaveText(previousRange);
+    await expect(previousButton).toBeFocused();
     await expect(
       receive.getByText("ARCHIVE-0999801", { exact: true }),
     ).toBeInViewport();
@@ -993,12 +999,25 @@ for (const {
         panel.evaluate((element) => element.scrollWidth <= element.clientWidth),
       )
       .toBe(true);
+    const nextButton = panel.getByRole("button", { name: next });
+    await nextButton.press("Enter");
+    await expect(status).toHaveText(lastRange);
+    await expect(
+      receive.getByText("ARCHIVE-0999901", { exact: true }),
+    ).toBeInViewport();
+    await ordinal.fill("999851");
+    await ordinal.press("Enter");
+    await expect(
+      receive.getByText("ARCHIVE-0999851", { exact: true }),
+    ).toBeInViewport();
+    await nextButton.focus();
     await page.evaluate(() => {
       window.workbenchFixture.deniedReplayReads.push("archive-replay");
     });
-    await expect(toggle).toHaveCount(0);
+    await expect(toggle).toBeDisabled();
+    await expect(toggle).toBeFocused();
     await expect(
-      receive.getByText("ARCHIVE-0999801", { exact: true }),
+      receive.getByText("ARCHIVE-0999851", { exact: true }),
     ).toHaveCount(0);
   });
 }

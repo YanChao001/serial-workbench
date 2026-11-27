@@ -111,6 +111,7 @@ export function useStreamRowWindow({
   count,
   layoutKey,
   sourceKey,
+  scrollResetKey,
   following,
   viewport,
   body,
@@ -119,6 +120,7 @@ export function useStreamRowWindow({
   count: number;
   layoutKey: string;
   sourceKey?: string;
+  scrollResetKey?: number;
   following: boolean;
   viewport: RefObject<HTMLDivElement | null>;
   body: RefObject<HTMLDivElement | null>;
@@ -134,6 +136,7 @@ export function useStreamRowWindow({
   const [position, setPosition] = useState<BlockRange>();
   const [interaction, setInteraction] = useState<Interaction>({});
   const anchor = useRef<ViewportAnchor | undefined>(undefined);
+  const scrollScope = useRef(scrollResetKey);
   const indexOfRow = useEffectEvent(findRow);
   const measurementKey = JSON.stringify({ layoutKey, sourceKey, width });
   const offsets = useMemo(() => {
@@ -226,6 +229,10 @@ export function useStreamRowWindow({
     const log = viewport.current;
     const root = body.current;
     if (!log || !root) return;
+    if (scrollScope.current !== scrollResetKey) {
+      scrollScope.current = scrollResetKey;
+      anchor.current = undefined;
+    }
     const previous = anchor.current;
     if (
       !following &&
@@ -275,6 +282,7 @@ export function useStreamRowWindow({
     measurementKey,
     offsets,
     render,
+    scrollResetKey,
     sync,
     viewport,
   ]);

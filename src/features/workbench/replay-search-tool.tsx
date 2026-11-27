@@ -22,6 +22,7 @@ import {
 import type { Translate } from "@/i18n/translate";
 import { bytesToBase64 } from "@/lib/base64";
 import { nativeErrorCode } from "@/lib/native-error";
+import { replaySourceUnavailable } from "./replay-source-unavailable";
 import { encodeText, prepareTextEncoding } from "@/lib/text-encoding";
 import type { HostContextValue } from "@/providers/host-context";
 import { TextEncodingSelect } from "./text-encoding-select";
@@ -72,13 +73,7 @@ type View = {
 const initial: View = { phase: "idle" };
 
 function accessLost(error: unknown) {
-  const code = nativeErrorCode(error);
-  return (
-    code === "PERMISSION_DENIED" ||
-    code === "NOT_FOUND" ||
-    code === "SOURCE_CHANGED" ||
-    code === "EPOCH_MISMATCH"
-  );
+  return replaySourceUnavailable(nativeErrorCode(error));
 }
 
 /** Cancel now and reconcile a start that the Host may accept after the first stop. */

@@ -15,6 +15,7 @@ import { ContractValidationError } from "@serial-workbench/contracts";
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -59,6 +60,7 @@ import type {
   ReplayComparisonSample,
 } from "./session-comparison-model";
 import { captureRecordItems } from "./capture-record-items";
+import { replaySourceUnavailable } from "./replay-source-unavailable";
 import { StreamView } from "./stream-view";
 import { CaptureRedactedRecords } from "./capture-redacted-records";
 import { WorkbenchIconButton } from "./workbench-icon-button";
@@ -155,6 +157,7 @@ function checkedArchivePage(
     first < 1n ||
     next > total + 1n ||
     count > ARCHIVE_PAGE_RECORDS ||
+    result.records.filter(({ kind }) => kind === "reference").length > 1 ||
     result.playback ||
     result.atEnd !== (next === total + 1n) ||
     (range.kind === "from"
@@ -214,34 +217,54 @@ export function ReplayPanel({
   }>();
   const noticeId = useId();
   const attempts = useRef(0);
+  const browseTrigger = useRef<HTMLButtonElement>(null);
+  const seekInput = useRef<HTMLInputElement>(null);
   const pending = useRef<{
     controller: AbortController;
-    archive: boolean;
+    scope: "archive" | "playback";
   } | null>(null);
+  const closePageDetails = useCallback(() => {
+    setExpanded({});
+    setChartLink(undefined);
+    setChartOpen(false);
+    setDetailsOpen(false);
+    setSearchLocation(undefined);
+  }, []);
+  const clearArchive = useCallback(() => {
+    const focused = seekInput.current?.ownerDocument.activeElement;
+    if (focused?.hasAttribute("data-archive-page-action"))
+      (browseTrigger.current ?? seekInput.current)?.focus();
+    setPage(undefined);
+    setArchivePage(undefined);
+    closePageDetails();
+  }, [closePageDetails]);
   useEffect(() => {
     setBusy(false);
     setPage(undefined);
     setArchivePage(undefined);
-    setSearchLocation(undefined);
-    setExpanded({});
+    closePageDetails();
     setSeek("");
     setBreakpointDraft(undefined);
     setError(undefined);
-    setDetailsOpen(false);
-    setChartOpen(false);
-    setChartLink(undefined);
     return () => {
       pending.current?.controller.abort();
       pending.current = null;
     };
-  }, [read, readRecord, control, session.sessionId, session.sessionEpoch]);
+  }, [
+    read,
+    readRecord,
+    control,
+    session.sessionId,
+    session.sessionEpoch,
+    closePageDetails,
+  ]);
   async function act(
     action: (signal: AbortSignal) => Promise<void>,
-    archive = false,
+    scope: "archive" | "playback" = "playback",
   ) {
     if (pending.current) return false;
     const controller = new AbortController();
-    pending.current = { controller, archive };
+    pending.current = { controller, scope };
     const attempt = ++attempts.current;
     setBusy(true);
     setError(undefined);
@@ -252,12 +275,16 @@ export function ReplayPanel({
       if (
         !controller.signal.aborted &&
         !(reason instanceof DOMException && reason.name === "AbortError")
-      )
+      ) {
+        const code = nativeErrorCode(reason) ?? "INTERNAL";
+        if (scope === "archive" && replaySourceUnavailable(code))
+          clearArchive();
         setError({
-          code: nativeErrorCode(reason) ?? "INTERNAL",
+          code,
           eventKey:
             operationFailureEventKey(reason) ?? `${noticeId}:replay:${attempt}`,
         });
+      }
       return false;
     } finally {
       if (pending.current?.controller === controller) pending.current = null;
@@ -306,21 +333,13 @@ export function ReplayPanel({
   latestPage.current = page;
   useEffect(() => {
     if (archiveAllowed) return;
-    if (pending.current?.archive) {
+    if (pending.current?.scope === "archive") {
       pending.current.controller.abort();
       pending.current = null;
       setBusy(false);
     }
-    if (archivePage) {
-      setPage(undefined);
-      setArchivePage(undefined);
-      setExpanded({});
-      setSearchLocation(undefined);
-      setChartOpen(false);
-      setChartLink(undefined);
-      setDetailsOpen(false);
-    }
-  }, [archiveAllowed, archivePage]);
+    if (archivePage) clearArchive();
+  }, [archiveAllowed, archivePage, clearArchive]);
 
   const records = useMemo(
     () =>
@@ -333,7 +352,16 @@ export function ReplayPanel({
       ) ?? [],
     [expanded, page],
   );
-  const items = useMemo(() => captureRecordItems(records), [records]);
+  const archiveMode = !!activeArchive;
+  const items = useMemo(
+    () => captureRecordItems(records, archiveMode),
+    [records, archiveMode],
+  );
+  const firstRecord = archiveMode ? records[0] : undefined;
+  const firstSettlement =
+    firstRecord?.entry.kind === "tx_settlement"
+      ? `${labels.receipt} #${firstRecord.recordOrdinal} · ${workbenchStatus(firstRecord.entry.value.receipt.outcome, labels)}`
+      : undefined;
   const redacted = page?.mode === "redacted";
   const linked = chartLink?.page === page ? chartLink : undefined;
   const searchAllowed =
@@ -341,6 +369,10 @@ export function ReplayPanel({
   if (!searchAllowed && searchLocation) setSearchLocation(undefined);
   const playback = page?.playback;
   const availableControls = !disabled && !busy;
+  const canGoBack =
+    availableControls && !!activeArchive && activeArchive.first > 1n;
+  const canGoForward =
+    availableControls && !!activeArchive && !activeArchive.result.atEnd;
   const breakpoint = breakpointDraft ?? playback?.breakpointRecord ?? "";
   const seekOrdinal = parseU64(seek);
   const breakpointOrdinal = parseU64(breakpoint);
@@ -378,14 +410,6 @@ export function ReplayPanel({
 
   const status = archiveStatus ?? playbackStatus;
 
-  function closePageDetails() {
-    setExpanded({});
-    setChartLink(undefined);
-    setChartOpen(false);
-    setDetailsOpen(false);
-    setSearchLocation(undefined);
-  }
-
   const browsePage = (
     range: ReplayArchiveRange,
     location?: {
@@ -411,13 +435,26 @@ export function ReplayPanel({
       const next = checkedArchivePage(range, result, attempts.current);
       if (activeArchive && activeArchive.total !== next.total)
         throw new ContractValidationError("Replay archive size changed");
+      const reference = result.records.find(
+        (record) => record.kind === "reference",
+      );
+      let expandedRecord: CaptureRecord | undefined;
+      if (reference?.kind === "reference") {
+        expandedRecord = await readRecord(reference, signal);
+        signal.throwIfAborted();
+        if (expandedRecord.recordOrdinal !== reference.recordOrdinal)
+          throw new ContractValidationError("Replay archive record changed");
+      }
       closePageDetails();
+      if (expandedRecord)
+        setExpanded({ [expandedRecord.recordOrdinal]: expandedRecord });
       setArchivePage(next);
       if (location) setSearchLocation({ page: result, hit: location.hit });
-    }, true);
+    }, "archive");
 
   function handleSeek() {
-    if (!availableControls || !validSeek) return;
+    if (!availableControls || !validSeek || (archivePage && !archiveMode))
+      return;
     const record = seekOrdinal.toString();
     if (activeArchive) void browsePage({ kind: "from", record });
     else void sendControl(true, { seekRecord: record });
@@ -557,13 +594,15 @@ export function ReplayPanel({
     <section aria-label={labels.replay} className="workbench-replay">
       <div className="workbench-toolbar workbench-replay-toolbar">
         <h2 className="sr-only">{labels.replay}</h2>
-        {archiveAllowed && (
+        {(archiveAccess || archivePage) && (
           <WorkbenchIconButton
+            ref={browseTrigger}
             label={labels.browseReplay}
-            aria-pressed={!!activeArchive}
-            variant={activeArchive ? "secondary" : "ghost"}
-            disabled={!availableControls}
+            aria-pressed={archiveMode}
+            variant={archiveMode ? "secondary" : "ghost"}
+            aria-disabled={!archiveAllowed || !availableControls}
             onClick={() => {
+              if (!archiveAllowed || !availableControls) return;
               if (activeArchive) {
                 setArchivePage(undefined);
                 closePageDetails();
@@ -575,29 +614,33 @@ export function ReplayPanel({
             <List aria-hidden="true" />
           </WorkbenchIconButton>
         )}
-        {activeArchive ? (
+        {archivePage ? (
           <>
             <WorkbenchIconButton
+              data-archive-page-action
               label={labels.previousReplayPage}
-              disabled={!availableControls || activeArchive.first <= 1n}
-              onClick={() =>
-                void browsePage({
-                  kind: "before",
-                  record: activeArchive.first.toString(),
-                })
-              }
+              aria-disabled={!canGoBack}
+              onClick={() => {
+                if (canGoBack)
+                  void browsePage({
+                    kind: "before",
+                    record: archivePage.first.toString(),
+                  });
+              }}
             >
               <ChevronLeft aria-hidden="true" />
             </WorkbenchIconButton>
             <WorkbenchIconButton
+              data-archive-page-action
               label={labels.nextReplayPage}
-              disabled={!availableControls || activeArchive.result.atEnd}
-              onClick={() =>
-                void browsePage({
-                  kind: "from",
-                  record: activeArchive.result.nextRecord,
-                })
-              }
+              aria-disabled={!canGoForward}
+              onClick={() => {
+                if (canGoForward)
+                  void browsePage({
+                    kind: "from",
+                    record: archivePage.result.nextRecord,
+                  });
+              }}
             >
               <ChevronRight aria-hidden="true" />
             </WorkbenchIconButton>
@@ -637,6 +680,7 @@ export function ReplayPanel({
           </>
         )}
         <Input
+          ref={seekInput}
           aria-label={labels.seekRecord}
           value={seek}
           onChange={(event) => setSeek(event.target.value)}
@@ -651,13 +695,23 @@ export function ReplayPanel({
         />
         <WorkbenchIconButton
           label={labels.seekRecord}
-          disabled={disabled || busy || !validSeek}
+          disabled={!archivePage && (!availableControls || !validSeek)}
+          aria-disabled={
+            archivePage
+              ? !availableControls || !validSeek || !archiveMode
+              : undefined
+          }
           onClick={handleSeek}
         >
           <CornerDownRight aria-hidden="true" />
         </WorkbenchIconButton>
         {search && searchAllowed && (
           <ReplaySearchTool
+            key={
+              error && replaySourceUnavailable(error.code)
+                ? error.eventKey
+                : undefined
+            }
             search={search}
             target={target}
             recording={recordingName ?? labels.replay}
@@ -823,14 +877,17 @@ export function ReplayPanel({
                         variant="outline"
                         disabled={busy}
                         onClick={() =>
-                          void act(async (signal) => {
-                            const result = await readRecord(record, signal);
-                            if (!signal.aborted)
-                              setExpanded((current) => ({
-                                ...current,
-                                [record.recordOrdinal]: result,
-                              }));
-                          }, !!activeArchive)
+                          void act(
+                            async (signal) => {
+                              const result = await readRecord(record, signal);
+                              if (!signal.aborted)
+                                setExpanded((current) => ({
+                                  ...current,
+                                  [record.recordOrdinal]: result,
+                                }));
+                            },
+                            archiveMode ? "archive" : "playback",
+                          )
                         }
                       >
                         {labels.readReplay} {record.recordOrdinal}
@@ -907,12 +964,18 @@ export function ReplayPanel({
           <span role="alert">{labels.operationText.failure(error.code)}</span>
         ) : null}
       </WorkbenchNotice>
+      {firstSettlement && <p className="text-xs">{firstSettlement}</p>}
       {redacted ? (
-        <CaptureRedactedRecords records={records} labels={labels} />
+        <CaptureRedactedRecords
+          key={activeArchive?.request}
+          records={records}
+          labels={labels}
+        />
       ) : (
         <StreamView
           key={playbackPage?.readerGeneration ?? "unread"}
           fixedPageKey={activeArchive?.request}
+          replay={archiveMode}
           items={items}
           chartReveal={linked?.reveal}
           onChartSelection={

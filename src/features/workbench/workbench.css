@@ -203,6 +203,10 @@
   flex: 0 0 auto;
   flex-wrap: nowrap;
 }
+.workbench-replay-toolbar .workbench-icon-button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
 .workbench-replay-seek {
   flex: 0 1 7rem;
   width: 7rem;
