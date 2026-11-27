@@ -16,6 +16,7 @@ import { encodeSend, formatHex } from "@serial-workbench/host-client";
 import { Toaster, toast } from "sonner";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
 import { SendPanel, type SendPanelProps } from "./send-panel";
+import type { SendPreprocessQuery } from "./send-preprocess";
 import { labels, operation, session } from "./test-fixtures";
 import type { TextSendPreview } from "@/lib/text-encoding";
 
@@ -136,6 +137,88 @@ it("previews the checksum of the selected encoded bytes and sends that exact sna
   view.rerender(<SendPanel {...props} session={current} />);
   expect(observed).toHaveBeenLastCalledWith(body);
 });
+
+it("discards a late preprocessing result and sends only a preview of the current draft", async () => {
+  const user = userEvent.setup();
+  const send = vi.fn().mockResolvedValue(operation());
+  const observe = vi.fn();
+  let finish!: (value: unknown) => void;
+  const query = vi
+    .fn<SendPreprocessQuery>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockResolvedValueOnce({ output: "Qw==" });
+  const props = {
+    labels,
+    onDraftChange: vi.fn(),
+    onSend: send,
+    session: session(),
+    preprocessQuery: query,
+    onPreviewChange: readPreview(observe),
+    terminalSettings: {
+      ...defaults.settings.terminal,
+      lineEnding: { kind: "lf" as const },
+    },
+  };
+  const view = render(<SendPanel {...props} draft="A" />);
+  await user.click(
+    screen.getByRole("button", { name: labels.preprocess.title }),
+  );
+  const editor = screen.getByRole("textbox", {
+    name: labels.preprocess.definition,
+  });
+  fireEvent.change(editor, {
+    target: {
+      value:
+        '[{"kind":"query","actionId":"test.transform","input":"source","output":"output"}]',
+    },
+  });
+  await user.click(
+    screen.getByRole("switch", { name: labels.preprocess.enabled }),
+  );
+  const generate = screen.getByRole("button", {
+    name: labels.preprocess.preview,
+  });
+  const submit = screen.getByRole("button", { name: labels.send });
+  await user.click(generate);
+  expect(query).toHaveBeenCalledWith(
+    "test.transform",
+    { source: "QQ==" },
+    expect.any(AbortSignal),
+  );
+  expect(submit).toBeDisabled();
+  expect(observe).toHaveBeenLastCalledWith(null);
+
+  view.rerender(<SendPanel {...props} draft="B" />);
+  expect(query.mock.calls[0]?.[2].aborted).toBe(true);
+  await act(async () => finish({ output: "QQ==" }));
+  expect(submit).toBeDisabled();
+  expect(observe).toHaveBeenLastCalledWith(null);
+  expect(send).not.toHaveBeenCalled();
+
+  await user.click(generate);
+  expect(query).toHaveBeenLastCalledWith(
+    "test.transform",
+    { source: "Qg==" },
+    expect.any(AbortSignal),
+  );
+  expect(
+    await screen.findByRole("region", { name: labels.preprocess.final(2) }),
+  ).toHaveTextContent("43 0A");
+  await user.keyboard("{Escape}");
+  await user.click(submit);
+  expect(send).toHaveBeenCalledExactlyOnceWith(
+    Uint8Array.of(0x43, 0x0a),
+    expect.any(AbortSignal),
+    undefined,
+    "1",
+  );
+});
+
 it("sends a 16.50 KB draft exactly and retains its editable content", async () => {
   const draft = "1234567890".repeat(1650);
   const send = vi.fn().mockResolvedValue(operation());

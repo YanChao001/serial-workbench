@@ -1,4 +1,5 @@
 import type { OperationText } from "./operation-text";
+import type { SendPreprocessError } from "./send-preprocess";
 import type {
   CaptureRedactionOmission,
   CaptureState,
@@ -7,6 +8,18 @@ import type {
 export type WorkbenchLabels = {
   replayComparison?: (count: number) => string;
   captureRedactionOmitted: Record<CaptureRedactionOmission, string>;
+  preprocess: {
+    title: string;
+    enabled: string;
+    example: string;
+    definition: string;
+    preview: string;
+    running: string;
+    pending: string;
+    final: (count: number) => string;
+    stepError: (step: number, reason: string) => string;
+    errors: Record<SendPreprocessError["reason"], string>;
+  };
 } & Record<
   | "captureSource"
   | "captureFirstRecord"

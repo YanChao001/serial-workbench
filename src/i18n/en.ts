@@ -637,6 +637,25 @@ export const en = {
   "workbench.mixedSendDraftChanged":
     "The send draft changed. Reopen mixed input to use the current draft.",
   "workbench.sendChecksum": "Send checksum",
+  "workbench.preprocessTitle": "Send preprocessing",
+  "workbench.preprocessEnabled": "Enable preprocessing",
+  "workbench.preprocessExample": "Load JSON example",
+  "workbench.preprocessDefinition": "Step definition",
+  "workbench.preprocessPreview": "Generate preview",
+  "workbench.preprocessRunning": "Generating the send preview…",
+  "workbench.preprocessPending":
+    "Generate a send preview for the current draft.",
+  "workbench.preprocessFinal": "Final HEX · {count} bytes",
+  "workbench.preprocessStepError": "Step {step}. {reason}",
+  "workbench.preprocessError.definition": "Check the step definition.",
+  "workbench.preprocessError.encoding":
+    "The selected encoding cannot represent the input bytes.",
+  "workbench.preprocessError.empty": "This step returned no bytes to send.",
+  "workbench.preprocessError.limit": "The bytes exceed the send limit.",
+  "workbench.preprocessError.query":
+    "The query failed. Check the current session, extension, and permissions.",
+  "workbench.preprocessError.output":
+    "The query returned invalid Base64 bytes.",
   "workbench.checksumAlgorithm": "Algorithm",
   "workbench.checksumOrder": "Byte order",
   "workbench.checksumLittleEndian": "Low byte first",

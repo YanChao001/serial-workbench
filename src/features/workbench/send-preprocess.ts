@@ -4,13 +4,13 @@ import {
   type Query,
   type TextEncoding,
 } from "@serial-workbench/contracts";
-import { bytesToBase64 } from "@/lib/base64";
+import { bytesToBase64 } from "../../lib/base64";
 import {
   createTextDecoder,
   encodeText,
   isTextEncoding,
   prepareTextEncoding,
-} from "@/lib/text-encoding";
+} from "../../lib/text-encoding";
 
 export const SEND_PREPROCESS_DEFINITION_LIMIT = 16 * 1024;
 const MAX_STEPS = 8;
