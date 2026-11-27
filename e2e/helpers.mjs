@@ -245,6 +245,15 @@ export async function placeNearWorkAreaCorner() {
   return actual;
 }
 
+export function readWindowPlacementFixture() {
+  return JSON.parse(
+    readFileSync(
+      join(process.env.STARTER_E2E_DATA_ROOT, "window-placement-fixture.json"),
+      "utf8",
+    ),
+  );
+}
+
 /** 隔离测试数据会被清理，保留位置与几何存档以便在 CI artifact 中核对。 */
 export function recordWindowPlacement(checkpoint, details) {
   const readState = (name) => {

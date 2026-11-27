@@ -9,9 +9,11 @@ const phaseDirectory =
       ? process.env.STARTER_E2E_CHART_DIR
       : phase === "browser-takeover"
         ? process.env.STARTER_E2E_BROWSER_DIR
-        : phase === "lan-owner" || phase === "lan-caller"
-          ? process.env.STARTER_E2E_LAN_DIR
-          : null;
+        : phase === "wayland-global-send"
+          ? process.env.SWB_E2E_WAYLAND_ARTIFACTS
+          : phase === "lan-owner" || phase === "lan-caller"
+            ? process.env.STARTER_E2E_LAN_DIR
+            : null;
 
 if (
   !process.env.STARTER_E2E_BINARY ||
@@ -27,6 +29,7 @@ if (
     "terminal-automated",
     "chart-automated",
     "browser-takeover",
+    "wayland-global-send",
     "lan-owner",
     "lan-caller",
   ].includes(phase) ||

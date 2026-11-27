@@ -4,6 +4,39 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+  configureGlobalSend: (
+    binding: {
+      key: string;
+      primary: boolean;
+      alt: boolean;
+      shift: boolean;
+    } | null,
+    registration: string,
+    description: string,
+    events: Channel<GlobalSendEvent>,
+  ) =>
+    typedError<GlobalSendBinding, NativeError>(
+      __TAURI_INVOKE("configure_global_send", {
+        binding,
+        registration,
+        description,
+        events,
+      }),
+    ),
+  openGlobalSendSettings: (registration: string) =>
+    typedError<null, NativeError>(
+      __TAURI_INVOKE("open_global_send_settings", { registration }),
+    ),
+  setGlobalSendTarget: (
+    registration: string,
+    revision: number,
+    enabled: boolean,
+  ) =>
+    __TAURI_INVOKE<void>("set_global_send_target", {
+      registration,
+      revision,
+      enabled,
+    }),
   saveTextExport: (name: string, content: string) =>
     typedError<string | null, NativeError>(
       __TAURI_INVOKE("save_text_export", { name, content }),
@@ -2363,6 +2396,15 @@ export type GalleryEntry_Serialize = {
   reference: ObjectRef_Serialize;
   name: string;
 };
+
+export type GlobalSendBinding = {
+  trigger: string | null;
+  canConfigure: boolean;
+};
+
+export type GlobalSendEvent =
+  | { kind: "press"; revision: number }
+  | { kind: "binding"; trigger: string | null };
 
 export type HostError = HostError_Serialize | HostError_Deserialize;
 

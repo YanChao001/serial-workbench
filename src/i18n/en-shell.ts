@@ -24,6 +24,24 @@ export const enShell = {
   "commands.shortcutPress": "Press a shortcut",
   "commands.shortcutTaken": "Already used by {name}",
   "commands.shortcutDefault": "Use default",
+  "commands.globalSend": "Global send shortcut",
+  "commands.globalSendOff": "Off",
+  "commands.globalSendScope":
+    "Send the current draft while another app is in front. Hiding to the tray pauses it. Reloading or quitting turns the shortcut off.",
+  "commands.globalSendDisable": "Disable",
+  "commands.globalSendSystemOpen": "Open system shortcut settings",
+  "commands.globalSendSystemHelp":
+    "Change this shortcut in your desktop’s shortcut settings.",
+  "commands.globalSendSystemFailed":
+    "The shortcut settings could not be opened. Try again.",
+  "commands.globalSendPending": "Waiting for the system…",
+  "commands.globalSendCancelled": "Shortcut registration was cancelled.",
+  "commands.globalSendConflict":
+    "The system, another app, or another workbench window may be using this shortcut. Try another combination.",
+  "commands.globalSendUnavailable":
+    "This desktop session cannot register a global shortcut. You can use the send editor shortcut.",
+  "commands.globalSendFailed":
+    "The system could not update the global shortcut. Try again.",
   "commands.groupNavigation": "Pages",
   "commands.groupAppearance": "Appearance",
   "commands.groupWindow": "Window",

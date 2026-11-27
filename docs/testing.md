@@ -85,6 +85,24 @@ cargo fmt --all -- --check
 
 [手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
 
+原生预检设置 `native_preflight=true` 和 `desktop_e2e=true`。`native_preflight_target` 可选择单个目标，`macos` 一次复验两种 macOS 架构，`windows-and-macos` 同时复验 Windows。各目标复用原生 E2E 并分别保留日志和收据，完整候选继续按四目标验收。
+
+`native_preflight_target=linux-desktop` 在一次预检中并行执行 Ubuntu 22.04 的 X11 原生场景和 Ubuntu 26.04 的双版本 Wayland 热键专项。两个作业分别保留收据，均通过后预检才通过。
+
+热键里程碑候选在完整检查中选择 `desktop_e2e=true` 和 `wayland_e2e=true`。同一运行并行执行既定四目标与 KDE Wayland v1/v2，质量门禁要求两部分通过。普通完整检查默认仍按四目标执行。
+
+`native_preflight_target=macos-input` 只构建 macOS 热键探针并在两种架构运行，不安装项目依赖或构建工作台。探针确认带功能键标志的 F10 在独立应用前台时收到一对 Carbon 按下和释放回调。收据记录会话内标记事件的数量和修饰键。此结果用于定位系统投递问题，工作台发送仍按 [IO-08 专项](./acceptance.md#桌面全局发送热键)验收。
+
+`native_preflight_target=wayland-global-send` 构建一次测试工作台，在 Ubuntu 26.04 的独立 KWin 会话分别验证批准、取消、清除系统分配后确认，以及系统弹窗待定时重载工作台。应用和前台辅助窗口连接 Wayland，外层 Xvfb 给 KWin 提供窗口及输入。批准会话核对同一个绑定在主工作台置前时写入一次，在速查、偏好设置及次窗口置前时没有新增 TX，返回原发送面后能向 Virtual Echo 再次写入。从工作台打开 KDE 快捷键设置，选择工作台的条目，操作捕获取消、系统键位冲突、换键和撤回。从 Virtual Echo 的独立 Raw 读回核对写入结果。另一个独立配置用同一组合键触发 KWin 的关闭窗口，用来检查输入是否被 KWin 当成全局热键。`wayland-global-send` 产物保存候选摘要、门户和后端版本、前台窗口、门户请求和会话关闭、KWin 注册日志与 Raw 收据。其它环境按 [IO-08 专项](./acceptance.md#桌面全局发送热键)取证。
+
+同一预检用相同的工作台构建和 KDE 后端验收 GlobalShortcuts v1。作业从上游取得 `xdg-desktop-portal` 1.20.4 官方源码包并验证 SHA-256，编译后只在私有会话总线启动。隔离环境可用 `bash e2e/run-wayland.sh --portal-v1 /absolute/path/to/xdg-desktop-portal` 复验。脚本确认该进程持有门户服务名和接口版本 1，记录其版本及摘要。工作台显示手动设置指引后，从桌面直接打开系统快捷键页，复用冲突、换键和撤回的 Raw 断言。v1 收据保存到 `artifacts/e2e/wayland-v1`。 [上游 v1 接口](https://github.com/flatpak/xdg-desktop-portal/blob/1.20.4/src/global-shortcuts.c#L521)
+
+两版均在独立会话实测门户服务名交接。另一 Wayland 应用置前时先验证旧门户的一笔发送，再启动第二个门户进程并核对实际服务名和进程身份。工作台回到关闭状态，原键零写入。用户显式重新申请后，再以同一前台窗口和工作台草稿核对一笔 TX 及精确回环。
+
+缺少 GlobalShortcuts 的场景在独立配置中禁用该接口，先从真实门户的 D-Bus 接口清单确认 Settings 可用且 GlobalShortcuts 缺失。工作台应显示不可注册，前台辅助窗口收到按键且 Raw 无写入，随后从编辑器主动发送同一草稿并核对回环。重载场景将旧连接发出的请求关闭和会话关闭与新文档、弹窗消失及零写入一并留证。 [门户配置](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
+
+Wayland 作业在构建前用 `python3 -B e2e/wayland-desktop.test.py` 验证观察探针遇到空节点时重扫，避免误报弹窗关闭或按钮缺失。KWin 的实际重载和门户关闭仍由后续桌面场景验证。
+
 工作区测试已经构建 Host、CLI、MCP 和默认示例。按 `compiler-artifact` 核对路径与目标特性后复用，保留测试范围和负载。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。
@@ -101,7 +119,7 @@ Linux 签名后台作业在完成固定运行时校验后保存完整归档，Ub
 
 期限内的事件可能在下一次轮询才被读到。边界用例固定事件源时间，单独控制观察进度，核对最后一次读取和完整来源。真实运行再验证跨进程接线及结果一致性。
 
-Windows x64 Rust 作业用同源 `dist-web`、无头 Chromium 和隔离 Host 跑[真实配对工作台专项](./acceptance.md#真实配对工作台专项)。Git Bash 以 `cygpath` 转换运行器临时路径供 Cargo 与 Node 共用。日志、截图和回执留在该目录，CI 分别报告进程失败和收据缺失。
+Windows x64 Rust 作业用同源 `dist-web`、无头 Chromium 和隔离 Host 跑[真实配对工作台专项](./acceptance.md#真实配对工作台专项)。Git Bash 以 `cygpath` 转换运行器临时路径供 Cargo 与 Node 共用。日志、截图和原始回执留在该目录，CI 分别报告进程失败和收据缺失。按住连发的 Host、浏览器两份回执均存在且用例通过后，作业摘要记录候选提交、两笔 Raw 写入、精确回显和松手停写。
 
 ## 依赖审计
 

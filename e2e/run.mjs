@@ -18,7 +18,7 @@ import {
   serveSuiteHostRestarts,
 } from "./suite-host.mjs";
 import { Resvg } from "@resvg/resvg-js";
-import { parseE2EOptions } from "./run-options.mjs";
+import { parseE2EOptions, waylandLaunchScenarios } from "./run-options.mjs";
 import { checkNativeRequestDiagnostics } from "./native-log-evidence.mjs";
 import {
   prepareSignedReferenceEvidence,
@@ -99,6 +99,19 @@ try {
   const chart = phases.includes("chart-automated");
   const browserTakeover = phases.includes("browser-takeover");
   const lan = phases.includes("lan-owner");
+  const wayland = phases.includes("wayland-global-send");
+  if (
+    wayland &&
+    (process.platform !== "linux" ||
+      process.env.GDK_BACKEND !== "wayland" ||
+      !isAbsolute(process.env.SWB_E2E_WAYLAND_ARTIFACTS ?? "") ||
+      !waylandLaunchScenarios.includes(process.env.SWB_E2E_WAYLAND_SCENARIO) ||
+      !/^\d+$/.test(process.env.SWB_E2E_KWIN_WINDOW ?? ""))
+  )
+    throw new Error(
+      "Run the isolated Wayland phase with bash e2e/run-wayland.sh.",
+    );
+  if (wayland) artifacts = process.env.SWB_E2E_WAYLAND_ARTIFACTS;
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&
@@ -318,7 +331,7 @@ try {
           : undefined,
     });
     owned.push(app);
-    if (nativePickers) env.STARTER_E2E_APP_PID = String(app.child.pid);
+    env.STARTER_E2E_APP_PID = String(app.child.pid);
     let runner;
     try {
       await waitForWebDriver(app, port, cancellation.signal);
@@ -342,7 +355,7 @@ try {
           {
             cwd: root,
             env,
-            ...(automated || chart || browserTakeover || lan
+            ...(automated || chart || browserTakeover || lan || wayland
               ? { logPath: join(phaseArtifacts, "webdriver.log") }
               : {}),
           },

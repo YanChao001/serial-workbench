@@ -23,7 +23,9 @@ import {
   type Shortcut,
 } from "@/commands/shortcuts";
 import type { ShortcutBinding } from "@/lib/generated/bindings";
+import { nativeErrorCode } from "@/lib/native-error";
 import { useCommands } from "@/providers/commands";
+import type { CommandsContextValue } from "@/providers/commands-context";
 import { useI18n, type DictKey } from "@/providers/i18n";
 
 const GROUPS: Array<{ id: CommandGroup; labelKey: DictKey }> = [
@@ -42,6 +44,7 @@ export function CommandPalette() {
     paletteOpen,
     shortcutHelp,
     changeShortcut,
+    globalSend,
     setPaletteOpen,
   } = useCommands();
   const [query, setQuery] = useState("");
@@ -82,6 +85,7 @@ export function CommandPalette() {
             commands={commands}
             searchRef={shortcutsSearch}
             changeShortcut={changeShortcut}
+            globalSend={globalSend}
           />
         ) : (
           <Command loop label={t("commands.title")} className="flex flex-col">
@@ -173,10 +177,12 @@ function ShortcutReference({
   commands,
   searchRef,
   changeShortcut,
+  globalSend,
 }: {
   commands: AppCommand[];
   searchRef: RefObject<HTMLInputElement | null>;
   changeShortcut?: (id: string, binding: ShortcutBinding) => void;
+  globalSend?: CommandsContextValue["globalSend"];
 }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -185,6 +191,7 @@ function ShortcutReference({
   const available = commands.filter(commandAvailable);
   const selected = available.find((command) => command.id === editing);
   const defaultShortcut = selected?.defaultShortcut;
+  const editingGlobalSend = editing === "global-send" && globalSend;
   function finishEditing() {
     setEditing(undefined);
     requestAnimationFrame(() => {
@@ -222,6 +229,21 @@ function ShortcutReference({
       note: t("commands.shortcutSendContext"),
       editable: false,
     },
+    ...(globalSend
+      ? [
+          {
+            id: "global-send",
+            label: t("commands.globalSend"),
+            key:
+              globalSend.system?.trigger ??
+              (globalSend.binding
+                ? formatShortcut(globalSend.binding)
+                : t("commands.globalSendOff")),
+            note: t("commands.globalSendScope"),
+            editable: true,
+          },
+        ]
+      : []),
   ];
   const terms = query.toLowerCase().trim().split(/\s+/);
   const matches = rows.filter(({ label, key, note }) => {
@@ -248,11 +270,43 @@ function ShortcutReference({
           label={selected.label ?? t(selected.labelKey)}
           defaultShortcut={defaultShortcut}
           commands={available.filter((command) => command.id !== selected.id)}
+          globalConflict={globalSend?.system ? undefined : globalSend?.binding}
           onCancel={finishEditing}
           onSave={(binding) => {
             changeShortcut(selected.id, binding);
             finishEditing();
           }}
+        />
+      )}
+      {editingGlobalSend && (
+        <ShortcutEditor
+          key={editingGlobalSend.system ? "global-send-system" : "global-send"}
+          label={t("commands.globalSend")}
+          commands={available}
+          onCancel={finishEditing}
+          system={
+            editingGlobalSend.system && {
+              trigger: editingGlobalSend.system.trigger,
+              open: editingGlobalSend.system.canConfigure
+                ? async () => {
+                    await editingGlobalSend.openSystemSettings();
+                    finishEditing();
+                  }
+                : undefined,
+            }
+          }
+          onSave={async (binding) => {
+            await editingGlobalSend.changeBinding(binding);
+            finishEditing();
+          }}
+          onDisable={
+            editingGlobalSend.binding
+              ? async () => {
+                  await editingGlobalSend.changeBinding(undefined);
+                  finishEditing();
+                }
+              : undefined
+          }
         />
       )}
       <div className="h-[min(50vh,20rem)] overflow-y-auto p-2">
@@ -261,9 +315,9 @@ function ShortcutReference({
             {matches.map(({ id, key, label, note, editable }) => (
               <li
                 key={editable ? id : `${id}-${key}`}
-                className="flex items-start justify-between gap-3 rounded-md px-2 py-2"
+                className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 rounded-md px-2 py-2"
               >
-                <span>
+                <span className="min-w-0 flex-1 basis-40">
                   <span className="block">{label}</span>
                   {note && (
                     <span className="block text-xs text-muted-foreground">
@@ -271,8 +325,8 @@ function ShortcutReference({
                     </span>
                   )}
                 </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <kbd className="font-mono text-xs text-muted-foreground">
+                <span className="flex max-w-full min-w-0 items-center gap-2">
+                  <kbd className="font-mono text-xs break-words text-muted-foreground">
                     {key}
                   </kbd>
                   {editable && (
@@ -310,17 +364,26 @@ function ShortcutEditor({
   label,
   defaultShortcut,
   commands,
+  globalConflict,
   onCancel,
   onSave,
+  onDisable,
+  system,
 }: {
   label: string;
-  defaultShortcut: Shortcut;
+  defaultShortcut?: Shortcut;
   commands: AppCommand[];
+  globalConflict?: ShortcutBinding;
   onCancel: () => void;
-  onSave: (binding: ShortcutBinding) => void;
+  onSave: (binding: ShortcutBinding) => void | Promise<void>;
+  onDisable?: () => Promise<void>;
+  system?: { trigger: string; open?: () => Promise<void> };
 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState<ShortcutBinding>();
+  const [error, setError] = useState<DictKey>();
+  const [pending, setPending] = useState(false);
+  const busy = useRef(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     input.current?.focus();
@@ -334,7 +397,38 @@ function ShortcutEditor({
     : [];
   if (draft && sameShortcut(draft, SEND_EDITOR_SHORTCUT))
     names.push(t("commands.shortcutSend"));
+  if (draft && globalConflict && sameShortcut(draft, globalConflict))
+    names.push(t("commands.globalSend"));
   const conflict = names.join(" · ");
+  const systemHelp = system && !system.open;
+  const description = conflict || error ? "shortcut-conflict" : undefined;
+  async function save(
+    action: () => void | Promise<void>,
+    failed: DictKey = "commands.globalSendFailed",
+  ) {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    setError(undefined);
+    try {
+      await action();
+    } catch (reason) {
+      const code = nativeErrorCode(reason);
+      setError(
+        code === "CONFLICT"
+          ? "commands.globalSendConflict"
+          : code === "PLATFORM_UNAVAILABLE"
+            ? "commands.globalSendUnavailable"
+            : code === "USER_CANCELLED"
+              ? "commands.globalSendCancelled"
+              : failed,
+      );
+      input.current?.focus();
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
+  }
   return (
     <div className="grid gap-2 border-b px-4 py-3">
       <label htmlFor="shortcut-capture">
@@ -345,49 +439,94 @@ function ShortcutEditor({
         ref={input}
         readOnly
         placeholder={t("commands.shortcutPress")}
-        value={draft ? formatShortcut(draft) : ""}
-        aria-describedby={conflict ? "shortcut-conflict" : undefined}
+        value={system?.trigger ?? (draft ? formatShortcut(draft) : "")}
+        aria-describedby={
+          description ?? (systemHelp ? "shortcut-system-help" : undefined)
+        }
+        aria-busy={pending}
         onKeyDown={(event) => {
-          if (event.key === "Tab" || event.key === "Escape") return;
+          if (system || event.key === "Tab" || event.key === "Escape") return;
           event.preventDefault();
+          if (busy.current) return;
           const binding = shortcutFromEvent(event.nativeEvent);
-          if (binding) setDraft(binding);
+          if (binding) {
+            setDraft(binding);
+            setError(undefined);
+          }
         }}
       />
-      {conflict && (
+      {(conflict || error) && (
         <p
           id="shortcut-conflict"
           role="status"
           className="text-sm text-destructive"
         >
-          {t("commands.shortcutTaken", { name: conflict })}
+          {conflict
+            ? t("commands.shortcutTaken", { name: conflict })
+            : error && t(error)}
+        </p>
+      )}
+      {systemHelp && (
+        <p id="shortcut-system-help" className="text-sm text-muted-foreground">
+          {t("commands.globalSendSystemHelp")}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          disabled={!draft || !!conflict}
-          onClick={() => {
-            if (draft && !conflict) onSave(draft);
-          }}
-        >
-          {t("common.save")}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            setDraft({
-              key: defaultShortcut.key,
-              primary: !!defaultShortcut.primary,
-              alt: !!defaultShortcut.alt,
-              shift: !!defaultShortcut.shift,
-            })
-          }
-        >
-          {t("commands.shortcutDefault")}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
+        {system ? (
+          system.open && (
+            <Button
+              size="sm"
+              disabled={pending}
+              onClick={() => {
+                if (system.open)
+                  void save(system.open, "commands.globalSendSystemFailed");
+              }}
+            >
+              {t(
+                pending
+                  ? "commands.globalSendPending"
+                  : "commands.globalSendSystemOpen",
+              )}
+            </Button>
+          )
+        ) : (
+          <Button
+            size="sm"
+            disabled={!draft || !!conflict || pending}
+            onClick={() => {
+              if (draft && !conflict) void save(() => onSave(draft));
+            }}
+          >
+            {t(pending ? "commands.globalSendPending" : "common.save")}
+          </Button>
+        )}
+        {defaultShortcut && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setDraft({
+                key: defaultShortcut.key,
+                primary: !!defaultShortcut.primary,
+                alt: !!defaultShortcut.alt,
+                shift: !!defaultShortcut.shift,
+              })
+            }
+          >
+            {t("commands.shortcutDefault")}
+          </Button>
+        )}
+        {onDisable && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => void save(onDisable)}
+          >
+            {t("commands.globalSendDisable")}
+          </Button>
+        )}
+        <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
           {t("common.cancel")}
         </Button>
       </div>

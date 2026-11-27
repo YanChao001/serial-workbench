@@ -1,6 +1,8 @@
 import {
+  useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -94,6 +96,7 @@ import {
 import { useTextEncoding } from "@/hooks/use-text-encoding";
 import { bytesToBase64 } from "@/lib/base64";
 import type { SendSourceMetadata } from "@/providers/host-context";
+import { CommandsContext } from "@/providers/commands-context";
 import {
   characterRemapTransform,
   remapCharacters,
@@ -151,6 +154,7 @@ export type SendPanelProps = {
     target: Target;
     wait: (operation: Operation, signal: AbortSignal) => Promise<Operation>;
   };
+  globalSendPreview?: TextSendPreview;
   sendRemap?: CharacterRemapRules;
   onClearSendRemap?: () => void;
   /** 最终发送字节的不可变快照，非法输入和卸载时为 null。 */
@@ -230,6 +234,7 @@ export function SendPanel({
   labels,
   onSend,
   holdSend,
+  globalSendPreview,
   sendRemap,
   onClearSendRemap,
   onPreviewChange,
@@ -548,7 +553,7 @@ export function SendPanel({
         : !preview.prepared?.byteLength
           ? labels.emptyDraft
           : `${formatShortcut(SEND_EDITOR_SHORTCUT)} ${labels.send}`);
-  async function send(holdSignal?: AbortSignal) {
+  async function send(scopeSignal?: AbortSignal) {
     const prepared = preview.prepared;
     if (
       disabled ||
@@ -556,7 +561,7 @@ export function SendPanel({
       busy ||
       pending.current ||
       !prepared?.byteLength ||
-      holdSignal?.aborted
+      scopeSignal?.aborted
     )
       return;
     const controller = new AbortController();
@@ -575,7 +580,7 @@ export function SendPanel({
         ? [await characterRemapTransform(sourceText.mapping)]
         : undefined;
       if (!isCurrent()) return;
-      if (holdSignal?.aborted) {
+      if (scopeSignal?.aborted) {
         setSendState((current) =>
           current.scope === sessionScope
             ? { ...current, busy: false }
@@ -585,7 +590,7 @@ export function SendPanel({
       }
       const source =
         sourceText && transforms ? { sourceText, transforms } : undefined;
-      const result = holdSignal
+      const result = scopeSignal
         ? await onSend(bytes, controller.signal, source, session?.revision)
         : source
           ? await onSend(bytes, controller.signal, source)
@@ -614,7 +619,7 @@ export function SendPanel({
     !disabled &&
     !preview.invalid &&
     !!preview.prepared?.byteLength;
-  const hold = useHoldSend(
+  const sendScope =
     canHold && holdSend
       ? JSON.stringify([
           holdSend.scope,
@@ -622,7 +627,9 @@ export function SendPanel({
           session?.revision,
           checksumOwner,
         ])
-      : undefined,
+      : undefined;
+  const hold = useHoldSend(
+    sendScope,
     preview.prepared,
     !busy,
     async (signal) => {
@@ -662,6 +669,21 @@ export function SendPanel({
   function sendOnce() {
     if (!hold.isHolding()) void send();
   }
+  const registerGlobalTarget =
+    useContext(CommandsContext)?.globalSend?.registerTarget;
+  // 预检查按草稿防抖，授权快照只能启用对应的最终字节。
+  const globalDraft =
+    globalSendPreview === preview.prepared ? globalSendPreview : undefined;
+  const globalSend = useRef<(signal: AbortSignal) => void>(undefined);
+  useLayoutEffect(() => {
+    globalSend.current = (signal) => {
+      if (!hold.isHolding()) void send(signal);
+    };
+  });
+  useLayoutEffect(() => {
+    if (!sendScope || !globalDraft) return;
+    return registerGlobalTarget?.((signal) => globalSend.current?.(signal));
+  }, [globalDraft, registerGlobalTarget, sendScope]);
   const holdHint = hold.holding
     ? labels.holdingSend
     : canHold && !busy

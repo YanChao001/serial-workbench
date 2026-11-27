@@ -37,9 +37,19 @@ install_linux_dependencies() {
   case "$mode" in
     rust) ;;
     native)
-      packages+=(xvfb xauth dbus-x11 openbox gdb libc6-dbg fonts-noto-cjk gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav)
+      packages+=(xvfb xauth dbus-x11 openbox xdotool x11-utils libx11-dev gdb libc6-dbg fonts-noto-cjk gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav)
       ;;
-    *) echo "Usage: bash scripts/ci-linux-deps.sh rust|native" >&2; return 2 ;;
+    wayland)
+      packages+=(xvfb xauth xdotool x11-xserver-utils dbus at-spi2-core libglib2.0-bin wayland-utils
+        kwin-wayland xdg-desktop-portal xdg-desktop-portal-kde qt6-wayland
+        systemsettings plasma-desktop plasma-workspace
+        qml6-module-org-kde-kcmutils qml6-module-org-kde-kquickcontrols
+        qml6-module-qt5compat-graphicaleffects
+        gir1.2-gtk-3.0 python3-gi python3-pyatspi
+        meson ninja-build gettext bubblewrap libfuse3-dev libjson-glib-dev
+        libgstreamer-plugins-base1.0-dev libpipewire-0.3-dev)
+      ;;
+    *) echo "Usage: bash scripts/ci-linux-deps.sh rust|native|wayland" >&2; return 2 ;;
   esac
   prepare_linux_index "$apt_directory"
   echo "APT download started: $(date -u +%FT%TZ)"

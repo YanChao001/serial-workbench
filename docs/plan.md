@@ -10,12 +10,44 @@
 
 按依赖顺序只推进队列中的当前任务。工作区和分支按[主工作区与单任务](./conventions.md#主工作区与单任务)管理，完成[合入与清理](./conventions.md#合入与清理)后接续下一项。
 
-1. M4 发送控制（IO-08）。工作台按住连发和真实配对浏览器随 #83 合入。下一步是桌面全局热键、键位冲突及当前目标授权。物理串口和正式安装包按专项验收。
+1. M4 发送控制（IO-08）。工作台按住连发和真实配对浏览器随 #83 合入。桌面热键按 Windows、macOS、Linux X11 与 Wayland 分别验收注册、键位冲突及当前目标授权。Wayland 接入依赖桌面 GlobalShortcuts portal。独立物理串口和正式安装包按专项验收。 [桌面热键专项](./acceptance.md#桌面全局发送热键)
 2. M4 余项。按需求账本完成可在软件环境验证的缺口，物理设备、长稳和正式发行按专项归属安排验收。
 3. M5 专业分析与市场。独立市场签名目录工具已交付，宿主接续市场检索、包来源核验、安装和同来源相容升级。正式目录发布、评分数据来源及其余专业任务按账本推进。
 
 ### 本轮交付与验收
 
+- 候选 `e5fa13d` 的 KDE Wayland v1/v2 均通过。两份重载收据都确认授权弹窗消失、新文档及草稿恢复、同一门户连接的请求和会话关闭、热键关闭及 Raw 零新增写入。Intel macOS 同轮前台测试确认进程获焦和 F9 仍被工作台独占，投递后 Raw 无事件且等待超时，尚未区分原生输入和目标授权时序。复验先观察关闭速查后的原生目标授权，再以一次真实按压周期投递。前台失败后仍收集跨应用证据并核对释放。 [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45921945976/artifacts/15165196152) · [Intel 桌面故障收据](https://github.com/YanChao001/serial-workbench/actions/runs/45921945976/artifacts/15165711380)
+
+- 候选 `b306ed3` 完成 Apple Silicon 的窗口恢复复验。主窗保存时未最大化，尺寸为 `880×600`，位置是 `(30,55)`。重启恢复相同尺寸和位置，后续居中检查通过。Windows、X11 和两种 macOS 架构的原生桌面作业均通过，前台收据确认一笔已接纳 TX、精确回显和焦点保持。 [Apple Silicon 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162822568) · [Intel 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15161994666) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162653474) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162846763)
+
+- 同一候选的 KDE Wayland v2 专项通过。v1 在重载前已确认授权弹窗存在，重载后 AT-SPI 枚举返回空窗口节点，观察脚本在确认关闭之前退出。本机以相同的空节点复现异常，验证观察脚本等待下一次完整扫描才报告关闭或控件缺失。真实门户请求关闭、会话关闭和新文档仍按原专项核对。 [Wayland 原始收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162424268)
+
+- 候选 `c77c8c2` 的 Windows、两种 macOS 架构、X11 和 Wayland v1/v2 热键收据均确认关窗隐藏时零写入，X11 恢复后同键写入一次并完整回环。Apple Silicon 的后续重启用例把 `1000×680` 近满屏窗口保存为 `maximized=true`。存档的当前位置是 `(24,29)`，其正常位置是 `(0,25)`，重启实际使用了正常位置。夹具改用已验证的 macOS 正常窗尺寸，保存前后核对最大化状态。重启按保存的位置与尺寸核对，居中阶段复用该尺寸。窗口恢复属于 SESS-01 与 UX-04，继续随 IO-08 综合门禁验收。 [候选门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322) · [Apple Silicon 窗口收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159800471) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159930621)
+
+- 同一候选的 Ubuntu Rust 作业已通过等待授权终态后的 LAN-01 双栈恢复，并完成独立网络命名空间内的离线软件基线。收据确认 T01、T03、T04、T05、T06、T08 全部通过。T06 的末个样本在负载开始后 600.1 秒，慢读者隔离、控制响应和丢失记账均通过。物理串口和各平台 72 小时实跑仍按 M6 单独验收。 [Ubuntu Rust 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/job/140212428284) · [离线收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159857582)
+
+- 同一候选的 Windows 固定 Node 原生收据确认十项通过，独立安装目录中的链接按预期返回 `NODE_RUNTIME_INTEGRITY_FAILED`。Windows 真实配对工作台步骤也通过。按住连发新增候选结果摘要，记录两笔 Raw 写入、完整回显和松手停写，原始收据仍留在运行器临时目录。Ubuntu 和 Apple Silicon 的运行时收据分别核对了十一项和十项通过。 [Windows Rust 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/job/140212428275) · [Windows 运行时](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15160243764) · [Ubuntu 运行时](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15160072520) · [Apple Silicon 运行时](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15160531612)
+
+- 候选 `57b1d4a` 的 Windows 固定 Node 门禁已通过前九个运行时用例。目录链接拒绝用例在准备阶段重命名已加载过的 `runtime` 目录时收到 `EPERM`。本机用占用文件句柄的临时目录复现相同错误，并确认从另一个安装目录建立和移除链接时原文件保留。夹具用独立安装目录，由原生探针按实际安装路径验证 `NODE_RUNTIME_INTEGRITY_FAILED`。这项 M3 固定运行时回归随 IO-08 的综合门禁复验。 [Windows 故障收据](https://github.com/YanChao001/serial-workbench/actions/runs/45898242216/artifacts/15155527820)
+
+- IO-08 候选 `57b1d4a` 的四个原生桌面作业和 Wayland v1/v2 定向预检通过。完整门禁中的 Linux Rust 作业在 LAN-01 双栈恢复夹具获取普通 CLI 请求上下文时收到 `PERMISSION_DENIED`。同源本机探针确认授权先返回 `queued`，随后才出现 `authorization_changed`。夹具改为按操作 ID 等终态，并将失败收据归档。LAN-01 属于 M2 软件回归，复验纳入 IO-08 合入的综合门禁。 [桌面与 Wayland 收据](https://github.com/YanChao001/serial-workbench/pull/89) · [Linux 门禁失败步骤](https://github.com/YanChao001/serial-workbench/actions/runs/45898242216/job/140179694726)
+
+- IO-08 候选 `9f21c6e` 通过 X11 独立进程占键冲突、停用后零写入和原键接管。Wayland v1、v2 均确认主窗单次写入，速查、应用设置页和次窗零写入，返回工作台后另一应用前台可再次发送。两版的门户交接在测试启动之前被场景白名单拦截，待修复启动器后在真实门户复验。 [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45895543201/artifacts/15154545154) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45895543201/artifacts/15153019670)
+
+- IO-08 候选 `0ecc633` 以一次定向预检并行核对 X11 与 Wayland。X11 的系统占键冲突、原键保留、另一应用前台单次 TX 与停用后零写入均通过。停用后独立客户端接管 F9 仍返回 `BadAccess`。Wayland v1、v2 的主窗单次写入、速查及次窗零写入均通过，切到应用设置页后各产生一笔错误 TX。工作台路由的授权撤回和返回重订已通过本地无头回归。X11 注销改为等待服务端处理，通过 Linux 目标编译检查。两项修复与真实门户交接进入同一批原生复验，软件验收继续进行。 [合并预检](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856/artifacts/15152792583) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45893732856/artifacts/15152533998)
+
+- IO-08 的 Wayland 候选 `ce76aa3` 在 Ubuntu 26.04 构建通过。批准和取消两套 KWin 会话均有真实 Wayland 客户端连接，门户在会话变量生效前被启动，未暴露 GlobalShortcuts，工作台场景未执行。复验先确认 KDE 后端和已接管私有总线的门户，再运行批准、取消、改键与 Raw 收发。 [首轮诊断产物](https://github.com/YanChao001/serial-workbench/actions/runs/45878510321/artifacts/15145423839)
+- Wayland 候选 `317a246` 在 KDE 6.6.7 与 `xdg-desktop-portal` 1.21.1 下确认 GlobalShortcuts v2。原生弹窗取消后速查显示关闭，另一 Wayland 客户端在前台时没有新增 TX。批准后速查显示系统分配的 Ctrl+Shift+F9，原始 Raw 读回仍为空，门户日志未报告激活。复验保留前台客户端按键、KGlobalAccel、KDE 后端和公共门户的信号。先核对这几段证据，再判断是否需要修改产品的收发路径。 [批准和取消收据](https://github.com/YanChao001/serial-workbench/actions/runs/45879721728/artifacts/15145488821)
+- 候选 `958c43c` 的取消会话通过。前台 GTK Wayland 窗口收到一次带正确修饰键的 F9 按下与释放，Raw 无写入。批准前 KDE 未登记该组件，批准后组件出现且速查显示 F9。前台窗口仍收到 F9，KGlobalAccel、KDE 后端和公共门户都无激活信号。`ConfigureShortcuts` 已到 KDE 后端，系统设置窗口未出现。重载场景的旧门户连接已关闭，读取新文档超时。下一批核对 KWin 自身快捷键、KDE 实际键位与标准系统设置关联，并先从系统侧确认待定弹窗释放。 [输入、总线与重载证据](https://github.com/YanChao001/serial-workbench/actions/runs/45880795320/artifacts/15147805519)
+- 候选 `a35cfe7` 确认 KWin 持有 KGlobalAccel。Alt+F4 有按下和释放信号，并关闭前台 GTK 窗口。取消场景通过。批准后 KDE 报告已分配 Ctrl+Shift+F9，首次及停用后再次注册均由前台窗口收到 F9，Raw 无写入，总线也无对应激活信号。系统设置打开了「快捷键」，该用例未找到改键控件。重载场景的应用总线连接已清理，待定授权弹窗仍出现在无障碍窗口列表中。跨应用写入、改键和重载释放继续待验。 [KDE 分配、按键与弹窗收据](https://github.com/YanChao001/serial-workbench/actions/runs/45882156250/artifacts/15148042023)
+- 候选 `987a77b` 的隔离 KDE 构建、系统取消与零写入通过。KWin 确认注册工作台的 Ctrl+Shift+F9，但把注入的组合识别成 Ctrl+Alt+Shift+F9。在独立配置把同一键位登记给 KWin 自己时也复现。系统设置已实测选中工作台、取消捕获和取消冲突，应用改键后门户同时报告新增的 Ctrl+Alt+Shift+F10 与旧 F9。重载后授权窗仍可见且处于活动状态，未记录到应用发出的显式关闭调用。清除系统分配场景被测试入口拦下。下一批按 Xvfb 的原始键码注入，等待系统设置确认旧键已取消，改用 WebView 发起重载并核对新文档代次，同时补齐清除分配的场景入口。 [KWin 按键、系统改键与请求收据](https://github.com/YanChao001/serial-workbench/actions/runs/45884038808/artifacts/15149465075)
+- 候选 `efc99bf` 的取消、清除系统分配及缺少 GlobalShortcuts 三个场景通过。缺少接口时全局按键无写入，编辑器仍可主动发送同一草稿并精确回环。原始键码使工作台和 KWin 对照均收到正确的 Ctrl+Shift+F9。保持一次按下时，KWin 最先报告原生连发，随后出现额外的释放与按下，Raw 共九笔写入。下一批关闭外层 Xvfb 的连发，继续要求 KWin 原生连发及单笔 Raw。KDE 设置在应用改键后报告 F9 与 F10，复验改为先录入 F10 再停用旧默认键。WebView 重载后弹窗仍在前台，应用发出的关闭调用和新文档均未取得证据。 [批准、拒绝、兼容和重载收据](https://github.com/YanChao001/serial-workbench/actions/runs/45885776566/artifacts/15150500392)
+- 候选 `3cd1a21` 的独立 GTK 窗口置前后，KWin 报告 18 次原生连发，长按及松手后的第二次按键各产生一笔精确 TX 与回环。取消、清除分配、缺少接口和 KWin 对照继续通过。KDE 设置中旧键复选框显示停用，应用后门户仍报告 F9 与 F10。Qt 默认无障碍切换只修改复选框属性，下一批使用真实空格键触发 KDE 的快捷键模型并复验移除旧键后的重新分配。重载仅记录初始文档。测试从发送区保存草稿后重新申请热键，并核对弹窗关闭、新文档、草稿恢复和零写入。 [单笔 TX、改键与页面收据](https://github.com/YanChao001/serial-workbench/actions/runs/45887394595/artifacts/15149384309)
+- 候选 `287519f` 的待定授权重载通过。WebView 提交新文档，同一原连接依次关闭 Request 和 Session，授权窗消失，已保存草稿完整恢复，另一应用前台时旧组合零写入。长按、第二次按键、取消、清除系统分配及缺少接口继续通过。KWin 收到空格且设置报告复选框已获焦点，复选框仍启用，测试停在应用改键之前。下一批用无障碍控件范围与 KWin 前台客户区定位同一真实复选框，由外层指针点击并继续核对替换、旧键零写入及撤回。 [重载及 KDE 改键收据](https://github.com/YanChao001/serial-workbench/actions/runs/45888967047/artifacts/15151261267)
+- 候选 `531a69e` 在 KDE 设置中点击并停用旧键。KWin 撤销 F9，门户在同一会话依次报告无键位及仅有 Ctrl+Shift+F10，工作台显示新组合。设置打开成功后工作台已经退出编辑，测试却继续等待编辑区的「取消」，未执行换键后的 Raw 验证及撤回。长按期间 KWin 原生重复 14 次，长按及第二次按下各有一笔精确 TX 和回环。取消、清除分配、待定重载和缺少接口再次通过。后续通过速查的关闭按钮返回发送面，在设置仍处于前台时检查新旧键与撤回。v1 使用同一工作台构建、独立会话和实际 v1 前端。 [本轮 Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45890784612/artifacts/15151916350)
+- 候选 `ad441ec` 的 KDE Wayland 专项通过，两个会话使用工作台 SHA-256 相同的构建。v1 运行 `xdg-desktop-portal` 1.20.4，显示手动设置指引。v2 运行 1.21.1，从工作台打开设置。两组均以真实设置界面验证冲突取消、换键、旧 F9 零写入和新 F10 单笔 TX。操作 ID 与写入意图一致，回环逐字节匹配。撤回后速查显示关闭，F10 零写入。待定授权重载由原连接关闭请求和会话。v1、v2 长按分别有 16、14 次 KWin 原生重复，均只写一次。v2 的缺少接口场景与 KWin 同键对照通过。主窗和次窗发送边界及 X11 独占冲突另有本地用例待跨平台验证，精确候选全量门禁、物理串口及正式安装包继续待验。 [双版本 Wayland 专项](https://github.com/YanChao001/serial-workbench/actions/runs/45892054842) · [原始收据](https://github.com/YanChao001/serial-workbench/actions/runs/45892054842/artifacts/15152207618)
+
+- M4 桌面热键（IO-08）的当前草稿授权、原生注册和 Wayland 系统改键进入 #89。`c80dfbd` 通过 X11 跨应用单次发送。`022ce13` 在 Windows 验证冲突、原键保留、后台单次发送、24 字节 Raw 回环和停用释放。`afb7e84` 在两种 macOS 架构通过同一组原生断言。计算器在前台时，F9 仅产生一笔已接纳的 TX，操作 ID 与写入意图一致，24 字节回显逐字节匹配。功能键标志的系统对照另有原始收据。Wayland 服务交接已通过本地协议测试。GlobalShortcuts v1 和 v2 的独立 KDE 桌面证据见上文。物理串口及正式安装包按专项验收。 [PR #89](https://github.com/YanChao001/serial-workbench/pull/89) · [X11 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45863879445/job/140061636746) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45866771347/artifacts/15141565894) · [Apple Silicon 工作台收据](https://github.com/YanChao001/serial-workbench/actions/runs/45875440582/artifacts/15143554953) · [Intel 工作台收据](https://github.com/YanChao001/serial-workbench/actions/runs/45875440582/artifacts/15143829850) · [两架构功能键标志对照](https://github.com/YanChao001/serial-workbench/actions/runs/45875033574)
 - M4 工作台按住连发逐笔确认实际写入，松手、授权失效或写入状态无法确认时停止后续提交，并保留已接纳回执。四平台门禁、365 项本机无头 Chromium 回归和真实配对 Raw 写入复验通过。 [PR #83](https://github.com/YanChao001/serial-workbench/pull/83) · [四目标检查](https://github.com/YanChao001/serial-workbench/actions/runs/45774688836/attempts/2)
 - M5 独立市场交付了签名目录、时效和回退检查、版本兼容筛选，以及评分来源与时间。宿主固定引用市场主线提交 `455348126b56c58a7b975f3b5075da8d925be23d`。 [Marketplace PR #3](https://github.com/YanChao001/serial-workbench-plugins/pull/3) · [目录四平台检查](https://github.com/YanChao001/serial-workbench-plugins/actions/runs/45790904133)
 
@@ -31,7 +63,7 @@
 | M6       |   26 |    0 |     17 |      9 |
 | 合计     |  244 |   22 |    161 |     61 |
 
-本次补录了 M3 会话钩子、M4 传输与复现实验、M5 专业分析等主线证据。IO-08 仍缺桌面全局热键，IO-18 的真实桌面拖放继续验收，FUT-07 仍缺宿主市场接入。实际串口、跨物理机和正式发行各有专项验收条件。
+本次补录了 M3 会话钩子、M4 传输与复现实验、M5 专业分析等主线证据。IO-18 的真实桌面拖放继续验收，FUT-07 仍缺宿主市场接入。实际串口、跨物理机和正式发行各有专项验收条件。
 
 ### 已合入的旧分支收敛组
 

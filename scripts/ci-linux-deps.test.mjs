@@ -166,7 +166,7 @@ test(
   },
 );
 
-for (const mode of ["rust", "native"]) {
+for (const mode of ["rust", "native", "wayland"]) {
   test(
     `${mode} downloads once before offline installation and preserves required packages`,
     { skip: skipReason },
@@ -213,10 +213,9 @@ for (const mode of ["rust", "native"]) {
         ])
           assert.ok(command.includes(required), required);
         for (const required of [
-          "xvfb",
-          "xauth",
           "dbus-x11",
           "openbox",
+          "libx11-dev",
           "gdb",
           "libc6-dbg",
           "fonts-noto-cjk",
@@ -225,6 +224,21 @@ for (const mode of ["rust", "native"]) {
           "gstreamer1.0-libav",
         ])
           assert.equal(command.includes(required), mode === "native", required);
+        for (const required of ["xvfb", "xauth", "xdotool"])
+          assert.equal(command.includes(required), mode !== "rust", required);
+        for (const required of [
+          "kwin-wayland",
+          "plasma-desktop",
+          "plasma-workspace",
+          "systemsettings",
+          "xdg-desktop-portal-kde",
+          "python3-pyatspi",
+        ])
+          assert.equal(
+            command.includes(required),
+            mode === "wayland",
+            required,
+          );
       }
       assert.deepEqual(
         apt[1].filter((arg) => arg !== "--download-only"),

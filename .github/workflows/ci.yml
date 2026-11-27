@@ -13,6 +13,10 @@ on:
         description: 完整检查时在同一个 Windows 桌面作业补跑签名图表
         type: boolean
         default: false
+      wayland_e2e:
+        description: 完整检查时并行执行 KDE Wayland v1 和 v2 热键专项
+        type: boolean
+        default: false
       native_preflight:
         description: 仅执行所选目标的原生全场景预检，不作为里程碑验收
         type: boolean
@@ -50,7 +54,7 @@ on:
           - macos-offline-installer
         required: true
       native_preflight_target:
-        description: 原生预检目标；完整四目标模式不使用此选项
+        description: 原生预检目标。macos 执行两种架构，linux-desktop 同时执行 X11 原生与 KDE Wayland 热键场景
         type: choice
         default: x86_64-unknown-linux-gnu
         options:
@@ -58,6 +62,11 @@ on:
           - x86_64-pc-windows-msvc
           - aarch64-apple-darwin
           - x86_64-apple-darwin
+          - macos
+          - windows-and-macos
+          - linux-desktop
+          - macos-input
+          - wayland-global-send
         required: true
       native_preflight_chart:
         description: 原生预检只运行签名图表和实际窗口场景
@@ -237,7 +246,8 @@ jobs:
           suffix=""
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           binaries="$PWD/src-tauri/target/debug"
-          evidence="$(node -p 'require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(),"swb-lan-ci-"))')"
+          mkdir -p artifacts/rust-failures
+          evidence="$(node -p 'require("node:fs").mkdtempSync("artifacts/rust-failures/lan-route-")')"
           node e2e/lan-route.mjs "$binaries/serial-workbench-host$suffix" \
             "$binaries/serial-workbench-cli$suffix" "$binaries/serial-workbench-mcp$suffix" \
             "$evidence/run" --loopback-roles
@@ -433,6 +443,9 @@ jobs:
             echo "::error::真实配对浏览器按住连发收据缺失。"
             exit 1
           fi
+          printf '%s\n' '### 配对浏览器按住连发（IO-08）' "候选提交 $GITHUB_SHA" \
+            '独立 Raw 确认两笔已接纳的写入和完整 Virtual Echo 回显。松手后没有新增发送请求。' \
+            >> "$(cygpath -u "$GITHUB_STEP_SUMMARY")"
 
       - name: 保留 runtime 验收收据与原始输出
         if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
@@ -629,15 +642,110 @@ jobs:
       conflicting_preflight: ${{ inputs.native_preflight }}
 
   native-preflight:
-    if: inputs.native_preflight && !inputs.runtime_preflight
-    name: 原生全场景预检（${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}）
+    if: inputs.native_preflight && !inputs.runtime_preflight && inputs.native_preflight_target != 'macos-input' && inputs.native_preflight_target != 'wayland-global-send'
+    name: 原生全场景预检（${{ matrix.target }}）
+    strategy:
+      fail-fast: false
+      matrix:
+        target: >-
+          ${{ fromJSON('{"macos":["aarch64-apple-darwin","x86_64-apple-darwin"],"windows-and-macos":["x86_64-pc-windows-msvc","aarch64-apple-darwin","x86_64-apple-darwin"],"linux-desktop":["x86_64-unknown-linux-gnu"]}')[inputs.native_preflight_target]
+            || fromJSON(format('["{0}"]', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu')) }}
     uses: ./.github/workflows/native-e2e.yml
     with:
-      platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[inputs.native_preflight_target || 'x86_64-unknown-linux-gnu'] }}
-      target: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
-      native_file_dialogs: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' }}
-      chart_only: ${{ inputs.native_preflight_chart }}
-      windows_reference_only: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
+      platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[matrix.target] }}
+      target: ${{ matrix.target }}
+      native_file_dialogs: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
+      chart_only: ${{ inputs.native_preflight_chart && inputs.native_preflight_target != 'linux-desktop' }}
+      windows_reference_only: ${{ matrix.target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
+
+  macos-input-preflight:
+    if: inputs.native_preflight && !inputs.runtime_preflight && inputs.native_preflight_target == 'macos-input'
+    name: macOS 系统热键探针（${{ matrix.platform }}）
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: 验证登录会话的功能键回调
+        shell: bash
+        run: |
+          helper="$RUNNER_TEMP/serial-workbench-global-send"
+          bash e2e/build-macos-global-send.sh "$helper"
+          node e2e/macos-global-send-probe.mjs "$helper" "$RUNNER_TEMP/macos-hotkey-input"
+      - name: 保留系统热键证据
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.1
+        with:
+          name: macos-hotkey-input-${{ matrix.platform }}
+          path: ${{ runner.temp }}/macos-hotkey-input
+          if-no-files-found: ignore
+
+  wayland-global-send-preflight:
+    if: ${{ !inputs.runtime_preflight && (inputs.native_preflight && (inputs.native_preflight_target == 'wayland-global-send' || inputs.native_preflight_target == 'linux-desktop') || !inputs.native_preflight && inputs.wayland_e2e) }}
+    name: KDE Wayland 全局发送
+    runs-on: ubuntu-26.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 安装隔离 Wayland 会话与构建依赖
+        timeout-minutes: 12
+        run: bash scripts/ci-linux-deps.sh wayland
+      - name: 验证无障碍树枚举变化的处理
+        run: /usr/bin/python3 -B e2e/wayland-desktop.test.py
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
+      - name: 安装依赖与 Rust 工具链
+        run: |
+          pnpm install --frozen-lockfile
+          rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: . -> src-tauri/target/e2e
+          key: e2e-wayland-x86_64-unknown-linux-gnu
+          cache-on-failure: true
+      - name: 构建测试专用桌面应用
+        id: wayland-app
+        run: pnpm e2e:build
+      - name: 验证 v2 系统分配、系统改键与跨应用发送
+        timeout-minutes: 5
+        run: bash e2e/run-wayland.sh
+      - name: 验证 v1 手动设置、跨应用发送和释放
+        if: ${{ !cancelled() && steps.wayland-app.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          portal_dir="$RUNNER_TEMP/wayland-portal-v1"
+          mkdir -p "$portal_dir"
+          archive="$portal_dir/xdg-desktop-portal-1.20.4.tar.xz"
+          curl --fail --location --silent --show-error --max-time 45 --output "$archive" \
+            https://github.com/flatpak/xdg-desktop-portal/releases/download/1.20.4/xdg-desktop-portal-1.20.4.tar.xz
+          printf '%s  %s\n' 9528eb3b060b88ac82f294fbdc6af5f4d3adfa42575f2cd816cab3d3e0a7a68c "$archive" | sha256sum --check
+          tar -xJf "$archive" -C "$portal_dir"
+          meson setup "$portal_dir/build" "$portal_dir/xdg-desktop-portal-1.20.4" \
+            --prefix=/usr --wrap-mode=nodownload -Dtests=disabled -Ddocumentation=disabled \
+            -Dman-pages=disabled -Dflatpak-interfaces=disabled
+          meson compile -C "$portal_dir/build" xdg-desktop-portal
+          bash e2e/run-wayland.sh --portal-v1 "$portal_dir/build/src/xdg-desktop-portal"
+      - name: 保留 Wayland 原生证据
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wayland-global-send
+          path: |
+            artifacts/e2e/wayland
+            artifacts/e2e/wayland-v1
+          if-no-files-found: ignore
 
   desktop-e2e:
     if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight
@@ -673,6 +781,8 @@ jobs:
         bindings,
         desktop-e2e,
         native-preflight,
+        macos-input-preflight,
+        wayland-global-send-preflight,
       ]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
@@ -686,12 +796,17 @@ jobs:
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
           CI_DESKTOP_E2E: ${{ inputs.desktop_e2e }}
+          CI_WAYLAND_E2E: ${{ inputs.wayland_e2e }}
         run: node scripts/ci-quality-gate.mjs
       - name: 确认原生预检结果
         if: inputs.native_preflight
         env:
-          NATIVE_PREFLIGHT_RESULT: ${{ needs.native-preflight.result }}
-        run: node --input-type=module -e "if (process.env.NATIVE_PREFLIGHT_RESULT !== 'success') process.exit(1)"
+          NATIVE_PREFLIGHT_RESULT: >-
+            ${{ inputs.native_preflight_target == 'linux-desktop' && format('{0},{1}', needs.native-preflight.result, needs.wayland-global-send-preflight.result)
+            || inputs.native_preflight_target == 'macos-input' && needs.macos-input-preflight.result
+            || inputs.native_preflight_target == 'wayland-global-send' && needs.wayland-global-send-preflight.result
+            || needs.native-preflight.result }}
+        run: node --input-type=module -e "if (process.env.NATIVE_PREFLIGHT_RESULT.split(',').some(result => result !== 'success')) process.exit(1)"
       - name: 记录预检范围
         if: inputs.native_preflight
         env:
@@ -699,7 +814,7 @@ jobs:
           CHECKED_TARGET: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
         run: |
           echo "Native preflight only: $CHECKED_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Native target: $CHECKED_TARGET. This result is not milestone acceptance; run the complete four-target mode before merging." >> "$GITHUB_STEP_SUMMARY"
+          echo "Native preflight selection: $CHECKED_TARGET. This result is not milestone acceptance; run the complete four-target mode before merging." >> "$GITHUB_STEP_SUMMARY"
       - name: 记录检查基线与范围
         if: ${{ !inputs.native_preflight }}
         env:

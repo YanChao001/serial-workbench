@@ -35,17 +35,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: 构建 Windows 文件对话框辅助程序
+      - name: 构建 Windows 文件对话框与热键辅助程序
         if: runner.os == 'Windows' && inputs.native_file_dialogs
         shell: powershell
         timeout-minutes: 2
         run: |
           $picker = Join-Path $env:RUNNER_TEMP 'serial-workbench-terminal-picker.exe'
           Write-Output 'Compiling the native file dialog helper'
-          Add-Type -LiteralPath 'e2e/windows-terminal-picker.cs' -ReferencedAssemblies 'System.Web.Extensions.dll','System.Drawing.dll' -OutputAssembly $picker -OutputType ConsoleApplication
+          Add-Type -LiteralPath 'e2e/windows-terminal-picker.cs' -ReferencedAssemblies 'System.Web.Extensions.dll','System.Drawing.dll','System.Windows.Forms.dll' -OutputAssembly $picker -OutputType ConsoleApplication
           & $picker --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "SWB_E2E_WINDOWS_PICKER_BIN=$picker" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SWB_E2E_GLOBAL_SEND_HELPER=$picker" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 构建 macOS 热键辅助程序
+        if: runner.os == 'macOS' && !inputs.chart_only
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          helper="$RUNNER_TEMP/serial-workbench-global-send"
+          bash e2e/build-macos-global-send.sh "$helper"
+          echo "SWB_E2E_GLOBAL_SEND_HELPER=$helper" >> "$GITHUB_ENV"
 
       - name: 安装 Linux 桌面依赖
         if: runner.os == 'Linux'
@@ -133,6 +143,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: "1"
+          SWB_E2E_X11_GLOBAL_SEND: "1"
           CHART_ONLY: ${{ inputs.chart_only }}
         run: |
           mkdir -p artifacts/e2e/crash
@@ -141,6 +152,8 @@ jobs:
           if [[ "$CHART_ONLY" == true ]]; then
             dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build --chart-automated'
           else
+            export SWB_E2E_X11_GRAB_HELPER="$RUNNER_TEMP/serial-workbench-x11-grab"
+            cc -std=c17 -Wall -Wextra -Werror e2e/x11-global-send-grab.c -lX11 -o "$SWB_E2E_X11_GRAB_HELPER"
             dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
           fi
 

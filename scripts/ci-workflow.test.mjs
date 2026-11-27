@@ -105,21 +105,39 @@ test("preflight shares the full native runner and retains successful source rece
   assert.ok(targetInput);
   assert.match(targetInput, /type: choice/);
   assert.match(targetInput, /default: x86_64-unknown-linux-gnu/);
+  const targetGroups = preflight.match(
+    /fromJSON\('([^']+)'\)\[inputs\.native_preflight_target\]/,
+  );
+  assert.ok(targetGroups);
+  const groups = JSON.parse(targetGroups[1]);
+  assert.deepEqual(groups, {
+    macos: ["aarch64-apple-darwin", "x86_64-apple-darwin"],
+    "windows-and-macos": [
+      "x86_64-pc-windows-msvc",
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+    ],
+    "linux-desktop": ["x86_64-unknown-linux-gnu"],
+  });
   assert.deepEqual(
     [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
-    Object.keys(JSON.parse(runnerMap[1])),
+    [
+      ...Object.keys(JSON.parse(runnerMap[1])),
+      ...Object.keys(groups),
+      "macos-input",
+      "wayland-global-send",
+    ],
   );
+  assert.match(preflight, /fail-fast: false/);
   assert.match(
     preflight,
-    /\)\[inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu'\] \}\}/,
+    /fromJSON\(format\('\["\{0\}"\]', inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu'\)\)/,
   );
+  assert.match(preflight, /\)\[matrix\.target\] \}\}/);
+  assert.match(preflight, /^ {6}target: \$\{\{ matrix\.target \}\}$/m);
   assert.match(
     preflight,
-    /target: \$\{\{ inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu' \}\}/,
-  );
-  assert.match(
-    preflight,
-    /native_file_dialogs: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' \}\}/,
+    /native_file_dialogs: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' \}\}/,
   );
   assert.match(
     job("desktop-e2e"),
@@ -145,12 +163,12 @@ test("preflight shares the full native runner and retains successful source rece
     /if: runner\.os != 'Linux' && !inputs\.chart_only && !\(runner\.os == 'Windows' && inputs\.windows_reference_only\)\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
   );
   assert.match(
-    ci,
-    /windows_reference_only: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
+    preflight,
+    /windows_reference_only: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
   );
   assert.match(
     preflight,
-    /chart_only: \$\{\{ inputs\.native_preflight_chart \}\}/,
+    /chart_only: \$\{\{ inputs\.native_preflight_chart && inputs\.native_preflight_target != 'linux-desktop' \}\}/,
   );
   assert.match(
     native,
@@ -172,7 +190,75 @@ test("preflight shares the full native runner and retains successful source rece
     job("quality-gate"),
     /确认所有检查通过\n {8}if: \$\{\{ !inputs\.native_preflight \}\}/,
   );
-  assert.match(job("quality-gate"), /NATIVE_PREFLIGHT_RESULT !== 'success'/);
+  assert.match(
+    job("quality-gate"),
+    /NATIVE_PREFLIGHT_RESULT\.split\(','\)\.some\(result => result !== 'success'\)/,
+  );
+});
+
+test("macOS input preflight measures OS delivery without building a workbench", () => {
+  const input = job("macos-input-preflight");
+  assert.match(
+    input,
+    /if: inputs\.native_preflight && !inputs\.runtime_preflight && inputs\.native_preflight_target == 'macos-input'/,
+  );
+  assert.match(
+    job("native-preflight"),
+    /inputs\.native_preflight_target != 'macos-input'/,
+  );
+  assert.match(input, /platform: \[macos-15, macos-15-intel\]/);
+  assert.match(input, /bash e2e\/build-macos-global-send\.sh/);
+  assert.match(native, /bash e2e\/build-macos-global-send\.sh/);
+  assert.match(input, /node e2e\/macos-global-send-probe\.mjs/);
+  assert.match(input, /保留系统热键证据\n {8}if: always\(\)/);
+  assert.doesNotMatch(input, /cargo|rustup|pnpm|e2e:build|test:e2e/);
+  assert.match(
+    job("quality-gate"),
+    /target == 'macos-input' && needs\.macos-input-preflight\.result/,
+  );
+});
+
+test("Wayland hotkeys run in a targeted preflight or in the same selected full candidate", () => {
+  const wayland = job("wayland-global-send-preflight");
+  assert.match(
+    ci,
+    /wayland_e2e:\n\s+description: .*\n\s+type: boolean\n\s+default: false/,
+  );
+  assert.match(
+    wayland,
+    /if: \$\{\{ !inputs\.runtime_preflight && \(inputs\.native_preflight && \(inputs\.native_preflight_target == 'wayland-global-send' \|\| inputs\.native_preflight_target == 'linux-desktop'\) \|\| !inputs\.native_preflight && inputs\.wayland_e2e\) \}\}/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /CI_WAYLAND_E2E: \$\{\{ inputs\.wayland_e2e \}\}/,
+  );
+  assert.match(wayland, /runs-on: ubuntu-26\.04/);
+  assert.match(wayland, /bash scripts\/ci-linux-deps\.sh wayland/);
+  assert.equal([...wayland.matchAll(/pnpm e2e:build\n/g)].length, 1);
+  assert.match(
+    wayland,
+    /\/usr\/bin\/python3 -B e2e\/wayland-desktop\.test\.py/,
+  );
+  assert.match(wayland, /bash e2e\/run-wayland\.sh/);
+  assert.match(wayland, /sha256sum --check/);
+  assert.match(wayland, /bash e2e\/run-wayland\.sh --portal-v1/);
+  assert.match(
+    wayland,
+    /path: \|\n\s+artifacts\/e2e\/wayland\n\s+artifacts\/e2e\/wayland-v1/,
+  );
+  assert.match(wayland, /保留 Wayland 原生证据\n {8}if: always\(\)/);
+  assert.match(
+    job("native-preflight"),
+    /inputs\.native_preflight_target != 'wayland-global-send'/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /target == 'linux-desktop' && format\('\{0\},\{1\}', needs\.native-preflight\.result, needs\.wayland-global-send-preflight\.result\)/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /target == 'wayland-global-send' && needs\.wayland-global-send-preflight\.result/,
+  );
 });
 
 test("the gate always gathers every job, and all jobs have a time budget", () => {
@@ -182,7 +268,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   assert.match(
     job("quality-gate"),
-    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,?\s*\]/,
+    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,\s*macos-input-preflight,\s*wayland-global-send-preflight,?\s*\]/,
   );
   assert.match(
     job("quality-gate"),
@@ -228,6 +314,10 @@ test("Windows gates real Chromium file transfer, experiments, mapped capture and
   assert.match(step, /按住连发收据缺失/);
   assert.match(step, /hold-send\/host-receipt\.json/);
   assert.match(step, /hold-send\/browser-receipt\.json/);
+  assert.match(
+    step,
+    /按住连发收据缺失[^\n]*\n\s+exit 1\n\s+fi\n\s+printf[^\n]*\$GITHUB_SHA[\s\S]*?独立 Raw 确认两笔[\s\S]*?cygpath -u "\$GITHUB_STEP_SUMMARY"/,
+  );
   assert.match(step, /mapped-capture\/host-receipt\.json/);
   assert.match(step, /mapped-capture\/browser-receipt\.json/);
   assert.doesNotMatch(
@@ -292,7 +382,7 @@ test("all native Rust targets run LAN recovery with fresh isolated profiles", ()
     ?.split("\n      - name:")[0];
   assert.ok(step);
   assert.doesNotMatch(step, /\bif:/);
-  assert.match(step, /mkdtempSync/);
+  assert.match(step, /mkdtempSync\("artifacts\/rust-failures\/lan-route-"\)/);
   assert.match(
     step,
     /node e2e\/lan-route\.mjs "\$binaries\/serial-workbench-host\$suffix"/,

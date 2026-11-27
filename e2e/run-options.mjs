@@ -1,3 +1,12 @@
+export const waylandLaunchScenarios = [
+  "approve",
+  "cancel",
+  "deny",
+  "reload",
+  "replace",
+  "unavailable",
+];
+
 /** 原生窗口测试会主动激活窗口，必须在启动构建或进程前明确选择前台运行。 */
 export function parseE2EOptions(args) {
   const modes = {
@@ -5,6 +14,7 @@ export function parseE2EOptions(args) {
     "terminal-automated": ["terminal-automated"],
     "chart-automated": ["chart-automated"],
     "browser-takeover": ["browser-takeover"],
+    "wayland-global-send": ["wayland-global-send"],
     lan: ["lan-owner", "lan-caller"],
   };
   const specialized = Object.keys(modes).filter((mode) =>
@@ -23,7 +33,7 @@ export function parseE2EOptions(args) {
     )
   )
     throw new Error(
-      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime] [--terminal-manual | --terminal-automated | --chart-automated | --browser-takeover | --lan].",
+      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime] [--terminal-manual | --terminal-automated | --chart-automated | --browser-takeover | --wayland-global-send | --lan].",
     );
   if (!args.includes("--interactive"))
     throw new Error(

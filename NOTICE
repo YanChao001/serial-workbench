@@ -31,3 +31,7 @@ Distributions: third-party/yaml.LICENSE
 The device WebSocket plugin bundles ws under the MIT License.
 Source: resources/third-party/ws.LICENSE
 Distributions: third-party/ws.LICENSE in the signed device WebSocket plugin
+
+The desktop application uses global-hotkey 0.10.0 under the MIT License.
+Source: third-party/global-hotkey/LICENSE-MIT and resources/third-party/global-hotkey.LICENSE
+Distributions: third-party/global-hotkey.LICENSE

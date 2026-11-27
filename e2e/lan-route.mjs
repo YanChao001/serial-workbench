@@ -46,7 +46,7 @@ const failures = [];
 const ownedHosts = {};
 let assistant;
 
-async function run(role, args, expectedError, expectedExit = 3) {
+async function runCli(role, args) {
   let response;
   try {
     response = await promisify(execFile)(
@@ -70,6 +70,11 @@ async function run(role, args, expectedError, expectedExit = 3) {
     error: value?.error?.code,
     stderr,
   });
+  return { value, code, stderr };
+}
+
+async function run(role, args, expectedError, expectedExit = 3) {
+  const { value, code, stderr } = await runCli(role, args);
   if (expectedError) {
     assert.equal(code, expectedExit, stderr);
     assert.equal(value?.error?.code, expectedError, stderr);
@@ -86,12 +91,24 @@ async function fixture(value) {
   return file;
 }
 
-async function grant(role, clientId, permissions, target) {
-  await run(role, [
-    "authorize",
-    "--params-json",
-    await fixture({ clientId, permissions, targets: [target] }),
-  ]);
+function grant(role, clientId, permissions, target) {
+  return changeAuthorization(role, "authorize", {
+    clientId,
+    permissions,
+    targets: [target],
+  });
+}
+
+async function changeAuthorization(role, action, params) {
+  const {
+    result: { operation: accepted },
+  } = await run(role, [action, "--params-json", await fixture(params)]);
+  assert.equal(accepted.actionId, `auth.${action}`);
+  const operation = await settled(role, accepted.operationId, [], {
+    authorizationChanging: true,
+  });
+  assert.equal(operation.actionId, accepted.actionId);
+  assert.equal(operation.result.kind, "authorization_changed");
 }
 
 async function until(check, label) {
@@ -104,17 +121,38 @@ async function until(check, label) {
   }
 }
 
-async function settled(role, operationId, route = []) {
+async function settled(
+  role,
+  operationId,
+  route = [],
+  { authorizationChanging = false } = {},
+) {
   return until(async () => {
+    const { value, code, stderr } = await runCli(role, [
+      "operation",
+      "get",
+      operationId,
+      ...route,
+    ]);
+    // 授权变更与查询响应并发时，Host 可能丢弃旧授权修订下的读取结果。
+    if (
+      authorizationChanging &&
+      code === 3 &&
+      value?.error?.code === "PERMISSION_DENIED"
+    )
+      return;
+    assert.equal(code, undefined, stderr);
+    assert.notEqual(value?.ok, false, value?.error?.code);
     const {
       result: { operation },
-    } = await run(role, ["operation", "get", operationId, ...route]);
+    } = value;
+    assert.equal(operation.operationId, operationId);
     if (operation.state === "succeeded") return operation;
     assert.ok(
       ["queued", "running"].includes(operation.state),
       JSON.stringify(operation),
     );
-  }, "Wait for real terminal operation " + operationId);
+  }, `Wait for ${role} operation ${operationId} to reach its terminal state`);
 }
 
 async function query(role, action, target, params, route = []) {
@@ -708,15 +746,11 @@ async function verifyApplicationRoute() {
     (await query("owner", "session.get", session, {})).configuration.baudRate,
     baudRate,
   );
-  await run("caller", [
-    "revoke",
-    "--params-json",
-    await fixture({
-      actorId: callerContext.actorId,
-      permissions: ["lan.connect"],
-      targets: [scope],
-    }),
-  ]);
+  await changeAuthorization("caller", "revoke", {
+    actorId: callerContext.actorId,
+    permissions: ["lan.connect"],
+    targets: [scope],
+  });
   await run(
     "caller",
     ["context", "--out", join(root, "revoked.json"), ...route],

@@ -1,6 +1,7 @@
 import { createContext } from "react";
 import type { AppCommand } from "@/commands/types";
 import type { ShortcutBinding } from "@/lib/generated/bindings";
+import type { useGlobalSendShortcut } from "./use-global-send-shortcut";
 
 export type CommandsContextValue = {
   commands: AppCommand[];
@@ -9,6 +10,7 @@ export type CommandsContextValue = {
   paletteOpen: boolean;
   shortcutHelp: boolean;
   changeShortcut?: (id: string, binding: ShortcutBinding) => void;
+  globalSend?: ReturnType<typeof useGlobalSendShortcut>;
   setPaletteOpen: (open: boolean) => void;
   aboutOpen: boolean;
   setAboutOpen: (open: boolean) => void;

@@ -50,7 +50,9 @@ it("encodes ASCII permission previews after the quiet interval and sends current
   const expected = new Uint8Array([65, 84, 43, 71, 77, 82]);
   expect(send.mock.calls[0]?.[0]).toEqual(expected);
   act(() => vi.advanceTimersByTime(1));
-  expect(observed).toHaveBeenLastCalledWith(expected);
+  expect(observed).toHaveBeenLastCalledWith(
+    expect.objectContaining({ bytes: expected }),
+  );
   expect(encoded.mock.calls.filter(([text]) => text === "AT+GMR")).toHaveLength(
     2,
   );
@@ -133,7 +135,9 @@ it("coalesces permission previews and clears only the current local draft with f
     0,
   );
   act(() => vi.advanceTimersByTime(1));
-  expect(observed).toHaveBeenLastCalledWith(new TextEncoder().encode("latest"));
+  expect(observed).toHaveBeenLastCalledWith(
+    expect.objectContaining({ bytes: new TextEncoder().encode("latest") }),
+  );
   fireEvent.change(input, { target: { value: "pending" } });
   fireEvent.click(screen.getByRole("button", { name: labels.clearDraft }));
   expect(input).toHaveValue("");
@@ -178,6 +182,6 @@ it("sends the current view immediately and cancels the previous view's pending p
   expect(drafts.get("first")).toBe("unsaved first");
   act(() => vi.advanceTimersByTime(150));
   expect(observed.mock.calls.filter(([bytes]) => bytes !== null)).toEqual([
-    [new TextEncoder().encode("B")],
+    [expect.objectContaining({ bytes: new TextEncoder().encode("B") })],
   ]);
 });

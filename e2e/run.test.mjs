@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { parseE2EOptions } from "./run-options.mjs";
+import { parseE2EOptions, waylandLaunchScenarios } from "./run-options.mjs";
+
+test("the desktop runner accepts all workbench scenarios from the isolated Wayland launcher", () => {
+  const script = readFileSync(
+    new URL("./run-wayland.sh", import.meta.url),
+    "utf8",
+  );
+  const suites = [...script.matchAll(/^\s*scenarios=\(([^)]+)\)/gm)];
+  assert.equal(suites.length, 2);
+  const scenarios = new Set(suites.flatMap(([, names]) => names.split(/\s+/)));
+  // The KWin input control is handled by the shell without launching Workbench.
+  assert.ok(scenarios.delete("key-control"));
+  assert.deepEqual(scenarios, new Set(waylandLaunchScenarios));
+});
 
 test("desktop runs require an explicit foreground choice, including reused builds", () => {
   for (const args of [
@@ -13,6 +27,7 @@ test("desktop runs require an explicit foreground choice, including reused build
     ["--terminal-automated"],
     ["--chart-automated"],
     ["--browser-takeover"],
+    ["--wayland-global-send"],
     ["--lan"],
   ])
     assert.throws(() => parseE2EOptions(args), /默认不启动/);
@@ -54,6 +69,14 @@ test("desktop runs require an explicit foreground choice, including reused build
     { skipBuild: true, withNodeRuntime: false, phases: ["browser-takeover"] },
   );
   assert.deepEqual(
+    parseE2EOptions(["--interactive", "--skip-build", "--wayland-global-send"]),
+    {
+      skipBuild: true,
+      withNodeRuntime: false,
+      phases: ["wayland-global-send"],
+    },
+  );
+  assert.deepEqual(
     parseE2EOptions(["--interactive", "--skip-build", "--lan"]),
     {
       skipBuild: true,
@@ -88,6 +111,7 @@ for (const args of [
   ["--terminal-automated"],
   ["--chart-automated"],
   ["--browser-takeover"],
+  ["--wayland-global-send"],
   ["--lan"],
 ]) {
   test(`the CLI refuses ${args.join(" ") || "a default run"} before build lookup or launch`, () => {

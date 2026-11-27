@@ -23,6 +23,7 @@ mod error;
 mod file_access;
 mod file_commands;
 mod file_resource_commands;
+mod global_send;
 mod host_bridge;
 mod lifecycle;
 mod media_protocol;
@@ -179,6 +180,7 @@ pub fn run() {
         app.manage(initialized.recovery);
         app.manage(initialized.client_state);
         app.manage(platform_settings::PlatformSettings::default());
+        global_send::setup(app.handle());
         let host_events = app.handle().clone();
         app.manage(
             host_bridge::DesktopHostBridge::new(startup.profile().to_path_buf())
@@ -227,7 +229,10 @@ pub fn run() {
     builder
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {
+                #[cfg(all(feature = "e2e", target_os = "linux"))]
+                log::debug!("WebView committed a document for {}", webview.label());
                 let app = webview.app_handle();
+                global_send::reset_window(app, webview.label());
                 if let Some(window) = app.get_webview_window(webview.label()) {
                     app.state::<host_bridge::DesktopHostBridge>()
                         .document_started(&window);
@@ -269,6 +274,7 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::Destroyed = event {
+                global_send::reset_window(window.app_handle(), window.label());
                 node_view::close_owned_views(window.label(), None);
                 window
                     .app_handle()

@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
+import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { release as osRelease } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { openDeepLink, reloadDocument } from "../helpers.mjs";
+import { withGlobalSendPeer } from "../global-send-peer.mjs";
+import {
+  checkGlobalSendRaw,
+  globalSendRawReader,
+  rawRxBytes,
+} from "../global-send.mjs";
 import { sessionScopes } from "../session-scopes.mjs";
 import {
   hostQuery,
@@ -12,6 +22,8 @@ import {
   patchSettings,
   readSettings,
 } from "../settings.mjs";
+
+const execute = promisify(execFile);
 
 async function openTool(name) {
   const direct = await $(
@@ -41,7 +53,7 @@ const field = (name) =>
       name +
       "']//input",
   );
-const sendDraft = () =>
+export const sendDraft = () =>
   $("//textarea[@id=//label[normalize-space()='Send draft']/@for]");
 async function clickEnabled(selector) {
   const button = await $(selector);
@@ -71,7 +83,7 @@ export async function restartOwnedHost() {
   assert.equal(response.ok, true, response.error);
   return response;
 }
-async function saveDrafts() {
+export async function saveDrafts() {
   const button = await clickEnabled("button[aria-label='Save drafts']");
   await button.waitForEnabled({ reverse: true });
 }
@@ -254,6 +266,123 @@ function streamPayloadState(payload) {
   }, payload);
 }
 
+const shortcutDialog = () => $("[role=dialog][data-state=open]");
+export const globalShortcutKey = () =>
+  $(
+    "//li[.//button[@aria-label='Change shortcut for Global send shortcut']]//kbd",
+  );
+
+export async function editGlobalSend() {
+  await browser.execute(() =>
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "F1" })),
+  );
+  const dialog = await shortcutDialog();
+  await dialog.waitForDisplayed();
+  await (await dialog.$("input[type=search]")).setValue("global send");
+  await clickEnabled(
+    "button[aria-label='Change shortcut for Global send shortcut']",
+  );
+  await $("#shortcut-capture").waitForDisplayed();
+}
+
+export async function captureGlobalSendKey(key) {
+  await browser.execute(
+    (name, mac) =>
+      document.getElementById("shortcut-capture").dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: name,
+          ctrlKey: !mac,
+          metaKey: mac,
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    key,
+    process.platform === "darwin",
+  );
+  await clickEnabled("button=Save");
+}
+
+export async function closeShortcutHelp() {
+  await browser.keys(Key.Escape);
+  await (await shortcutDialog()).waitForExist({ reverse: true });
+}
+
+export async function disableGlobalSend() {
+  await editGlobalSend();
+  await clickEnabled("button=Disable");
+  await $("#shortcut-capture").waitForExist({ reverse: true });
+  assert.equal(await (await globalShortcutKey()).getText(), "Off");
+  await closeShortcutHelp();
+}
+
+async function checkWorkbenchForegroundSend(receipt, press, bytes) {
+  await nativeValue("plugin:window|set_focus", { label: "main" });
+  const focused = () => browser.execute(() => document.hasFocus());
+  await browser.waitUntil(focused, {
+    timeoutMsg: "The workbench did not take foreground focus",
+  });
+  const read = await globalSendRawReader();
+  receipt.workbenchFocus = await press();
+  await browser.waitUntil(
+    async () => {
+      receipt.workbenchFocusedRaw = await read();
+      return rawRxBytes(receipt.workbenchFocusedRaw).length >= bytes.length;
+    },
+    {
+      timeoutMsg:
+        "No matching Virtual Echo write and echo with the workbench in the foreground",
+    },
+  );
+  await delay(300);
+  receipt.workbenchFocusedRaw = await read();
+  checkGlobalSendRaw(receipt.workbenchFocusedRaw, bytes);
+  receipt.workbenchKeptFocus = await focused();
+  assert.equal(receipt.workbenchKeptFocus, true);
+}
+
+function readGlobalSendNativeTrace(directory) {
+  return readFileSync(join(directory, "native.log"), "utf8")
+    .split("\n")
+    .filter((line) => line.includes("E2E global send "));
+}
+
+export async function checkTrayHiddenGlobalSend(receipt, press) {
+  const window = { label: "main" };
+  const visible = () => nativeValue("plugin:window|is_visible", window);
+  const { runInBackground } = await nativeValue("get_desktop_status");
+  async function setRunInBackground(value) {
+    await patchSettings({ runInBackground: value });
+    await nativeValue("apply_host_settings_effects");
+    const status = await nativeValue("get_desktop_status");
+    assert.equal(status.runInBackground, value);
+    return status;
+  }
+
+  try {
+    receipt.trayStatus = await setRunInBackground(true);
+    assert.equal(receipt.trayStatus.trayAvailable, true);
+    const read = await globalSendRawReader();
+    assert.equal(await visible(), true);
+    await nativeValue("plugin:window|close", window);
+    await browser.waitUntil(async () => (await visible()) === false);
+    receipt.hiddenFocus = await press();
+    await delay(500);
+    receipt.hiddenVisible = await visible();
+    assert.equal(receipt.hiddenVisible, false);
+    receipt.hiddenRaw = await read();
+    assert.deepEqual(receipt.hiddenRaw.events, []);
+    return read;
+  } finally {
+    if ((await visible()) === false) {
+      await nativeValue("plugin:window|show", window);
+      await browser.waitUntil(async () => (await visible()) === true);
+    }
+    await setRunInBackground(runInBackground);
+  }
+}
+
 export function workbenchChecks() {
   it("edits and clones saved views through the real workspace menu and preserves independent drafts", async () => {
     await openDeepLink("/");
@@ -403,6 +532,385 @@ export function workbenchChecks() {
     await draft.setValue("UNSENT AFTER RESTART");
     await saveDrafts();
   });
+
+  if (
+    process.platform === "linux" &&
+    process.env.SWB_E2E_X11_GLOBAL_SEND === "1"
+  ) {
+    it("preserves an X11 hotkey on conflict, dispatches once, and releases it", async () => {
+      const hotkey = "ctrl+shift+F9";
+      const grabHelper = process.env.SWB_E2E_X11_GRAB_HELPER;
+      assert.ok(
+        grabHelper,
+        "The isolated X11 suite must provide its grab helper",
+      );
+      const draft = await sendDraft();
+      const original = await draft.getValue();
+      const payload = "SWB-X11-GLOBAL-SEND-" + randomUUID().slice(0, 8);
+      const bytes = Buffer.from(payload, "ascii");
+      const directory = join("artifacts", "e2e", process.env.STARTER_E2E_PHASE);
+      const receipt = {
+        platform: "x11",
+        osRelease: osRelease(),
+        candidate: process.env.GITHUB_SHA,
+      };
+      const xdo = async (...args) =>
+        (await execute("xdotool", args, { timeout: 5000 })).stdout.trim();
+      let registered = false;
+      let other;
+      try {
+        await draft.setValue(payload);
+        await editGlobalSend();
+        await captureGlobalSendKey("F9");
+        await $("#shortcut-capture").waitForExist({ reverse: true });
+        registered = true;
+        receipt.binding = await (await globalShortcutKey()).getText();
+        assert.match(receipt.binding, /F9$/);
+        await closeShortcutHelp();
+
+        await withGlobalSendPeer(
+          grabHelper,
+          join(directory, "x11-global-send-conflict.log"),
+          async (peer, command) => {
+            receipt.conflictingPeer = peer;
+            await editGlobalSend();
+            await captureGlobalSendKey("F10");
+            const conflict = await $("#shortcut-conflict");
+            await conflict.waitForDisplayed();
+            assert.match(await conflict.getText(), /system, another app/i);
+            receipt.conflictBinding = await (
+              await globalShortcutKey()
+            ).getText();
+            assert.equal(receipt.conflictBinding, receipt.binding);
+            await command("retained");
+            receipt.retained = true;
+            await clickEnabled("button=Cancel");
+            await closeShortcutHelp();
+          },
+        );
+
+        await checkWorkbenchForegroundSend(
+          receipt,
+          async () => {
+            const foregroundWindow = await xdo("getactivewindow");
+            await xdo("key", hotkey);
+            assert.equal(await xdo("getactivewindow"), foregroundWindow);
+            return { foregroundWindow };
+          },
+          bytes,
+        );
+        const read = await globalSendRawReader();
+        const title = "Serial Workbench X11 test focus";
+        other = spawn("xmessage", ["-title", title, "Native hotkey focus"], {
+          stdio: "ignore",
+        });
+        const otherWindow = await xdo("search", "--sync", "--name", title);
+        await xdo("windowactivate", "--sync", otherWindow);
+        receipt.focusBefore = await xdo("getactivewindow");
+        assert.equal(receipt.focusBefore, otherWindow);
+        await xdo("keydown", hotkey);
+        try {
+          await browser.waitUntil(async () => {
+            receipt.raw = await read();
+            return rawRxBytes(receipt.raw).length >= bytes.length;
+          });
+          await delay(800);
+        } finally {
+          await xdo("keyup", hotkey);
+        }
+        receipt.raw = await read();
+        checkGlobalSendRaw(receipt.raw, bytes);
+        receipt.focusAfter = await xdo("getactivewindow");
+        assert.equal(receipt.focusAfter, otherWindow);
+
+        await disableGlobalSend();
+        registered = false;
+        const readDisabled = await globalSendRawReader();
+        await xdo("windowactivate", "--sync", otherWindow);
+        receipt.disabledFocus = await xdo("getactivewindow");
+        assert.equal(receipt.disabledFocus, otherWindow);
+        await xdo("key", hotkey);
+        await delay(500);
+        receipt.disabledRaw = await readDisabled();
+        assert.deepEqual(receipt.disabledRaw.events, []);
+        await withGlobalSendPeer(
+          grabHelper,
+          join(directory, "x11-global-send-release.log"),
+          async (_peer, command) => {
+            await command("reclaim");
+            receipt.reclaimed = true;
+          },
+        );
+
+        await editGlobalSend();
+        await captureGlobalSendKey("F9");
+        await $("#shortcut-capture").waitForExist({ reverse: true });
+        registered = true;
+        assert.equal(
+          await (await globalShortcutKey()).getText(),
+          receipt.binding,
+        );
+        await closeShortcutHelp();
+        await editGlobalSend();
+        await captureGlobalSendKey("F8");
+        await $("#shortcut-capture").waitForExist({ reverse: true });
+        receipt.changedBinding = await (await globalShortcutKey()).getText();
+        assert.match(receipt.changedBinding, /F8$/);
+        await closeShortcutHelp();
+        await withGlobalSendPeer(
+          grabHelper,
+          join(directory, "x11-global-send-change.log"),
+          async (_peer, command) => {
+            await command("reclaim");
+            receipt.reclaimedAfterChange = true;
+          },
+        );
+
+        const readChanged = await globalSendRawReader();
+        await xdo("windowactivate", "--sync", otherWindow);
+        receipt.changedFocusBefore = await xdo("getactivewindow");
+        assert.equal(receipt.changedFocusBefore, otherWindow);
+        await xdo("key", hotkey);
+        await delay(500);
+        receipt.oldKeyRaw = await readChanged();
+        assert.deepEqual(receipt.oldKeyRaw.events, []);
+        await xdo("key", "ctrl+shift+F8");
+        await browser.waitUntil(async () => {
+          receipt.newKeyRaw = await readChanged();
+          return (
+            receipt.newKeyRaw.events.some(({ kind }) => kind === "tx") &&
+            rawRxBytes(receipt.newKeyRaw).length >= bytes.length
+          );
+        });
+        checkGlobalSendRaw(receipt.newKeyRaw, bytes);
+        receipt.changedFocusAfter = await xdo("getactivewindow");
+        assert.equal(receipt.changedFocusAfter, otherWindow);
+
+        const readHidden = await checkTrayHiddenGlobalSend(
+          receipt,
+          async () => {
+            await xdo("windowactivate", "--sync", otherWindow);
+            const focus = await xdo("getactivewindow");
+            assert.equal(focus, otherWindow);
+            await xdo("key", "ctrl+shift+F8");
+            assert.equal(await xdo("getactivewindow"), otherWindow);
+            return focus;
+          },
+        );
+        await xdo("windowactivate", "--sync", otherWindow);
+        receipt.restoredFocus = await xdo("getactivewindow");
+        assert.equal(receipt.restoredFocus, otherWindow);
+        await xdo("key", "ctrl+shift+F8");
+        await browser.waitUntil(async () => {
+          receipt.restoredRaw = await readHidden();
+          return rawRxBytes(receipt.restoredRaw).length >= bytes.length;
+        });
+        checkGlobalSendRaw(receipt.restoredRaw, bytes);
+      } catch (error) {
+        receipt.failure =
+          error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(
+          join(directory, "native-global-send.json"),
+          JSON.stringify(receipt, null, 2),
+        );
+        other?.kill();
+        if (registered) await disableGlobalSend();
+        await draft.setValue(original);
+      }
+    });
+  }
+
+  const globalSendHelper = process.env.SWB_E2E_GLOBAL_SEND_HELPER;
+  if (globalSendHelper && ["win32", "darwin"].includes(process.platform)) {
+    it("checks system shortcut conflict and release and records cross-app dispatch", async () => {
+      const directory = join("artifacts", "e2e", process.env.STARTER_E2E_PHASE);
+      const draft = await sendDraft();
+      const original = await draft.getValue();
+      const payload = "SWB-GLOBAL-SEND-" + randomUUID().slice(0, 8);
+      const bytes = Buffer.from(payload, "ascii");
+      const receipt = {
+        platform: process.platform,
+        osRelease: osRelease(),
+        candidate: process.env.GITHUB_SHA,
+        conflict: false,
+        reclaimed: false,
+      };
+      try {
+        await withGlobalSendPeer(
+          globalSendHelper,
+          join(directory, "global-send-peer.log"),
+          async (peer, command) => {
+            receipt.peer = peer;
+            await draft.setValue(payload);
+            await editGlobalSend();
+            assert.equal(await (await globalShortcutKey()).getText(), "Off");
+            await captureGlobalSendKey("F9");
+            await $("#shortcut-capture").waitForExist({ reverse: true });
+            const saved = await (await globalShortcutKey()).getText();
+            assert.match(saved, /F9$/);
+            receipt.binding = saved;
+            await closeShortcutHelp();
+
+            await editGlobalSend();
+            await captureGlobalSendKey("F10");
+            const conflict = await $("#shortcut-conflict");
+            await conflict.waitForDisplayed();
+            assert.match(await conflict.getText(), /system, another app/i);
+            assert.equal(await (await globalShortcutKey()).getText(), saved);
+            receipt.conflict = true;
+            await command("retained");
+            receipt.retained = true;
+            await clickEnabled("button=Cancel");
+            const traceStart = readGlobalSendNativeTrace(directory).length;
+            await closeShortcutHelp();
+
+            let dispatchFailure;
+            try {
+              if (peer.canPost) {
+                try {
+                  await browser.waitUntil(
+                    () => {
+                      receipt.workbenchTarget = readGlobalSendNativeTrace(
+                        directory,
+                      )
+                        .slice(traceStart)
+                        .findLast((line) =>
+                          line.includes("target: window=main"),
+                        );
+                      return (
+                        receipt.workbenchTarget
+                          ?.trimEnd()
+                          .endsWith("enabled=true") ?? false
+                      );
+                    },
+                    {
+                      timeoutMsg:
+                        "The native global send target was not enabled after closing the dialog",
+                    },
+                  );
+                  const pid = Number(process.env.STARTER_E2E_APP_PID);
+                  assert.ok(Number.isSafeInteger(pid) && pid > 0);
+                  await checkWorkbenchForegroundSend(
+                    receipt,
+                    async () => {
+                      const posted = await command("press-workbench");
+                      assert.equal(posted.foreground, true);
+                      assert.equal(posted.foregroundPID, pid);
+                      return posted;
+                    },
+                    bytes,
+                  );
+                } catch (error) {
+                  dispatchFailure = { error };
+                  receipt.workbenchFailure =
+                    error instanceof Error ? error.message : String(error);
+                } finally {
+                  receipt.workbenchNativeTrace =
+                    readGlobalSendNativeTrace(directory).slice(traceStart);
+                }
+                const read = await globalSendRawReader();
+                receipt.focus = await command("focus");
+                await browser.waitUntil(
+                  async () => {
+                    receipt.focus = await command("foreground");
+                    return receipt.focus.foreground;
+                  },
+                  {
+                    timeoutMsg:
+                      "The independent test application did not get foreground",
+                  },
+                );
+                if (process.platform === "darwin") {
+                  receipt.controlPosted = await command("press-control");
+                  await browser.waitUntil(
+                    async () => {
+                      receipt.controlObserved = await command("foreground");
+                      return (
+                        receipt.controlObserved.controlPresses > 0 &&
+                        receipt.controlObserved.controlReleases > 0
+                      );
+                    },
+                    {
+                      timeout: 2000,
+                      timeoutMsg:
+                        "The macOS F10 control produced no complete Carbon callback",
+                    },
+                  );
+                  assert.equal(receipt.controlObserved.foreground, true);
+                  assert.equal(receipt.controlObserved.controlPresses, 1);
+                  assert.equal(receipt.controlObserved.controlReleases, 1);
+                }
+                assert.equal((await command("press")).foreground, true);
+                receipt.inputPostedWithPeerForeground = true;
+                await browser.waitUntil(
+                  async () => {
+                    const page = await read();
+                    receipt.raw = page;
+                    return (
+                      page.events.some(({ kind }) => kind === "tx") &&
+                      rawRxBytes(page).length >= bytes.length
+                    );
+                  },
+                  {
+                    timeoutMsg:
+                      "No matching Virtual Echo TX and RX reached the Raw page",
+                  },
+                );
+                await delay(300);
+                const page = await read();
+                receipt.raw = page;
+                checkGlobalSendRaw(page, bytes);
+                assert.equal((await command("foreground")).foreground, true);
+                receipt.dispatch = "passed";
+
+                await checkTrayHiddenGlobalSend(receipt, async () => {
+                  assert.equal((await command("foreground")).foreground, true);
+                  await command("retained");
+                  const posted = await command("press");
+                  assert.equal(posted.foreground, true);
+                  return posted;
+                });
+              } else {
+                receipt.dispatch = "system-input-authorization-unavailable";
+                assert.equal(process.platform, "darwin");
+                console.warn(
+                  "Global shortcut dispatch still needs a macOS session authorized to post input.",
+                );
+              }
+            } catch (error) {
+              receipt.crossAppFailure =
+                error instanceof Error ? error.message : String(error);
+              dispatchFailure ??= { error };
+            }
+            try {
+              await disableGlobalSend();
+              await command("reclaim");
+              receipt.reclaimed = true;
+            } catch (error) {
+              if (!dispatchFailure) throw error;
+              receipt.releaseFailure =
+                error instanceof Error ? error.message : String(error);
+            }
+            if (dispatchFailure) throw dispatchFailure.error;
+          },
+        );
+      } catch (error) {
+        receipt.failure =
+          error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(
+          join(directory, "native-global-send.json"),
+          JSON.stringify(receipt, null, 2),
+        );
+        if (!receipt.failure) await draft.setValue(original);
+      }
+    });
+  }
 
   it("keeps connected controls usable through rapid theme changes and focus refreshes", async () => {
     const before = await readSettings();
