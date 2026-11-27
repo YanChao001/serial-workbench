@@ -1263,6 +1263,100 @@ async fn workspace_import_preview_rejects_future_or_invalid_references() {
 }
 
 #[tokio::test]
+async fn configuration_inspection_reads_current_revisions_without_saving_or_granting() {
+    let f = Fixture::new(0).await;
+    let bench = f.target("workspace", "bench");
+    f.grant("document-a", "workspace.modify", &bench);
+    f.grant("document-a", "content.read", &bench);
+    f.grant("document-a", "metadata.read", &f.host_target());
+    for (action, params) in [
+        (
+            "workspace.save",
+            json!({"value":preview_document("Current workspace")}),
+        ),
+        (
+            "workspace.commands.change",
+            json!({"kind":"saveGroup","group":{"id":"existing","name":"Existing"}}),
+        ),
+    ] {
+        let admitted = invoke(
+            &f.first,
+            call(&f.first, &bench, action, Some(0.into()), params),
+        )
+        .await;
+        assert_eq!(
+            settled(&f.first, &f.host_target(), admitted).await.state,
+            OperationState::Succeeded
+        );
+    }
+    let workspace_before = read(&f.first, &bench, "workspace.read", json!({})).await;
+    let read_groups = json!({"selection":{"view":"groups"}});
+    let commands_before = read(
+        &f.first,
+        &bench,
+        "workspace.commands.read",
+        read_groups.clone(),
+    )
+    .await;
+    let configuration = json!({
+        "format":"serial-workbench-configuration",
+        "version":1,
+        "workspace":preview_document("Imported configuration"),
+        "groups":[{"id":"imported","name":"Imported commands"}],
+        "commands":[],
+        "scripts":[{
+            "packageId":"org.example.missing",
+            "version":"1.0.0",
+            "archiveSha256":"1".repeat(64),
+            "actionId":"org.example.missing.start"
+        }],
+        "credentialRefs":[{
+            "slot":"gateway",
+            "hostId":"other-host",
+            "referenceId":"opaque-reference"
+        }]
+    });
+    let params = json!({"json":configuration.to_string()});
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.second.attachment().actor_id.clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![bench.clone()],
+            },
+        )
+        .unwrap();
+    let request = query(
+        &f.second,
+        &bench,
+        "workspace.configuration.inspect",
+        params.clone(),
+    );
+    assert!(matches!(
+        f.second.request(RpcRequest::Query(request)).await.unwrap(),
+        RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"
+    ));
+
+    let revision_before = f.auth.current_revision().unwrap();
+    let preview = read(&f.first, &bench, "workspace.configuration.inspect", params).await;
+    assert_eq!(preview["workspaceRevision"], "1");
+    assert_eq!(preview["commandRevision"], "1");
+    assert_eq!(preview["configuration"], configuration);
+    assert_eq!(preview["scriptStatuses"], json!(["missing"]));
+    assert_eq!(f.auth.current_revision().unwrap(), revision_before);
+    assert_eq!(
+        read(&f.first, &bench, "workspace.read", json!({})).await,
+        workspace_before
+    );
+    assert_eq!(
+        read(&f.first, &bench, "workspace.commands.read", read_groups).await,
+        commands_before
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
 async fn command_library_scope_permissions_cas_and_repeat_receipt_are_real_ipc() {
     let f = Fixture::new(0).await;
     let bench = f.target("workspace", "bench");

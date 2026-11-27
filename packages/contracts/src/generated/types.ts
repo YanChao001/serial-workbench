@@ -4453,6 +4453,10 @@ export type QueryResult_Deserialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Deserialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Deserialize }
+  | {
+      kind: "workspace_configuration_inspection";
+      value: WorkspaceConfigurationInspection_Deserialize;
+    }
   | { kind: "experiment_package"; value: ExperimentPackage_Deserialize }
   | { kind: "experiment_inspection"; value: ExperimentInspection_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
@@ -4511,6 +4515,10 @@ export type QueryResult_Serialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Serialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Serialize }
+  | {
+      kind: "workspace_configuration_inspection";
+      value: WorkspaceConfigurationInspection_Serialize;
+    }
   | { kind: "experiment_package"; value: ExperimentPackage_Serialize }
   | { kind: "experiment_inspection"; value: ExperimentInspection_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
@@ -5871,6 +5879,53 @@ export type WorkerObservation_Serialize = {
   lastMemory?: WorkerMemorySample;
 };
 
+export type WorkspaceConfiguration =
+  WorkspaceConfiguration_Serialize | WorkspaceConfiguration_Deserialize;
+
+export type WorkspaceConfigurationInspection =
+  | WorkspaceConfigurationInspection_Serialize
+  | WorkspaceConfigurationInspection_Deserialize;
+
+export type WorkspaceConfigurationInspection_Deserialize = {
+  configuration: WorkspaceConfiguration_Deserialize;
+  workspaceRevision: U64;
+  commandRevision?: U64;
+  scriptStatuses: WorkspaceScriptStatus[];
+};
+
+export type WorkspaceConfigurationInspection_Serialize = {
+  configuration: WorkspaceConfiguration_Serialize;
+  workspaceRevision: U64;
+  commandRevision?: U64;
+  scriptStatuses: WorkspaceScriptStatus[];
+};
+
+export type WorkspaceConfiguration_Deserialize = {
+  format: string;
+  version: number;
+  workspace: WorkspaceDocument_Deserialize;
+  groups: CommandGroup[];
+  commands: CommandDraft_Deserialize[];
+  scripts: WorkspaceScriptReference[];
+  credentialRefs: WorkspaceCredentialReference[];
+};
+
+export type WorkspaceConfiguration_Serialize = {
+  format: string;
+  version: number;
+  workspace: WorkspaceDocument_Serialize;
+  groups: CommandGroup[];
+  commands: CommandDraft_Serialize[];
+  scripts: WorkspaceScriptReference[];
+  credentialRefs: WorkspaceCredentialReference[];
+};
+
+export type WorkspaceCredentialReference = {
+  slot: Id;
+  hostId: Id;
+  referenceId: Id;
+};
+
 export type WorkspaceDocument =
   WorkspaceDocument_Serialize | WorkspaceDocument_Deserialize;
 
@@ -5941,6 +5996,16 @@ export type WorkspaceSaveParams_Deserialize = {
 export type WorkspaceSaveParams_Serialize = {
   value: WorkspaceDocument_Serialize;
 };
+
+export type WorkspaceScriptReference = {
+  packageId: NodePackageId;
+  version: NodePackageVersion;
+  archiveSha256: Digest;
+  actionId: Id;
+};
+
+export type WorkspaceScriptStatus =
+  "matched" | "missing" | "changed" | "unavailable";
 
 export type WorkspaceSnapshot =
   WorkspaceSnapshot_Serialize | WorkspaceSnapshot_Deserialize;

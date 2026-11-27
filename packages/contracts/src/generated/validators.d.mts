@@ -326,6 +326,7 @@ import type {
   WireFrame,
   WorkerMemorySample,
   WorkerObservation,
+  WorkspaceConfigurationInspection,
   WorkspaceDocument,
   WorkspaceDocumentResult,
   WorkspaceListParams,
@@ -1173,6 +1174,9 @@ export declare function validateWorkerMemorySample(
 export declare function validateWorkerObservation(
   value: unknown,
 ): value is WorkerObservation;
+export declare function validateWorkspaceConfigurationInspection(
+  value: unknown,
+): value is WorkspaceConfigurationInspection;
 export declare function validateWorkspaceDocument(
   value: unknown,
 ): value is WorkspaceDocument;

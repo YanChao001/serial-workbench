@@ -17,6 +17,8 @@ mod operation_inspection;
 mod shutdown;
 #[path = "task_children.rs"]
 mod task_children;
+#[path = "workspace/configuration_api.rs"]
+mod workspace_configuration_api;
 use crate::{
     auth::{AuthService, AuthenticatedActor, GrantStamp},
     device::{DeviceService, TransportOpener},
@@ -581,6 +583,7 @@ impl Host {
                             | BuiltinAction::WorkspaceRead
                             | BuiltinAction::WorkspaceExport
                             | BuiltinAction::WorkspaceImportPreview
+                            | BuiltinAction::WorkspaceConfigurationInspect
                             | BuiltinAction::ExperimentExport
                             | BuiltinAction::ExperimentInspect
                             | BuiltinAction::CommandLibraryRead
@@ -943,6 +946,7 @@ impl Host {
                 action,
                 BuiltinAction::ActionCheck
                     | BuiltinAction::WorkspaceImportPreview
+                    | BuiltinAction::WorkspaceConfigurationInspect
                     | BuiltinAction::ExperimentExport
                     | BuiltinAction::ExperimentInspect
                     | BuiltinAction::SessionMetrics
@@ -990,6 +994,10 @@ impl Host {
                 .experiment_inspect(actor, query)
                 .await
                 .map(|preview| QueryResult::ExperimentInspection(Box::new(preview))),
+            BuiltinAction::WorkspaceConfigurationInspect => self
+                .inspect_workspace_configuration(actor, query)
+                .await
+                .map(|preview| QueryResult::WorkspaceConfigurationInspection(Box::new(preview))),
             BuiltinAction::WorkspaceImportPreview => {
                 let documents = self.inner.documents.clone();
                 let actor = actor.clone();

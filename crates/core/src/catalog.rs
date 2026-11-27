@@ -148,6 +148,7 @@ fn builtin_specs(dialect: SchemaDialect) -> &'static [ActionSpec] {
 pub enum BuiltinAction {
     ActionCheck,
     WorkspaceImportPreview,
+    WorkspaceConfigurationInspect,
     ExperimentExport,
     ExperimentInspect,
     Client(ClientCapability),
@@ -242,9 +243,10 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 115] = [
+    pub const ALL: [Self; 116] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
+        Self::WorkspaceConfigurationInspect,
         Self::ExperimentExport,
         Self::ExperimentInspect,
         Self::Client(ClientCapability::WindowRead),
@@ -410,6 +412,7 @@ impl BuiltinAction {
             Self::SettingsImport => "settings.import",
             Self::ActionCheck => "action.check",
             Self::WorkspaceImportPreview => "workspace.importPreview",
+            Self::WorkspaceConfigurationInspect => "workspace.configuration.inspect",
             Self::ExperimentExport => "workspace.experiment.export",
             Self::ExperimentInspect => "workspace.experiment.inspect",
             Self::WorkspaceList => "workspace.list",
@@ -595,9 +598,10 @@ impl BuiltinAction {
                 "plugin",
                 "client",
             ],
-            Self::WorkspaceImportPreview | Self::ExperimentExport | Self::ExperimentInspect => {
-                &["workspace"]
-            }
+            Self::WorkspaceImportPreview
+            | Self::WorkspaceConfigurationInspect
+            | Self::ExperimentExport
+            | Self::ExperimentInspect => &["workspace"],
             Self::Client(_) => &["client"],
             Self::CaptureStart | Self::CaptureRecover => &["file"],
             Self::CaptureStop => &["capture"],
@@ -826,6 +830,7 @@ impl BuiltinAction {
             self,
             Self::ActionCheck
                 | Self::WorkspaceImportPreview
+                | Self::WorkspaceConfigurationInspect
                 | Self::ExperimentInspect
                 | Self::ExperimentExport
         ) {
@@ -1039,6 +1044,10 @@ impl BuiltinAction {
             Self::WorkspaceImportPreview => ActionSpec::of_with_dialect::<
                 DocumentImportParams,
                 WorkspaceDocument,
+            >(meta, dialect),
+            Self::WorkspaceConfigurationInspect => ActionSpec::of_with_dialect::<
+                DocumentImportParams,
+                WorkspaceConfigurationInspection,
             >(meta, dialect),
             Self::ExperimentExport => ActionSpec::of_with_dialect::<
                 ExperimentExportParams,

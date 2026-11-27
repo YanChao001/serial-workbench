@@ -1766,6 +1766,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ExperimentExportParams,
         ExperimentPackage,
         ExperimentInspection,
+        WorkspaceConfigurationInspection,
         StreamCursorResult,
         FileTransferParams,
         PasteTransferParams,

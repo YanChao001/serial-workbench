@@ -22,13 +22,17 @@ impl WorkspaceService {
         }
     }
     pub fn read(&self) -> HostResult<WorkspaceSnapshot> {
-        let (revision, value) = read_document(&self.store, &self.id)?;
-        let value: WorkspaceDocument = value;
-        value.validate()?;
-        if revision != U64::from(0) && !value.archived {
+        let snapshot = self.snapshot()?;
+        if snapshot.revision != U64::from(0) && !snapshot.value.archived {
             self.store
                 .register_workspace(&self.id, &self.workspace_id)?;
         }
+        Ok(snapshot)
+    }
+    pub(crate) fn snapshot(&self) -> HostResult<WorkspaceSnapshot> {
+        let (revision, value) = read_document(&self.store, &self.id)?;
+        let value: WorkspaceDocument = value;
+        value.validate()?;
         Ok(WorkspaceSnapshot { revision, value })
     }
     pub(crate) fn ensure_editable(&self) -> HostResult<()> {

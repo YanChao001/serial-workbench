@@ -3,6 +3,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+mod configuration;
+pub use configuration::*;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LayoutTemplate {

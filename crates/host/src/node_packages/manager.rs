@@ -366,6 +366,62 @@ impl NodePackageManager {
         })
     }
 
+    pub(crate) fn workspace_script_statuses(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        scripts: &[WorkspaceScriptReference],
+    ) -> HostResult<Vec<WorkspaceScriptStatus>> {
+        if scripts.is_empty() {
+            return Ok(Vec::new());
+        }
+        if let Err(error) = self.auth.require(actor, "metadata.read", target) {
+            return if error.code == "PERMISSION_DENIED" {
+                Ok(vec![WorkspaceScriptStatus::Unavailable; scripts.len()])
+            } else {
+                Err(error)
+            };
+        }
+
+        let _permit = self
+            .read_capacity
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| failure("HOST_BUSY", "packageReadCapacity"))?;
+        let snapshot = NodePackageInstaller::read_snapshot(&self.store)?;
+        let packages: std::collections::HashMap<_, _> = snapshot
+            .packages
+            .iter()
+            .map(|package| (&package.manifest.id, package))
+            .collect();
+        let statuses = scripts
+            .iter()
+            .map(|script| {
+                let Some(package) = packages.get(&script.package_id) else {
+                    return WorkspaceScriptStatus::Missing;
+                };
+                if package.manifest.version != script.version
+                    || package.archive_sha256 != script.archive_sha256
+                    || !package
+                        .manifest
+                        .contributes
+                        .actions
+                        .iter()
+                        .any(|action| action.action_id == script.action_id)
+                {
+                    return WorkspaceScriptStatus::Changed;
+                }
+                if package.enabled && package.execution_approved() {
+                    WorkspaceScriptStatus::Matched
+                } else {
+                    WorkspaceScriptStatus::Unavailable
+                }
+            })
+            .collect();
+        self.auth.require(actor, "metadata.read", target)?;
+        Ok(statuses)
+    }
+
     pub(crate) fn details_read(
         &self,
         actor: &AuthenticatedActor,
