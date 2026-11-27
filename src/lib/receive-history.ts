@@ -104,7 +104,7 @@ function shiftedMessage(
       }
     : undefined;
 }
-function txKey(item: StreamItem): string | undefined {
+export function historyTxRecordKey(item: StreamItem): string | undefined {
   if (
     item.kind !== "source" ||
     (item.event.kind !== "tx" && item.event.kind !== "tx_intent")
@@ -231,7 +231,7 @@ export class ReceiveHistoryBuffer {
         this.appendReceive(item.event, item.displayRecord, item.receiveIdleMs);
         continue;
       }
-      const key = txKey(item);
+      const key = historyTxRecordKey(item);
       const previous = key ? this.transmissions.get(key) : undefined;
       if (previous) {
         if (

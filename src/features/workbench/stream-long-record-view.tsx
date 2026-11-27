@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { TextEncoding, TxReceipt } from "@serial-workbench/contracts";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +19,12 @@ import {
 } from "./stream-long-record";
 import { workbenchStatus } from "./stream-presentation";
 
+export type LongRecordReading = {
+  opened: boolean;
+  page: number;
+  request?: object;
+};
+
 type LongRecordHighlight = {
   track: (id: string, text?: string) => void;
   render: (text: string) => ReactNode;
@@ -19,6 +32,8 @@ type LongRecordHighlight = {
 
 export function LongStreamRecordView({
   record,
+  remembered,
+  revealRequest,
   initialOffset,
   labels,
   mode,
@@ -29,6 +44,8 @@ export function LongStreamRecordView({
   highlight,
 }: {
   record: LongStreamRecord;
+  remembered: Map<string, LongRecordReading>;
+  revealRequest?: object;
   labels: WorkbenchLabels;
   mode: LongRecordMode;
   encoding: TextEncoding;
@@ -44,7 +61,28 @@ export function LongStreamRecordView({
     initialOffset < record.end
       ? Number((initialOffset - record.offset) / BigInt(LONG_RECORD_PAGE_BYTES))
       : undefined;
-  const [opened, setOpened] = useState(initialPage !== undefined);
+  const request = initialPage === undefined ? undefined : revealRequest;
+  const [reading, setReading] = useState<LongRecordReading>(() => {
+    const saved = remembered.get(record.key);
+    if (saved && (request === undefined || saved.request === request))
+      return saved;
+    return {
+      opened: initialPage !== undefined,
+      page: initialPage ?? 0,
+      request,
+    };
+  });
+  if (initialPage !== undefined && request !== reading.request)
+    setReading({ opened: true, page: initialPage, request });
+  useLayoutEffect(() => {
+    if (reading.opened || remembered.has(record.key))
+      remembered.set(record.key, reading);
+  }, [reading, record.key, remembered]);
+  function updateReading(next: LongRecordReading) {
+    const value = { ...next, request: reading.request };
+    remembered.set(record.key, value);
+    setReading(value);
+  }
   const length = record.end - record.offset;
   const declared = record.message
     ? BigInt(record.message.messageLength)
@@ -55,8 +93,12 @@ export function LongStreamRecordView({
   return (
     <details
       className="workbench-long-record"
-      open={opened}
-      onToggle={(event) => setOpened(event.currentTarget.open)}
+      open={reading.opened}
+      onToggle={(event) => {
+        const opened = event.currentTarget.open;
+        if (opened !== reading.opened)
+          updateReading({ opened, page: initialPage ?? 0 });
+      }}
     >
       <summary>
         {labels.longRecord} · {length.toString()}
@@ -66,10 +108,11 @@ export function LongStreamRecordView({
         {receipt ? " · " + workbenchStatus(receipt.outcome, labels) : ""}
         {receipt?.backendError ? " · " + receipt.backendError.code : ""}
       </summary>
-      {opened && (
+      {reading.opened && (
         <LongRecordPage
           record={record}
-          initialPage={initialPage ?? 0}
+          requested={reading.page}
+          setRequested={(page) => updateReading({ opened: true, page })}
           labels={labels}
           mode={mode}
           encoding={encoding}
@@ -84,7 +127,8 @@ export function LongStreamRecordView({
 
 function LongRecordPage({
   record,
-  initialPage,
+  requested,
+  setRequested,
   labels,
   mode,
   encoding,
@@ -99,9 +143,9 @@ function LongRecordPage({
   hexFormat: HexFormat;
   hexSource?: string;
   highlight?: LongRecordHighlight;
-  initialPage: number;
+  requested: number;
+  setRequested: (page: number) => void;
 }) {
-  const [requested, setRequested] = useState(initialPage);
   const pageCount = Math.max(
     1,
     Math.ceil(Number(record.end - record.offset) / LONG_RECORD_PAGE_BYTES),

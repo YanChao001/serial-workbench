@@ -1,9 +1,22 @@
 /// <reference lib="dom" />
-import { expect, test, type Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 import { en } from "../../src/i18n/en";
 import { zhCN } from "../../src/i18n/zh-CN";
+
+function firstVisibleOffset(log: Locator) {
+  return log.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return Array.from(
+      element.querySelectorAll<HTMLElement>("[data-offset]"),
+    ).find((row) => {
+      const box = row.getBoundingClientRect();
+      return box.bottom > bounds.top && box.top < bounds.bottom;
+    })?.dataset.offset;
+  });
+}
 
 async function choose(page: Page, name: string, value: string) {
   await page.getByRole("combobox", { name, exact: true }).click();
@@ -59,6 +72,334 @@ function packets(
     };
   });
 }
+
+test("large receive history keeps offscreen rows out of the DOM and locates retained bytes", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  for (let start = 1; start <= 600; start += 50) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 50),
+    );
+    await expect(log).toContainText(
+      `packet-${String(start + 49).padStart(4, "0")}`,
+    );
+  }
+
+  const rows = log.locator(".workbench-stream-row");
+  const last = log.locator('[data-offset="7188"]');
+  await expect(last).toBeInViewport();
+  const mounted = await rows.count();
+  const receipt = info.outputPath("mounted-row-count.json");
+  await writeFile(receipt, JSON.stringify({ received: 600, mounted }) + "\n");
+  await info.attach("mounted-row-count", {
+    path: receipt,
+    contentType: "application/json",
+  });
+  expect(mounted).toBeLessThan(192);
+
+  await log.hover();
+  await page.mouse.wheel(0, -5400);
+  const latest = terminal.getByRole("button", {
+    name: en["workbench.returnToLatest"],
+  });
+  await expect(latest).toBeVisible();
+  await expect(last).toHaveCount(0);
+  const readingOffset = await firstVisibleOffset(log);
+  expect(readingOffset).toBeDefined();
+  const rowInset = () =>
+    log.evaluate((element, offset) => {
+      const row = Array.from(
+        element.querySelectorAll<HTMLElement>("[data-offset]"),
+      ).find((row) => row.dataset.offset === offset);
+      return (
+        row &&
+        row.getBoundingClientRect().top - element.getBoundingClientRect().top
+      );
+    }, readingOffset);
+  const readingInset = await rowInset();
+  expect(readingInset).toBeDefined();
+  const insetChange = async () =>
+    Math.abs(((await rowInset()) ?? Infinity) - (readingInset ?? 0));
+  await page.setViewportSize({ width: 420, height: 530 });
+  await expect.poll(insetChange).toBeLessThanOrEqual(1);
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await expect.poll(insetChange).toBeLessThanOrEqual(1);
+
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    packets(601, 1),
+  );
+  await expect(latest).toContainText("1");
+  await expect(log).not.toContainText("packet-0601");
+
+  const trigger = terminal.getByRole("button", { name: "Record location" });
+  await trigger.click();
+  const panel = page.getByRole("dialog", { name: "Record location" });
+  await choose(page, "Locate by", "Event");
+  await panel.getByRole("textbox", { name: "Event", exact: true }).fill("14");
+  await panel.getByRole("button", { name: "Jump", exact: true }).click();
+  const target = log.locator('[data-location-target="true"][data-offset="36"]');
+  await expect(target).toHaveText(/packet-0004/);
+  await expect(target).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await page.setViewportSize({ width: 420, height: 530 });
+  await expect(target).toBeInViewport();
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await terminal.getByRole("button", { name: en["workbench.resume"] }).click();
+  await expect(log.locator('[data-offset="7200"]')).toBeInViewport();
+  await expect(target).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("receive-window-1240x760.png"),
+    animations: "disabled",
+  });
+
+  await terminal.getByRole("button", { name: "Search bytes" }).click();
+  await terminal
+    .getByRole("textbox", { name: "Search bytes" })
+    .fill("packet-0011");
+  const match = log.locator('[data-offset="120"]');
+  await expect(match).toBeInViewport();
+  await expect(match).toContainText("packet-0011");
+
+  await page.setViewportSize({ width: 420, height: 530 });
+  await expect(match).toBeInViewport();
+  await page.screenshot({
+    path: info.outputPath("receive-search-420x530.png"),
+    animations: "disabled",
+  });
+});
+
+test("keeps focused HEX boundaries through window activation and eviction", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  const options = page.getByRole("button", { name: "Display options" });
+  await options.click();
+  await choose(page, en["workbench.historyRecords"], "500");
+  await options.click();
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  for (let start = 1; start <= 192; start += 48) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 48),
+    );
+  }
+  const first = log.locator('[data-offset="2280"]');
+  const last = log.locator('[data-offset="2292"]');
+  await expect(last).toBeInViewport();
+  await first.focus();
+  await log.evaluate((node) => {
+    const start = node.querySelector(
+      '[data-offset="2280"] [data-hex-source]',
+    )?.firstChild;
+    const end = node.querySelector(
+      '[data-offset="2292"] [data-hex-source]',
+    )?.firstChild;
+    if (!start || !end) throw new Error("Missing HEX range");
+    document.getSelection()!.setBaseAndExtent(start, 0, end, 2);
+  });
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    packets(193, 1),
+  );
+  await expect(log.locator('[data-offset="2304"]')).toBeInViewport();
+  await expect(first).toBeFocused();
+  const edges = () =>
+    log.evaluate(() => {
+      const selection = document.getSelection();
+      return [selection?.anchorNode, selection?.focusNode].map(
+        (edge) =>
+          edge?.parentElement?.closest<HTMLElement>("[data-offset]")?.dataset
+            .offset,
+      );
+    });
+  await expect.poll(edges).toEqual(["2280", "2292"]);
+
+  await log.hover();
+  await page.mouse.wheel(0, -3500);
+  const latest = terminal.getByRole("button", {
+    name: en["workbench.returnToLatest"],
+  });
+  await expect(latest).toBeVisible();
+  await expect.poll(edges).toEqual(["2280", "2292"]);
+  await expect(first).toBeFocused();
+  await expect
+    .poll(() => log.evaluate((element) => element.scrollTop))
+    .toBeLessThan(5500);
+  const readOffset = await firstVisibleOffset(log);
+  expect(Number(readOffset)).toBeGreaterThan(600);
+  for (let start = 194; start <= 550; start += 51) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 51),
+    );
+  }
+  await expect(latest).toContainText("357");
+  await expect(log.locator(`[data-offset="${readOffset}"]`)).toBeInViewport();
+  await expect.poll(edges).toEqual(["2280", "2292"]);
+  await expect(first).toBeFocused();
+  await log.evaluate((element) =>
+    element.ownerDocument.getSelection()?.removeAllRanges(),
+  );
+  await log.hover();
+  await page.mouse.wheel(0, 30000);
+  await expect(log.locator('[data-offset="6588"]')).toBeInViewport();
+  await expect(first).toBeFocused();
+  expect(await log.locator(".workbench-stream-row").count()).toBeLessThan(192);
+});
+
+test("keeps a measured mid-history record when widening would clamp the scroll offset", async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 420, height: 530 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const log = page.getByRole("log");
+  for (let start = 1; start <= 420; start += 60) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 60, 640),
+    );
+  }
+  await expect(log.locator('[data-offset="268160"]')).toBeInViewport();
+  await log.press("Home");
+  await expect(log.locator('[data-offset="0"]')).toBeInViewport();
+  for (let step = 0; step < 8; step++) {
+    const before = await firstVisibleOffset(log);
+    await log.evaluate((element) => (element.scrollTop += 6500));
+    await expect.poll(() => firstVisibleOffset(log)).not.toBe(before);
+  }
+  expect(await log.evaluate((element) => element.scrollTop)).toBeGreaterThan(
+    40_000,
+  );
+  const offset = await firstVisibleOffset(log);
+  expect(Number(offset)).toBeGreaterThan(30_000);
+  expect(Number(offset)).toBeLessThan(230_000);
+
+  const record = log.locator(`[data-offset="${offset}"]`);
+  await record.evaluate((row) => {
+    const viewport = row.closest<HTMLElement>('[role="log"]');
+    if (!viewport) throw new Error("Missing receive viewport");
+    const bounds = row.getBoundingClientRect();
+    viewport.scrollTop +=
+      bounds.top - viewport.getBoundingClientRect().top + bounds.height * 0.8;
+  });
+  await expect.poll(() => firstVisibleOffset(log)).toBe(offset);
+  const narrowInset = await record.evaluate(
+    (row) =>
+      row.getBoundingClientRect().top -
+      row.closest('[role="log"]')!.getBoundingClientRect().top,
+  );
+
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await expect(record).toBeInViewport();
+  const wideHeight = await record.evaluate(
+    (row) => row.getBoundingClientRect().height,
+  );
+  expect(-narrowInset).toBeGreaterThan(wideHeight);
+});
+
+test("restores the selected page of a long record after returning to its row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const fixture = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (fixture?.kind !== "source") throw new Error("Missing RX fixture");
+  const fragments = [Buffer.alloc(65536, 65), Buffer.from("TAIL")].map(
+    (bytes, index) => {
+      const offset = index * 65536;
+      return {
+        kind: "source",
+        event: {
+          ...fixture.event,
+          eventSeq: String(index + 11),
+          time: {
+            ...fixture.event.time,
+            sourceMonoNs: String((index + 1) * 200_000_000),
+          },
+          payload: {
+            bytesBase64: bytes.toString("base64"),
+            byteStart: String(offset),
+            byteEnd: String(offset + bytes.length),
+            message: {
+              messageId: "virtualized-long-record",
+              messageType: "fixture",
+              fragmentOffset: String(offset),
+              messageLength: "65540",
+            },
+          },
+        },
+      };
+    },
+  );
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    fragments,
+  );
+  for (let start = 3; start <= 302; start += 50) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 50, 12, 65540 + (start - 3) * 12),
+    );
+  }
+
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  await expect(log.getByText("packet-0302", { exact: true })).toBeInViewport();
+  await log.press("Home");
+  await expect.poll(() => log.evaluate((element) => element.scrollTop)).toBe(0);
+  const detail = log.locator(".workbench-long-record");
+  await detail.locator("summary").click();
+  await detail.getByRole("button", { name: "Next record page" }).click();
+  await expect(detail.getByRole("status")).toContainText("2/2");
+  await terminal
+    .getByRole("button", { name: en["workbench.returnToLatest"] })
+    .click();
+  await expect(detail).toHaveCount(0);
+  await log.press("Home");
+  await expect(detail.getByRole("status")).toContainText("2/2");
+});
 
 test("applies ordered text highlights and keeps receiving when a rule is invalid", async ({
   page,
@@ -1494,8 +1835,22 @@ for (const sample of [
       );
     }
     const log = page.getByRole("log");
-    await expect(log).toContainText("packet-0001");
-    await expect(log).toContainText("packet-1500");
+    await expect(
+      log.getByText("packet-1500", { exact: true }),
+    ).toBeInViewport();
+    await log.press("Home");
+    await expect(
+      log.getByText("packet-0001", { exact: true }),
+    ).toBeInViewport();
+    await page
+      .getByRole("button", {
+        name: words["workbench.returnToLatest"],
+        exact: true,
+      })
+      .click();
+    await expect(
+      log.getByText("packet-1500", { exact: true }),
+    ).toBeInViewport();
     await page
       .getByRole("button", { name: words["workbench.freeze"], exact: true })
       .click();
