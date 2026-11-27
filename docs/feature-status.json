@@ -1223,8 +1223,11 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/76"]
+        "status": "passed",
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/76",
+          "https://github.com/YanChao001/serial-workbench/pull/78"
+        ]
       },
       "hardware": {
         "status": "not-started",
