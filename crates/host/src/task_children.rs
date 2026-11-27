@@ -416,6 +416,7 @@ impl Host {
                         expected_revision: input.expected_revision,
                         lease_id: input.lease_id,
                         execution_mode: Some(scope.operation.execution_mode),
+                        workspace_startup: None,
                     };
                     Ok((delegated, call))
                 })

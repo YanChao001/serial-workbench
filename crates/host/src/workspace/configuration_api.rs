@@ -51,6 +51,91 @@ impl Host {
         .await
     }
 
+    pub(super) async fn workspace_startup_plan(
+        &self,
+        actor: &AuthenticatedActor,
+        query: Query,
+    ) -> HostResult<WorkspaceStartupPlan> {
+        let WorkspaceStartupPlanParams { workspace_revision } = decode(&query.params)?;
+        let target = query.target;
+        let scope = crate::documents::DocumentService::reference(&target)?;
+        let auth = self.inner.auth.clone();
+        let actor = actor.clone();
+        let service = WorkspaceService::new(self.inner.store.clone(), target.id.clone());
+        let packages = self.inner.node_packages.clone();
+
+        blocking(move || {
+            let stamp = auth.capture_grants(&actor)?;
+            auth.require(&actor, "metadata.read", &target)?;
+            current_workspace(&service, workspace_revision)?;
+            let (_, references) = service.configuration_references()?;
+            let statuses = packages.workspace_script_availability(
+                &actor,
+                &configuration_package_target(&target.host_id),
+                &references.scripts,
+            )?;
+            current_workspace(&service, workspace_revision)?;
+            let authorization = auth.snapshot(&actor)?;
+            if let Some(stamp) = stamp {
+                authorization.validate_grants(&stamp)?;
+            }
+            authorization.require("metadata.read", &target)?;
+            let scripts = references
+                .scripts
+                .into_iter()
+                .zip(statuses)
+                .map(
+                    |(reference, (status, target_kinds))| WorkspaceStartupScript {
+                        reference,
+                        status,
+                        target_kinds,
+                    },
+                )
+                .collect();
+            Ok(WorkspaceStartupPlan {
+                scope,
+                workspace_revision,
+                scripts,
+            })
+        })
+        .await
+    }
+
+    pub(super) fn check_workspace_startup(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+    ) -> HostResult<()> {
+        let Some(selection) = &call.workspace_startup else {
+            return Ok(());
+        };
+        if actor.task().is_some() || selection.reference.action_id != call.action_id {
+            return Err(invalid());
+        }
+        let target = Target {
+            host_id: call.host_id.clone(),
+            kind: ResourceKind::try_from("workspace")?,
+            id: selection.workspace_id.clone(),
+            session_id: None,
+            session_epoch: None,
+        };
+        self.inner.auth.require(actor, "metadata.read", &target)?;
+        let service = WorkspaceService::new(self.inner.store.clone(), target.id);
+        current_workspace(&service, selection.workspace_revision)?;
+        let (_, references) = service.configuration_references()?;
+        if !references.scripts.contains(&selection.reference)
+            || self.inner.node_packages.workspace_script_statuses(
+                actor,
+                &configuration_package_target(&call.host_id),
+                std::slice::from_ref(&selection.reference),
+            )? != [WorkspaceScriptStatus::Matched]
+        {
+            return Err(startup_dependency_unavailable());
+        }
+        current_workspace(&service, selection.workspace_revision)?;
+        Ok(())
+    }
+
     pub(super) async fn export_workspace_configuration(
         &self,
         actor: &AuthenticatedActor,
@@ -67,13 +152,7 @@ impl Host {
             let stamp = auth.capture_grants(&actor)?;
             auth.require(&actor, "metadata.read", &target)?;
             let service = WorkspaceService::new(store.clone(), target.id.clone());
-            let snapshot = service.snapshot()?;
-            if snapshot.value.archived {
-                return Err(HostError::new("WORKSPACE_DELETED", "Workspace was removed"));
-            }
-            if snapshot.revision != params.workspace_revision {
-                return Err(configuration_revision_changed());
-            }
+            let snapshot = current_workspace(&service, params.workspace_revision)?;
             let (_, references) = service.configuration_references()?;
             let scripts = if let Some(scripts) = params.scripts {
                 let package_target = configuration_package_target(&target.host_id);
@@ -113,9 +192,7 @@ impl Host {
             };
             let json = configuration.to_json()?;
             // 配置引用与工作区同事务写入，确保导出没有跨修订混用。
-            if service.snapshot()?.revision != params.workspace_revision {
-                return Err(configuration_revision_changed());
-            }
+            current_workspace(&service, params.workspace_revision)?;
             let authorization = auth.snapshot(&actor)?;
             if let Some(stamp) = stamp {
                 authorization.validate_grants(&stamp)?;
@@ -130,6 +207,13 @@ impl Host {
     }
 }
 
+pub(super) fn startup_dependency_unavailable() -> HostError {
+    HostError::new(
+        "WORKSPACE_DEPENDENCY_UNAVAILABLE",
+        "The selected workspace script is no longer available",
+    )
+}
+
 fn configuration_package_target(host_id: &Id) -> Target {
     Target {
         host_id: host_id.clone(),
@@ -140,6 +224,16 @@ fn configuration_package_target(host_id: &Id) -> Target {
     }
 }
 
-fn configuration_revision_changed() -> HostError {
-    HostError::new("REVISION_CONFLICT", "Workspace revision changed")
+fn current_workspace(service: &WorkspaceService, expected: U64) -> HostResult<WorkspaceSnapshot> {
+    let snapshot = service.snapshot()?;
+    if snapshot.value.archived {
+        return Err(HostError::new("WORKSPACE_DELETED", "Workspace was removed"));
+    }
+    if snapshot.revision != expected {
+        return Err(HostError::new(
+            "REVISION_CONFLICT",
+            "Workspace revision changed",
+        ));
+    }
+    Ok(snapshot)
 }

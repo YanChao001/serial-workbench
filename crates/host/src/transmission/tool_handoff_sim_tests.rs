@@ -32,6 +32,7 @@ fn request(
         expected_revision: None,
         lease_id: None,
         execution_mode: (action == "session.toolHandoff").then_some(ExecutionMode::Independent),
+        workspace_startup: None,
     }
 }
 

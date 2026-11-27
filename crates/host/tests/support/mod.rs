@@ -284,6 +284,7 @@ impl Harness {
             expected_revision: None,
             lease_id: None,
             execution_mode: None,
+            workspace_startup: None,
         }
     }
     pub async fn invoke(&self, call: Call) -> Operation {

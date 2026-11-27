@@ -23,6 +23,14 @@ const hostFlowControl = {
   hardware: "rtsCts",
 } as const;
 
+const transportStopBits = { one: "1", onePointFive: "1.5", two: "2" } as const;
+const transportFlowControl = {
+  dsrDtr: "",
+  none: "none",
+  xonXoff: "software",
+  rtsCts: "hardware",
+} as const;
+
 type LineSetting = "keep" | "set" | "clear";
 type Rfc2217Draft = {
   host: string;
@@ -31,7 +39,7 @@ type Rfc2217Draft = {
   dataBits: "5" | "6" | "7" | "8";
   parity: "none" | "odd" | "even" | "mark" | "space";
   stopBits: "1" | "1.5" | "2";
-  flowControl: "none" | "software" | "hardware";
+  flowControl: "none" | "software" | "hardware" | "";
   dtr: LineSetting;
   rts: LineSetting;
 };
@@ -80,10 +88,12 @@ function Field({
 }
 
 export function Rfc2217ConnectionParameters({
+  initialConfiguration,
   opening,
   error,
   onSubmit,
 }: {
+  initialConfiguration?: Rfc2217SerialConfiguration;
   opening: boolean;
   error?: string;
   onSubmit: (
@@ -97,8 +107,21 @@ export function Rfc2217ConnectionParameters({
   const portInput = useRef<HTMLInputElement>(null);
   const baudInput = useRef<HTMLInputElement>(null);
   const stopInput = useRef<HTMLButtonElement>(null);
+  const flowInput = useRef<HTMLButtonElement>(null);
   const lineSettings = useRef<HTMLDetailsElement>(null);
-  const [draft, setDraft] = useState(initial);
+  const [baseline] = useState<Rfc2217Draft>(() =>
+    initialConfiguration
+      ? {
+          ...initial,
+          baudRate: initialConfiguration.baudRate,
+          dataBits: initialConfiguration.dataBits,
+          parity: initialConfiguration.parity,
+          stopBits: transportStopBits[initialConfiguration.stopBits],
+          flowControl: transportFlowControl[initialConfiguration.flowControl],
+        }
+      : initial,
+  );
+  const [draft, setDraft] = useState(baseline);
   const [attempted, setAttempted] = useState(false);
   const host = draft.host.trim();
   const hostValid = tcpHostPattern.test(host);
@@ -125,13 +148,13 @@ export function Rfc2217ConnectionParameters({
   useUnsavedWork({
     id,
     label: t("rfc2217Connection.title"),
-    dirty: Object.keys(initial).some((field) => {
+    dirty: Object.keys(baseline).some((field) => {
       const key = field as keyof Rfc2217Draft;
-      return draft[key] !== initial[key];
+      return draft[key] !== baseline[key];
     }),
     retainAfterUnmount: false,
     discard: () => {
-      setDraft(initial);
+      setDraft(baseline);
       setAttempted(false);
     },
   });
@@ -153,6 +176,9 @@ export function Rfc2217ConnectionParameters({
     else if (!stopValid) {
       if (lineSettings.current) lineSettings.current.open = true;
       stopInput.current?.focus();
+    } else if (!draft.flowControl) {
+      if (lineSettings.current) lineSettings.current.open = true;
+      flowInput.current?.focus();
     } else {
       onSubmit(
         {
@@ -245,7 +271,8 @@ export function Rfc2217ConnectionParameters({
           <summary className="cursor-pointer rounded-none px-0 py-2.5 text-sm">
             {t("rfc2217Connection.lineSettings")}
             <span className="ms-2 text-muted-foreground">
-              {lineSummary} · {flowLabel}
+              {lineSummary} ·{" "}
+              {flowLabel ?? t("rfc2217Connection.chooseFlowControl")}
             </span>
           </summary>
           <div className="grid min-w-0 items-start gap-3 pt-2.5 @sm/workbench-tool:grid-cols-3">
@@ -304,11 +331,21 @@ export function Rfc2217ConnectionParameters({
             <Field
               id={id + "-flowControl"}
               label={t("workbench.tools.flowControl")}
+              error={
+                draft.flowControl
+                  ? undefined
+                  : t("rfc2217Connection.chooseFlowControl")
+              }
             >
               <OptionsSelect
                 id={id + "-flowControl"}
                 value={draft.flowControl}
                 options={flowOptions}
+                triggerRef={flowInput}
+                aria-invalid={!draft.flowControl}
+                aria-describedby={
+                  draft.flowControl ? undefined : id + "-flowControl-error"
+                }
                 className="w-full"
                 disabled={opening}
                 onValueChange={(value) => update("flowControl", value)}

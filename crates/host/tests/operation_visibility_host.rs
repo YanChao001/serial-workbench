@@ -171,6 +171,7 @@ impl Fixture {
             lease_id: None,
             execution_mode: matches!(action, "capture.start" | "transfer.file")
                 .then_some(ExecutionMode::Independent),
+            workspace_startup: None,
         }
     }
     async fn invoke(&self, client: &HostClient, call: Call) -> Operation {

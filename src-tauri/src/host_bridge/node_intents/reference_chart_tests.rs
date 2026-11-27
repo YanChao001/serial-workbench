@@ -233,6 +233,7 @@ async fn parser_request(client: &HostClient, session: &Target) -> RpcReply {
             expected_revision: None,
             lease_id: None,
             execution_mode: Some(ExecutionMode::Independent),
+            workspace_startup: None,
         }))
         .await
         .unwrap()

@@ -244,6 +244,7 @@ fn call(
         expected_revision: options.expected_revision,
         lease_id: options.lease_id,
         execution_mode: options.execution_mode,
+        workspace_startup: None,
     }
 }
 fn reveal(action_id: &Id, target: &Target) -> RevealTarget {

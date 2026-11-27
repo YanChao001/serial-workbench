@@ -89,6 +89,7 @@ fn takeover_call(attachment: AttachResult, target: Target, actor_id: Id) -> Host
         expected_revision: None,
         lease_id: None,
         execution_mode: Some(ExecutionMode::Interactive),
+        workspace_startup: None,
     })
 }
 

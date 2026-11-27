@@ -740,6 +740,7 @@ async fn saturated_normal_requests_leave_reserved_cancel_capacity() {
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     });
     assert!(matches!(
         tokio::time::timeout(Duration::from_secs(3), client.request(cancel))

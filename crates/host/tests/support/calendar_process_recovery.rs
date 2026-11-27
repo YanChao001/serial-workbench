@@ -64,6 +64,7 @@ async fn invoke_at_revision(
         expected_revision,
         lease_id: None,
         execution_mode: (action == CALENDAR).then_some(ExecutionMode::Independent),
+        workspace_startup: None,
     };
     let RpcResult::Operation(accepted) =
         checked(client.request(RpcRequest::Invoke(call)).await.unwrap())

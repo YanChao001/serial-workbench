@@ -28,10 +28,14 @@ import { NAVIGATION_GROUPS, type AppNavigationItem } from "@/routes";
 export function AppSidebar({
   routes,
   onWidthPreview,
+  workspaceWidth,
+  onWorkspaceWidthChange,
 }: {
   routes: readonly AppNavigationItem[];
   /** 拖动期间同步内容区留白，最终宽度仍由设置持久化。 */
   onWidthPreview?: (width: number | null) => void;
+  workspaceWidth?: number;
+  onWorkspaceWidthChange?: (width: number) => void;
 }) {
   const { t } = useI18n();
   const { settings, update } = useSettings();
@@ -75,7 +79,8 @@ export function AppSidebar({
     [onWidthPreview],
   );
   const collapsed = settings.sidebarCollapsed;
-  const width = previewWidth ?? settings.sidebarWidth;
+  const restingWidth = workspaceWidth ?? settings.sidebarWidth;
+  const width = previewWidth ?? restingWidth;
   // 折叠、切页和调宽先清空提示，新的悬停或聚焦再判断标签是否截断。
   useLayoutEffect(() => {
     tooltipIntent.current = null;
@@ -103,7 +108,9 @@ export function AppSidebar({
     Math.round(Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, value)));
   const resize = (value: number) => {
     const next = boundedWidth(value);
-    if (next !== settings.sidebarWidth) update({ sidebarWidth: next });
+    if (next === restingWidth) return;
+    if (onWorkspaceWidthChange) onWorkspaceWidthChange(next);
+    else update({ sidebarWidth: next });
   };
   const preview = (value: number) => {
     const next = boundedWidth(value);

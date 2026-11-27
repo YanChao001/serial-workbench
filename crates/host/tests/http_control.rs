@@ -323,6 +323,7 @@ fn call(attachment: &AttachResult, target: Target, action: &str, params: Value) 
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     }
 }
 

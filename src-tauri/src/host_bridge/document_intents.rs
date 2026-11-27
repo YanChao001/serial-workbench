@@ -170,6 +170,7 @@ impl DesktopHostBridge {
             expected_revision: Some(revision),
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
+            workspace_startup: None,
         };
         self.invoke_local_business(window, generation, business.client_id, permission, call)
             .await
@@ -667,6 +668,7 @@ mod tests {
             expected_revision: Some(revision),
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
+            workspace_startup: None,
         }
     }
 

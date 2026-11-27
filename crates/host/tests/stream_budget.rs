@@ -1732,6 +1732,7 @@ async fn host_raw_connections_are_isolated_and_zero_credit_does_not_block_sessio
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     };
     rpc_success(
         tokio::time::timeout(

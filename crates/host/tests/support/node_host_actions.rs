@@ -384,6 +384,7 @@ impl Fixture {
             expected_revision: None,
             lease_id: None,
             execution_mode: Some(ExecutionMode::Independent),
+            workspace_startup: None,
         }
     }
     pub(crate) async fn query(

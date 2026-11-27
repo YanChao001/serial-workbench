@@ -121,6 +121,7 @@ impl Fixture {
             expected_revision: None,
             lease_id: None,
             execution_mode: None,
+            workspace_startup: None,
         };
         let RpcResult::Operation(accepted) =
             success(self.client.request(RpcRequest::Invoke(call)).await.unwrap())

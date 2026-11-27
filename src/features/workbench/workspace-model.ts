@@ -273,6 +273,7 @@ export function connectSessionTabs(
   sessions: readonly SessionSnapshot[],
   preferredViewId?: string,
   openedSession?: SessionSnapshot,
+  matchesRestoredView?: (tab: SessionTab) => boolean,
 ): { tabs: SessionTab[]; selected: string } {
   const snapshot =
     openedSession ?? sessions.find((value) => value.sessionId === sessionId);
@@ -294,7 +295,8 @@ export function connectSessionTabs(
     const current = sessions.find((value) => value.sessionId === tab.sessionId);
     return current && device
       ? current.deviceId === device.deviceId
-      : bindingIds.has(tab.view?.bindingId ?? "");
+      : bindingIds.has(tab.view?.bindingId ?? "") ||
+          matchesRestoredView?.(tab) === true;
   };
   const preferred = tabs.find(
     (tab) =>

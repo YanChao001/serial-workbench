@@ -32,6 +32,7 @@ fn call(client: &HostClient, target: &Target, action: &str, params: serde_json::
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     }
 }
 fn accepted(reply: RpcReply) -> Operation {

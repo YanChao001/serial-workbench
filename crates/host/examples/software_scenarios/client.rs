@@ -79,6 +79,7 @@ pub(super) fn call(
         expected_revision: None,
         lease_id: None,
         execution_mode: (action == "capture.start").then_some(ExecutionMode::Independent),
+        workspace_startup: None,
     })
 }
 pub(super) fn success(reply: RpcReply) -> Result<RpcResult> {

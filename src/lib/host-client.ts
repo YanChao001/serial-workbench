@@ -205,7 +205,10 @@ export function bindHostConnection(
     actionId: string,
     target: Target,
     params: Call["params"] = {},
-    options: Pick<Call, "expectedRevision" | "leaseId" | "executionMode"> = {},
+    options: Pick<
+      Call,
+      "expectedRevision" | "leaseId" | "executionMode" | "workspaceStartup"
+    > = {},
   ): Call {
     return {
       ...buildQuery(actionId, target, params),

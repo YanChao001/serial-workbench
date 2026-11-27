@@ -176,6 +176,7 @@ fn call(client: &HostClient, target: &Target, action: &str, params: Value) -> Ca
         expected_revision: None,
         lease_id: None,
         execution_mode: Some(ExecutionMode::Independent),
+        workspace_startup: None,
     }
 }
 async fn query(client: &HostClient, target: &Target, action: &str, params: Value) -> QueryResult {

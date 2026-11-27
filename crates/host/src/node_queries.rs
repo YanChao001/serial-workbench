@@ -69,6 +69,7 @@ impl Host {
         actor: &AuthenticatedActor,
         query: &Query,
         kind: ActionKind,
+        pin: Option<&WorkspaceScriptReference>,
         budget: Arc<tokio::sync::OwnedSemaphorePermit>,
     ) -> HostResult<()> {
         let host = self.clone();
@@ -91,7 +92,7 @@ impl Host {
         let result = self
             .inner
             .node_packages
-            .activate_contribution(actor, query, kind, budget.clone())
+            .activate_contribution(actor, query, kind, pin, budget.clone())
             .await;
         if let Err(error) = &result
             && error.code == "UNSUPPORTED_CAPABILITY"
@@ -153,7 +154,7 @@ impl Host {
             .try_acquire_owned()
             .map_err(|_| busy())?;
         let permit = Arc::new(permit);
-        self.ensure_extension_active(actor, &query, ActionKind::Query, permit.clone())
+        self.ensure_extension_active(actor, &query, ActionKind::Query, None, permit.clone())
             .await?;
         let host = self.clone();
         let actor = actor.clone();

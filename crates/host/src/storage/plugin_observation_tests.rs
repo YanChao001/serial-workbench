@@ -33,7 +33,13 @@ fn plugin_observations_bind_dispatch_owner_and_preserve_terminal_facts() {
         "params":{},"revealTarget":{"pageId":"workbench"},"executionMode":"independent"
     })).unwrap();
     let Acceptance::New(accepted) = store
-        .accept_plugin(&actor, &call, &canonical_digest(&call).unwrap(), &plugin)
+        .accept_plugin(
+            &actor,
+            &call,
+            &canonical_digest(&call).unwrap(),
+            &plugin,
+            None,
+        )
         .unwrap()
     else {
         panic!("Expected actual plugin admission");

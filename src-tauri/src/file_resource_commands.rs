@@ -402,6 +402,7 @@ pub(crate) async fn invoke_control(
         expected_revision: None,
         lease_id: None,
         execution_mode: Some(ExecutionMode::Interactive),
+        workspace_startup: None,
     };
     let RpcResult::Operation(result) = reply(
         bridge
@@ -750,6 +751,7 @@ mod tests {
                 expected_revision: None,
                 lease_id: None,
                 execution_mode: Some(ExecutionMode::Interactive),
+                workspace_startup: None,
             };
             let mut response = reply(
                 bridge

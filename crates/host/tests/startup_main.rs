@@ -144,6 +144,7 @@ async fn production_main_resolves_once_and_exposes_selected_startup_facts() {
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     };
     assert!(matches!(
         control.request(RpcRequest::Invoke(call)).await.unwrap(),

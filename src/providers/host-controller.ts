@@ -32,6 +32,7 @@ import type {
   WorkspaceDocumentResult,
   WorkspaceConfigurationExportParams,
   WorkspaceConfigurationInspection,
+  WorkspaceStartupPlan,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import { bytesToBase64 } from "@/lib/base64";
@@ -1069,6 +1070,32 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
+  async function readWorkspaceStartupPlan(
+    base: WorkspaceDocumentResult,
+    signal: AbortSignal,
+  ): Promise<WorkspaceStartupPlan> {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    const { scope, document } = base;
+    const target = workspaceTarget(scope.target.id);
+    if (!sameTarget(scope.target, target)) throw new ContractValidationError();
+    const result = await connection.client.query(
+      connection.buildQuery("workspace.startupPlan", target, {
+        workspaceRevision: document.revision,
+      }),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (
+      result.kind !== "workspace_startup_plan" ||
+      result.value.workspaceRevision !== document.revision ||
+      result.value.scope.scopeId !== scope.scopeId ||
+      !sameTarget(result.value.scope.target, target)
+    )
+      throw new ContractValidationError();
+    return result.value;
+  }
+
   async function inspectWorkspaceConfiguration(
     workspaceId: string,
     json: string,
@@ -2076,6 +2103,7 @@ export function createHostWorkspace(
     recentConnections,
     exportWorkspace,
     previewWorkspaceImport,
+    readWorkspaceStartupPlan,
     inspectWorkspaceConfiguration,
     importWorkspaceConfiguration,
     exportWorkspaceConfiguration,

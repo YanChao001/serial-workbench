@@ -162,6 +162,7 @@ impl Fixture {
             expected_revision: None,
             lease_id: None,
             execution_mode: None,
+            workspace_startup: None,
         }
     }
     async fn finish(self) {

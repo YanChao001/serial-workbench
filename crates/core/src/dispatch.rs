@@ -112,6 +112,7 @@ pub enum QueryResult {
     ActionCheck(ActionCheckResult),
     WorkspaceImportPreview(WorkspaceDocument),
     WorkspaceConfigurationInspection(Box<WorkspaceConfigurationInspection>),
+    WorkspaceStartupPlan(Box<WorkspaceStartupPlan>),
     ExperimentPackage(Box<ExperimentPackage>),
     ExperimentInspection(Box<ExperimentInspection>),
     ClientEffect(ClientEffectResult),
@@ -286,6 +287,7 @@ impl BuiltinAction {
             Self::WorkspaceSave => typed!(WorkspaceSaveParams),
             Self::WorkspaceConfigurationImport => typed!(WorkspaceConfigurationImportParams),
             Self::WorkspaceConfigurationExport => typed!(WorkspaceConfigurationExportParams),
+            Self::WorkspaceStartupPlan => typed!(WorkspaceStartupPlanParams),
             Self::ExperimentExport => typed!(ExperimentExportParams),
             Self::ExperimentInspect | Self::WorkspaceConfigurationInspect => {
                 typed!(DocumentImportParams)

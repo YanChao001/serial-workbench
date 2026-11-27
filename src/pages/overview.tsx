@@ -2,6 +2,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -20,6 +21,8 @@ import { useHost } from "@/providers/host-context";
 import { WorkspaceLayout } from "@/features/workbench/workspace-layout";
 import { sameWorkspace } from "@/features/workbench/workspace-model";
 import { SettingsContext } from "@/providers/settings-context";
+import { WorkspaceSidebarContext } from "@/layouts/workspace-sidebar-context";
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "@/lib/settings-model";
 import { WorkbenchTools } from "@/features/workbench/workbench-tools";
 import { workbenchToolLabels } from "@/features/workbench/tool-labels";
 import type { WorkbenchLabels } from "@/features/workbench/labels";
@@ -59,6 +62,7 @@ export default function Overview({
   const { t } = useI18n();
   const host = useHost();
   const settings = useContext(SettingsContext);
+  const workspaceSidebar = useContext(WorkspaceSidebarContext);
   const toolLabels = useMemo(() => workbenchToolLabels(t), [t]);
   const [savedWorkspace, setSavedWorkspace] = useState<{
     attachment: string;
@@ -104,6 +108,29 @@ export default function Overview({
       request: 0,
     };
   const renderIdentity = { ...activeIdentity.current };
+  const setWorkspaceSidebarWidth = workspaceSidebar?.setWidth;
+  const savedSidebarWidth =
+    workspaceBase &&
+    workspaceBase.document.revision !== "0" &&
+    !workspaceBase.document.value.archived
+      ? workspaceBase.document.value.layout.sidebarWidth
+      : undefined;
+  useLayoutEffect(() => {
+    setWorkspaceSidebarWidth?.(
+      savedSidebarWidth === undefined
+        ? undefined
+        : Math.min(
+            SIDEBAR_MAX_WIDTH,
+            Math.max(SIDEBAR_MIN_WIDTH, savedSidebarWidth),
+          ),
+    );
+    return () => setWorkspaceSidebarWidth?.(undefined);
+  }, [
+    identityKey,
+    renderIdentity.generation,
+    savedSidebarWidth,
+    setWorkspaceSidebarWidth,
+  ]);
   function acknowledge(
     result: WorkspaceDocumentResult,
     expected: { key: string; generation: number; request?: number } = {
@@ -815,9 +842,16 @@ export default function Overview({
                 };
                 activeIdentity.current = expected;
                 const before = latestWorkspaceDrafts.current[workspaceScope];
+                const width =
+                  workspaceSidebar?.width ?? settings?.settings.sidebarWidth;
                 const result = await host.saveWorkspace(
                   workspaceBase,
-                  value,
+                  width === undefined
+                    ? value
+                    : {
+                        ...value,
+                        layout: { ...value.layout, sidebarWidth: width },
+                      },
                   signal,
                 );
                 if (signal?.aborted) return;

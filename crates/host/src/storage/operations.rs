@@ -11,6 +11,51 @@ fn commit_operation(transaction: Transaction<'_>) -> HostResult<()> {
     transaction.commit().map_err(|_| unavailable())
 }
 
+fn check_workspace_startup(
+    transaction: &Transaction<'_>,
+    selection: &WorkspaceStartupSelection,
+    trust_documents: &[(Id, U64); 2],
+) -> HostResult<()> {
+    let revision: Option<String> = transaction
+        .query_row(
+            "SELECT d.revision FROM workspace_directory w JOIN documents d ON d.id=w.document_id WHERE w.workspace_id=?1",
+            [selection.workspace_id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|_| unavailable())?;
+    if revision.map(|revision| counter(&revision)).transpose()?
+        != Some(selection.workspace_revision)
+    {
+        return Err(HostError::new(
+            "REVISION_CONFLICT",
+            "Workspace revision changed",
+        ));
+    }
+    for (id, expected) in trust_documents {
+        let revision: Option<String> = transaction
+            .query_row(
+                "SELECT revision FROM documents WHERE id=?1",
+                [id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| unavailable())?;
+        if revision
+            .map(|revision| counter(&revision))
+            .transpose()?
+            .unwrap_or(U64::from(0))
+            != *expected
+        {
+            return Err(HostError::new(
+                "WORKSPACE_DEPENDENCY_UNAVAILABLE",
+                "Installed packages or source trust changed",
+            ));
+        }
+    }
+    Ok(())
+}
+
 const RETENTION_NS: u64 = 604_800_000_000_000;
 pub(super) const MAX_IN_FLIGHT: i64 = 256;
 
@@ -115,7 +160,7 @@ pub fn canonical_digest(call: &Call) -> HostResult<Digest> {
 }
 
 fn canonical_input(call: &Call) -> HostResult<Vec<u8>> {
-    let value = serde_json::json!({
+    let mut value = serde_json::json!({
         "actionId":call.action_id,
         "target":call.target,
         "executionMode":call.execution_mode.unwrap_or_default(),
@@ -123,6 +168,9 @@ fn canonical_input(call: &Call) -> HostResult<Vec<u8>> {
         "leaseId":call.lease_id,
         "params":call.params,
     });
+    if let Some(selection) = &call.workspace_startup {
+        value["workspaceStartup"] = serde_json::to_value(selection).map_err(|_| unavailable())?;
+    }
     let mut bytes = Vec::new();
     write_canonical(&value, &mut bytes)?;
     Ok(bytes)
@@ -311,9 +359,16 @@ impl Database {
         call: &Call,
         digest: &Digest,
         plugin: &super::plugin_operations::PluginOperation,
+        startup_revisions: Option<[(Id, U64); 2]>,
     ) -> HostResult<Acceptance> {
         plugin.validate_call(call)?;
-        self.accept_with_metadata(actor, call, digest, None, Some(plugin), commit_operation)
+        self.accept_with_metadata(actor, call, digest, None, Some(plugin), |transaction| {
+            if let Some(selection) = &call.workspace_startup {
+                let revisions = startup_revisions.ok_or_else(unavailable)?;
+                check_workspace_startup(&transaction, selection, &revisions)?;
+            }
+            commit_operation(transaction)
+        })
     }
     fn accept_with_metadata(
         &mut self,

@@ -588,6 +588,7 @@ fn operation_call(
         actor_id: query.actor_id,
         request_id: query.request_id,
         request_context,
+        workspace_startup: None,
         action_id: query.action_id,
         target: query.target,
         params: query.params,

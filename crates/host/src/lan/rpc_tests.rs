@@ -302,6 +302,7 @@ async fn paired_host_uses_owner_session_for_tx_and_raw_and_unpair_closes_only_la
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     };
     let RpcResult::Operation(accepted) = success(
         client
