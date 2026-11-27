@@ -307,8 +307,27 @@ test("keeps a measured mid-history record when widening would clamp the scroll o
   expect(Number(offset)).toBeGreaterThan(30_000);
   expect(Number(offset)).toBeLessThan(230_000);
 
+  const record = log.locator(`[data-offset="${offset}"]`);
+  await record.evaluate((row) => {
+    const viewport = row.closest<HTMLElement>('[role="log"]');
+    if (!viewport) throw new Error("Missing receive viewport");
+    const bounds = row.getBoundingClientRect();
+    viewport.scrollTop +=
+      bounds.top - viewport.getBoundingClientRect().top + bounds.height * 0.8;
+  });
+  await expect.poll(() => firstVisibleOffset(log)).toBe(offset);
+  const narrowInset = await record.evaluate(
+    (row) =>
+      row.getBoundingClientRect().top -
+      row.closest('[role="log"]')!.getBoundingClientRect().top,
+  );
+
   await page.setViewportSize({ width: 1240, height: 760 });
-  await expect(log.locator(`[data-offset="${offset}"]`)).toBeInViewport();
+  await expect(record).toBeInViewport();
+  const wideHeight = await record.evaluate(
+    (row) => row.getBoundingClientRect().height,
+  );
+  expect(-narrowInset).toBeGreaterThan(wideHeight);
 });
 
 test("restores the selected page of a long record after returning to its row", async ({

@@ -245,10 +245,13 @@ export function useStreamRowWindow({
         previous.waiting = false;
         const top = log.getBoundingClientRect().top + log.clientTop;
         const bounds = row.getBoundingClientRect();
-        const inset = Math.min(
-          previous.inset,
-          Math.max(0, log.clientHeight - bounds.height),
-        );
+        const inset =
+          previous.inset <= -bounds.height
+            ? 0
+            : Math.min(
+                previous.inset,
+                Math.max(0, log.clientHeight - bounds.height),
+              );
         const change = bounds.top - top - inset;
         if (Math.abs(change) > 0.5) log.scrollTop += change;
         previous.scrollTop = log.scrollTop;
