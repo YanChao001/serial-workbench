@@ -52,20 +52,27 @@ function readVolumeIndex(capture, manifest) {
   const records = [];
   const names = [];
   const magic = Buffer.from("SWBI01\n");
+  requireThat(Array.isArray(manifest.volumes), "Missing indexed volumes");
   for (const volume of manifest.volumes) {
     const ordinal = u64(volume.ordinal, "index volume ordinal");
     const start = u64(volume.recordStart, "index record start");
     const end = u64(volume.recordEnd, "index record end");
     requireThat(
-      start <= end && end <= 1_100_001n,
+      start === BigInt(records.length + 1) && start <= end && end <= 1_100_001n,
       "Invalid volume index range",
     );
     const name = `index-${ordinal.toString().padStart(6, "0")}.swbi`;
     names.push(name);
-    const bytes = regular(join(capture, name));
+    const path = join(capture, name);
+    const length = BigInt(magic.length) + (end - start) * 12n;
+    requireThat(
+      lstatSync(path, { bigint: true }).size === length,
+      "Invalid volume index size",
+    );
+    const bytes = regular(path);
     requireThat(
       bytes.subarray(0, magic.length).equals(magic) &&
-        BigInt(bytes.length - magic.length) === (end - start) * 12n,
+        BigInt(bytes.length) === length,
       "Invalid volume index header or size",
     );
     let position = magic.length;

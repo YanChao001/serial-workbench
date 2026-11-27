@@ -336,6 +336,28 @@ impl CaptureWriter {
             checkpoint_ns: 0,
             _guard: Some(guard),
         };
+        if writer.format == CaptureFormat::Indexed {
+            let header = writer.format.magic().len() as u64;
+            let mut volume_bytes = header;
+            let mut volumes = 1;
+            let mut frame_bytes = 0;
+            for (index, entry) in gaps.iter().enumerate() {
+                let record = CaptureRecord {
+                    record_ordinal: (start + index as u64).into(),
+                    entry: entry.clone(),
+                };
+                let json = serde_json::to_vec(&record).map_err(|_| corrupt())?;
+                let size = writer.record_size(json.len())?;
+                if volume_bytes + size > writer.limits.volume_bytes {
+                    volumes += 1;
+                    volume_bytes = header;
+                }
+                volume_bytes += size;
+                frame_bytes += size;
+            }
+            // A known capacity rejection must precede creating the new files.
+            writer.ensure_capacity(frame_bytes, gaps.len() as u64, volumes)?;
+        }
         writer.new_volume()?;
         for gap in gaps {
             writer.push_observed(gap, 0, None)?;
@@ -450,6 +472,75 @@ impl CaptureWriter {
         }
         result
     }
+    fn record_size(&self, json_len: usize) -> HostResult<u64> {
+        if json_len > MAX_RECORD {
+            return Err(HostError::new(
+                "LIMIT_EXCEEDED",
+                "Capture record exceeds one MiB",
+            ));
+        }
+        let size = json_len as u64
+            + 36
+            + if self.format.uses_recorder_clock() {
+                8
+            } else {
+                0
+            };
+        if size + self.format.magic().len() as u64 > self.limits.volume_bytes {
+            return Err(HostError::new(
+                "LIMIT_EXCEEDED",
+                "Record does not fit in a capture volume",
+            ));
+        }
+        Ok(size)
+    }
+
+    fn ensure_capacity(&self, frame_bytes: u64, records: u64, volumes: u64) -> HostResult<()> {
+        let manifest = serde_json::to_vec(&self.manifest)
+            .map_err(|_| corrupt())?
+            .len() as u64
+            + 512 * volumes.max(1);
+        let data = frame_bytes + volumes * self.format.magic().len() as u64;
+        let (index_capacity, index_reserve) = if self.format == CaptureFormat::Indexed {
+            let added_index =
+                records * volume_index::ENTRY_BYTES + volumes * volume_index::HEADER_BYTES;
+            (
+                self.index_bytes + added_index,
+                self.index.records.len() as u64 * volume_index::ENTRY_BYTES + added_index,
+            )
+        } else {
+            // The legacy checkpoint replaces the entire JSON sidecar.
+            (self.index_bytes, self.index_bytes)
+        };
+        if self
+            .manifest
+            .watermarks
+            .written
+            .get()
+            .saturating_add(records)
+            > self.limits.max_records.min(self.format.max_records()) as u64
+            || self
+                .total
+                .saturating_add(data)
+                .saturating_add(manifest)
+                .saturating_add(index_capacity)
+                > self.limits.capacity_bytes
+            || available_bytes(&self.path)?
+                < self
+                    .limits
+                    .reserve_bytes
+                    .saturating_add(data)
+                    .saturating_add(manifest)
+                    .saturating_add(index_reserve)
+        {
+            return Err(HostError::new(
+                "CAPTURE_IO_FAILED",
+                "Capture capacity or disk reserve reached",
+            ));
+        }
+        Ok(())
+    }
+
     fn push_inner(
         &mut self,
         entry: CaptureEntry,
@@ -483,44 +574,13 @@ impl CaptureWriter {
             .then(|| self.timeline.at(observed));
         let time = recorded.map(u64::to_le_bytes);
         let time_bytes = time.as_ref().map_or(&[][..], |value| value.as_slice());
-        if json.len() > MAX_RECORD {
-            return Err(HostError::new(
-                "LIMIT_EXCEEDED",
-                "Capture record exceeds one MiB",
-            ));
-        }
-        let size = (json.len() + time_bytes.len()) as u64 + 36;
-        if size + self.format.magic().len() as u64 > self.limits.volume_bytes {
-            return Err(HostError::new(
-                "LIMIT_EXCEEDED",
-                "Record does not fit in a capture volume",
-            ));
-        }
-        let metadata = serde_json::to_vec(&self.manifest)
-            .map_err(|_| corrupt())?
-            .len() as u64
-            + self.index_bytes
-            + 512;
-        if self.manifest.watermarks.written.get()
-            >= self.limits.max_records.min(self.format.max_records()) as u64
-            || self.total.saturating_add(size).saturating_add(metadata) > self.limits.capacity_bytes
-            || available_bytes(&self.path)?
-                < self
-                    .limits
-                    .reserve_bytes
-                    .saturating_add(size)
-                    .saturating_add(metadata)
-        {
-            return Err(HostError::new(
-                "CAPTURE_IO_FAILED",
-                "Capture capacity or disk reserve reached",
-            ));
-        }
+        let size = self.record_size(json.len())?;
         let rotate = self.volume_size > self.format.magic().len() as u64
             && (self.volume_size + size > self.limits.volume_bytes
                 || self.volume_clock.is_some_and(|start| {
                     now.saturating_sub(start) >= self.limits.volume_duration_ns
                 }));
+        self.ensure_capacity(size, 1, u64::from(rotate))?;
         if rotate {
             self.checkpoint()?;
             self.file.take();

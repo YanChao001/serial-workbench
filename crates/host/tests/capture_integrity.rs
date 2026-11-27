@@ -93,6 +93,61 @@ fn indexed_checkpoints_extend_the_same_file_and_recover_only_the_manifest_prefix
 }
 
 #[test]
+fn indexed_orphan_volume_reports_a_verified_prefix_and_can_resume_on_recovered_copy() {
+    use serial_workbench_host::capture::{format::fingerprint, recovery::recover_directory};
+
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().canonicalize().unwrap();
+    for with_index in [false, true] {
+        let path = root.join(format!("capture-{with_index}"));
+        let mut writer =
+            CaptureWriter::create(&path, vec![source()], CaptureLimits::default()).unwrap();
+        writer.push(entry(1), 1).unwrap();
+        writer.finish().unwrap();
+
+        fs::write(path.join("volume-000002.swbr"), b"SWBR04\n").unwrap();
+        if with_index {
+            fs::write(path.join("index-000002.swbi"), b"SWBI01\n").unwrap();
+        }
+        let scan = verify_directory(&path).unwrap();
+        assert!(!scan.report.container_complete);
+        assert!(scan.report.recoverable);
+        assert_eq!(scan.report.verified_prefix.get(), 1);
+        assert_eq!(
+            CaptureWriter::append(&path, vec![source()], CaptureLimits::default())
+                .err()
+                .unwrap()
+                .code,
+            "CAPTURE_INCOMPLETE"
+        );
+        let recovered = root.join(format!("recovered-{with_index}"));
+        recover_directory(&path, &recovered, &scan.report).unwrap();
+        assert_eq!(fingerprint(&path).unwrap(), scan.report.source_fingerprint);
+
+        let mut writer =
+            CaptureWriter::append(&recovered, vec![source()], CaptureLimits::default()).unwrap();
+        writer.push(entry(2), 2).unwrap();
+        assert_eq!(writer.finish().unwrap().watermarks.verified.get(), 2);
+    }
+}
+
+#[test]
+fn indexed_empty_volume_rejects_end_before_start() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().canonicalize().unwrap().join("capture");
+    CaptureWriter::create(&path, vec![source()], CaptureLimits::default())
+        .unwrap()
+        .finish()
+        .unwrap();
+    let manifest = path.join("manifest.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    value["volumes"][0]["recordEnd"] = serde_json::json!("0");
+    fs::write(manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(!verify_directory(&path).unwrap().report.container_complete);
+}
+
+#[test]
 fn indexed_append_leaves_the_previous_volume_and_index_byte_exact() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().canonicalize().unwrap().join("capture");

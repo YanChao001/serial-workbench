@@ -1,4 +1,7 @@
-use super::{format::*, volume_index::VolumeIndexReader};
+use super::{
+    format::*,
+    volume_index::{self, VolumeIndexReader},
+};
 use serial_workbench_core::*;
 use std::{
     collections::{HashMap, HashSet},
@@ -148,6 +151,7 @@ fn scan_directory(
         let id = Id::try_from(format!("volume-{ordinal:06}").as_str())?;
         if volume.ordinal.get() != ordinal
             || volume.record_start.get() != prefix + 1
+            || volume.record_end < volume.record_start
             || volume.previous_digest != previous
         {
             all = false;
@@ -361,6 +365,9 @@ fn scan_directory(
         || prefix != manifest.watermarks.written.get()
     {
         all = false
+    }
+    if indexed {
+        all &= volume_index::only_declared_files(path, manifest.volumes.len() as u64)?;
     }
     let w = &manifest.watermarks;
     if !(w.verified <= w.synced && w.synced <= w.flushed && w.flushed <= w.written) {

@@ -525,6 +525,49 @@ mod format_tests {
     }
 
     #[test]
+    fn indexed_append_checks_capacity_before_creating_volume_for_gap() {
+        let (_directory, path) = mixed_clock_capture(CaptureFormat::Indexed);
+        let before = crate::capture::verify::verify_directory(&path).unwrap();
+        let positions = vec![3.into(), 1.into()];
+        for limits in [
+            CaptureLimits {
+                max_records: 2,
+                ..CaptureLimits::default()
+            },
+            CaptureLimits {
+                capacity_bytes: 1,
+                ..CaptureLimits::default()
+            },
+        ] {
+            let result = CaptureWriter::append_at_positions(
+                crate::files::references::PathGuard::new(&path).unwrap(),
+                before.manifest.streams.clone(),
+                limits,
+                native_volume_opener(),
+                Some(positions.clone()),
+                None,
+            );
+            assert_eq!(result.err().unwrap().code, "CAPTURE_IO_FAILED");
+            assert_eq!(
+                fingerprint(&path).unwrap(),
+                before.report.source_fingerprint
+            );
+        }
+        let (writer, _) = CaptureWriter::append_at_positions(
+            crate::files::references::PathGuard::new(&path).unwrap(),
+            before.manifest.streams,
+            CaptureLimits::default(),
+            native_volume_opener(),
+            Some(positions),
+            None,
+        )
+        .unwrap();
+        let summary = writer.finish().unwrap();
+        assert_eq!(summary.watermarks.verified.get(), 3);
+        assert!(!summary.source_continuous);
+    }
+
+    #[test]
     fn legacy_recorder_clock_capture_still_replays_and_appends_as_json_index() {
         let (_directory, path) = mixed_clock_capture(CaptureFormat::RecorderClock);
         let before = crate::capture::verify::verify_directory(&path).unwrap();

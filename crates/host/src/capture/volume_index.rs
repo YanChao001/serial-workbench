@@ -1,9 +1,9 @@
 //! Append-only position index for one raw 0.4 volume.
-use super::format::{IndexEntry, corrupt, io_error, open_read};
+use super::format::{IndexEntry, corrupt, io_error, open_read, volume_name};
 use crate::files::references::PathGuard;
 use serial_workbench_core::HostResult;
 use std::{
-    fs::File,
+    fs::{self, File},
     io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::Path,
 };
@@ -14,6 +14,34 @@ pub(super) const ENTRY_BYTES: u64 = 12;
 
 pub(super) fn name(ordinal: u64) -> String {
     format!("index-{ordinal:06}.swbi")
+}
+
+/// Missing sidecars are handled by the caller, including replay's rebuild.
+pub(super) fn only_declared_files(directory: &Path, volume_count: u64) -> HostResult<bool> {
+    let check = |ordinal: &str, file_name: &str, canonical_name: fn(u64) -> String| {
+        ordinal.parse::<u64>().is_ok_and(|ordinal| {
+            ordinal > 0 && ordinal <= volume_count && canonical_name(ordinal) == file_name
+        })
+    };
+    for entry in fs::read_dir(directory).map_err(io_error)? {
+        let file_name = entry.map_err(io_error)?.file_name();
+        let file_name = file_name.to_str().ok_or_else(corrupt)?;
+        if file_name.starts_with('.') || file_name == "manifest.json" {
+            continue;
+        }
+        let data = file_name
+            .strip_prefix("volume-")
+            .and_then(|ordinal| ordinal.strip_suffix(".swbr"));
+        let index = file_name
+            .strip_prefix("index-")
+            .and_then(|ordinal| ordinal.strip_suffix(".swbi"));
+        if !data.is_some_and(|ordinal| check(ordinal, file_name, volume_name))
+            && !index.is_some_and(|ordinal| check(ordinal, file_name, name))
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 pub(super) struct VolumeIndexWriter {
