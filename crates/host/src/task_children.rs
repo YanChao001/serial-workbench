@@ -16,6 +16,7 @@ pub(super) struct TaskScope {
     operation: Operation,
     binding: Arc<RegisteredHandler>,
     authority: Arc<ActionAuthority>,
+    host_api: Vec<NodeHostApiScope>,
     instance_epoch: U64,
     configuration_digest: Digest,
     connection_session: Option<OnceLock<Target>>,
@@ -100,7 +101,7 @@ impl TaskScope {
                 .as_ref()
                 .and_then(OnceLock::get)
                 .cloned(),
-            host_api: self.binding.host_api().to_vec(),
+            host_api: self.host_api.clone(),
             inherited: self.actor.task().cloned(),
             admission_queued,
             check,
@@ -147,17 +148,28 @@ impl Host {
         let configuration = serde_json::to_vec(&accepted.call.params).map_err(|_| invalid())?;
         let configuration_digest =
             Digest::try_from(format!("{:x}", sha2::Sha256::digest(configuration)).as_str())?;
-        let connection_sequence =
-            crate::node_packages::is_product_connection_sequence(&accepted.operation)
-                && crate::node_packages::is_current_connection_sequence_archive(
-                    binding.package(),
-                    binding.archive_sha256(),
-                );
+        let signed_automation = crate::node_packages::is_current_connection_sequence_archive(
+            binding.package(),
+            binding.archive_sha256(),
+        );
+        let connection_sequence = signed_automation
+            && crate::node_packages::is_product_connection_sequence(&accepted.operation);
+        let host_api = binding
+            .host_api()
+            .iter()
+            .filter(|scope| {
+                !signed_automation
+                    || connection_sequence
+                    || !crate::node_packages::is_connection_sequence_device_scope(scope)
+            })
+            .cloned()
+            .collect();
         let scope = Arc::new(TaskScope {
             actor: accepted.actor.clone(),
             operation: accepted.operation.clone(),
             binding,
             authority,
+            host_api,
             instance_epoch: accepted.call.instance_epoch,
             configuration_digest,
             connection_session: connection_sequence.then(OnceLock::new),

@@ -1667,6 +1667,9 @@ export const zhCN = {
   "connectionSequence.invalidPlan": "检查等待时长和累计时长。",
   "connectionSequence.run": "连接并运行",
   "connectionSequence.result": "步骤回执",
+  "connectionSequence.childOperationState": "子操作状态 {state}",
+  "connectionSequence.writeOutcomeRequiresSession":
+    "实际写入结果以会话回执为准。",
   "connectionSequence.inspect": "查看会话",
   "connectionSequence.closedDevice": "选择尚未打开的端口以运行新时序。",
   "connectionSequence.kind.before_open": "打开前等待",

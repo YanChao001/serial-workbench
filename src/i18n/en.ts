@@ -1804,6 +1804,9 @@ export const en = {
   "connectionSequence.invalidPlan": "Check the wait and total duration.",
   "connectionSequence.run": "Open and run",
   "connectionSequence.result": "Step receipts",
+  "connectionSequence.childOperationState": "Child operation {state}",
+  "connectionSequence.writeOutcomeRequiresSession":
+    "Write outcome requires a session receipt.",
   "connectionSequence.inspect": "Show session",
   "connectionSequence.closedDevice":
     "Choose a closed port to start a new sequence.",

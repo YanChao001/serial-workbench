@@ -18,6 +18,7 @@ pub use install::{
 };
 pub use installed::VerifiedNodeInstallation;
 pub(crate) use manager::NodePackageManager;
+pub(crate) use product::is_connection_sequence_device_scope;
 pub use product::{
     CONNECTION_SEQUENCE_ACTION, CONNECTION_SEQUENCE_PACKAGE,
     is_current_connection_sequence_archive, is_product_connection_sequence,

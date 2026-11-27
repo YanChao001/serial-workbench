@@ -663,7 +663,16 @@ export default function ConnectionSequenceTool({
               : receipts.map(({ item, kind }) => (
                   <li key={item.operationId}>
                     {t(`connectionSequence.kind.${kind}`)} ·{" "}
-                    {operationText(t, () => "").states[item.state]}
+                    {t("connectionSequence.childOperationState", {
+                      state: operationText(t, () => "").states[item.state],
+                    })}
+                    {kind === "send" && (
+                      <span className="block text-muted-foreground">
+                        {item.result?.kind === "tx"
+                          ? t(`broadcastSend.tx.${item.result.value.outcome}`)
+                          : t("connectionSequence.writeOutcomeRequiresSession")}
+                      </span>
+                    )}
                   </li>
                 ))}
           </ol>

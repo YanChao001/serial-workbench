@@ -308,6 +308,36 @@ pub fn is_current_connection_sequence_archive(id: &NodePackageId, digest: &Diges
             .any(|package| package.id() == id && &package.descriptor.archive_sha256 == digest)
 }
 
+pub(crate) fn is_connection_sequence_device_scope(
+    scope: &serial_workbench_core::NodeHostApiScope,
+) -> bool {
+    matches!(scope.target_kinds.as_slice(), [kind] if kind.as_str() == "device")
+        && scope.permissions.as_slice() == ["metadata.read", "device.modify"]
+}
+
+pub(super) fn retains_execution_permissions(
+    previous: &InstalledNodePackage,
+    next: &VerifiedNodePackage,
+) -> bool {
+    if previous.manifest.permissions == next.manifest().permissions {
+        return true;
+    }
+    // This signed upgrade adds one scope owned by the pinned connection action.
+    // The Host enforces activation of that scope separately for each task.
+    if next.manifest().version.as_str() != "0.1.8"
+        || !is_current_connection_sequence_archive(&next.manifest().id, next.archive_sha256())
+    {
+        return false;
+    }
+    let mut existing_permissions = next.manifest().permissions.clone();
+    let count_before = existing_permissions.host_api.len();
+    existing_permissions
+        .host_api
+        .retain(|scope| !is_connection_sequence_device_scope(scope));
+    existing_permissions.host_api.len() + 1 == count_before
+        && existing_permissions == previous.manifest.permissions
+}
+
 /// Validates the archive recorded by Host admission, including supported product predecessors.
 pub fn is_product_connection_sequence(operation: &serial_workbench_core::Operation) -> bool {
     let Some([dependency]) = operation.dependencies.as_deref() else {
@@ -455,7 +485,9 @@ mod tests {
             let migrated = installer.snapshot().unwrap();
             assert_eq!(
                 migrated.packages.first().map(|package| package.enabled),
-                expected_enabled
+                expected_enabled,
+                "{} {old_version} → {next_version}",
+                old.id()
             );
             if let Some(package) = migrated.packages.first() {
                 assert_eq!(package.manifest.version.as_str(), next_version);

@@ -19,7 +19,7 @@
         "targetKinds": ["session"]
       },
       {
-        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "permissions": ["metadata.read", "device.modify"],
         "targetKinds": ["device"]
       }
     ],
@@ -1203,7 +1203,7 @@
         },
         "targetKinds": ["device"],
         "executionLocation": "resource_host",
-        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "permissions": ["metadata.read", "device.modify"],
         "stateScopes": [],
         "eventTypes": [],
         "cancellation": "cooperative",

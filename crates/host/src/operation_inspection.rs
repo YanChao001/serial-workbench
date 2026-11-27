@@ -1,4 +1,4 @@
-//! Retained operation inspection uses current resource read rights, never creator identity.
+//! Retained operation inspection follows current resource rights with a limited owner-only view for connection receipts.
 use super::*;
 
 impl Host {
