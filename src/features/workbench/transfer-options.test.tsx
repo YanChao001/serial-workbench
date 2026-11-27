@@ -8,6 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
+import type { FileReadResult } from "@serial-workbench/contracts";
+import type { HostContextValue } from "@/providers/host-context";
 import { TransferOptions } from "./transfer-options";
 import { operation } from "./test-fixtures";
 import { selectedFile, toolLabels } from "./transfer-capture-test-helpers";
@@ -64,6 +66,76 @@ it("previews an exact large range without sending, then explicitly submits fixed
     ),
   );
 });
+it("reads a bounded desktop sample and discards a late result for a previous range", async () => {
+  let finishFirst!: (page: FileReadResult) => void;
+  const page = {
+    fileRef: selectedFile.reference,
+    totalBytes: selectedFile.length,
+    fingerprint: "a".repeat(64),
+  };
+  const read = vi
+    .fn<HostContextValue["readFile"]>()
+    .mockImplementationOnce(
+      () => new Promise((resolve) => (finishFirst = resolve)),
+    )
+    .mockResolvedValueOnce({
+      ...page,
+      offset: "9007199254740997",
+      nextOffset: selectedFile.length,
+      bytesBase64: "/iM=",
+      atEnd: true,
+    });
+  const send = vi.fn();
+  render(
+    <TransferOptions
+      target={target}
+      watchActions={allowControlActions}
+      contextKey="session:1"
+      labels={toolLabels}
+      pickSource={async () => selectedFile}
+      readSource={read}
+      onTransfer={send}
+      writeWaitMs="1000"
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Select source" }));
+  await waitFor(() =>
+    expect(read).toHaveBeenCalledWith({
+      fileRef: selectedFile.reference,
+      offset: "0",
+      maxBytes: "16",
+    }),
+  );
+  expect(screen.getByLabelText("Range preview")).toHaveTextContent(
+    "[0, 9007199254740999)",
+  );
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
+  fireEvent.change(screen.getByLabelText("Length"), { target: { value: "2" } });
+  fireEvent.change(screen.getByLabelText("Offset"), {
+    target: { value: "9007199254740997" },
+  });
+  expect(read).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    finishFirst({
+      ...page,
+      offset: "0",
+      nextOffset: "16",
+      bytesBase64: "AAAAAAAAAAAAAAAAAAAAAA==",
+      atEnd: false,
+    }),
+  );
+  expect(
+    await screen.findByLabelText("Beginning of selected bytes"),
+  ).toHaveTextContent("9007199254740997: FE 23");
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenLastCalledWith({
+    fileRef: selectedFile.reference,
+    offset: "9007199254740997",
+    maxBytes: "2",
+  });
+  expect(send).not.toHaveBeenCalled();
+});
+
 it("keeps zero write wait out of an otherwise valid transfer request", async () => {
   render(
     <TransferOptions

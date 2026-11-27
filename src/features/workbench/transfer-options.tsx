@@ -37,6 +37,8 @@ import { useToolActionAvailability } from "./use-tool-action-availability";
 import { useTransferFileDrop } from "./use-transfer-file-drop";
 import { useBrowserFileDrop } from "./use-browser-file-drop";
 
+const TRANSFER_SAMPLE_BYTES = 16n;
+
 export type TransferOptionsLabels = Record<
   | "transferOptions"
   | "selectSource"
@@ -102,6 +104,7 @@ export type TransferOptionsProps = {
   browserTransferAvailable?: boolean;
   pickSource?: (signal?: AbortSignal) => Promise<SelectedFileResource | null>;
   pickDroppedSource?: HostContextValue["pickDroppedFile"];
+  readSource?: HostContextValue["readFile"];
   onTransfer?: (
     params: FileTransferParams,
     signal?: AbortSignal,
@@ -119,6 +122,7 @@ function TransferOptionsForm({
   initialDraft,
   pickSource,
   pickDroppedSource,
+  readSource,
   onTransfer,
   onSaveDraft,
   onCancel,
@@ -202,6 +206,12 @@ function TransferOptionsForm({
     interval !== undefined &&
     wait !== undefined &&
     wait > 0n;
+  const desktopSample = useDesktopTransferSample(
+    source,
+    valid ? offset : undefined,
+    valid ? length : undefined,
+    readSource,
+  );
   const locked = Boolean(disabled || action.busy || active);
   const needsReceipt = browserFile?.hasPending() ?? false;
   const browserInputs = useMemo<HostActionCheckInput[]>(
@@ -371,6 +381,19 @@ function TransferOptionsForm({
   ) : (
     sourceName && <p role="status">{labels.invalidRange}</p>
   );
+  const desktopPreview = source && (
+    <div className="mt-2 grid min-w-0 gap-2">
+      {range}
+      {valid && (
+        <TransferSample
+          hex={desktopSample}
+          offset={String(offset)}
+          truncated={length > TRANSFER_SAMPLE_BYTES}
+          labels={browserLabels}
+        />
+      )}
+    </div>
+  );
   return (
     <section
       aria-label={labels.transferOptions}
@@ -468,7 +491,7 @@ function TransferOptionsForm({
               </div>
             )}
           </div>
-          {isBrowser && (
+          {isBrowser ? (
             <>
               {selectionError && (
                 <p role="alert">{browserLabels.invalidFile}</p>
@@ -494,6 +517,8 @@ function TransferOptionsForm({
                 />
               )}
             </>
+          ) : (
+            desktopPreview
           )}
         </TabsContent>
         <TabsContent value="advanced" className="workbench-tool-page">
@@ -521,7 +546,7 @@ function TransferOptionsForm({
               )}
             </div>
           </fieldset>
-          {!isBrowser && range}
+          {!isBrowser && desktopPreview}
         </TabsContent>
       </Tabs>
       {current && (
@@ -630,6 +655,71 @@ function TransferOptionsForm({
   );
 }
 
+function useDesktopTransferSample(
+  source: SelectedFileResource | undefined,
+  offset: bigint | undefined,
+  length: bigint | undefined,
+  readSource: TransferOptionsProps["readSource"],
+) {
+  const [sample, setSample] = useState<{
+    source: SelectedFileResource;
+    offset: bigint;
+    length: bigint;
+    hex: string | null;
+  }>();
+  const pending = useRef(Promise.resolve());
+  useEffect(() => {
+    if (!source || !readSource || offset === undefined || !length) return;
+    let current = true;
+    // A stale read can still be checking the file on the Host. Let it finish before requesting the next range.
+    pending.current = pending.current.then(async () => {
+      if (!current) return;
+      let hex: string | null = null;
+      try {
+        const reference = source.reference;
+        const maxBytes =
+          length < TRANSFER_SAMPLE_BYTES ? length : TRANSFER_SAMPLE_BYTES;
+        const page = await readSource({
+          fileRef: reference,
+          offset: String(offset),
+          maxBytes: String(maxBytes),
+        });
+        const nextOffset = String(offset + maxBytes);
+        if (
+          page.fileRef.hostId === reference.hostId &&
+          page.fileRef.kind === reference.kind &&
+          page.fileRef.id === reference.id &&
+          page.fileRef.revision === reference.revision &&
+          page.offset === String(offset) &&
+          page.nextOffset === nextOffset &&
+          page.totalBytes === source.length &&
+          page.atEnd === (nextOffset === source.length) &&
+          page.bytesBase64.length === 4 * Math.ceil(Number(maxBytes) / 3)
+        ) {
+          const bytes = atob(page.bytesBase64);
+          if (bytes.length === Number(maxBytes))
+            hex = formatHex(
+              Uint8Array.from(bytes, (byte) => byte.charCodeAt(0)),
+            );
+        }
+      } catch {
+        // A failed read leaves the selected range visible.
+      }
+      if (current) setSample({ source, offset, length, hex });
+    });
+    return () => {
+      current = false;
+    };
+  }, [source, offset, length, readSource]);
+  if (
+    sample &&
+    sample.source === source &&
+    sample.offset === offset &&
+    sample.length === length
+  )
+    return sample.hex;
+}
+
 function BrowserTransferPreview({
   file,
   offset,
@@ -650,7 +740,7 @@ function BrowserTransferPreview({
   useEffect(() => {
     let active = true;
     void file
-      .slice(offset, offset + Math.min(length, 16))
+      .slice(offset, offset + Math.min(length, Number(TRANSFER_SAMPLE_BYTES)))
       .arrayBuffer()
       .then(
         (bytes) => {
@@ -676,8 +766,29 @@ function BrowserTransferPreview({
     sample.length !== length
   )
     return null;
-  if (sample.hex === null)
-    return <p role="status">{labels.sampleUnavailable}</p>;
+  return (
+    <TransferSample
+      hex={sample.hex}
+      offset={String(offset)}
+      truncated={length > Number(TRANSFER_SAMPLE_BYTES)}
+      labels={labels}
+    />
+  );
+}
+
+function TransferSample({
+  hex,
+  offset,
+  truncated,
+  labels,
+}: {
+  hex: string | null | undefined;
+  offset: string;
+  truncated: boolean;
+  labels: TransferOptionsLabels["browserFile"];
+}) {
+  if (hex === undefined) return null;
+  if (hex === null) return <p role="status">{labels.sampleUnavailable}</p>;
   return (
     <div className="grid min-w-0 gap-1 text-sm">
       <span>{labels.sample}</span>
@@ -686,8 +797,8 @@ function BrowserTransferPreview({
         data-surface="reading"
         className="min-w-0 rounded-md border px-2 py-1.5 font-mono wrap-anywhere"
       >
-        {offset}: {sample.hex}
-        {length > 16 ? " …" : ""}
+        {offset}: {hex}
+        {truncated ? " …" : ""}
       </output>
     </div>
   );
