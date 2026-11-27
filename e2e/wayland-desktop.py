@@ -11,9 +11,20 @@ import time
 def control(target, name, action):
     import pyatspi
 
+    incomplete = False
+
+    def children(node):
+        nonlocal incomplete
+        for child in node:
+            # A child removed during enumeration can be returned as None by AT-SPI.
+            if child is None:
+                incomplete = True
+            else:
+                yield child
+
     def descendants(node):
         yield node
-        for child in node:
+        for child in children(node):
             yield from descendants(child)
 
     titles = {
@@ -34,8 +45,9 @@ def control(target, name, action):
     activate = action in ("click", "click-if-present")
     while time.monotonic() < end:
         matching_windows.clear()
-        for app in desktop:
-            for window in app:
+        incomplete = False
+        for app in children(desktop):
+            for window in children(app):
                 title = window.name or ""
                 seen_windows.add(title)
                 if titles[target] not in title:
@@ -68,14 +80,16 @@ def control(target, name, action):
                         result["bounds"] = [rect.x, rect.y, rect.width, rect.height]
                     print(json.dumps(result))
                     return
-        if action == "wait-closed" and not matching_windows:
+        if not incomplete and action == "wait-closed" and not matching_windows:
             print(json.dumps({"dialog": titles[target], "action": action}))
             return
-        if action == "click-if-present":
+        if not incomplete and action == "click-if-present":
             print("{}")
             return
         time.sleep(0.2)
     if action == "wait-closed":
+        if incomplete and not matching_windows:
+            raise RuntimeError(f"Could not confirm {titles[target]!r} was closed in an incomplete AT-SPI tree")
         raise RuntimeError(
             f"{titles[target]!r} still appears in the accessibility tree: {matching_windows}"
         )

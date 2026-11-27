@@ -16,6 +16,10 @@
 
 ### 本轮交付与验收
 
+- 候选 `b306ed3` 完成 Apple Silicon 的窗口恢复复验。主窗保存时未最大化，尺寸为 `880×600`，位置是 `(30,55)`。重启恢复相同尺寸和位置，后续居中检查通过。Windows、X11 和 Apple Silicon 的原生前台收据均确认一次接纳 TX、精确回显和焦点保持。 [Apple Silicon 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162822568) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162653474) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162846763)
+
+- 同一候选的 KDE Wayland v2 专项通过。v1 在重载前已确认授权弹窗存在，重载后 AT-SPI 枚举返回空窗口节点，观察脚本在确认关闭之前退出。本机以相同的空节点复现异常，验证观察脚本等待下一次完整扫描才报告关闭或控件缺失。真实门户请求关闭、会话关闭和新文档仍按原专项核对。 [Wayland 原始收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162424268)
+
 - 候选 `c77c8c2` 的 Windows、两种 macOS 架构、X11 和 Wayland v1/v2 热键收据均确认关窗隐藏时零写入，X11 恢复后同键写入一次并完整回环。Apple Silicon 的后续重启用例把 `1000×680` 近满屏窗口保存为 `maximized=true`。存档的当前位置是 `(24,29)`，其正常位置是 `(0,25)`，重启实际使用了正常位置。夹具改用已验证的 macOS 正常窗尺寸，保存前后核对最大化状态。重启按保存的位置与尺寸核对，居中阶段复用该尺寸。窗口恢复属于 SESS-01 与 UX-04，继续随 IO-08 综合门禁验收。 [候选门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322) · [Apple Silicon 窗口收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159800471) · [Wayland 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159930621)
 
 - 同一候选的 Ubuntu Rust 作业已通过等待授权终态后的 LAN-01 双栈恢复，并完成独立网络命名空间内的离线软件基线。收据确认 T01、T03、T04、T05、T06、T08 全部通过。T06 的末个样本在负载开始后 600.1 秒，慢读者隔离、控制响应和丢失记账均通过。物理串口和各平台 72 小时实跑仍按 M6 单独验收。 [Ubuntu Rust 作业](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/job/140212428284) · [离线收据](https://github.com/YanChao001/serial-workbench/actions/runs/45908398322/artifacts/15159857582)
