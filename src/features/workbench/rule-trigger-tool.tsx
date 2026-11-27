@@ -5,6 +5,7 @@ import {
   type Operation,
 } from "@serial-workbench/contracts";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { nativeErrorText } from "@/lib/native-error";
 import { rpcJsonObject } from "@/lib/rpc-json";
@@ -14,6 +15,7 @@ import type {
   HostInvocation,
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
+import { useSettings } from "@/providers/settings";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
   inspectRuleDefinition,
@@ -91,9 +93,11 @@ export function RuleTriggerTool({
   catalog: readonly ActionSpec[];
 }) {
   const { t } = useI18n();
+  const { settings } = useSettings();
   const observations = useContext(RuleTaskObservationsContext);
   const id = useId();
   const [definition, setDefinition] = useState("");
+  const [backgroundAlert, setBackgroundAlert] = useState(false);
   const [saved, setSaved] = useState("");
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState<ArmRequest["phase"]>();
@@ -122,6 +126,9 @@ export function RuleTriggerTool({
     () => inspectRuleDefinition(definition),
     [definition],
   );
+  const offerBackgroundAlert = isTauri() && validated?.effect === "notify";
+  const enableBackgroundAlert =
+    offerBackgroundAlert && settings.runInBackground;
   const effect = validated?.effect === "action" ? validated.action : undefined;
   const spec =
     effect && catalog.find((entry) => entry.actionId === effect.actionId);
@@ -246,10 +253,21 @@ export function RuleTriggerTool({
         throw new ContractValidationError(
           "Rule acceptance belongs to another session",
         );
-      void observations.observe(access, operation);
+      const wantsAlert = enableBackgroundAlert && backgroundAlert;
+      const observed = observations.observe(access, operation, wantsAlert);
       if (!signal.aborted) {
         admitted.current = operation.operationId;
         setAccepted(operation);
+        if (wantsAlert)
+          void observed.then((outcome) => {
+            if (
+              !signal.aborted &&
+              admitted.current === outcome.id &&
+              "report" in outcome &&
+              outcome.backgroundAlert
+            )
+              setResult(outcome);
+          });
       }
       if (current.stopRequested && pending(operation) && access.cancel) {
         if (signal.aborted)
@@ -397,6 +415,32 @@ export function RuleTriggerTool({
           })}
         </p>
       ) : null}
+      {offerBackgroundAlert && (
+        <div className="grid gap-1 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Switch
+              id={id + "-background-alert"}
+              aria-describedby={id + "-background-alert-hint"}
+              checked={enableBackgroundAlert && backgroundAlert}
+              disabled={!enableBackgroundAlert || busy || saving}
+              onCheckedChange={setBackgroundAlert}
+            />
+            <label htmlFor={id + "-background-alert"}>
+              {t("ruleTrigger.backgroundAlert")}
+            </label>
+          </div>
+          <p
+            id={id + "-background-alert-hint"}
+            className="text-muted-foreground wrap-anywhere"
+          >
+            {t(
+              enableBackgroundAlert
+                ? "ruleTrigger.backgroundAlertHint"
+                : "ruleTrigger.backgroundAlertEnable",
+            )}
+          </p>
+        </div>
+      )}
       {validated?.effect === "send" && (
         <dl className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
           {validated.requestHex && (
@@ -529,6 +573,12 @@ export function RuleTriggerTool({
             )}
           </p>
         ) : null}
+        {refreshing &&
+        access &&
+        watched &&
+        observations?.backgroundAlertArmed(access, watched) ? (
+          <p>{t("ruleTrigger.backgroundAlertArmed")}</p>
+        ) : null}
         {watched ? (
           <p>{t("repeatSend.task", { id: watched.operationId })}</p>
         ) : null}
@@ -542,6 +592,11 @@ export function RuleTriggerTool({
         {finished && "report" in finished ? (
           <>
             <p>{t(`ruleTrigger.outcome.${finished.report.outcome}`)}</p>
+            {finished.backgroundAlert && (
+              <p>
+                {t(`ruleTrigger.backgroundAlert.${finished.backgroundAlert}`)}
+              </p>
+            )}
             {"message" in finished.report ? (
               <p>{finished.report.message}</p>
             ) : null}

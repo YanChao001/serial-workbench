@@ -140,6 +140,8 @@ export type WorkbenchFixture = {
     generation: string;
     captureNameHint: CaptureNameHint | null;
   }[];
+  backgroundRuleAlerts: string[];
+  backgroundRuleAlertResult: boolean;
   automationCursorPosition: string;
   suiteConfigurationRevision?: string;
   calendarSessionRevision?: string;
@@ -1216,6 +1218,8 @@ export async function seedWorkbenchFixture(
       clientStateWrites: [],
       workspaceWrites: [],
       filePickerCalls: [],
+      backgroundRuleAlerts: [],
+      backgroundRuleAlertResult: false,
       automationCursorPosition: "0",
       automationObserveFailures: 0,
       emitRuleOperation(markMatched = false) {
@@ -3908,6 +3912,11 @@ export async function seedWorkbenchFixture(
               return false;
             case "get_desktop_status":
               return desktop;
+            case "present_background_rule_alert":
+              if (typeof args.message !== "string")
+                throw new Error("Expected a rule alert message");
+              fixture.backgroundRuleAlerts.push(args.message);
+              return fixture.backgroundRuleAlertResult;
             case "get_window_geometry":
               return windowGeometry;
             case "recovery_status":

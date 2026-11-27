@@ -1867,6 +1867,15 @@ export const en = {
     "Stop requested. Waiting for the Host operation receipt…",
   "ruleTrigger.preparing": "Preparing the receive scope…",
   "ruleTrigger.armed": "Rule armed and waiting for a match.",
+  "ruleTrigger.backgroundAlert": "Tray alert",
+  "ruleTrigger.backgroundAlertHint":
+    "Use the system notification and sound when this rule matches while its window is hidden in the tray.",
+  "ruleTrigger.backgroundAlertEnable":
+    "Enable Run in background in Desktop settings to use tray alerts.",
+  "ruleTrigger.backgroundAlertArmed": "Tray alert armed for this rule.",
+  "ruleTrigger.backgroundAlert.submitted": "System notification requested.",
+  "ruleTrigger.backgroundAlert.skipped": "Tray alert skipped.",
+  "ruleTrigger.backgroundAlert.unavailable": "System notification unavailable.",
   "ruleTrigger.effectId": "Effect receipt {id}",
   "ruleTrigger.outcome.notification":
     "Rule matched and returned a notification.",

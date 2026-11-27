@@ -6,6 +6,7 @@ import {
 } from "@serial-workbench/contracts";
 import { toast } from "sonner";
 import { isRecord } from "@/lib/settings-model";
+import { presentBackgroundRuleAlert } from "@/lib/tauri";
 import type { HostContextValue } from "@/providers/host-context";
 import {
   readRuleResult,
@@ -21,8 +22,15 @@ export type RuleTaskAccess = Pick<
   target: Target;
 };
 
+type BackgroundAlert = "submitted" | "skipped" | "unavailable";
+
 type RuleObservation =
-  | { id: string; report: RuleResult; terminal: true }
+  | {
+      id: string;
+      report: RuleResult;
+      terminal: true;
+      backgroundAlert?: BackgroundAlert;
+    }
   | { id: string; stopped: true; terminal: true }
   | { id: string; error: unknown; terminal: boolean };
 
@@ -31,6 +39,8 @@ type Entry = {
   operation: Operation;
   controller: AbortController;
   pending: boolean;
+  backgroundAlert: boolean;
+  alertRequest?: Promise<BackgroundAlert>;
   outcome?: Promise<RuleObservation>;
 };
 
@@ -75,6 +85,22 @@ async function observeRule(
   }
 }
 
+async function withBackgroundAlert(entry: Entry, result: RuleObservation) {
+  if (
+    !entry.backgroundAlert ||
+    entry.controller.signal.aborted ||
+    !("report" in result) ||
+    result.report.outcome !== "notification"
+  )
+    return result;
+  entry.alertRequest ??= presentBackgroundRuleAlert(result.report.message).then(
+    (submitted) => (submitted ? "submitted" : "skipped"),
+    () => "unavailable",
+  );
+  const backgroundAlert = await entry.alertRequest;
+  return { ...result, backgroundAlert };
+}
+
 export function createRuleTaskObservations() {
   const entries = new Map<string, Entry>();
   const trim = () => {
@@ -84,16 +110,25 @@ export function createRuleTaskObservations() {
     }
   };
   return {
-    observe(access: RuleTaskAccess, operation: Operation) {
+    observe(
+      access: RuleTaskAccess,
+      operation: Operation,
+      backgroundAlert = false,
+    ) {
       const key = JSON.stringify([access.scope, operation.operationId]);
-      const existing = entries.get(key);
-      if (existing?.outcome) return existing.outcome;
-      const entry: Entry = {
+      const entry: Entry = entries.get(key) ?? {
         scope: access.scope,
         operation,
         controller: new AbortController(),
         pending: true,
+        backgroundAlert: false,
       };
+      entry.backgroundAlert ||= backgroundAlert;
+      if (entry.outcome)
+        return entry.outcome.then((outcome) =>
+          withBackgroundAlert(entry, outcome),
+        );
+      entry.pending = true;
       entries.delete(key);
       entries.set(key, entry);
       entry.outcome = observeRule(
@@ -110,7 +145,13 @@ export function createRuleTaskObservations() {
         return result;
       });
       trim();
-      return entry.outcome;
+      return entry.outcome.then((outcome) =>
+        withBackgroundAlert(entry, outcome),
+      );
+    },
+    backgroundAlertArmed(access: RuleTaskAccess, operation: Operation) {
+      const key = JSON.stringify([access.scope, operation.operationId]);
+      return entries.get(key)?.backgroundAlert ?? false;
     },
     recent(access: RuleTaskAccess) {
       let result: Operation | undefined;

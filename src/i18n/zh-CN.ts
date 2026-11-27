@@ -1720,6 +1720,15 @@ export const zhCN = {
   "ruleTrigger.stopQueued": "已记录停止请求，正在等待 Host 操作回执…",
   "ruleTrigger.preparing": "正在准备接收范围…",
   "ruleTrigger.armed": "规则已武装，等待匹配。",
+  "ruleTrigger.backgroundAlert": "托盘提醒",
+  "ruleTrigger.backgroundAlertHint":
+    "窗口隐藏到托盘后，本次规则命中会请求系统通知和铃声。",
+  "ruleTrigger.backgroundAlertEnable":
+    "在桌面偏好中开启后台运行即可使用托盘提醒。",
+  "ruleTrigger.backgroundAlertArmed": "本次规则已开启托盘提醒。",
+  "ruleTrigger.backgroundAlert.submitted": "已请求系统通知。",
+  "ruleTrigger.backgroundAlert.skipped": "已跳过托盘提醒。",
+  "ruleTrigger.backgroundAlert.unavailable": "系统通知不可用。",
   "ruleTrigger.effectId": "触发动作回执 {id}",
   "ruleTrigger.outcome.notification": "规则已匹配，收到通知。",
   "ruleTrigger.outcome.written": "规则已匹配，Host 已确认完整写入。",

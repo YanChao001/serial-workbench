@@ -209,6 +209,16 @@ pub fn get_desktop_status(app: tauri::AppHandle) -> NativeResult<DesktopStatus> 
 
 #[tauri::command]
 #[specta::specta]
+pub async fn present_background_rule_alert(
+    window: tauri::WebviewWindow,
+    message: String,
+) -> NativeResult<bool> {
+    require_host_window(window.label())?;
+    blocking::run(move || desktop::present_background_rule_alert(&window, &message)).await
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn get_autostart_enabled(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
