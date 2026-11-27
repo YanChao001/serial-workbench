@@ -268,7 +268,6 @@ export function StreamContextMenu({
           spec={preview}
           sender={sender}
           labels={labels}
-          sourceAvailable={sourceAvailable}
           confirmSource={() => exact(preview.point)}
           onClose={() => setPreview(undefined)}
           restoreFocus={() => viewport.current?.focus({ preventScroll: true })}
@@ -282,7 +281,6 @@ function SelectionSendDialog({
   spec,
   sender,
   labels,
-  sourceAvailable,
   confirmSource,
   onClose,
   restoreFocus,
@@ -290,7 +288,6 @@ function SelectionSendDialog({
   spec: Preview;
   sender?: StreamContextSend;
   labels: WorkbenchLabels;
-  sourceAvailable: boolean;
   confirmSource: () => LocatedStreamCopySample | undefined;
   onClose: () => void;
   restoreFocus: () => void;
@@ -300,7 +297,7 @@ function SelectionSendDialog({
   const [busy, setBusy] = useState(false);
   const work = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => work.current?.abort(), []);
-  const available = sourceAvailable && sender?.scope === spec.target.scope;
+  const available = sender?.scope === spec.target.scope;
   const receipt =
     result?.result?.kind === "tx" ? result.result.value : undefined;
 

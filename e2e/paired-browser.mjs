@@ -201,7 +201,10 @@ async function checkSelectionDownloads(page, first, second) {
   const txCount = () =>
     frames.filter(({ action }) => action === "session.tx").length;
   const beforePreview = txCount();
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const browserContext = page.context();
+  await browserContext.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
   const log = terminal.getByRole("log");
   const context = page.getByRole("menu", {
     name: /^(Receive actions|接收区操作)$/,
@@ -216,6 +219,7 @@ async function checkSelectionDownloads(page, first, second) {
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(expectedHex);
+  await browserContext.clearPermissions();
   await selectBytes();
   await log.press("Shift+F10");
   const previewTitle = /^(Preview send selection|预览发送选区)$/;
