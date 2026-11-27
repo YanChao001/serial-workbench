@@ -2041,6 +2041,24 @@ async fn replay_transmit_keeps_preview_offline_and_sends_only_confirmed_bytes() 
         };
         f.wait(&receipt.operation, false).await
     };
+    let mut wrong_epoch = invoke(
+        selection.clone(),
+        &preview.preview_digest,
+        preview.target_revision,
+    );
+    wrong_epoch.target.session_epoch = Some(target.session_epoch.unwrap().checked_next().unwrap());
+    assert_eq!(
+        failure(
+            f.user
+                .request(RpcRequest::Invoke(wrong_epoch))
+                .await
+                .unwrap()
+        )
+        .code,
+        "EPOCH_MISMATCH"
+    );
+    assert_eq!(cursor().await, before);
+
     let mut changed = selection.clone();
     changed["bytesPerSecond"] = json!("1025");
     let rejected = run(invoke(
