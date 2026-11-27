@@ -1227,6 +1227,8 @@ export function StreamView({
       ? readStreamHexSelection(root, hexFormat)
       : undefined;
     const sample = hex ? readContextSample(hex) : undefined;
+    if (hex && sample)
+      return { anchor: sample.anchor, bytes: { range: hex, sample } };
     const rangeRow = selectionInView
       ? range.startContainer.parentElement?.closest<HTMLElement>(
           "[data-stream-context-item]",
@@ -1246,7 +1248,6 @@ export function StreamView({
     return {
       anchor:
         item?.kind === "source" ? streamEventBookmark(item.event) : undefined,
-      bytes: hex && sample ? { range: hex, sample } : undefined,
       text: selectionInView && !error ? selected?.toString() : undefined,
     };
   }

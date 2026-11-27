@@ -104,6 +104,19 @@ describe("copying selected stream bytes", () => {
     );
   });
 
+  it("locates the first selected byte in the second event of a joined row", () => {
+    const selected = readStreamCopySample(rows, projected, {
+      ...selection,
+      start: { ...selection.start, offset: start + 3n },
+    });
+    expect(selected?.bytes).toEqual(Uint8Array.of(184, 173, 66));
+    expect(selected?.anchor).toEqual({
+      reference: 'SWB1 ["host","1","session","2","2","9007199254741034"]',
+      event: "2",
+      time: "2026-11-24T01:00:03.003Z",
+    });
+  });
+
   it("rejects unavailable source times and over-limit selections", () => {
     expect(
       readStreamCopySample(rows, projected.slice(0, 1), selection),

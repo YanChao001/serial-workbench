@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
-async function receive(page: Page, readOnly = false) {
+async function receive(page: Page, readOnly = false, splitRecord = false) {
   await seedWorkbenchFixture(page, {
     language: "en",
     sidebarCollapsed: true,
@@ -19,6 +19,36 @@ async function receive(page: Page, readOnly = false) {
   const input = workbenchStreamItems().filter(
     (item) => item.kind === "source" && item.event.kind === "rx",
   );
+  if (splitRecord) {
+    const [item] = input;
+    if (item?.kind !== "source" || item.event.kind !== "rx")
+      throw new Error("Expected the source RX fixture");
+    const event = item.event;
+    input.splice(
+      0,
+      1,
+      {
+        kind: "source",
+        event: {
+          ...event,
+          payload: { ...event.payload, bytesBase64: "T0s=", byteEnd: "2" },
+        },
+      },
+      {
+        kind: "source",
+        event: {
+          ...event,
+          eventSeq: "4",
+          time: {
+            ...event.time,
+            sourceMonoNs: "1001000",
+            receivedWallTime: "2026-11-10T11:22:33.457Z",
+          },
+          payload: { ...event.payload, bytesBase64: "DQo=", byteStart: "2" },
+        },
+      },
+    );
+  }
   await page.evaluate(
     (items: unknown[]) => window.workbenchFixture.emitRaw(items),
     input as unknown[],
@@ -141,6 +171,45 @@ test("receive context copies, previews exact selected bytes, and locates the ori
   );
   await locations.getByRole("button", { name: "Remove bookmark" }).click();
   await expect(bookmark).toHaveCount(0);
+});
+
+test("one displayed RX record keeps the original event of a byte selection inside its second chunk", async ({
+  page,
+}) => {
+  const { terminal, log, hex, menu } = await receive(page, false, true);
+  async function selectSecondChunk() {
+    await hex.evaluate((element) => {
+      const node = element.firstChild;
+      if (!node) throw new Error("Missing merged HEX row");
+      document.getSelection()?.setBaseAndExtent(node, 6, node, 11);
+    });
+    await log.press("Shift+F10");
+  }
+  await selectSecondChunk();
+  await menu.getByRole("menuitem", { name: "Preview send selection" }).click();
+  const preview = page.getByRole("dialog", { name: "Preview send selection" });
+  await expect(preview.locator("pre")).toHaveText("0D 0A");
+  await expect(preview).toContainText("Event 4");
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+
+  await selectSecondChunk();
+  await menu.getByRole("menuitem", { name: "Add time bookmark" }).click();
+  await selectSecondChunk();
+  await menu.getByRole("menuitem", { name: "Split at this record" }).click();
+  await expect(
+    log.locator('[data-location-target="true"] [data-hex-source]'),
+  ).toHaveText("4F 4B 0D 0A");
+
+  await terminal.getByRole("button", { name: "Record location" }).click();
+  const locations = page.getByRole("dialog", { name: "Record location" });
+  const bookmark = locations.getByRole("button", { name: /Event 4/ });
+  await expect(bookmark).toContainText("2026-11-10T11:22:33.457Z");
+  await bookmark.click();
+  await expect(locations.getByRole("status")).toContainText("Event 4");
 });
 
 test("a read-only record retains navigation without offering a write", async ({

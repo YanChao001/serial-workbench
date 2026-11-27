@@ -10,6 +10,7 @@ import type { Operation, TextEncoding } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { CodeBlock } from "@/components/code-block";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -34,7 +35,7 @@ import {
   formatStreamCopy,
   STREAM_COPY_FORMATS,
   type StreamCopyFormat,
-  type StreamCopySample,
+  type LocatedStreamCopySample,
 } from "./stream-copy";
 import type { StreamHexSelection } from "./stream-hex-selection";
 import type { StreamBookmark } from "./stream-location";
@@ -50,7 +51,7 @@ export type StreamContextSend = {
 
 export type StreamContextPoint = {
   anchor?: StreamBookmark;
-  bytes?: { range: StreamHexSelection; sample: StreamCopySample };
+  bytes?: { range: StreamHexSelection; sample: LocatedStreamCopySample };
   text?: string;
 };
 
@@ -58,7 +59,6 @@ type ScopedContext = StreamContextPoint & { sendScope?: string };
 type Preview = {
   target: StreamContextSend;
   point: NonNullable<StreamContextPoint["bytes"]>;
-  anchor?: StreamBookmark;
 };
 
 export function StreamContextMenu({
@@ -83,7 +83,7 @@ export function StreamContextMenu({
   sender?: StreamContextSend;
   sourceAvailable: boolean;
   read: (target: EventTarget | null) => StreamContextPoint;
-  retained: (range: StreamHexSelection) => StreamCopySample | undefined;
+  retained: (range: StreamHexSelection) => LocatedStreamCopySample | undefined;
   onCopyFeedback: (message?: string) => void;
   onBookmark: (anchor: StreamBookmark) => void;
   onSplit: (anchor: StreamBookmark) => void;
@@ -106,6 +106,7 @@ export function StreamContextMenu({
     const sample = retained(point.range);
     if (
       sample &&
+      sample.anchor.reference === point.sample.anchor.reference &&
       sample.direction === point.sample.direction &&
       sample.offset === point.sample.offset &&
       sample.bytes.length === point.sample.bytes.length &&
@@ -237,7 +238,6 @@ export function StreamContextMenu({
               openingPreview.current = true;
               setPreview({
                 point: context.bytes,
-                anchor: context.anchor,
                 target: sender,
               });
             }}
@@ -268,6 +268,7 @@ export function StreamContextMenu({
           spec={preview}
           sender={sender}
           labels={labels}
+          sourceAvailable={sourceAvailable}
           confirmSource={() => exact(preview.point)}
           onClose={() => setPreview(undefined)}
           restoreFocus={() => viewport.current?.focus({ preventScroll: true })}
@@ -281,6 +282,7 @@ function SelectionSendDialog({
   spec,
   sender,
   labels,
+  sourceAvailable,
   confirmSource,
   onClose,
   restoreFocus,
@@ -288,7 +290,8 @@ function SelectionSendDialog({
   spec: Preview;
   sender?: StreamContextSend;
   labels: WorkbenchLabels;
-  confirmSource: () => StreamCopySample | undefined;
+  sourceAvailable: boolean;
+  confirmSource: () => LocatedStreamCopySample | undefined;
   onClose: () => void;
   restoreFocus: () => void;
 }) {
@@ -297,7 +300,7 @@ function SelectionSendDialog({
   const [busy, setBusy] = useState(false);
   const work = useRef<AbortController | undefined>(undefined);
   useEffect(() => () => work.current?.abort(), []);
-  const available = sender?.scope === spec.target.scope;
+  const available = sourceAvailable && sender?.scope === spec.target.scope;
   const receipt =
     result?.result?.kind === "tx" ? result.result.value : undefined;
 
@@ -342,18 +345,18 @@ function SelectionSendDialog({
           <DialogTitle>{labels.contextSend}</DialogTitle>
           <DialogDescription className="wrap-anywhere">
             {spec.target.port} · {spec.point.sample.bytes.length} B
-            {spec.anchor &&
-              " · " + labels.locationEvent + " " + spec.anchor.event}
+            {" · " +
+              labels.locationEvent +
+              " " +
+              spec.point.sample.anchor.event}
           </DialogDescription>
         </DialogHeader>
         {available && (
-          <pre
-            className="max-h-44 overflow-auto rounded-md border p-2 font-mono text-xs whitespace-pre-wrap wrap-anywhere"
-            data-surface="reading"
-            tabIndex={0}
-          >
-            {formatHex(spec.point.sample.bytes)}
-          </pre>
+          <CodeBlock
+            code={formatHex(spec.point.sample.bytes)}
+            language="text"
+            className="max-h-44 rounded-md border p-2 whitespace-pre-wrap wrap-anywhere"
+          />
         )}
         {!available && !busy && !result && !error && (
           <p role="alert">{labels.contextSendUnavailable}</p>
