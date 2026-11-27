@@ -87,6 +87,7 @@ export function WorkbenchConnection({
   canSave,
   canReplay,
   canReplayTransmit,
+  canConnectionSequence,
   toolsAvailable,
   onDeviceChange,
   onTool,
@@ -123,6 +124,7 @@ export function WorkbenchConnection({
   canSave: boolean;
   canReplay: boolean;
   canReplayTransmit?: boolean;
+  canConnectionSequence?: boolean;
   toolsAvailable: boolean;
   onDeviceChange: (id: string) => void;
   onTool: (
@@ -449,6 +451,14 @@ export function WorkbenchConnection({
                 >
                   <ListOrdered aria-hidden="true" />
                   {toolLabels.sessionTemplates}
+                </DropdownMenuItem>
+              )}
+              {canConnectionSequence && toolLabels?.connectionSequence && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("connectionSequence")}
+                >
+                  <ListOrdered aria-hidden="true" />
+                  {toolLabels.connectionSequence}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem

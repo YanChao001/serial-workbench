@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { observePattern } from "./receive-pattern.ts";
 import type {
   NodeActionHandler,
   NodeTaskContext,
@@ -117,43 +118,6 @@ function parsePlan(params: Parameters<NodeActionHandler>[0]["params"]) {
   };
 }
 
-function observePattern(
-  pattern: Buffer,
-  afterMatch?: (event: Parameters<ReceiveObserver>[0]) => void,
-): ReceiveObserver {
-  let suffix: Buffer = Buffer.alloc(0);
-  let nextByte: string | undefined;
-  return (event) => {
-    const { payload } = event;
-    const { byteStart, byteEnd, bytesBase64 } = payload;
-    const bytes = Buffer.from(bytesBase64, "base64");
-    if (
-      (nextByte !== undefined && nextByte !== byteStart) ||
-      BigInt(byteEnd) - BigInt(byteStart) !== BigInt(bytes.length)
-    )
-      return "source_changed";
-    nextByte = byteEnd;
-    const input = Buffer.concat([suffix, bytes]);
-    const first = input.indexOf(pattern);
-    if (first >= 0) {
-      const end = first + pattern.length - suffix.length;
-      if (afterMatch && end < bytes.length) {
-        afterMatch({
-          ...event,
-          payload: {
-            ...payload,
-            byteStart: String(BigInt(byteStart) + BigInt(end)),
-            bytesBase64: bytes.subarray(end).toString("base64"),
-          },
-        });
-      }
-      return "condition_met";
-    }
-    suffix = input.subarray(Math.max(0, input.length - (pattern.length - 1)));
-    return undefined;
-  };
-}
-
 function sourceChanged(event: Event, session: Session) {
   return (
     event.hostId !== session.hostId ||
@@ -254,8 +218,8 @@ export function createRepeatSend(
       const startPattern = observePattern(
         plan.startOn,
         stop
-          ? (remaining) => {
-              stopped = stop(remaining);
+          ? ({ remainder }) => {
+              if (remainder) stopped = stop(remainder);
             }
           : undefined,
       );

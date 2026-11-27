@@ -83,6 +83,10 @@ const AUTOMATION_0_1_6_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.6.zip");
 const AUTOMATION_0_1_6_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.6.json");
+const AUTOMATION_0_1_7_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.7.zip");
+const AUTOMATION_0_1_7_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.7.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
@@ -218,8 +222,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 15] {
-    static PREVIOUS: OnceLock<[ProductPackage; 15]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 16] {
+    static PREVIOUS: OnceLock<[ProductPackage; 16]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -271,6 +275,11 @@ fn previous_packages() -> &'static [ProductPackage; 15] {
                 AUTOMATION_MARKER,
             ),
             ProductPackage::new(
+                AUTOMATION_0_1_7_DESCRIPTOR,
+                AUTOMATION_0_1_7_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
                 PREVIOUS_RFC2217_DESCRIPTOR,
                 PREVIOUS_RFC2217_ARCHIVE,
                 RFC2217_MARKER,
@@ -287,6 +296,12 @@ fn previous_packages() -> &'static [ProductPackage; 15] {
             ),
         ]
     })
+}
+
+pub(crate) fn matches_current_product_archive(id: &NodePackageId, digest: &Digest) -> bool {
+    packages()
+        .iter()
+        .any(|package| package.id() == id && &package.descriptor.archive_sha256 == digest)
 }
 
 fn trusted_packages() -> impl Iterator<Item = &'static ProductPackage> {

@@ -47,7 +47,16 @@ test("the built-in automation matches the locked archive and the reference actio
     descriptor.compiledModuleSha256,
     sha256(bundle.outputFiles[0].contents),
   );
-  assert.deepEqual(manifest.permissions, reference.permissions);
+  assert.deepEqual(manifest.permissions, {
+    ...reference.permissions,
+    hostApi: [
+      ...reference.permissions.hostApi,
+      {
+        permissions: ["metadata.read", "device.modify"],
+        targetKinds: ["device"],
+      },
+    ],
+  });
   assert.deepEqual(manifest.dependencies, []);
   assert.deepEqual(manifest.platformResources, []);
   assert.equal(manifest.runtimeRef, reference.runtimeRef);
@@ -58,12 +67,22 @@ test("the built-in automation matches the locked archive and the reference actio
     assert.ok(action);
     return { ...action, actionId: "swb.builtin.automation." + name };
   });
-  const loopback = manifest.contributes.actions.at(-1);
+  const [loopback, connection] = manifest.contributes.actions.slice(-2);
   assert.equal(loopback.actionId, "swb.builtin.automation.loopback");
   assert.deepEqual(loopback.targetKinds, ["session"]);
   assert.deepEqual(
     loopback.permissions,
     manifest.permissions.hostApi[0].permissions,
   );
-  assert.deepEqual(manifest.contributes.actions, [...actions, loopback]);
+  assert.equal(connection.actionId, "swb.builtin.automation.connect");
+  assert.deepEqual(connection.targetKinds, ["device"]);
+  assert.deepEqual(
+    connection.permissions,
+    manifest.permissions.hostApi[1].permissions,
+  );
+  assert.deepEqual(manifest.contributes.actions, [
+    ...actions,
+    loopback,
+    connection,
+  ]);
 });

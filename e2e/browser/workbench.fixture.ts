@@ -323,6 +323,7 @@ export async function seedWorkbenchFixture(
       calendarInitiallyQueued?: boolean;
       delaySecondCalendarCheck?: boolean;
       sequenceRetry?: boolean;
+      connectionReport?: { steps: unknown[]; [key: string]: unknown };
       sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
     extraActions?: ActionSpec[];
@@ -2052,6 +2053,7 @@ export async function seedWorkbenchFixture(
                 const rule = call.actionId.endsWith(".rule");
                 const calendar = call.actionId.endsWith(".calendar");
                 const loopback = call.actionId.endsWith(".loopback");
+                const connection = call.actionId.endsWith(".connect");
                 const waitingToArm =
                   calendar && automation.calendarInitiallyQueued;
                 const retry = sequence && automation.sequenceRetry;
@@ -2060,15 +2062,17 @@ export async function seedWorkbenchFixture(
                   : undefined;
                 const failed = suite?.[suiteCase] === "failed";
                 const written = suite?.[suiteCase] === "written";
-                const count = rule
-                  ? 1
-                  : sequence
-                    ? retry || suite
-                      ? 1
-                      : 4
-                    : calendar
-                      ? (call.params.count ?? 1)
-                      : call.params.count;
+                const count = connection
+                  ? (automation.connectionReport?.steps.length ?? 1)
+                  : rule
+                    ? 1
+                    : sequence
+                      ? retry || suite
+                        ? 1
+                        : 4
+                      : calendar
+                        ? (call.params.count ?? 1)
+                        : call.params.count;
                 if (typeof count !== "number")
                   throw new Error("Expected automation count");
                 const id = suite
@@ -2085,7 +2089,9 @@ export async function seedWorkbenchFixture(
                           : "fixture-calendar-" + calendarRuns
                         : loopback
                           ? "fixture-loopback"
-                          : "fixture-repeat";
+                          : connection
+                            ? "fixture-connection-sequence"
+                            : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
@@ -2115,7 +2121,7 @@ export async function seedWorkbenchFixture(
                           ? "slots"
                           : rule
                             ? "matches"
-                            : sequence
+                            : sequence || connection
                               ? "steps"
                               : loopback
                                 ? "frames"
@@ -2186,6 +2192,8 @@ export async function seedWorkbenchFixture(
                         ),
                       },
                 );
+                if (connection && automation.connectionReport)
+                  automationFile = JSON.stringify(automation.connectionReport);
                 if (loopback) {
                   const size = Number(call.params.frameBytes);
                   automationFile = JSON.stringify({

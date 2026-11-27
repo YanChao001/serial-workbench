@@ -7,6 +7,7 @@ pub(crate) struct TaskAuthority {
     pub owner_instance: Id,
     pub execution_mode: ExecutionMode,
     pub scope: Target,
+    pub opened_session: Option<Target>,
     pub host_api: Vec<NodeHostApiScope>,
     pub inherited: Option<Arc<TaskAuthority>>,
     pub admission_queued: Arc<std::sync::atomic::AtomicBool>,
@@ -65,7 +66,9 @@ impl TaskAuthority {
     }
     fn check_target_scope(&self, target: &Target) -> HostResult<()> {
         if self.scope.host_id != target.host_id
-            || (self.scope.kind.as_str() != "host" && self.scope != *target)
+            || (self.scope.kind.as_str() != "host"
+                && self.scope != *target
+                && self.opened_session.as_ref() != Some(target))
         {
             Err(HostError::new(
                 "PERMISSION_DENIED",
@@ -122,6 +125,7 @@ mod tests {
             owner_instance: Id::try_from("owner").unwrap(),
             execution_mode: ExecutionMode::Independent,
             scope,
+            opened_session: None,
             host_api: Vec::new(),
             inherited,
             admission_queued: Arc::default(),
@@ -137,6 +141,42 @@ mod tests {
             }),
         })
     }
+    #[test]
+    fn device_task_can_use_only_its_confirmed_opened_epoch() {
+        let device = target("device", "startup-device");
+        let mut opened = target("session", "startup-session");
+        opened.session_id = Some(opened.id.clone());
+        opened.session_epoch = Some(2.into());
+        let mut authority = authority(device.clone(), None, Arc::new(AtomicBool::new(true)));
+        assert_eq!(
+            authority.check_target(&opened).unwrap_err().code,
+            "PERMISSION_DENIED"
+        );
+        Arc::get_mut(&mut authority).unwrap().opened_session = Some(opened.clone());
+        authority.check_target(&device).unwrap();
+        authority.check_target(&opened).unwrap();
+        assert_eq!(
+            authority
+                .require("metadata.read", &opened)
+                .unwrap_err()
+                .code,
+            "PERMISSION_DENIED"
+        );
+        let mut next = opened;
+        next.session_epoch = Some(3.into());
+        assert_eq!(
+            authority.check_target(&next).unwrap_err().code,
+            "PERMISSION_DENIED"
+        );
+        assert_eq!(
+            authority
+                .check_target(&target("device", "other-device"))
+                .unwrap_err()
+                .code,
+            "PERMISSION_DENIED"
+        );
+    }
+
     #[test]
     fn empty_permission_target_check_preserves_ancestor_scope_and_currentness() {
         let workspace_a = target("workspace", "a");

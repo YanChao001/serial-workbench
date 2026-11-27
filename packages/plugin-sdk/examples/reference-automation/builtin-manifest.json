@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.automation",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "displayName": "Serial Automation",
   "description": "Schedule sends, run command sequences, and trigger scoped actions",
   "license": "Apache-2.0",
@@ -17,6 +17,10 @@
       {
         "permissions": ["metadata.read", "content.read", "device.modify"],
         "targetKinds": ["session"]
+      },
+      {
+        "permissions": ["metadata.read", "device.modify"],
+        "targetKinds": ["device"]
       }
     ],
     "executionPurposes": ["automation"],
@@ -923,6 +927,289 @@
         "revealTarget": {
           "pageId": "workbench",
           "panelId": "activity"
+        }
+      },
+      {
+        "actionId": "swb.builtin.automation.connect",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "configuration": {
+              "type": "object",
+              "properties": {
+                "baudRate": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]{0,19}$"
+                },
+                "dataBits": {
+                  "type": "string"
+                },
+                "parity": {
+                  "type": "string"
+                },
+                "stopBits": {
+                  "type": "string"
+                },
+                "flowControl": {
+                  "type": "string",
+                  "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"]
+                },
+                "readWaitMs": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                },
+                "writeWaitMs": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                },
+                "reconnectBackoffMs": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,19})$"
+                }
+              },
+              "required": [
+                "baudRate",
+                "dataBits",
+                "parity",
+                "stopBits",
+                "flowControl",
+                "readWaitMs",
+                "writeWaitMs",
+                "reconnectBackoffMs"
+              ],
+              "additionalProperties": false
+            },
+            "definition": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "const": 1
+                },
+                "beforeOpenMs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 30000
+                },
+                "steps": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["line"]
+                          },
+                          "line": {
+                            "type": "string",
+                            "enum": ["dtr", "rts"]
+                          },
+                          "value": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["kind", "line", "value"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["delay"]
+                          },
+                          "milliseconds": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 15000
+                          }
+                        },
+                        "required": ["kind", "milliseconds"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["send"]
+                          },
+                          "bytesBase64": {
+                            "$ref": "#/$defs/frame"
+                          }
+                        },
+                        "required": ["kind", "bytesBase64"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["ready"]
+                          },
+                          "bytesBase64": {
+                            "$ref": "#/$defs/frame"
+                          },
+                          "timeoutMs": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 15000
+                          }
+                        },
+                        "required": ["kind", "bytesBase64", "timeoutMs"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": ["version", "beforeOpenMs", "steps"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["configuration", "definition"],
+          "additionalProperties": false,
+          "$defs": {
+            "frame": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 344,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "port_in_use",
+                "open_failed",
+                "step_failed",
+                "session_changed",
+                "ready_timeout"
+              ]
+            },
+            "session": {
+              "type": "object",
+              "properties": {
+                "hostId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": ["session"]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "sessionEpoch": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]{0,19}$"
+                }
+              },
+              "required": ["hostId", "kind", "id", "sessionId", "sessionEpoch"],
+              "additionalProperties": false
+            },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 18,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "before_open",
+                      "open",
+                      "line",
+                      "delay",
+                      "send",
+                      "ready"
+                    ]
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": ["succeeded", "failed", "skipped"]
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "hostId": {
+                        "type": "string"
+                      },
+                      "sessionId": {
+                        "type": "string"
+                      },
+                      "sessionEpoch": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,19}$"
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": ["rx"]
+                      },
+                      "eventStart": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,19}$"
+                      },
+                      "eventEnd": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]{0,19}$"
+                      },
+                      "byteStart": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]{0,19})$"
+                      },
+                      "byteEnd": {
+                        "type": "string",
+                        "pattern": "^(0|[1-9][0-9]{0,19})$"
+                      }
+                    },
+                    "required": [
+                      "hostId",
+                      "sessionId",
+                      "sessionEpoch",
+                      "direction",
+                      "eventStart",
+                      "eventEnd",
+                      "byteStart",
+                      "byteEnd"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["kind", "state"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["outcome", "steps"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["device"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read", "device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench",
+          "panelId": "connectionSequence"
         }
       }
     ],

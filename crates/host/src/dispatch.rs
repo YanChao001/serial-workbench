@@ -3015,6 +3015,7 @@ mod tests {
                     (&automation, "swb.builtin.automation.rule"),
                     (&automation, "swb.builtin.automation.calendar"),
                     (&automation, "swb.builtin.automation.loopback"),
+                    (&automation, "swb.builtin.automation.connect"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3168,6 +3169,260 @@ mod tests {
             drop(host);
             drop(server);
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "Needs a verified native Node distribution in SWB_NODE_RUNTIME_TEST_ROOT"]
+    async fn native_node_connection_sequence_owns_fresh_session_and_stops_before_tail() {
+        use crate::node_runtime::{NodeRuntimeLimits, verify_node_runtime};
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        use std::{path::Path, time::Duration};
+
+        let root = std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap();
+        let profile = crate::test_support::Profile::isolated("host-connection-sequence-");
+        let server = HostServer::bind(profile.path()).await.unwrap();
+        let runtime = verify_node_runtime(
+            Path::new(&root),
+            &NodeRuntimeLimits::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let credential =
+            serial_workbench_client::read_user_control_credential(profile.path()).unwrap();
+        let auth = server.auth();
+        let actor = auth
+            .authenticate_user_control(&id("connection-sequence-operator"), &credential)
+            .unwrap();
+        let store = server.store();
+        let identity = store.identity().unwrap();
+        let host = Host::initialize(
+            store.clone(),
+            auth,
+            Arc::new(crate::clock::SystemClock::new().unwrap()),
+            DeviceSource::Opener(crate::device::DeviceService::virtual_opener()),
+            None,
+            Some(runtime),
+        )
+        .await
+        .unwrap();
+        let catalog = &host.inner.registry.runtime;
+        let package = NodePackageId::try_from("swb.builtin.automation").unwrap();
+        let mut updates = catalog.subscribe();
+        tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                let status = catalog.status(&package).unwrap();
+                assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                if status.phase == NodePackageRuntimePhase::Active {
+                    break;
+                }
+                updates.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+
+        let device = Target {
+            host_id: identity.host_id.clone(),
+            kind: ResourceKind::try_from("device").unwrap(),
+            id: id("virtual:echo"),
+            session_id: None,
+            session_epoch: None,
+        };
+        let call = |target: &Target, action: &str, params: serde_json::Value| Call {
+            protocol_version: ProtocolVersion::V1_0,
+            host_id: identity.host_id.clone(),
+            instance_epoch: identity.instance_epoch,
+            actor_id: actor.id().clone(),
+            request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+            request_context: store.issue_context(&actor).unwrap().token,
+            action_id: id(action),
+            target: target.clone(),
+            params: serde_json::from_value(params).unwrap(),
+            reveal_target: RevealTarget {
+                page_id: id("workbench"),
+                panel_id: None,
+                session_id: None,
+            },
+            expected_revision: None,
+            lease_id: None,
+            execution_mode: Some(ExecutionMode::Independent),
+            workspace_startup: None,
+        };
+        let settle = |operation: Operation| {
+            let store = store.clone();
+            let actor = actor.clone();
+            async move {
+                tokio::time::timeout(Duration::from_secs(15), async {
+                    loop {
+                        let current = store.get(&actor, &operation.operation_id).unwrap();
+                        if current.state.is_terminal() {
+                            return current;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap()
+            }
+        };
+        let read_result = |operation: Operation| {
+            assert_eq!(operation.state, OperationState::Succeeded, "{operation:?}");
+            let Some(ActionResult::Reference(output)) = operation.result else {
+                panic!("Expected the signed connection sequence result");
+            };
+            let result = host
+                .inner
+                .files
+                .read(
+                    FileReadParams {
+                        file_ref: output.result_ref,
+                        offset: 0.into(),
+                        max_bytes: 8192.into(),
+                    },
+                    &actor,
+                )
+                .unwrap();
+            assert!(result.at_end);
+            serde_json::from_slice::<serde_json::Value>(
+                &STANDARD.decode(result.bytes_base64.as_str()).unwrap(),
+            )
+            .unwrap()
+        };
+        let send = |ready| {
+            serde_json::json!({
+                "configuration": SerialConfiguration::default(),
+                "definition": {
+                    "version": 1,
+                    "beforeOpenMs": 10,
+                    "steps": [
+                        {"kind":"send","bytesBase64":"AQID"},
+                        {"kind":"ready","bytesBase64":ready,"timeoutMs":500},
+                        {"kind":"send","bytesBase64":"BA=="}
+                    ]
+                }
+            })
+        };
+        let action = "swb.builtin.automation.connect";
+        let good = host
+            .invoke(&actor, call(&device, action, send("AQID")))
+            .await
+            .unwrap();
+        let done = read_result(settle(good).await);
+        assert_eq!(done["outcome"], "completed", "{done}");
+        assert_eq!(done["steps"][3]["source"]["byteStart"], "0");
+        assert_eq!(done["steps"][3]["source"]["byteEnd"], "3");
+        let session: Target = serde_json::from_value(done["session"].clone()).unwrap();
+
+        let reused = host
+            .invoke(&actor, call(&device, action, send("AQID")))
+            .await
+            .unwrap();
+        let rejected = read_result(settle(reused).await);
+        assert_eq!(rejected["outcome"], "port_in_use", "{rejected}");
+        assert_eq!(rejected["steps"][2]["state"], "skipped");
+
+        let raw = |target: Target| {
+            let streams = host.inner.streams.clone();
+            let actor = actor.clone();
+            async move {
+                let prepared = streams
+                    .read_prepared(
+                        &actor,
+                        StreamReadParams {
+                            session_id: target.session_id.unwrap(),
+                            session_epoch: target.session_epoch.unwrap(),
+                            start_event_seq: 1.into(),
+                            max_events: 32.into(),
+                            max_bytes: 8192.into(),
+                        },
+                    )
+                    .await
+                    .unwrap();
+                prepared
+                    .into_parts()
+                    .0
+                    .events
+                    .into_iter()
+                    .filter_map(|event| match event.payload {
+                        RawPayload::Tx(receipt) => Some(receipt.bytes_base64.as_str().to_owned()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            }
+        };
+        assert_eq!(raw(session.clone()).await, ["AQID", "BA=="]);
+
+        let close = host
+            .invoke(
+                &actor,
+                call(&session, "session.close", serde_json::json!({})),
+            )
+            .await
+            .unwrap();
+        assert_eq!(settle(close).await.state, OperationState::Succeeded);
+        let timed = host
+            .invoke(&actor, call(&device, action, send("CQ==")))
+            .await
+            .unwrap();
+        let timed = read_result(settle(timed).await);
+        assert_eq!(timed["outcome"], "ready_timeout", "{timed}");
+        assert_eq!(timed["steps"][4]["state"], "skipped");
+        let next: Target = serde_json::from_value(timed["session"].clone()).unwrap();
+        assert_eq!(
+            next.session_epoch.unwrap(),
+            session.session_epoch.unwrap().checked_next().unwrap()
+        );
+        assert_eq!(raw(next.clone()).await, ["AQID"]);
+        let close = host
+            .invoke(&actor, call(&next, "session.close", serde_json::json!({})))
+            .await
+            .unwrap();
+        assert_eq!(settle(close).await.state, OperationState::Succeeded);
+
+        let mut delayed = send("AQID");
+        delayed["definition"]["beforeOpenMs"] = serde_json::json!(5000);
+        let running = host
+            .invoke(&actor, call(&device, action, delayed))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                let progress = store.get(&actor, &running.operation_id).unwrap();
+                if progress.state == OperationState::Running && progress.progress.is_some() {
+                    assert_eq!(progress.child_high_watermark, 0.into());
+                    break;
+                }
+                assert!(!progress.state.is_terminal(), "{progress:?}");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let cancelled = host
+            .invoke(
+                &actor,
+                call(
+                    &Target {
+                        host_id: identity.host_id.clone(),
+                        kind: ResourceKind::try_from("operation").unwrap(),
+                        id: running.operation_id.clone(),
+                        session_id: None,
+                        session_epoch: None,
+                    },
+                    "operation.cancel",
+                    serde_json::json!({"reason":"user"}),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(settle(cancelled).await.state, OperationState::Succeeded);
+        let stopped = settle(running).await;
+        assert_eq!(stopped.state, OperationState::Cancelled, "{stopped:?}");
+        assert_eq!(stopped.child_high_watermark, 0.into());
+        host.shutdown().await.unwrap();
+        eprintln!(
+            "connection_sequence rx=010203 successful_tail=04 timed_out_tail=none reused_write=none preopen_cancel_children=0"
+        );
     }
 
     #[tokio::test]

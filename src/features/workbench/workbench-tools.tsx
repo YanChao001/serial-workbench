@@ -36,6 +36,7 @@ import { stateScopeKey } from "@/lib/host-scope";
 import { SerialConfigurationFields } from "./serial-configuration-fields";
 import { validSerialConfiguration } from "./serial-configuration";
 import { sendWaitMs } from "./send-wait";
+import { Button } from "@/components/ui/button";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { SessionControls } from "./session-controls";
 import { DeviceLibrary } from "./device-library";
@@ -85,6 +86,7 @@ import { CharacterRemapTool } from "./character-remap-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
+const ConnectionSequenceTool = lazy(() => import("./connection-sequence-tool"));
 const BroadcastSendTool = lazy(() => import("./broadcast-send-tool"));
 const ReplayTransmitTool = lazy(() => import("./replay-transmit-tool"));
 const ExperimentPackageTool = lazy(async () => ({
@@ -354,6 +356,29 @@ export function WorkbenchTools({
       </Suspense>
     );
   }
+  if (tool === "connectionSequence" && context.connectionSequence) {
+    return (
+      <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+        <ConnectionSequenceTool
+          key={JSON.stringify([
+            generation,
+            context.configurationKey,
+            context.revealedOperationId,
+          ])}
+          host={host}
+          configuration={context.configuration}
+          revealedOperationId={context.revealedOperationId}
+          device={context.connectionSequence.device}
+          canOpen={context.connectionSequence.canOpen}
+          inspectSession={(target) => {
+            void context.beforeReplace().then((allowed) => {
+              if (allowed) context.connectionSequence?.inspectSession(target);
+            });
+          }}
+        />
+      </Suspense>
+    );
+  }
   if (tool === "sessionTemplates" && context.templateConnection) {
     const sessionAccess = protocolSessionAccess();
     return (
@@ -402,16 +427,32 @@ export function WorkbenchTools({
         onConfigurationApplied={context.onConfigurationChange}
       />
     ) : (
-      <ConnectionOptions
-        writeWaitLabels={writeWaitLabels}
-        writeWaitMode={context.writeWaitMode}
-        onWriteWaitModeChange={context.onWriteWaitModeChange}
-        key={context.configurationKey}
-        value={context.configuration}
-        onApply={context.onConfigurationChange}
-        labels={labels.parameters}
-        disabled={context.configurationDisabled}
-      />
+      <>
+        <ConnectionOptions
+          writeWaitLabels={writeWaitLabels}
+          writeWaitMode={context.writeWaitMode}
+          onWriteWaitModeChange={context.onWriteWaitModeChange}
+          key={context.configurationKey}
+          value={context.configuration}
+          onApply={context.onConfigurationChange}
+          labels={labels.parameters}
+          disabled={context.configurationDisabled}
+        />
+        {context.openConnectionSequence && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => {
+              void context.beforeReplace().then((allowed) => {
+                if (allowed) context.openConnectionSequence?.();
+              });
+            }}
+          >
+            {t("connectionSequence.title")}
+          </Button>
+        )}
+      </>
     );
   if (tool === "devices")
     return (
@@ -466,9 +507,9 @@ export function WorkbenchTools({
     return (
       <Suspense>
         <ReplayTransmitTool
-          key={JSON.stringify([generation, context.replayOperationId])}
+          key={JSON.stringify([generation, context.revealedOperationId])}
           host={host}
-          revealedOperationId={context.replayOperationId}
+          revealedOperationId={context.revealedOperationId}
         />
       </Suspense>
     );
