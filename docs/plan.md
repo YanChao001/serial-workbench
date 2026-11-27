@@ -16,7 +16,7 @@
 
 ### 本轮交付与验收
 
-- 候选 `b306ed3` 完成 Apple Silicon 的窗口恢复复验。主窗保存时未最大化，尺寸为 `880×600`，位置是 `(30,55)`。重启恢复相同尺寸和位置，后续居中检查通过。Windows、X11 和 Apple Silicon 的原生前台收据均确认一次接纳 TX、精确回显和焦点保持。 [Apple Silicon 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162822568) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162653474) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162846763)
+- 候选 `b306ed3` 完成 Apple Silicon 的窗口恢复复验。主窗保存时未最大化，尺寸为 `880×600`，位置是 `(30,55)`。重启恢复相同尺寸和位置，后续居中检查通过。Windows、X11 和两种 macOS 架构的原生桌面作业均通过，前台收据确认一笔已接纳 TX、精确回显和焦点保持。 [Apple Silicon 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162822568) · [Intel 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15161994666) · [Windows 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162653474) · [X11 收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162846763)
 
 - 同一候选的 KDE Wayland v2 专项通过。v1 在重载前已确认授权弹窗存在，重载后 AT-SPI 枚举返回空窗口节点，观察脚本在确认关闭之前退出。本机以相同的空节点复现异常，验证观察脚本等待下一次完整扫描才报告关闭或控件缺失。真实门户请求关闭、会话关闭和新文档仍按原专项核对。 [Wayland 原始收据](https://github.com/YanChao001/serial-workbench/actions/runs/45916455328/artifacts/15162424268)
 
