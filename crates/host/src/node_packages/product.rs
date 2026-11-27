@@ -506,24 +506,29 @@ mod tests {
     fn product_archive_matches_signature_and_descriptor() {
         let limits = NodePackageLimits::default();
         let cancel = AtomicBool::new(false);
-        let package = verify(FRAMING_ARCHIVE.to_vec(), &limits, &cancel).unwrap();
-        assert_eq!(package.manifest().id.as_str(), "swb.reference.framing");
-        let raw: serde_json::Value = serde_json::from_str(FRAMING_DESCRIPTOR).unwrap();
-        assert_eq!(
-            Some(package.manifest().version.as_str()),
-            raw["version"].as_str()
-        );
-        for (path, field) in [
-            ("dist/main.mjs", "compiledModuleSha256"),
-            ("manifest.json", "manifestSha256"),
+        for (archive, descriptor) in [
+            (FRAMING_ARCHIVE, FRAMING_DESCRIPTOR),
+            (AUTOMATION_ARCHIVE, AUTOMATION_DESCRIPTOR),
         ] {
-            let entry = package
-                .integrity()
-                .files
-                .iter()
-                .find(|entry| entry.path.as_str() == path)
-                .unwrap();
-            assert_eq!(Some(entry.sha256.as_str()), raw[field].as_str());
+            let package = verify(archive.to_vec(), &limits, &cancel).unwrap();
+            let raw: serde_json::Value = serde_json::from_str(descriptor).unwrap();
+            assert_eq!(Some(package.manifest().id.as_str()), raw["id"].as_str());
+            assert_eq!(
+                Some(package.manifest().version.as_str()),
+                raw["version"].as_str()
+            );
+            for (path, field) in [
+                ("dist/main.mjs", "compiledModuleSha256"),
+                ("manifest.json", "manifestSha256"),
+            ] {
+                let entry = package
+                    .integrity()
+                    .files
+                    .iter()
+                    .find(|entry| entry.path.as_str() == path)
+                    .unwrap();
+                assert_eq!(Some(entry.sha256.as_str()), raw[field].as_str(), "{path}");
+            }
         }
         let mut modified = FRAMING_ARCHIVE.to_vec();
         modified[0] ^= 1;
