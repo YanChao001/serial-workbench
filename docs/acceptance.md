@@ -322,6 +322,14 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 首方 `swb.builtin.automation` 自 0.1.1 起在同一包登记 `swb.builtin.automation.sequence` 和定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对当前锁定归档和组件描述。四目标的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式签名包在独立环境断网安装后，复验动作登记、工作台入口和上述对端场景。
 
+### 响应匹配与重试（IO-16）
+
+通用入口在工作区的「命令序列」。步骤 `expect` 中配置应答 HEX 与 `timeoutMs`，省略 `retry` 时只发送一次。显式重试最多三次，每次提供不同的请求 `hex` 与可区分的预期应答 `expectHex`。只有一次完整写入确认、连续 Raw 证据以及无应答超时均成立时才尝试下一帧。迟到应答、应答前缀、交错写入、Raw 缺口以及任何未知写入范围均应停止自动发送。Modbus 工作台的重试入口仅接受单播读取。
+
+签名自动化专项配置发送 `53`、期待 `A4`，让对端静默，再配置一次发送 `54` 并回复 `A5`。核对两次不同的 TX 操作标识、对端实际发送顺序、首次超时、第二次匹配及来源区间。关闭重试时核对首次超时后零补发。另在首笔确认后断开并重新打开同一设备，核对旧任务不向新会话提交后续帧，并可独立查询旧发送回执。将旧应答送到新会话时，核对不能结算旧任务。后两项使用同一签名候选和受控对端单独收据。
+
+运行 `node --test scripts/command-sequence.test.mjs scripts/modbus-transaction.test.mjs scripts/product-automation.test.mjs`，并用命令序列的无头 Chromium 检查逐次预览、定义错误和结果。已签名的两次尝试由 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对。独立串口与正式离线发行继续按实际覆盖登记。 [签名重试交付](https://github.com/YanChao001/serial-workbench/pull/73) · [历史四目标门禁](https://github.com/YanChao001/serial-workbench/actions/runs/45410295894)
+
 ### 自动应答（PROTO-14）
 
 在「规则触发」载入自动应答示例。当前会话确实位于帧边界时，保留 `startAtBoundary: true`。规则使用 `{ "kind": "hex", "hex": "50 49 4E 47" }` 匹配完整请求，并通过 `effect` 的 `bytesBase64` 指定应答。`responseDelayMs` 接受 0–10,000 的整数毫秒，省略时为 0。预览核对请求 `50 49 4E 47`、应答 `50 4F 4E 47` 和 250 毫秒延时。正则或字段条件也可使用相同的延时发送效果。
