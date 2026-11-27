@@ -10,6 +10,7 @@ import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { openDeepLink, reloadDocument } from "../helpers.mjs";
 import { withGlobalSendPeer } from "../global-send-peer.mjs";
+import { fileDropChecks } from "./file-drop.mjs";
 import {
   checkGlobalSendRaw,
   globalSendRawReader,
@@ -532,6 +533,8 @@ export function workbenchChecks() {
     await draft.setValue("UNSENT AFTER RESTART");
     await saveDrafts();
   });
+
+  fileDropChecks(openTool);
 
   if (
     process.platform === "linux" &&
