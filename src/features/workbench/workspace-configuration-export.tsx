@@ -4,6 +4,7 @@ import type {
   CommandSummary,
   NodePackageSummary,
   WorkspaceDocumentResult,
+  WorkspaceConfigurationInspection,
   WorkspaceScriptReference,
 } from "@serial-workbench/contracts";
 import { ContractValidationError } from "@serial-workbench/contracts";
@@ -27,6 +28,8 @@ import { useHost } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { useToolAction } from "./transfer-capture-actions";
 import { distinctWorkspaceLabels } from "./workspace-model";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { WorkspaceConfigurationSummary } from "./workspace-configuration-summary";
 
 type CommandChoices = {
   revision: string;
@@ -51,16 +54,13 @@ export function WorkspaceConfigurationExport({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
+        <WorkbenchIconButton
+          label={t("workbench.configuration.export")}
           variant="outline"
-          className="workbench-icon-button"
-          aria-label={t("workbench.configuration.export")}
           disabled={disabled}
         >
           <Package aria-hidden="true" />
-        </Button>
+        </WorkbenchIconButton>
       </PopoverTrigger>
       <PopoverContent
         align="end"
@@ -188,7 +188,8 @@ function ExportForm({
       setPlugins({
         revision: list.revision,
         packages: list.packages.filter(
-          (item) => item.enabled && item.executionApproved,
+          (item) =>
+            item.enabled && item.sourceVerified && item.executionApproved,
         ),
       });
       setPackageId("");
@@ -233,28 +234,52 @@ function ExportForm({
     });
   }
 
-  function save() {
+  const params = {
+    workspaceRevision: base.document.revision,
+    ...(commands && selected.size > 0
+      ? { commandIds: [...selected], commandRevision: commands.revision }
+      : {}),
+    ...(selectedScripts === undefined
+      ? {}
+      : { scripts: [...selectedScripts.values()] }),
+  };
+  const selection = JSON.stringify(params);
+  const [prepared, setPrepared] = useState<{
+    selection: string;
+    json: string;
+    preview: WorkspaceConfigurationInspection;
+  }>();
+  const current = prepared?.selection === selection ? prepared : undefined;
+
+  function preview() {
     void action.run(async (signal) => {
-      const result = await host.exportWorkspaceConfiguration(
+      setPrepared(undefined);
+      const { json } = await host.exportWorkspaceConfiguration(
         workspace.id,
-        {
-          workspaceRevision: base.document.revision,
-          ...(commands && selected.size > 0
-            ? {
-                commandIds: [...selected.keys()],
-                commandRevision: commands.revision,
-              }
-            : {}),
-          ...(selectedScripts === undefined
-            ? {}
-            : { scripts: [...selectedScripts.values()] }),
-        },
+        params,
+        signal,
+      );
+      const preview = await host.inspectWorkspaceConfiguration(
+        workspace.id,
+        json,
         signal,
       );
       signal.throwIfAborted();
+      if (
+        preview.workspaceRevision !== params.workspaceRevision ||
+        (preview.commandRevision ?? undefined) !== params.commandRevision
+      )
+        throw { code: "REVISION_CONFLICT" };
+      setPrepared({ selection, json, preview });
+    });
+  }
+
+  function save() {
+    if (!current) return;
+    void action.run(async (signal) => {
       const path = await saveTextExport(
         t("workbench.configuration.fileName"),
-        result.json,
+        current.json,
       );
       if (!signal.aborted && path) onSaved();
     });
@@ -438,8 +463,24 @@ function ExportForm({
           {action.error}
         </p>
       )}
-      <Button type="button" size="sm" disabled={action.busy} onClick={save}>
-        {t("workbench.configuration.savePackage")}
+      {current && (
+        <WorkspaceConfigurationSummary
+          preview={current.preview}
+          hostId={workspace.hostId}
+          mode="export"
+        />
+      )}
+      <Button
+        type="button"
+        size="sm"
+        disabled={action.busy}
+        onClick={current ? save : preview}
+      >
+        {t(
+          current
+            ? "workbench.configuration.savePackage"
+            : "workbench.configuration.previewPackage",
+        )}
       </Button>
     </section>
   );

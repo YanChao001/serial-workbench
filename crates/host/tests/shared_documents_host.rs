@@ -11,6 +11,9 @@ use serial_workbench_host::{
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 
+#[path = "support/node_package.rs"]
+mod configuration_package_fixture;
+
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
 }
@@ -1397,16 +1400,132 @@ async fn configuration_inspection_reads_current_revisions_without_saving_or_gran
 }
 
 #[tokio::test]
+async fn configuration_script_dependencies_require_a_current_verified_source() {
+    use ed25519_dalek::SigningKey;
+    use serial_workbench_host::node_packages::{
+        NodePackageInstaller, NodePackageLimits, NodePackageSource, NodePackageSources,
+        verify_node_package,
+    };
+    use std::sync::atomic::AtomicBool;
+
+    let f = Fixture::new(0).await;
+    let bench = f.target("workspace", "bench");
+    f.grant("document-a", "metadata.read", &f.host_target());
+    let root = f._dir.path().canonicalize().unwrap();
+    let installer = NodePackageInstaller::new(f.store.clone(), &root).unwrap();
+    let sources = NodePackageSources::new(f.store.clone());
+    let source = id("test-source");
+    let key_id = id("test-key");
+    let public_key = SigningKey::from_bytes(&[7; 32]).verifying_key().to_bytes();
+    let source_revision = sources
+        .approve_key(source.clone(), key_id.clone(), public_key, 0.into())
+        .unwrap()
+        .revision;
+    let mut scripts = Vec::new();
+    for (name, signed) in [("example.local", false), ("example.signed", true)] {
+        let mut files = configuration_package_fixture::payloads();
+        let mut manifest = configuration_package_fixture::manifest();
+        manifest["id"] = json!(name);
+        let mut action = BuiltinAction::SessionTx.spec().clone();
+        action.action_id = id(&format!("{name}.send"));
+        manifest["contributes"]["actions"] = json!([action]);
+        files.insert(
+            "manifest.json".into(),
+            serde_json::to_vec(&manifest).unwrap(),
+        );
+        let package_source = if signed {
+            NodePackageSource::Trusted {
+                source: &source,
+                key_id: &key_id,
+                public_key: &public_key,
+            }
+        } else {
+            NodePackageSource::Local
+        };
+        let limits = NodePackageLimits::default();
+        let cancelled = AtomicBool::new(false);
+        let archive = configuration_package_fixture::with_metadata(files, signed);
+        let package = verify_node_package(
+            configuration_package_fixture::archive(&archive),
+            package_source,
+            &limits,
+            &cancelled,
+        )
+        .unwrap();
+        let installed = installer
+            .install(
+                package,
+                installer.snapshot().unwrap().revision,
+                &limits,
+                &cancelled,
+            )
+            .unwrap();
+        let package_id = installed.package.manifest.id;
+        let digest = installed.package.archive_sha256;
+        let approved = installer
+            .confirm_execution_trust(&package_id, installed.revision, &digest)
+            .unwrap();
+        installer
+            .set_enabled(&package_id, true, approved.revision, &digest)
+            .unwrap();
+        scripts.push(WorkspaceScriptReference {
+            package_id,
+            archive_sha256: digest,
+            version: installed.package.manifest.version,
+            action_id: action.action_id,
+        });
+    }
+
+    let configuration = WorkspaceConfiguration {
+        format: WORKSPACE_CONFIGURATION_FORMAT.into(),
+        version: WORKSPACE_CONFIGURATION_VERSION,
+        workspace: WorkspaceDocument::default(),
+        groups: vec![],
+        commands: vec![],
+        scripts,
+        credential_refs: vec![],
+    };
+    let params = json!({"json":configuration.to_json().unwrap()});
+    let inspect = || {
+        read(
+            &f.first,
+            &bench,
+            "workspace.configuration.inspect",
+            params.clone(),
+        )
+    };
+    assert_eq!(
+        inspect().await["scriptStatuses"],
+        json!(["unavailable", "matched"])
+    );
+    sources
+        .revoke_key(&source, &key_id, source_revision)
+        .unwrap();
+    assert_eq!(
+        inspect().await["scriptStatuses"],
+        json!(["unavailable", "unavailable"])
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
 async fn configuration_import_checks_both_revisions_and_preserves_command_collisions() {
     let f = Fixture::new(0).await;
     let bench = f.target("workspace", "bench");
     f.grant("document-a", "workspace.modify", &bench);
     f.grant("document-a", "content.read", &bench);
+    let existing_capture = ObjectRef {
+        host_id: bench.host_id.clone(),
+        kind: ResourceKind::try_from("capture").unwrap(),
+        id: id("saved-capture"),
+        revision: Some(1.into()),
+    };
+    let existing_workspace = WorkspaceDocument {
+        captures: vec![existing_capture.clone()],
+        ..preview_document("Current workspace")
+    };
     for (action, params) in [
-        (
-            "workspace.save",
-            json!({"value":preview_document("Current workspace")}),
-        ),
+        ("workspace.save", json!({"value":existing_workspace})),
         (
             "workspace.commands.change",
             json!({"kind":"saveGroup","group":{"id":"group","name":"Existing"}}),
@@ -1477,12 +1596,16 @@ async fn configuration_import_checks_both_revisions_and_preserves_command_collis
         panic!("Missing workspace configuration receipt")
     };
     assert_eq!(saved.workspace.document.revision, 2.into());
-    assert_eq!(saved.workspace.document.value, workspace);
+    let expected_workspace = WorkspaceDocument {
+        captures: vec![existing_capture],
+        ..workspace.clone()
+    };
+    assert_eq!(saved.workspace.document.value, expected_workspace);
     assert_eq!(saved.command_revision, Some(2.into()));
     let readback = read(&f.first, &bench, "workspace.read", json!({})).await;
     assert_eq!(
         readback["document"]["value"],
-        serde_json::to_value(workspace).unwrap()
+        serde_json::to_value(expected_workspace).unwrap()
     );
 
     let readback = read(&f.first, &bench, "workspace.commands.read", groups).await;
@@ -1515,7 +1638,7 @@ async fn configuration_import_checks_both_revisions_and_preserves_command_collis
     )
     .await;
     let package = WorkspaceConfiguration::parse(exported["json"].as_str().unwrap()).unwrap();
-    assert_eq!(package.workspace, saved.workspace.document.value);
+    assert_eq!(package.workspace, workspace);
     assert_eq!(package.groups.len(), 1);
     assert_eq!(package.groups[0].name, "Imported");
     assert_eq!(package.commands[0].body, "01 03 00 00");

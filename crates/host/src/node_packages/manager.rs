@@ -394,11 +394,13 @@ impl NodePackageManager {
             .iter()
             .map(|package| (&package.manifest.id, package))
             .collect();
+        let sources = NodePackageSources::new(self.store.clone());
+        let mut trust = std::collections::HashMap::new();
         let statuses = scripts
             .iter()
             .map(|script| {
                 let Some(package) = packages.get(&script.package_id) else {
-                    return WorkspaceScriptStatus::Missing;
+                    return Ok(WorkspaceScriptStatus::Missing);
                 };
                 if package.manifest.version != script.version
                     || package.archive_sha256 != script.archive_sha256
@@ -409,15 +411,30 @@ impl NodePackageManager {
                         .iter()
                         .any(|action| action.action_id == script.action_id)
                 {
-                    return WorkspaceScriptStatus::Changed;
+                    return Ok(WorkspaceScriptStatus::Changed);
                 }
-                if package.enabled && package.execution_approved() {
-                    WorkspaceScriptStatus::Matched
-                } else {
-                    WorkspaceScriptStatus::Unavailable
+                let Some(source) = package.verified_source.as_ref() else {
+                    return Ok(WorkspaceScriptStatus::Unavailable);
+                };
+                if !package.enabled || !package.execution_approved() {
+                    return Ok(WorkspaceScriptStatus::Unavailable);
                 }
+                if let Some(status) = trust.get(&script.package_id) {
+                    return Ok(*status);
+                }
+                let status = match sources.require_current(source) {
+                    Ok(()) => WorkspaceScriptStatus::Matched,
+                    Err(error)
+                        if matches!(error.code.as_str(), "PERMISSION_DENIED" | "NOT_FOUND") =>
+                    {
+                        WorkspaceScriptStatus::Unavailable
+                    }
+                    Err(error) => return Err(error),
+                };
+                trust.insert(&script.package_id, status);
+                Ok(status)
             })
-            .collect();
+            .collect::<HostResult<Vec<_>>>()?;
         self.auth.require(actor, "metadata.read", target)?;
         Ok(statuses)
     }

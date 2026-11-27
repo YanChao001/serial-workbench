@@ -277,7 +277,10 @@ function WorkspaceEditorDraft({
       : undefined;
   const candidate =
     importCandidate && "configuration" in importCandidate
-      ? importCandidate.configuration.workspace
+      ? {
+          ...importCandidate.configuration.workspace,
+          captures: original.document.value.captures,
+        }
       : importCandidate;
   const canApplyImport = packagePreview ? onApplyConfiguration : onSave;
   const importGeneration = useRef(0);
@@ -413,6 +416,7 @@ function WorkspaceEditorDraft({
     if (!onReload) return;
     const snapshot = latest.current;
     const result = await request(onReload);
+    if (packagePreview) setCandidate(undefined);
     setOriginal(result);
     if (sameWorkspace(latest.current, snapshot)) {
       change(result.document.value);
@@ -443,10 +447,25 @@ function WorkspaceEditorDraft({
     const generation = importGeneration.current;
     importPending.current = true;
     try {
-      const next = await request((signal) =>
-        onPreviewImport(importJson, signal),
-      );
-      if (generation === importGeneration.current) setCandidate(next);
+      const { preview, current } = await request(async (signal) => {
+        const preview = await onPreviewImport(importJson, signal);
+        if (
+          !("configuration" in preview) ||
+          preview.workspaceRevision === original.document.revision
+        )
+          return { preview };
+        const current = await onReload?.(signal);
+        if (current?.document.revision !== preview.workspaceRevision)
+          throw { code: "REVISION_CONFLICT" };
+        return { preview, current };
+      });
+      if (generation !== importGeneration.current) return;
+      if (current) {
+        const pristine = sameWorkspace(latest.current, original.document.value);
+        setOriginal(current);
+        if (pristine) change(current.document.value);
+      }
+      setCandidate(preview);
     } finally {
       if (generation === importGeneration.current)
         importPending.current = false;
@@ -481,7 +500,17 @@ function WorkspaceEditorDraft({
     if (!submit) return;
     const snapshot = latest.current;
     const generation = importGeneration.current;
-    const result = await request(submit, signal, true);
+    const result = await request(submit, signal, true).catch(
+      (reason: unknown) => {
+        if (
+          packagePreview &&
+          generation === importGeneration.current &&
+          nativeErrorCode(reason) === "REVISION_CONFLICT"
+        )
+          setCandidate(undefined);
+        throw reason;
+      },
+    );
     setOriginal(result);
     const unchanged = sameWorkspace(latest.current, snapshot);
     if (unchanged) change(result.document.value);
@@ -1046,6 +1075,7 @@ function WorkspaceEditorDraft({
                     <WorkspaceConfigurationSummary
                       preview={packagePreview}
                       hostId={original.scope.target.hostId}
+                      targetName={original.document.value.name}
                     />
                   )}
                 </div>

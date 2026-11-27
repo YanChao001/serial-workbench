@@ -383,12 +383,14 @@ impl DocumentService {
         if current.document.value.archived {
             return Err(HostError::new("WORKSPACE_DELETED", "Workspace was removed"));
         }
+        let mut value = configuration.workspace.clone();
+        value.captures.clone_from(&current.document.value.captures);
         self.synchronize(&Document::Workspace(current))?;
         let document = WorkspaceDocumentResult {
             scope: reference,
             document: WorkspaceSnapshot {
                 revision: expected.checked_next()?,
-                value: configuration.workspace.clone(),
+                value,
             },
         };
         let state = object(&document)?;

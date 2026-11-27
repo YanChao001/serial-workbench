@@ -86,6 +86,7 @@ test("exports a selected command and previews a configuration package before app
         },
       };
       const packed = JSON.stringify(configuration);
+      let commandRevision = "7";
       const target = {
         hostId: "workbench-gui-host",
         kind: "workspace",
@@ -104,7 +105,7 @@ test("exports a selected command and previews a configuration package before app
               scope: { scopeId: "workspace.default", target },
               document: { revision: "2", value: configuration.workspace },
             },
-            commandRevision: "8",
+            commandRevision: "9",
           },
         },
       };
@@ -120,6 +121,10 @@ test("exports a selected command and previews a configuration package before app
             intent.kind === "workspaceConfigurationImport"
           ) {
             window.configurationFixture.apply.push(intent);
+            if (commandRevision === "7") {
+              commandRevision = "8";
+              throw { code: "REVISION_CONFLICT" };
+            }
             return saved;
           }
           const request = args.request;
@@ -150,7 +155,7 @@ test("exports a selected command and previews a configuration package before app
                     value: {
                       configuration,
                       workspaceRevision: "1",
-                      commandRevision: "7",
+                      commandRevision,
                       scriptStatuses: ["missing"],
                     },
                   },
@@ -175,6 +180,18 @@ test("exports a selected command and previews a configuration package before app
   await page.getByRole("option", { name: "Registers" }).click();
   await page.getByRole("checkbox", { name: "Read holding registers" }).check();
   await expect(page.getByText("Command bodies to include (1)")).toBeVisible();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.savedTextExports),
+  ).toEqual([]);
+  await page
+    .getByRole("button", { name: "Preview configuration package" })
+    .click();
+  await expect(
+    page.getByText("Workspace revision 1 · Command library revision 7"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Read holding registers", { exact: true }).last(),
+  ).toBeVisible();
   await page.screenshot({
     path: info.outputPath("narrow-configuration-export.png"),
   });
@@ -219,6 +236,17 @@ test("exports a selected command and previews a configuration package before app
 
   await workspace.getByRole("button", { name: "Apply import" }).click();
   await expect(
+    workspace.getByRole("button", { name: "Preview import" }),
+  ).toBeVisible();
+  await expect(
+    workspace.getByText("workspace.swb-config.json", { exact: true }),
+  ).toBeVisible();
+  await workspace.getByRole("button", { name: "Preview import" }).click();
+  await expect(
+    workspace.getByText("Workspace revision 1 · Command library revision 8"),
+  ).toBeVisible();
+  await workspace.getByRole("button", { name: "Apply import" }).click();
+  await expect(
     workspace.getByRole("textbox", { name: "Workspace name" }),
   ).toHaveValue("Imported bench");
   expect(await page.evaluate(() => window.configurationFixture.apply)).toEqual([
@@ -227,6 +255,12 @@ test("exports a selected command and previews a configuration package before app
       workspaceId: "default",
       expectedRevision: "1",
       params: { json: JSON.stringify(configuration), commandRevision: "7" },
+    },
+    {
+      kind: "workspaceConfigurationImport",
+      workspaceId: "default",
+      expectedRevision: "1",
+      params: { json: JSON.stringify(configuration), commandRevision: "8" },
     },
   ]);
   expect(

@@ -1314,6 +1314,17 @@ export const en = {
   "workbench.configuration.selectedScripts":
     "Script references selected ({count})",
   "workbench.configuration.savePackage": "Save configuration package",
+  "workbench.configuration.previewPackage": "Preview configuration package",
+  "workbench.configuration.unnamedWorkspace": "Unnamed workspace",
+  "workbench.configuration.source": "Export from {name}",
+  "workbench.configuration.destination": "Apply to {name}",
+  "workbench.configuration.workspaceRevision": "Workspace revision {revision}",
+  "workbench.configuration.commandRevision":
+    "Command library revision {revision}",
+  "workbench.configuration.layout":
+    "Sidebar width {sidebar} px · panel height {panel} px",
+  "workbench.configuration.viewSummary":
+    "{name} · {baud} baud · RX {receive} / TX {send}",
   "workbench.configuration.credential.local":
     "Verify this reference on the current Host",
   "workbench.configuration.credential.remote": "Bind a credential on this Host",

@@ -406,7 +406,7 @@ impl Database {
 }
 
 impl StagedCommandArchive {
-    pub(super) fn append_to(self, tx: &Connection, workspace: &Id) -> HostResult<()> {
+    fn append_to(self, tx: &rusqlite::Transaction<'_>, workspace: &Id) -> HostResult<()> {
         let staging = self.staging;
         {
             let mut groups = staging
