@@ -32,6 +32,165 @@ fn entry(n: u64) -> CaptureEntry {
     CaptureEntry::Event(Box::new(serde_json::from_value(serde_json::json!({"hostId":"h","instanceEpoch":"1","sessionId":"s","sessionEpoch":"1","eventSeq":n.to_string(),"configurationRevision":"1","time":{"clockId":"c","sourceMonoNs":n.to_string(),"receivedWallTime":"2026-11-07T00:00:00Z","precision":{"source":"host_read","resolutionNs":"1","syncMethod":"none"}},"kind":"rx","payload":{"bytesBase64":"AQID","byteStart":((n-1)*3).to_string(),"byteEnd":(n*3).to_string()}})).unwrap()))
 }
 #[test]
+fn indexed_checkpoints_extend_the_same_file_and_recover_only_the_manifest_prefix() {
+    use std::io::Write;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let path = root.join("capture");
+    let mut writer =
+        CaptureWriter::create(&path, vec![source()], CaptureLimits::default()).unwrap();
+    let index = path.join("index-000001.swbi");
+    let original = serial_workbench_host::capture::format::open_read(&index).unwrap();
+    assert_eq!(original.metadata().unwrap().len(), 7);
+
+    writer.push(entry(1), 1_000_000_000).unwrap();
+    let first = fs::read(&index).unwrap();
+    assert_eq!(first.len(), 19);
+    assert_eq!(&first[..7], b"SWBI01\n");
+    assert_eq!(original.metadata().unwrap().len(), 19);
+
+    writer.push(entry(2), 2_000_000_000).unwrap();
+    let second = fs::read(&index).unwrap();
+    assert_eq!(second.len(), 31);
+    assert_eq!(&second[..first.len()], first.as_slice());
+    assert_eq!(original.metadata().unwrap().len(), 31);
+    assert_eq!(writer.summary().watermarks.synced.get(), 2);
+
+    writer.push(entry(3), 2_000_000_001).unwrap();
+    assert_eq!(writer.summary().watermarks.written.get(), 3);
+    assert_eq!(writer.summary().watermarks.synced.get(), 2);
+    drop(original);
+    drop(writer);
+
+    // Simulate a torn next index entry with the previous atomic manifest still in place.
+    let mut file = fs::OpenOptions::new().append(true).open(&index).unwrap();
+    file.write_all(b"torn").unwrap();
+    file.sync_all().unwrap();
+    drop(file);
+
+    let scan = verify_directory(&path).unwrap();
+    assert!(!scan.report.container_complete);
+    assert!(scan.report.recoverable);
+    assert_eq!(scan.report.verified_prefix.get(), 2);
+    let incomplete_index = fs::read(&index).unwrap();
+    let recovered = root.join("recovered");
+    let summary = serial_workbench_host::capture::recovery::recover_directory(
+        &path,
+        &recovered,
+        &scan.report,
+    )
+    .unwrap();
+    assert_eq!(summary.state, CaptureState::Incomplete);
+    assert_eq!(summary.watermarks.verified.get(), 2);
+    assert_eq!(fs::read(&index).unwrap(), incomplete_index);
+    assert!(
+        verify_directory(&recovered)
+            .unwrap()
+            .report
+            .container_complete
+    );
+}
+
+#[test]
+fn indexed_append_leaves_the_previous_volume_and_index_byte_exact() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("capture");
+    let limits = CaptureLimits::default();
+    let mut writer = CaptureWriter::create(&path, vec![source()], limits.clone()).unwrap();
+    writer.push(entry(1), 1).unwrap();
+    writer.finish().unwrap();
+
+    let volume = fs::read(path.join("volume-000001.swbr")).unwrap();
+    let index = fs::read(path.join("index-000001.swbi")).unwrap();
+    let mut writer = CaptureWriter::append(&path, vec![source()], limits).unwrap();
+    writer.push(entry(2), 2).unwrap();
+    let result = writer.finish().unwrap();
+
+    assert_eq!(result.watermarks.verified.get(), 2);
+    assert!(path.join("index-000002.swbi").exists());
+    assert_eq!(fs::read(path.join("volume-000001.swbr")).unwrap(), volume);
+    assert_eq!(fs::read(path.join("index-000001.swbi")).unwrap(), index);
+}
+
+#[test]
+#[ignore = "Writes and verifies one million native capture records"]
+fn native_indexed_recording_replays_the_millionth_record() {
+    use serial_workbench_host::capture::replay::ReplayReader;
+    use std::time::Instant;
+
+    const RECORDS: u64 = 1_000_000;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("million");
+    let started = Instant::now();
+    let mut writer =
+        CaptureWriter::create(&path, vec![source()], CaptureLimits::default()).unwrap();
+    let CaptureEntry::Event(mut event) = entry(1) else {
+        unreachable!()
+    };
+    for ordinal in 1..=RECORDS {
+        event.event_seq = ordinal.into();
+        event.time.source_mono_ns = ordinal.into();
+        let RawPayload::Rx(payload) = &mut event.payload else {
+            unreachable!()
+        };
+        payload.byte_start = ((ordinal - 1) * 3).into();
+        payload.byte_end = (ordinal * 3).into();
+        writer
+            .push(CaptureEntry::Event(event.clone()), ordinal)
+            .unwrap();
+    }
+    let write_ms = started.elapsed().as_millis();
+    let started = Instant::now();
+    let summary = writer.finish().unwrap();
+    let finish_ms = started.elapsed().as_millis();
+    assert_eq!(summary.state, CaptureState::Complete);
+    assert_eq!(summary.watermarks.verified.get(), RECORDS);
+
+    let started = Instant::now();
+    let mut replay = ReplayReader::open(&path, ReplayMode::Fastest).unwrap();
+    let open_ms = started.elapsed().as_millis();
+    let started = Instant::now();
+    replay.seek(RECORDS.into(), RECORDS).unwrap();
+    let page = replay.read(1, RECORDS).unwrap();
+    assert!(page.at_end);
+    let [ReplayRecord::Inline { record }] = page.records.as_slice() else {
+        panic!("the last record must fit in an inline replay page")
+    };
+    let CaptureEntry::Event(event) = &record.entry else {
+        panic!("expected RX")
+    };
+    let RawPayload::Rx(payload) = &event.payload else {
+        panic!("expected RX")
+    };
+    assert_eq!(record.record_ordinal.get(), RECORDS);
+    assert_eq!(event.event_seq.get(), RECORDS);
+    assert_eq!(payload.byte_start.get(), (RECORDS - 1) * 3);
+    assert_eq!(payload.byte_end.get(), RECORDS * 3);
+    assert_eq!(payload.bytes_base64.as_str(), "AQID");
+    let last_page_us = started.elapsed().as_micros();
+
+    let indexes: Vec<_> = fs::read_dir(&path)
+        .unwrap()
+        .map(|entry| entry.unwrap())
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "swbi"))
+        .map(|entry| entry.metadata().unwrap().len())
+        .collect();
+    assert!(indexes.len() > 1);
+    assert_eq!(
+        indexes.iter().sum::<u64>(),
+        RECORDS * 12 + indexes.len() as u64 * 7
+    );
+    println!(
+        "{}",
+        serde_json::json!({
+            "records": RECORDS, "volumes": indexes.len(), "indexBytes": indexes.iter().sum::<u64>(),
+            "writeMs": write_ms, "finishMs": finish_ms, "openMs": open_ms, "lastPageUs": last_page_us,
+        })
+    );
+}
+
+#[test]
 fn stop_requires_index_and_independent_readback() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().canonicalize().unwrap().join("capture");
@@ -45,7 +204,7 @@ fn stop_requires_index_and_independent_readback() {
     let scan = verify_directory(&path).unwrap();
     assert_eq!(scan.report.verified_prefix, U64::from(2));
     assert!(scan.report.container_complete);
-    fs::remove_file(path.join("index.json")).unwrap();
+    fs::remove_file(path.join("index-000001.swbi")).unwrap();
     let scan = verify_directory(&path).unwrap();
     assert!(!scan.report.container_complete);
     assert_eq!(scan.report.verified_prefix, U64::from(0));
@@ -1310,7 +1469,7 @@ async fn aliased_creation_locations_cannot_start_a_second_live_writer() {
         )
         .await
         .unwrap();
-    let evidence_names = ["manifest.json", "index.json", "volume-000001.swbr"];
+    let evidence_names = ["manifest.json", "index-000001.swbi", "volume-000001.swbr"];
     let before: Vec<_> = evidence_names
         .iter()
         .map(|name| fs::read(path.join(name)).unwrap())

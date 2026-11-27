@@ -452,8 +452,7 @@ mod format_tests {
     use super::*;
     use crate::capture::writer::{CaptureLimits, CaptureWriter, native_volume_opener};
 
-    #[test]
-    fn legacy_mixed_clocks_keep_exact_order_without_a_recorder_timeline() {
+    fn mixed_clock_capture(format: CaptureFormat) -> (tempfile::TempDir, std::path::PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().canonicalize().unwrap().join("capture");
         let hosts = ["first", "second"];
@@ -481,7 +480,7 @@ mod format_tests {
             sources,
             CaptureLimits::default(),
             native_volume_opener(),
-            CaptureFormat::Legacy,
+            format,
             None,
         )
         .unwrap();
@@ -503,6 +502,12 @@ mod format_tests {
                 .unwrap();
         }
         writer.finish().unwrap();
+        (directory, path)
+    }
+
+    #[test]
+    fn legacy_mixed_clocks_keep_exact_order_without_a_recorder_timeline() {
+        let (_directory, path) = mixed_clock_capture(CaptureFormat::Legacy);
         let unavailable = ReplayReader::open(&path, ReplayMode::OriginalTiming)
             .err()
             .unwrap();
@@ -517,6 +522,24 @@ mod format_tests {
         );
         assert_eq!(reader.step(0).unwrap().next_record, U64::from(2));
         assert!(reader.step(0).unwrap().at_end);
+    }
+
+    #[test]
+    fn legacy_recorder_clock_capture_still_replays_and_appends_as_json_index() {
+        let (_directory, path) = mixed_clock_capture(CaptureFormat::RecorderClock);
+        let before = crate::capture::verify::verify_directory(&path).unwrap();
+        assert!(before.report.container_complete);
+        let summary =
+            CaptureWriter::append(&path, before.manifest.streams, CaptureLimits::default())
+                .unwrap()
+                .finish()
+                .unwrap();
+        assert_eq!(summary.watermarks.verified.get(), 2);
+        let index: CaptureIndex = read_json(&path.join("index.json")).unwrap();
+        assert_eq!(index.format_version, "0.2");
+        assert_eq!(index.records.len(), 2);
+        let mut reader = ReplayReader::open(&path, ReplayMode::OriginalTiming).unwrap();
+        assert!(reader.read(2, 0).unwrap().at_end);
     }
 }
 

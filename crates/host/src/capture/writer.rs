@@ -1,4 +1,7 @@
-use super::format::*;
+use super::{
+    format::*,
+    volume_index::{self, VolumeIndexWriter},
+};
 use serial_workbench_core::*;
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -50,7 +53,9 @@ pub struct CaptureWriter {
     format: CaptureFormat,
     timeline: RecorderTimeline,
     manifest: Manifest,
+    // Legacy formats retain the JSON index. 0.4 keeps only pending entries.
     index: CaptureIndex,
+    volume_index: Option<VolumeIndexWriter>,
     limits: CaptureLimits,
     file: Option<Box<dyn CaptureVolume>>,
     opener: VolumeOpener,
@@ -112,12 +117,7 @@ impl CaptureWriter {
         limits: CaptureLimits,
         opener: VolumeOpener,
     ) -> HostResult<Self> {
-        let format = if sources.len() > 1 {
-            CaptureFormat::RecorderClock
-        } else {
-            CaptureFormat::Legacy
-        };
-        Self::create_at_format(guard, sources, limits, opener, format, None)
+        Self::create_at_format(guard, sources, limits, opener, CaptureFormat::Indexed, None)
     }
 
     pub(crate) fn create_at_format(
@@ -156,6 +156,7 @@ impl CaptureWriter {
                 format_version: format.version().into(),
                 records: vec![],
             },
+            volume_index: None,
             limits,
             file: None,
             opener,
@@ -167,7 +168,11 @@ impl CaptureWriter {
             replacement: None,
             last_verified: None,
             volume_hash: Sha256::new(),
-            index_bytes: 128,
+            index_bytes: if format == CaptureFormat::Indexed {
+                0
+            } else {
+                128
+            },
             checkpoint_bytes: 0,
             checkpoint_ns: 0,
             _guard: Some(guard),
@@ -296,9 +301,15 @@ impl CaptureWriter {
         manifest.redaction_resume = None;
         let total = manifest.volumes.iter().map(|v| v.length.get()).sum();
         let start = manifest.watermarks.written.get() + 1;
-        let index_bytes = serde_json::to_vec(&scan.index)
-            .map_err(|_| corrupt())?
-            .len() as u64;
+        let mut index = scan.index;
+        let index_bytes = if scan.format == CaptureFormat::Indexed {
+            let bytes = index.records.len() as u64 * volume_index::ENTRY_BYTES
+                + manifest.volumes.len() as u64 * volume_index::HEADER_BYTES;
+            index.records = Vec::new();
+            bytes
+        } else {
+            serde_json::to_vec(&index).map_err(|_| corrupt())?.len() as u64
+        };
         let mut writer = Self {
             path: path.to_path_buf(),
             format: scan.format,
@@ -307,7 +318,8 @@ impl CaptureWriter {
                 segment: None,
             },
             manifest,
-            index: scan.index,
+            index,
+            volume_index: None,
             limits,
             file: None,
             opener,
@@ -388,14 +400,15 @@ impl CaptureWriter {
     }
     fn new_volume(&mut self) -> HostResult<()> {
         let number = self.manifest.volumes.len() as u64 + 1;
-        let path = self
-            ._guard
-            .as_ref()
-            .ok_or_else(corrupt)?
-            .child(&volume_name(number))?;
+        let directory = self._guard.as_ref().ok_or_else(corrupt)?;
+        let path = directory.child(&volume_name(number))?;
         let mut file = (self.opener)(path.create_file()?)?;
         let magic = self.format.magic();
         file.write_all(magic).map_err(io_error)?;
+        if self.format == CaptureFormat::Indexed {
+            self.volume_index = Some(VolumeIndexWriter::create(directory, number)?);
+            self.index_bytes += volume_index::HEADER_BYTES;
+        }
         self.volume_hash = Sha256::new();
         self.volume_hash.update(magic);
         self.volume_size = magic.len() as u64;
@@ -488,7 +501,8 @@ impl CaptureWriter {
             .len() as u64
             + self.index_bytes
             + 512;
-        if self.index.records.len() >= self.limits.max_records
+        if self.manifest.watermarks.written.get()
+            >= self.limits.max_records.min(self.format.max_records()) as u64
             || self.total.saturating_add(size).saturating_add(metadata) > self.limits.capacity_bytes
             || available_bytes(&self.path)?
                 < self
@@ -510,6 +524,7 @@ impl CaptureWriter {
         if rotate {
             self.checkpoint()?;
             self.file.take();
+            self.volume_index.take();
             self.new_volume()?;
         }
         self.volume_clock.get_or_insert(now);
@@ -533,7 +548,11 @@ impl CaptureWriter {
             offset: offset.into(),
             length: size.into(),
         };
-        self.index_bytes += serde_json::to_vec(&location).map_err(|_| corrupt())?.len() as u64 + 1;
+        self.index_bytes += if self.format == CaptureFormat::Indexed {
+            volume_index::ENTRY_BYTES
+        } else {
+            serde_json::to_vec(&location).map_err(|_| corrupt())?.len() as u64 + 1
+        };
         self.index.records.push(location);
         self.manifest.watermarks.written = ordinal;
         if let Some(id) = settlement {
@@ -571,14 +590,13 @@ impl CaptureWriter {
             volume.length = length.into();
             volume.digest = hash;
         }
-        write_json_at(
-            &self
-                ._guard
-                .as_ref()
-                .ok_or_else(corrupt)?
-                .child("index.json")?,
-            &self.index,
-        )?;
+        let directory = self._guard.as_ref().ok_or_else(corrupt)?;
+        if let Some(index) = &mut self.volume_index {
+            index.checkpoint(&self.index.records)?;
+            self.index.records.clear();
+        } else if self.format != CaptureFormat::Indexed {
+            write_json_at(&directory.child("index.json")?, &self.index)?;
+        }
         let mut candidate = self.manifest.clone();
         candidate.watermarks.flushed = candidate.watermarks.written;
         candidate.watermarks.synced = candidate.watermarks.written;
@@ -646,6 +664,7 @@ impl CaptureWriter {
         self.manifest.state = CaptureState::Finalizing;
         self.checkpoint()?;
         self.file.take();
+        self.volume_index.take();
         let scan = super::verify::verify_directory(&self.path)?;
         if !scan.report.container_complete
             || scan.report.verified_prefix != self.manifest.watermarks.written
@@ -708,6 +727,7 @@ impl CaptureWriter {
     pub(crate) fn finish_recovered(mut self) -> HostResult<CaptureSummary> {
         self.checkpoint()?;
         self.file.take();
+        self.volume_index.take();
         let scan = super::verify::verify_directory(&self.path)?;
         if !scan.report.container_complete {
             return Err(corrupt());

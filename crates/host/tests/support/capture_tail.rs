@@ -40,12 +40,14 @@ async fn imported(
         let mut offset = 7;
         while offset < bytes.len() {
             let size = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-            let start = offset + 4;
+            let time = offset + 4;
+            let start = time + 8;
             let value: Value = serde_json::from_slice(&bytes[start..start + size]).unwrap();
             let original = serde_json::to_vec(&value).unwrap();
             assert_eq!(original.len(), size);
             bytes[start..start + size].copy_from_slice(&original);
-            bytes[start + size..start + size + 32].copy_from_slice(&Sha256::digest(&original));
+            let digest = Sha256::digest(&bytes[time..start + size]);
+            bytes[start + size..start + size + 32].copy_from_slice(&digest);
             offset = start + size + 32;
         }
         std::fs::write(&volume, &bytes).unwrap();
@@ -333,7 +335,7 @@ async fn capture_tail_bounds_reference_json_and_requires_current_content_authori
         .code,
         "REVISION_CONFLICT"
     );
-    std::fs::write(f.dir.path().join("tail-large/index.json"), b"{}").unwrap();
+    std::fs::write(f.dir.path().join("tail-large/index-000001.swbi"), b"{}").unwrap();
     assert_eq!(
         failure(
             user_raw
