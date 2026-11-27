@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
@@ -59,6 +60,91 @@ function packets(
     };
   });
 }
+
+test("large receive history keeps offscreen rows out of the DOM and locates retained bytes", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  for (let start = 1; start <= 600; start += 50) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 50),
+    );
+    await expect(log).toContainText(
+      `packet-${String(start + 49).padStart(4, "0")}`,
+    );
+  }
+
+  const rows = log.locator(".workbench-stream-row");
+  const last = log.locator('[data-offset="7188"]');
+  await expect(last).toBeInViewport();
+  const mounted = await rows.count();
+  const receipt = info.outputPath("mounted-row-count.json");
+  await writeFile(receipt, JSON.stringify({ received: 600, mounted }) + "\n");
+  await info.attach("mounted-row-count", {
+    path: receipt,
+    contentType: "application/json",
+  });
+  expect(mounted).toBeLessThan(192);
+
+  await log.hover();
+  await page.mouse.wheel(0, -5400);
+  const latest = terminal.getByRole("button", {
+    name: en["workbench.returnToLatest"],
+  });
+  await expect(latest).toBeVisible();
+  await expect(last).toHaveCount(0);
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    packets(601, 1),
+  );
+  await expect(latest).toContainText("1");
+  await expect(log).not.toContainText("packet-0601");
+
+  const trigger = terminal.getByRole("button", { name: "Record location" });
+  await trigger.click();
+  const panel = page.getByRole("dialog", { name: "Record location" });
+  await choose(page, "Locate by", "Event");
+  await panel.getByRole("textbox", { name: "Event", exact: true }).fill("14");
+  await panel.getByRole("button", { name: "Jump", exact: true }).click();
+  const target = log.locator('[data-location-target="true"][data-offset="36"]');
+  await expect(target).toHaveText(/packet-0004/);
+  await expect(target).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await terminal.getByRole("button", { name: en["workbench.resume"] }).click();
+  await expect(log.locator('[data-offset="7200"]')).toBeInViewport();
+  await expect(target).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("receive-window-1240x760.png"),
+    animations: "disabled",
+  });
+
+  await terminal.getByRole("button", { name: "Search bytes" }).click();
+  await terminal
+    .getByRole("textbox", { name: "Search bytes" })
+    .fill("packet-0011");
+  const match = log.locator('[data-offset="120"]');
+  await expect(match).toBeInViewport();
+  await expect(match).toContainText("packet-0011");
+
+  await page.setViewportSize({ width: 420, height: 530 });
+  await expect(match).toBeInViewport();
+  await page.screenshot({
+    path: info.outputPath("receive-search-420x530.png"),
+    animations: "disabled",
+  });
+});
 
 test("applies ordered text highlights and keeps receiving when a rule is invalid", async ({
   page,
@@ -1494,8 +1580,22 @@ for (const sample of [
       );
     }
     const log = page.getByRole("log");
-    await expect(log).toContainText("packet-0001");
-    await expect(log).toContainText("packet-1500");
+    await expect(
+      log.getByText("packet-1500", { exact: true }),
+    ).toBeInViewport();
+    await log.press("Home");
+    await expect(
+      log.getByText("packet-0001", { exact: true }),
+    ).toBeInViewport();
+    await page
+      .getByRole("button", {
+        name: words["workbench.returnToLatest"],
+        exact: true,
+      })
+      .click();
+    await expect(
+      log.getByText("packet-1500", { exact: true }),
+    ).toBeInViewport();
     await page
       .getByRole("button", { name: words["workbench.freeze"], exact: true })
       .click();

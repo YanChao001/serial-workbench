@@ -402,6 +402,12 @@
   color: var(--muted-foreground);
   font-size: 0.6875rem;
 }
+.workbench-stream-spacer {
+  overflow-anchor: none;
+}
+[data-stream-block] > .workbench-stream-row {
+  content-visibility: visible;
+}
 .workbench-stream-row[data-continues="true"] {
   border-block-end: 0;
   padding-block-end: 0;

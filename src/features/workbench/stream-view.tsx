@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useId,
   useMemo,
@@ -134,6 +135,7 @@ import type { StreamHighlightRule } from "./stream-highlight";
 import { StreamHighlightEditor } from "./stream-highlight-editor";
 import { renderStreamHighlights } from "./stream-highlight-text";
 import { useStreamHighlights } from "./use-stream-highlights";
+import { useStreamRowWindow } from "./use-stream-row-window";
 import {
   filterStreamRows,
   streamMatchRanges,
@@ -938,29 +940,6 @@ export function StreamView({
     },
     [labels.copyDone, labels.copyFailed],
   );
-  useLayoutEffect(() => {
-    if (locatedItem === undefined || showAnsi) return;
-    let frame: number;
-    let attempts = 0;
-    let previouslyVisible = false;
-    const center = () => {
-      const row = rowRefs.current.get(locatedItem);
-      const log = viewport.current;
-      if (!row || !log) return;
-      const bounds = row.getBoundingClientRect();
-      const viewportBounds = log.getBoundingClientRect();
-      const visible =
-        bounds.top < viewportBounds.bottom &&
-        bounds.bottom > viewportBounds.top;
-      if (!attempts || !visible) row.scrollIntoView({ block: "center" });
-      else if (previouslyVisible) return;
-      previouslyVisible = visible && attempts > 0;
-      // Reinserted rows using content-visibility can change the height above the target after painting.
-      if (++attempts < 8) frame = requestAnimationFrame(center);
-    };
-    frame = requestAnimationFrame(center);
-    return () => cancelAnimationFrame(frame);
-  }, [locatedItem, locationTarget, searchOpen, showAnsi, showMapped]);
   useEffect(() => {
     if (rawSearchOpen) searchInput.current?.focus();
   }, [rawSearchOpen]);
@@ -1005,12 +984,6 @@ export function StreamView({
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
   }, [following, followToEnd, showAnsi]);
-  useEffect(() => {
-    if (match) {
-      const row = rowRefs.current.get(match.itemIndex);
-      row?.scrollIntoView({ block: "nearest" });
-    }
-  }, [match]);
   const find = useCallback(
     async (direction = 1) => {
       setSearched(true);
@@ -1137,6 +1110,91 @@ export function StreamView({
       currentSearch?.ranges,
     ],
   );
+  const firstVisibleItem = displayed[visibleRows[0]?.itemIndex ?? -1];
+  const rowWindow = useStreamRowWindow({
+    count: showAnsi || mappedProjection ? 0 : visibleRows.length,
+    layoutKey: JSON.stringify([
+      firstVisibleItem && streamItemIdentity(firstVisibleItem),
+      receiveCodec,
+      sendCodec,
+      mode,
+      hexFormat,
+      showTransmitEcho,
+      wrapReceiveText,
+      showRecordNumbers,
+      rawSearchOpen && searchDirection,
+      rawSearchOpen && matchVisibility,
+    ]),
+    following,
+    viewport,
+    body: content,
+  });
+  const revealUnmounted = useEffectEvent((itemIndex: number) => {
+    if (!rowWindow.enabled || rowRefs.current.has(itemIndex)) return;
+    scrollIntent.current = null;
+    rowWindow.reveal(
+      visibleRows.findIndex((row) => row.itemIndexes.includes(itemIndex)),
+    );
+  });
+  useLayoutEffect(() => {
+    if (locatedItem === undefined || showAnsi) return;
+    revealUnmounted(locatedItem);
+    let frame: number;
+    let attempts = 0;
+    let previouslyVisible = false;
+    const center = () => {
+      const row = rowRefs.current.get(locatedItem);
+      const log = viewport.current;
+      if (!log) return;
+      if (!row) {
+        if (++attempts < 8) frame = requestAnimationFrame(center);
+        return;
+      }
+      const bounds = row.getBoundingClientRect();
+      const viewportBounds = log.getBoundingClientRect();
+      const visible =
+        bounds.top < viewportBounds.bottom &&
+        bounds.bottom > viewportBounds.top;
+      if (!attempts || !visible) row.scrollIntoView({ block: "center" });
+      else if (previouslyVisible) return;
+      previouslyVisible = visible && attempts > 0;
+      // 新窗口和旧行的实测高度可能在下一帧才稳定。
+      if (++attempts < 8) frame = requestAnimationFrame(center);
+    };
+    frame = requestAnimationFrame(center);
+    return () => cancelAnimationFrame(frame);
+  }, [locatedItem, locationTarget, searchOpen, showAnsi, showMapped]);
+
+  useLayoutEffect(() => {
+    if (!match) return;
+    let frame: number;
+    const scrollToMatch = () => {
+      revealUnmounted(match.itemIndex);
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        rowRefs.current
+          .get(match.itemIndex)
+          ?.scrollIntoView({ block: "nearest" });
+      });
+    };
+    scrollToMatch();
+    const log = viewport.current;
+    if (!log || !rowWindow.enabled) return () => cancelAnimationFrame(frame);
+    let width = log.clientWidth;
+    let height = log.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (log.clientWidth === width && log.clientHeight === height) return;
+      width = log.clientWidth;
+      height = log.clientHeight;
+      // 仍在编辑搜索词时保持命中可见；离开搜索框后可继续手动阅读。
+      if (document.activeElement === searchInput.current) scrollToMatch();
+    });
+    observer.observe(log);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [match, rowWindow.enabled]);
   const highlightEnabled =
     !showAnsi &&
     mode !== "hex" &&
@@ -1281,7 +1339,7 @@ export function StreamView({
   // 输入和权限续检不重建接收列表；只有源数据或显示偏好改变才重新呈现。
   const renderedRows = useMemo(
     () =>
-      visibleRows.map((row) => (
+      visibleRows.slice(rowWindow.first, rowWindow.end).map((row) => (
         <div
           key={row.itemIndex}
           ref={(element) => {
@@ -1451,6 +1509,8 @@ export function StreamView({
       )),
     [
       visibleRows,
+      rowWindow.first,
+      rowWindow.end,
       showRecordNumbers,
       locations,
       locatedItem,
@@ -2277,6 +2337,7 @@ export function StreamView({
             }}
             onScroll={(event) => {
               const element = event.currentTarget;
+              rowWindow.sync(element);
               const upward =
                 scrollIntent.current !== null &&
                 scrollIntent.current.direction !== "down" &&
@@ -2304,6 +2365,27 @@ export function StreamView({
                   style={terminalTypographyStyle(terminalSettings?.typography)}
                   onReveal={revealMappedSource}
                 />
+              ) : rowWindow.enabled ? (
+                <>
+                  <div
+                    aria-hidden="true"
+                    className="workbench-stream-spacer"
+                    style={{ blockSize: rowWindow.before }}
+                  />
+                  {rowWindow.blocks.map((block) => (
+                    <div key={block.start} data-stream-block={block.start}>
+                      {renderedRows.slice(
+                        block.start - rowWindow.first,
+                        block.end - rowWindow.first,
+                      )}
+                    </div>
+                  ))}
+                  <div
+                    aria-hidden="true"
+                    className="workbench-stream-spacer"
+                    style={{ blockSize: rowWindow.after }}
+                  />
+                </>
               ) : (
                 renderedRows
               )}
