@@ -24,7 +24,7 @@
 
 ### 本轮交付与验收
 
-- UX-09 在会话模板中提供 Arduino 采样、AT 查询和 Modbus RTU 读寄存器的线路、请求、对照应答与独立回环模拟脚本。Windows 候选 `4a396f9` 的 4 项 Node、4 项无头 Chromium、2,903 项 Vitest、桌面构建与 Rust 绑定检查通过。三个对端实测拆分请求、错报文及重连。已核 Chromium 下载与随包资源字节一致，原有隔离 Host 签名 TCP 客户端及侦听回归通过。独立原生保存、真实配对与各自工作台 TCP 场景、实物串口和正式离线安装待验。 [交付 PR #107](https://github.com/YanChao001/serial-workbench/pull/107) · [专项验收](./acceptance.md#示例工程ux-09)
+- UX-09 在会话模板中提供 Arduino 采样、AT 查询和 Modbus RTU 读寄存器的线路、请求、对照应答与独立回环模拟脚本。Windows 候选 `4a396f9` 的 4 项 Node、4 项无头 Chromium、2,903 项 Vitest、桌面构建与 Rust 绑定检查通过。三个对端实测拆分请求、错报文及重连。已核 Chromium 下载与随包资源字节一致，隔离 Host 签名 TCP 客户端、侦听及真实配对工作台的 Raw 收发和录制回归通过。独立原生保存、三例与真实配对下载和工作台 TCP 的组合、实物串口及正式离线安装待验。 [交付 PR #107](https://github.com/YanChao001/serial-workbench/pull/107) · [专项验收](./acceptance.md#示例工程ux-09)
 
 - UX-07 可在通知规则上开启托盘提醒。规则命中后，原生入口按武装窗口、文档代次和当前后台状态发起一次系统通知和铃声请求。Windows 候选 `7cfbf24` 通过桌面前端构建、Rust 绑定检查、2,903 项 Vitest、25 项 Node 与 14 项无头 Chromium。覆盖面板关闭后命中、接纳回执晚到、提醒去重，以及通知接口挂起时仍可查看 Host 终态和再次武装。独立原生桌面的通知权限、托盘隐藏、系统投递与响铃，以及正式签名安装待验。 [交付 PR #106](https://github.com/YanChao001/serial-workbench/pull/106) · [专项验收](./acceptance.md#通知与托盘ux-07)
 
