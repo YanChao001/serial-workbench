@@ -1226,7 +1226,8 @@
         "status": "passed",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/76",
-          "https://github.com/YanChao001/serial-workbench/pull/78"
+          "https://github.com/YanChao001/serial-workbench/pull/78",
+          "https://github.com/YanChao001/serial-workbench/pull/97"
         ]
       },
       "hardware": {
