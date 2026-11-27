@@ -499,7 +499,7 @@ impl CaptureWriter {
         let manifest = serde_json::to_vec(&self.manifest)
             .map_err(|_| corrupt())?
             .len() as u64
-            + 512 * volumes.max(1);
+            + 512 * (volumes + 1);
         let data = frame_bytes + volumes * self.format.magic().len() as u64;
         let (index_capacity, index_reserve) = if self.format == CaptureFormat::Indexed {
             let added_index =

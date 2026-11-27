@@ -299,7 +299,7 @@ async fn written_rx(path: &std::path::Path, volume: u64, expected: &str) {
                     .unwrap();
             let mut magic = [0; 7];
             file.read_exact(&mut magic).unwrap();
-            assert_eq!(&magic, crate::capture::format::MAGIC);
+            assert_eq!(&magic, b"SWBR04\n");
             loop {
                 let mut length = [0; 4];
                 if file.read_exact(&mut length).is_err() {
@@ -307,7 +307,11 @@ async fn written_rx(path: &std::path::Path, volume: u64, expected: &str) {
                 }
                 let mut json = vec![0; u32::from_le_bytes(length) as usize];
                 let mut digest = [0; 32];
-                if file.read_exact(&mut json).is_err() || file.read_exact(&mut digest).is_err() {
+                let mut time = [0; 8];
+                if file.read_exact(&mut time).is_err()
+                    || file.read_exact(&mut json).is_err()
+                    || file.read_exact(&mut digest).is_err()
+                {
                     break;
                 }
                 let record: CaptureRecord = serde_json::from_slice(&json).unwrap();

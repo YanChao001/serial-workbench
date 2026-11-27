@@ -565,6 +565,36 @@ mod format_tests {
         let summary = writer.finish().unwrap();
         assert_eq!(summary.watermarks.verified.get(), 3);
         assert!(!summary.source_continuous);
+
+        // Use the size of the successful append to exercise the narrow gap
+        // between the original manifest budget and the one with another volume.
+        let data_and_index_bytes: u64 = std::fs::read_dir(&path)
+            .unwrap()
+            .map(|entry| entry.unwrap())
+            .filter(|entry| entry.file_name() != "manifest.json")
+            .map(|entry| entry.metadata().unwrap().len())
+            .sum();
+        let (_tight_directory, tight_path) = mixed_clock_capture(CaptureFormat::Indexed);
+        let mut prior = crate::capture::verify::verify_directory(&tight_path).unwrap();
+        prior.manifest.state = CaptureState::Recording;
+        let capacity_bytes =
+            data_and_index_bytes + serde_json::to_vec(&prior.manifest).unwrap().len() as u64 + 512;
+        let result = CaptureWriter::append_at_positions(
+            crate::files::references::PathGuard::new(&tight_path).unwrap(),
+            prior.manifest.streams,
+            CaptureLimits {
+                capacity_bytes,
+                ..CaptureLimits::default()
+            },
+            native_volume_opener(),
+            Some(vec![3.into(), 1.into()]),
+            None,
+        );
+        assert_eq!(result.err().unwrap().code, "CAPTURE_IO_FAILED");
+        assert_eq!(
+            fingerprint(&tight_path).unwrap(),
+            prior.report.source_fingerprint
+        );
     }
 
     #[test]

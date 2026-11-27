@@ -3,9 +3,7 @@ mod support;
 use serial_workbench_core::*;
 use serial_workbench_host::{
     capture::{
-        CaptureRuntime, CaptureService,
-        format::{MAGIC, fingerprint},
-        verify::verify_directory,
+        CaptureRuntime, CaptureService, format::fingerprint, verify::verify_directory,
         writer::CaptureLimits,
     },
     files::FileService,
@@ -207,12 +205,12 @@ impl Fixture {
         assert_eq!(scan.summary.state, CaptureState::Failed);
         assert_eq!(fingerprint(path).unwrap(), before);
         let bytes = fs::read(path.join("volume-000001.swbr")).unwrap();
-        assert!(bytes.starts_with(MAGIC));
+        assert!(bytes.starts_with(b"SWBR04\n"));
         if prefix > 0 {
-            let offset = MAGIC.len();
+            let offset = b"SWBR04\n".len();
             let size = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
             let record: CaptureRecord =
-                serde_json::from_slice(&bytes[offset + 4..offset + 4 + size]).unwrap();
+                serde_json::from_slice(&bytes[offset + 12..offset + 12 + size]).unwrap();
             assert_eq!(record.record_ordinal, U64::from(1));
             let CaptureEntry::Event(event) = record.entry else {
                 panic!("RX record")
