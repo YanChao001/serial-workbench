@@ -258,7 +258,7 @@ test("structured field table follows verified frames, reports quality and drops 
     .getByRole("button", { name: en["workbench.fieldTable.reveal"] })
     .click();
   await page
-    .getByRole("button", { name: en["workbench.tools.discard"], exact: true })
+    .getByRole("button", { name: en["lifecycle.discard"], exact: true })
     .click();
   await expect(dialog).toBeHidden();
   await expect
