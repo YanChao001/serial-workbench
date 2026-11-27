@@ -64,7 +64,7 @@ export function WorkspaceConfigurationExport({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="max-h-[calc(100dvh-3rem)] w-[min(26rem,calc(100vw-2rem))] overflow-y-auto"
+        className="w-[min(26rem,calc(100vw-2rem))] overflow-hidden p-0"
       >
         {open && (
           <ExportForm
@@ -288,200 +288,207 @@ function ExportForm({
   return (
     <section
       aria-labelledby={id}
-      className="grid min-w-0 gap-3"
+      className="flex max-h-[min(calc(100dvh-3rem),var(--radix-popover-content-available-height))] min-w-0 flex-col"
       aria-busy={action.busy}
     >
-      <h3 id={id} className="font-medium">
+      <h3 id={id} className="shrink-0 px-3 pt-3 text-sm font-medium">
         {t("workbench.configuration.export")}
       </h3>
-      <fieldset disabled={action.busy} className="grid min-w-0 gap-2">
-        <legend className="sr-only">
-          {t("workbench.configuration.quickCommands")}
-        </legend>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={loadCommands}
-          disabled={!commandLibrary}
-        >
-          {t(
-            commands
-              ? "workbench.configuration.refreshCommands"
-              : "workbench.configuration.chooseCommands",
-          )}
-        </Button>
-        {commands && (
-          <>
-            {commands.groups.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("workbench.configuration.noCommands")}
-              </p>
-            ) : (
-              <OptionsSelect
-                label={t("workbench.configuration.commandGroup")}
-                placeholder={t("workbench.configuration.commandGroup")}
-                value={group?.id ?? ""}
-                options={distinctWorkspaceLabels(
-                  commands.groups.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  })),
-                )}
-                onValueChange={loadGroup}
-              />
-            )}
-            {commands.next && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={loadMoreGroups}
-              >
-                {t("workbench.configuration.moreGroups")}
-              </Button>
-            )}
-          </>
-        )}
-        {group && (
-          <div className="grid max-h-36 gap-2 overflow-auto px-1 py-1.5">
-            {group.rows.map((command) => (
-              <label
-                key={command.id}
-                className="flex min-w-0 items-center gap-2 text-sm"
-              >
-                <Checkbox
-                  checked={selected.has(command.id)}
-                  onCheckedChange={(checked) =>
-                    setSelected((current) => {
-                      const next = new Set(current);
-                      if (checked === true) next.add(command.id);
-                      else next.delete(command.id);
-                      return next;
-                    })
-                  }
-                />
-                <span className="min-w-0 wrap-anywhere">{command.name}</span>
-              </label>
-            ))}
-            {group.rows.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                {t("workbench.configuration.noCommands")}
-              </p>
-            )}
-            {group.next && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => loadGroup(group.id, true)}
-              >
-                {t("workbench.configuration.moreCommands")}
-              </Button>
-            )}
-          </div>
-        )}
-        {selected.size > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {t("workbench.configuration.includedCommandBodies", {
-              count: selected.size,
-            })}
-          </p>
-        )}
-      </fieldset>
-      <fieldset disabled={action.busy} className="grid min-w-0 gap-2">
-        <legend className="sr-only">
-          {t("workbench.configuration.scripts")}
-        </legend>
-        {connection && (
+      <div className="grid min-h-0 min-w-0 gap-3 overflow-y-auto p-3">
+        <fieldset disabled={action.busy} className="grid min-w-0 gap-2">
+          <legend className="sr-only">
+            {t("workbench.configuration.quickCommands")}
+          </legend>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={loadPlugins}
+            onClick={loadCommands}
+            disabled={!commandLibrary}
           >
-            {t("workbench.configuration.chooseScripts")}
+            {t(
+              commands
+                ? "workbench.configuration.refreshCommands"
+                : "workbench.configuration.chooseCommands",
+            )}
           </Button>
-        )}
-        {plugins &&
-          (plugins.packages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t("workbench.configuration.noScripts")}
-            </p>
-          ) : (
-            <OptionsSelect
-              label={t("workbench.configuration.choosePackage")}
-              placeholder={t("workbench.configuration.choosePackage")}
-              value={packageId}
-              options={distinctWorkspaceLabels(
-                plugins.packages.map((item) => ({
-                  value: item.id,
-                  label: item.displayName ?? item.id,
-                })),
-              )}
-              onValueChange={loadScripts}
-            />
-          ))}
-        {packageId && (
-          <div className="grid max-h-36 gap-2 overflow-auto px-1 py-1.5">
-            {scripts.map((script) => (
-              <label
-                key={script.actionId}
-                className="flex min-w-0 items-center gap-2 text-sm"
-              >
-                <Checkbox
-                  checked={selectedScripts?.has(script.actionId) ?? false}
-                  onCheckedChange={(checked) =>
-                    setSelectedScripts((current) => {
-                      const next = new Map(current);
-                      if (checked === true) next.set(script.actionId, script);
-                      else next.delete(script.actionId);
-                      return next;
-                    })
-                  }
+          {commands && (
+            <>
+              {commands.groups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("workbench.configuration.noCommands")}
+                </p>
+              ) : (
+                <OptionsSelect
+                  label={t("workbench.configuration.commandGroup")}
+                  placeholder={t("workbench.configuration.commandGroup")}
+                  value={group?.id ?? ""}
+                  options={distinctWorkspaceLabels(
+                    commands.groups.map((item) => ({
+                      value: item.id,
+                      label: item.name,
+                    })),
+                  )}
+                  onValueChange={loadGroup}
                 />
-                <span className="min-w-0 wrap-anywhere">{script.actionId}</span>
-              </label>
-            ))}
-            {scripts.length === 0 && (
+              )}
+              {commands.next && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={loadMoreGroups}
+                >
+                  {t("workbench.configuration.moreGroups")}
+                </Button>
+              )}
+            </>
+          )}
+          {group && (
+            <div className="grid max-h-36 gap-2 overflow-auto px-1 py-1.5">
+              {group.rows.map((command) => (
+                <label
+                  key={command.id}
+                  className="flex min-w-0 items-center gap-2 text-sm"
+                >
+                  <Checkbox
+                    checked={selected.has(command.id)}
+                    onCheckedChange={(checked) =>
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (checked === true) next.add(command.id);
+                        else next.delete(command.id);
+                        return next;
+                      })
+                    }
+                  />
+                  <span className="min-w-0 wrap-anywhere">{command.name}</span>
+                </label>
+              ))}
+              {group.rows.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {t("workbench.configuration.noCommands")}
+                </p>
+              )}
+              {group.next && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => loadGroup(group.id, true)}
+                >
+                  {t("workbench.configuration.moreCommands")}
+                </Button>
+              )}
+            </div>
+          )}
+          {selected.size > 0 && !current && (
+            <p className="text-sm text-muted-foreground">
+              {t("workbench.configuration.includedCommandBodies", {
+                count: selected.size,
+              })}
+            </p>
+          )}
+        </fieldset>
+        <fieldset disabled={action.busy} className="grid min-w-0 gap-2">
+          <legend className="sr-only">
+            {t("workbench.configuration.scripts")}
+          </legend>
+          {connection && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={loadPlugins}
+            >
+              {t("workbench.configuration.chooseScripts")}
+            </Button>
+          )}
+          {plugins &&
+            (plugins.packages.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {t("workbench.configuration.noScripts")}
               </p>
-            )}
-          </div>
+            ) : (
+              <OptionsSelect
+                label={t("workbench.configuration.choosePackage")}
+                placeholder={t("workbench.configuration.choosePackage")}
+                value={packageId}
+                options={distinctWorkspaceLabels(
+                  plugins.packages.map((item) => ({
+                    value: item.id,
+                    label: item.displayName ?? item.id,
+                  })),
+                )}
+                onValueChange={loadScripts}
+              />
+            ))}
+          {packageId && (
+            <div className="grid max-h-36 gap-2 overflow-auto px-1 py-1.5">
+              {scripts.map((script) => (
+                <label
+                  key={script.actionId}
+                  className="flex min-w-0 items-center gap-2 text-sm"
+                >
+                  <Checkbox
+                    checked={selectedScripts?.has(script.actionId) ?? false}
+                    onCheckedChange={(checked) =>
+                      setSelectedScripts((current) => {
+                        const next = new Map(current);
+                        if (checked === true) next.set(script.actionId, script);
+                        else next.delete(script.actionId);
+                        return next;
+                      })
+                    }
+                  />
+                  <span className="min-w-0 wrap-anywhere">
+                    {script.actionId}
+                  </span>
+                </label>
+              ))}
+              {scripts.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {t("workbench.configuration.noScripts")}
+                </p>
+              )}
+            </div>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {selectedScripts === undefined
+              ? t("workbench.configuration.keepScripts")
+              : t("workbench.configuration.selectedScripts", {
+                  count: selectedScripts.size,
+                })}
+          </p>
+        </fieldset>
+        {action.error && (
+          <p role="alert" className="text-sm wrap-anywhere">
+            {action.error}
+          </p>
         )}
-        <p className="text-sm text-muted-foreground">
-          {selectedScripts === undefined
-            ? t("workbench.configuration.keepScripts")
-            : t("workbench.configuration.selectedScripts", {
-                count: selectedScripts.size,
-              })}
-        </p>
-      </fieldset>
-      {action.error && (
-        <p role="alert" className="text-sm wrap-anywhere">
-          {action.error}
-        </p>
-      )}
-      {current && (
-        <WorkspaceConfigurationSummary
-          preview={current.preview}
-          hostId={workspace.hostId}
-          mode="export"
-        />
-      )}
-      <Button
-        type="button"
-        size="sm"
-        disabled={action.busy}
-        onClick={current ? save : preview}
-      >
-        {t(
-          current
-            ? "workbench.configuration.savePackage"
-            : "workbench.configuration.previewPackage",
+        {current && (
+          <WorkspaceConfigurationSummary
+            preview={current.preview}
+            hostId={workspace.hostId}
+            mode="export"
+          />
         )}
-      </Button>
+      </div>
+      <div className="shrink-0 border-t p-3">
+        <Button
+          type="button"
+          size="sm"
+          className="w-full"
+          disabled={action.busy}
+          onClick={current ? save : preview}
+        >
+          {t(
+            current
+              ? "workbench.configuration.savePackage"
+              : "workbench.configuration.previewPackage",
+          )}
+        </Button>
+      </div>
     </section>
   );
 }

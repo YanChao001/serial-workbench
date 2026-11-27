@@ -85,7 +85,10 @@ test("exports a selected command and previews a configuration package before app
           commands: configuration.commands.map((item) => item.summary),
         },
       };
-      const packed = JSON.stringify(configuration);
+      const packed = JSON.stringify({
+        ...configuration,
+        workspace: { ...configuration.workspace, name: "Existing bench" },
+      });
       let commandRevision = "7";
       const target = {
         hostId: "workbench-gui-host",
@@ -148,12 +151,17 @@ test("exports a selected command and previews a configuration package before app
                   result: { kind: "document_json", value: { json: packed } },
                 };
               case "workspace.configuration.inspect":
+                if (
+                  !object(query.params) ||
+                  typeof query.params.json !== "string"
+                )
+                  throw new Error("Missing configuration");
                 return {
                   ok: true,
                   result: {
                     kind: "workspace_configuration_inspection",
                     value: {
-                      configuration,
+                      configuration: JSON.parse(query.params.json),
                       workspaceRevision: "1",
                       commandRevision,
                       scriptStatuses: ["missing"],
@@ -192,11 +200,13 @@ test("exports a selected command and previews a configuration package before app
   await expect(
     page.getByText("Read holding registers", { exact: true }).last(),
   ).toBeVisible();
-  await page.screenshot({
-    path: info.outputPath("narrow-configuration-export.png"),
-  });
+  await expect(page.getByText("Export from Existing bench")).toBeVisible();
   const savedFile = page.getByRole("button", {
     name: "Save configuration package",
+  });
+  await expect(savedFile).toBeInViewport();
+  await page.screenshot({
+    path: info.outputPath("narrow-configuration-export.png"),
   });
   await savedFile.click();
   await expect(savedFile).toHaveCount(0);
@@ -210,7 +220,10 @@ test("exports a selected command and previews a configuration package before app
   ).toEqual([
     {
       name: "workspace.swb-config.json",
-      content: JSON.stringify(configuration),
+      content: JSON.stringify({
+        ...configuration,
+        workspace: { ...configuration.workspace, name: "Existing bench" },
+      }),
     },
   ]);
 
