@@ -1069,6 +1069,13 @@ export function WorkspaceLayout({
         ? viewDraftKey(draftScopeKey, selectedTab.id)
         : "unconnected";
   const usesUnconnectedDraft = draftKey === "unconnected";
+  const preprocessDraftOwners = useMemo(
+    () =>
+      tabs
+        .filter((tab) => !tab.captureRef && (tab.view || tab.sessionId))
+        .map((tab) => viewDraftKey(draftScopeKey, tab.id)),
+    [draftScopeKey, tabs],
+  );
   const controlledSendMode = usesUnconnectedDraft
     ? unboundSendMode
     : (viewModes[selected ?? "unconnected"]?.sendMode ??
@@ -2827,6 +2834,7 @@ export function WorkspaceLayout({
             ? sendPermissionPreview?.prepared
             : undefined
         }
+        preprocessDraftOwners={preprocessDraftOwners}
         preprocessScope={nativeOwnershipKey}
         preprocessQuery={preprocessQuery}
         holdSend={

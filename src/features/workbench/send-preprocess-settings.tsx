@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -29,10 +30,13 @@ import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { WorkbenchLabels } from "./labels";
 
 const example = '[{"kind":"json","field":"data","format":"text"}]';
+const defaultSettings = { enabled: false, definition: "" };
 
 type Input = { prepared: TextSendPreview; ending: Uint8Array };
+type Settings = typeof defaultSettings;
 type Snapshot = {
-  identity: string;
+  owner: string;
+  target: string;
   revision: string | undefined;
   enabled: boolean;
   definition: string;
@@ -46,23 +50,33 @@ type Calculation = { snapshot: Snapshot } & (
 );
 
 export function useSendPreprocess(
-  identity: string,
+  owner: string,
+  target: string,
   revision: string | undefined,
   input: Input | undefined,
   query?: SendPreprocessQuery,
+  draftOwners?: readonly string[],
 ) {
-  const initial = { identity, definition: "", enabled: false };
-  const [settings, setSettings] = useState(initial);
+  const [settings, setSettings] = useState(() => new Map<string, Settings>());
   const [calculation, setCalculation] = useState<Calculation>();
   const active = useRef<AbortController | undefined>(undefined);
-  const state = settings.identity === identity ? settings : initial;
-  if (settings.identity !== identity) setSettings(initial);
-  const { definition, enabled } = state;
+  const { definition, enabled } = settings.get(owner) ?? defaultSettings;
   const snapshot = useMemo(
-    () => ({ identity, revision, definition, enabled, input, query }),
-    [identity, revision, definition, enabled, input, query],
+    () => ({ owner, target, revision, definition, enabled, input, query }),
+    [owner, target, revision, definition, enabled, input, query],
   );
   const current = calculation?.snapshot === snapshot ? calculation : undefined;
+
+  useEffect(() => {
+    if (!draftOwners) return;
+    setSettings((previous) => {
+      if ([...previous.keys()].every((key) => draftOwners.includes(key)))
+        return previous;
+      return new Map(
+        [...previous].filter(([key]) => draftOwners.includes(key)),
+      );
+    });
+  }, [draftOwners]);
 
   useLayoutEffect(
     () => () => {
@@ -79,17 +93,18 @@ export function useSendPreprocess(
   }, []);
   const reset = useCallback(() => {
     cancel();
-    setSettings({ identity, definition: "", enabled: false });
-  }, [cancel, identity]);
-  const setEnabled = useCallback(
-    (value: boolean) =>
-      setSettings((previous) => ({ ...previous, enabled: value })),
-    [],
-  );
-  const setDefinition = useCallback(
-    (value: string) =>
-      setSettings((previous) => ({ ...previous, definition: value })),
-    [],
+    setSettings(new Map());
+  }, [cancel]);
+  const updateSettings = useCallback(
+    (change: Partial<Settings>) =>
+      setSettings((previous) => {
+        const next = new Map(previous);
+        const value = { ...defaultSettings, ...next.get(owner), ...change };
+        if (value.enabled || value.definition) next.set(owner, value);
+        else next.delete(owner);
+        return next;
+      }),
+    [owner],
   );
   const run = useCallback(async () => {
     if (active.current || !snapshot.enabled || !snapshot.input) return;
@@ -127,10 +142,10 @@ export function useSendPreprocess(
     () => ({
       enabled,
       definition,
+      dirty: settings.size > 0,
       canRun: enabled && !!input && !!definition.trim(),
       current,
-      setEnabled,
-      setDefinition,
+      updateSettings,
       run,
       cancel,
       reset,
@@ -138,10 +153,10 @@ export function useSendPreprocess(
     [
       enabled,
       definition,
+      settings,
       input,
       current,
-      setEnabled,
-      setDefinition,
+      updateSettings,
       run,
       cancel,
       reset,
@@ -167,10 +182,10 @@ export function SendPreprocessSettings({
   const {
     enabled,
     definition,
+    dirty,
     canRun,
     current,
-    setEnabled,
-    setDefinition,
+    updateSettings,
     cancel,
     reset,
   } = preprocess;
@@ -179,7 +194,7 @@ export function SendPreprocessSettings({
   useUnsavedWork({
     id,
     label: title,
-    dirty: !!definition,
+    dirty,
     retainAfterUnmount: false,
     discard: reset,
   });
@@ -227,7 +242,7 @@ export function SendPreprocessSettings({
           <label className="flex items-center gap-2">
             <Switch
               checked={enabled}
-              onCheckedChange={setEnabled}
+              onCheckedChange={(enabled) => updateSettings({ enabled })}
               disabled={disabled}
             />
             {labels.enabled}
@@ -237,7 +252,7 @@ export function SendPreprocessSettings({
             size="sm"
             variant="outline"
             disabled={disabled}
-            onClick={() => setDefinition(example)}
+            onClick={() => updateSettings({ definition: example })}
           >
             {labels.example}
           </Button>
@@ -247,7 +262,9 @@ export function SendPreprocessSettings({
           id={`${id}-definition`}
           ref={input}
           value={definition}
-          onChange={(event) => setDefinition(event.target.value)}
+          onChange={(event) =>
+            updateSettings({ definition: event.target.value })
+          }
           disabled={disabled}
           maxLength={SEND_PREPROCESS_DEFINITION_LIMIT}
           aria-invalid={error?.reason === "definition" || undefined}

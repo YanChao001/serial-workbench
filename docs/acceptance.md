@@ -901,7 +901,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 - JSON 封装使用 `{"kind":"json","field":"data","format":"text"}`，要求正文为有效 UTF-8。二进制正文选择 `"base64"`。以 UTF-8 输入 `A你`、行尾设为 CRLF、校验设为 Sum-8，确认 18 字节预览以 `0D 0A D6` 结尾。改成 `B你` 后原预览失效，重新生成后校验字节为 `D7`。
 - Node 扩展使用 `{"kind":"query","actionId":"example.transform","input":"payload","output":"result","params":{"mode":"sample"}}`。替换为当前 Host 目录中已安装、有执行信任且支持该会话的 SDK 查询。查询权限限于 `metadata.read` 和 `content.read`，由 Host 检查实际授权。输入和输出字段传递标准 Base64，`params` 可省略且不能占用输入字段。核对请求目标、解析结果和最终字节，拒权、无效 Base64、空结果、超限或换目标时预览失效。
 
-未生成预览、等待、失败或草稿过期时，核对发送不可用且 Host 收不到写入。生成成功后核对单次发送、按住连发及全局热键均取当前最终预览并继续沿用写入授权。关闭设置时丢弃等待中的晚结果。切换会话归属或离开视图时重新配置。运行 `pnpm exec vitest run src/features/workbench/send-preprocess.test.ts src/features/workbench/send-panel.test.tsx` 与 `pnpm test:ui e2e/browser/send-preprocess.spec.ts e2e/browser/hold-send.spec.ts e2e/browser/global-send.spec.ts`。 [宽窄草稿](./ui-design.md#发送前预处理草稿io-15)
+未生成预览、等待、失败或草稿过期时，核对发送不可用且 Host 收不到写入。生成成功后核对单次发送、按住连发及全局热键均取当前最终预览并继续沿用写入授权。关闭设置时丢弃等待中的晚结果。同一视图重连或会话换代后保留步骤和启用状态，重新生成前仍禁止发送。两个已打开的视图各自保留设置，切回启用的视图必须重新生成。运行 `pnpm exec vitest run src/features/workbench/send-preprocess.test.ts src/features/workbench/send-panel.test.tsx` 与 `pnpm test:ui e2e/browser/send-preprocess.spec.ts e2e/browser/hold-send.spec.ts e2e/browser/global-send.spec.ts`。 [宽窄草稿](./ui-design.md#发送前预处理草稿io-15)
 
 M4 核对内置转换与现有 SDK 查询入口。M5 的宿主市场接入（FUT-07）提供专用加密、压缩包后，安装已签名候选并以对应金样核对精确字节和失败时零发送。实机使用独立对端比对最终字节。正式签名候选在独立环境断网安装后，复验固定运行时、已取得的扩展和同一发送路径。
 

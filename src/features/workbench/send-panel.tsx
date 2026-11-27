@@ -162,7 +162,7 @@ export type SendPanelProps = {
   initialMode?: "text" | "hex";
   session?: SessionSnapshot;
   draft: string;
-  checksumDraftKey?: string;
+  draftOwnerKey?: string;
   onDraftChange: (value: string) => void;
   labels: WorkbenchLabels;
   onSend: (
@@ -177,6 +177,7 @@ export type SendPanelProps = {
     wait: (operation: Operation, signal: AbortSignal) => Promise<Operation>;
   };
   globalSendPreview?: TextSendPreview;
+  preprocessDraftOwners?: readonly string[];
   preprocessScope?: string;
   preprocessQuery?: SendPreprocessQuery;
   sendRemap?: CharacterRemapRules;
@@ -253,12 +254,13 @@ export function SendPanel({
   draftsDirty = false,
   session,
   draft,
-  checksumDraftKey,
+  draftOwnerKey,
   onDraftChange,
   labels,
   onSend,
   holdSend,
   globalSendPreview,
+  preprocessDraftOwners,
   preprocessScope,
   preprocessQuery,
   sendRemap,
@@ -319,7 +321,7 @@ export function SendPanel({
   const sessionScope = session
     ? JSON.stringify([session.sessionId, session.sessionEpoch])
     : null;
-  const checksumOwner = JSON.stringify([checksumDraftKey, sessionScope]);
+  const checksumOwner = JSON.stringify([draftOwnerKey, sessionScope]);
   const [checksumState, setChecksumState] = useState({
     owner: checksumOwner,
     value: DEFAULT_SEND_CHECKSUM,
@@ -480,12 +482,17 @@ export function SendPanel({
     const { prepared, ending } = basePreview;
     return prepared && ending ? { prepared, ending } : undefined;
   }, [basePreview]);
-  const preprocessOwner = JSON.stringify([checksumOwner, preprocessScope]);
+  const preprocessOwner = draftOwnerKey ?? "";
+  const preprocessTarget = JSON.stringify([preprocessScope, sessionScope]);
+  const preprocessDisabled =
+    draftReadOnly || preprocessDraftOwners?.includes(preprocessOwner) === false;
   const preprocess = useSendPreprocess(
     preprocessOwner,
+    preprocessTarget,
     session?.revision,
     preprocessInput,
     preprocessQuery,
+    preprocessDraftOwners,
   );
   const processed =
     preprocess.current?.status === "ready"
@@ -836,7 +843,7 @@ export function SendPanel({
           </WorkbenchIconButton>
         )}
         <MixedSendInput
-          key={`mixed-${checksumDraftKey ?? ""}`}
+          key={`mixed-${draftOwnerKey ?? ""}`}
           readDraft={() => currentDraft.current}
           encoding={encoding}
           disabled={draftReadOnly === true || encodingStatus !== "ready"}
@@ -946,7 +953,7 @@ export function SendPanel({
           preprocess={preprocess}
           labels={labels.preprocess}
           final={finalPreprocessed}
-          disabled={draftReadOnly}
+          disabled={preprocessDisabled}
         />
         <span className="workbench-toolbar-spacer" />
         {draftActions}
@@ -1061,12 +1068,13 @@ export function SendPanel({
       fileBusy,
       onSendFile,
       emptyDraft,
-      checksumDraftKey,
+      draftOwnerKey,
       checksumOwner,
       checksum,
       preview.checksumHex,
       invalidChecksum,
       preprocess,
+      preprocessDisabled,
       preprocessOwner,
       finalPreprocessed,
     ],

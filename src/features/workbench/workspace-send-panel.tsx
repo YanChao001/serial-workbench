@@ -132,7 +132,7 @@ export function WorkspaceSendPanel({
       encoding={command?.encoding ?? props.encoding}
       onEncodingChange={changeEncoding}
       draftActions={actions}
-      checksumDraftKey={draftKey}
+      draftOwnerKey={draftKey}
       onDraftChange={onDraftChange}
       onPreviewChange={preview}
     />

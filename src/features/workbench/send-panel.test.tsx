@@ -86,7 +86,7 @@ it("previews the checksum of the selected encoded bytes and sends that exact sna
   const observed = vi.fn();
   const props = {
     draft: "ABC",
-    checksumDraftKey: "first-view",
+    draftOwnerKey: "first-view",
     encoding: "utf-16le" as const,
     onDraftChange: vi.fn(),
     labels,
@@ -138,7 +138,7 @@ it("previews the checksum of the selected encoded bytes and sends that exact sna
   expect(observed).toHaveBeenLastCalledWith(body);
 });
 
-it("discards a late preprocessing result and sends only a preview of the current draft", async () => {
+it("keeps preprocessing per view and requires a new preview after the session changes", async () => {
   const user = userEvent.setup();
   const send = vi.fn().mockResolvedValue(operation());
   const observe = vi.fn();
@@ -151,12 +151,16 @@ it("discards a late preprocessing result and sends only a preview of the current
           finish = resolve;
         }),
     )
-    .mockResolvedValueOnce({ output: "Qw==" });
+    .mockResolvedValueOnce({ output: "Qw==" })
+    .mockResolvedValueOnce({ output: "RA==" });
   const props = {
     labels,
     onDraftChange: vi.fn(),
     onSend: send,
     session: session(),
+    draftOwnerKey: "first-view",
+    preprocessDraftOwners: ["first-view", "second-view"],
+    preprocessScope: "connection-1",
     preprocessQuery: query,
     onPreviewChange: readPreview(observe),
     terminalSettings: {
@@ -171,12 +175,9 @@ it("discards a late preprocessing result and sends only a preview of the current
   const editor = screen.getByRole("textbox", {
     name: labels.preprocess.definition,
   });
-  fireEvent.change(editor, {
-    target: {
-      value:
-        '[{"kind":"query","actionId":"test.transform","input":"source","output":"output"}]',
-    },
-  });
+  const definition =
+    '[{"kind":"query","actionId":"test.transform","input":"source","output":"output"}]';
+  fireEvent.change(editor, { target: { value: definition } });
   await user.click(
     screen.getByRole("switch", { name: labels.preprocess.enabled }),
   );
@@ -209,13 +210,52 @@ it("discards a late preprocessing result and sends only a preview of the current
   expect(
     await screen.findByRole("region", { name: labels.preprocess.final(2) }),
   ).toHaveTextContent("43 0A");
+
+  const reconnected = {
+    ...props,
+    draft: "B",
+    preprocessScope: "connection-2",
+    session: { ...props.session, sessionEpoch: "2", revision: "3" },
+  };
+  view.rerender(<SendPanel {...reconnected} />);
+  expect(submit).toBeDisabled();
+  expect(observe).toHaveBeenLastCalledWith(null);
+  expect(editor).toHaveValue(definition);
+  expect(
+    screen.getByRole("switch", { name: labels.preprocess.enabled }),
+  ).toBeChecked();
+
+  view.rerender(
+    <SendPanel
+      {...reconnected}
+      draft="C"
+      draftOwnerKey="second-view"
+      session={session("second")}
+    />,
+  );
+  expect(submit).toBeEnabled();
+  view.rerender(<SendPanel {...reconnected} />);
+  expect(submit).toBeDisabled();
+  expect(observe).toHaveBeenLastCalledWith(null);
+  await user.click(
+    screen.getByRole("button", { name: labels.preprocess.title }),
+  );
+  expect(
+    screen.getByRole("textbox", { name: labels.preprocess.definition }),
+  ).toHaveValue(definition);
+  await user.click(
+    screen.getByRole("button", { name: labels.preprocess.preview }),
+  );
+  expect(
+    await screen.findByRole("region", { name: labels.preprocess.final(2) }),
+  ).toHaveTextContent("44 0A");
   await user.keyboard("{Escape}");
   await user.click(submit);
   expect(send).toHaveBeenCalledExactlyOnceWith(
-    Uint8Array.of(0x43, 0x0a),
+    Uint8Array.of(0x44, 0x0a),
     expect.any(AbortSignal),
     undefined,
-    "1",
+    "3",
   );
 });
 
