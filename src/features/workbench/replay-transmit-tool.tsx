@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import type {
-  Operation,
   OperationSummary,
   OperationState,
   ReplayTransmitPreview,
@@ -19,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
+import { requestOperationCancel } from "@/lib/operation-cancel";
 import type { SelectedFileResource } from "@/lib/tauri";
 import { rpcJsonObject } from "@/lib/rpc-json";
 import type { HostContextValue } from "@/providers/host-context";
@@ -68,12 +68,10 @@ function active(state: OperationState | undefined): boolean {
 
 export default function ReplayTransmitTool({
   host,
-  cancel,
   revealedOperationId,
 }: {
   host: HostContextValue;
   revealedOperationId?: string;
-  cancel?: (operation: Operation, signal?: AbortSignal) => Promise<void>;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -199,6 +197,7 @@ export default function ReplayTransmitTool({
       ? detail
       : undefined;
   const operationState = operation?.state ?? summary?.state;
+  const stopTarget = summary ?? detail;
   const busy = prepare.busy || transmit.busy || active(operationState);
   const visible =
     availability?.scope === plannedParams && availability?.canRead === true;
@@ -409,12 +408,16 @@ export default function ReplayTransmitTool({
         >
           {t("workbench.replayTransmit.send")}
         </Button>
-        {cancel && operation && active(operationState) && (
+        {stopTarget && active(operationState) && (
           <Button
             size="sm"
             variant="outline"
-            disabled={stop.busy || operation.state === "cancel_requested"}
-            onClick={() => void stop.run((signal) => cancel(operation, signal))}
+            disabled={stop.busy || operationState === "cancel_requested"}
+            onClick={() =>
+              void stop.run((signal) =>
+                requestOperationCancel(host, stopTarget, signal),
+              )
+            }
           >
             {t("workbench.replayTransmit.stop")}
           </Button>

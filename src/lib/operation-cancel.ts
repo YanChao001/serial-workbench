@@ -3,7 +3,7 @@ import type { HostContextValue } from "@/providers/host-context";
 
 export async function requestOperationCancel(
   host: Pick<HostContextValue, "checkAction" | "invoke" | "waitForOperation">,
-  operation: Operation,
+  operation: Pick<Operation, "operationId" | "executionHostId">,
   signal?: AbortSignal,
 ) {
   const input = {

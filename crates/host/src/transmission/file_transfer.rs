@@ -212,7 +212,12 @@ impl TransferSource {
         let grants = replay.grants.clone();
         blocking(move || {
             let proof = files.prove_replay_source(&reference, &actor, REPLAY_PEER_SOURCE_BYTES)?;
-            Ok(Some(BackendReplaySource { grants, proof }))
+            Ok(Some(BackendReplaySource {
+                grants,
+                proof,
+                #[cfg(test)]
+                check_gate: None,
+            }))
         })
         .await
     }

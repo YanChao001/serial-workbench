@@ -469,7 +469,6 @@ export function WorkbenchTools({
           key={JSON.stringify([generation, context.replayOperationId])}
           host={host}
           revealedOperationId={context.replayOperationId}
-          cancel={onCancelOperation}
         />
       </Suspense>
     );
