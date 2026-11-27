@@ -80,8 +80,8 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
     let bytes = Bytes::try_from(STANDARD.encode([0x41; 70]).as_str()).unwrap();
     recording(&path, 10, [(bytes, 70)]);
     std::fs::rename(
-        path.join("index.json"),
-        f.dir.path().join("original-index.json"),
+        path.join("index-000001.swbi"),
+        f.dir.path().join("original-index.swbi"),
     )
     .unwrap();
     let imported = f
@@ -358,8 +358,8 @@ async fn raw_replay_search_near_default_capture_capacity() {
         .map(|entry| entry.unwrap().metadata().unwrap().len())
         .sum();
     assert!((capacity * 92 / 100..=capacity).contains(&size));
-    let sidecar = path.join("index.json");
-    std::fs::rename(&sidecar, directory.path().join("original-index.json")).unwrap();
+    let sidecar = path.join("index-000001.swbi");
+    std::fs::rename(&sidecar, directory.path().join("original-index.swbi")).unwrap();
 
     let f = Fixture::new().await;
     let timeout = Duration::from_secs(300);

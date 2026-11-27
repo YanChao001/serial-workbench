@@ -10,6 +10,7 @@ const MAGIC = new Map([
   ["0.1", Buffer.from("SWBR01\n")],
   ["0.2", Buffer.from("SWBR02\n")],
   ["0.3", Buffer.from("SWBR03\n")],
+  ["0.4", Buffer.from("SWBR04\n")],
 ]);
 const MAX_RECORD = 1024 * 1024;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -45,6 +46,47 @@ function directionalByteRange(range) {
         u64(range.start, "redacted byte start"),
     "Invalid redacted byte range",
   );
+}
+
+function readVolumeIndex(capture, manifest) {
+  const records = [];
+  const names = [];
+  const magic = Buffer.from("SWBI01\n");
+  requireThat(Array.isArray(manifest.volumes), "Missing indexed volumes");
+  for (const volume of manifest.volumes) {
+    const ordinal = u64(volume.ordinal, "index volume ordinal");
+    const start = u64(volume.recordStart, "index record start");
+    const end = u64(volume.recordEnd, "index record end");
+    requireThat(
+      start === BigInt(records.length + 1) && start <= end && end <= 1_100_001n,
+      "Invalid volume index range",
+    );
+    const name = `index-${ordinal.toString().padStart(6, "0")}.swbi`;
+    names.push(name);
+    const path = join(capture, name);
+    const length = BigInt(magic.length) + (end - start) * 12n;
+    requireThat(
+      lstatSync(path, { bigint: true }).size === length,
+      "Invalid volume index size",
+    );
+    const bytes = regular(path);
+    requireThat(
+      bytes.subarray(0, magic.length).equals(magic) &&
+        BigInt(bytes.length) === length,
+      "Invalid volume index header or size",
+    );
+    let position = magic.length;
+    for (let recordOrdinal = start; recordOrdinal < end; recordOrdinal++) {
+      records.push({
+        recordOrdinal: recordOrdinal.toString(),
+        volume: ordinal.toString(),
+        offset: bytes.readBigUInt64LE(position).toString(),
+        length: bytes.readUInt32LE(position + 8).toString(),
+      });
+      position += 12;
+    }
+  }
+  return { formatVersion: manifest.formatVersion, records, names };
 }
 
 function redactedFacts(recordOrdinal, value) {
@@ -221,10 +263,14 @@ export function readFixtureContainer(fixtureDirectory) {
     "Missing fixed input expected oracle",
   );
   const manifest = json(regular(join(capture, "manifest.json")), "manifest");
-  const index = json(regular(join(capture, "index.json")), "index");
   const magic = MAGIC.get(manifest.formatVersion);
+  requireThat(magic, "Future/unsupported capture format");
   const redacted = manifest.formatVersion === "0.3";
-  const timed = manifest.formatVersion === "0.2" || redacted;
+  const indexed = manifest.formatVersion === "0.4";
+  const timed = manifest.formatVersion !== "0.1";
+  const index = indexed
+    ? readVolumeIndex(capture, manifest)
+    : json(regular(join(capture, "index.json")), "index");
   requireThat(
     magic && index.formatVersion === manifest.formatVersion,
     "Future/unsupported capture format",
@@ -376,13 +422,19 @@ export function readFixtureContainer(fixtureDirectory) {
     isDeepStrictEqual(actualNames, [...names].sort()),
     "Unexpected or missing unindexed volume file",
   );
-  if (redacted)
+  if (redacted || indexed)
     requireThat(
       isDeepStrictEqual(
         files,
-        ["manifest.json", "index.json", ...names].sort(),
+        [
+          "manifest.json",
+          ...(indexed ? index.names : ["index.json"]),
+          ...names,
+        ].sort(),
       ),
-      "Unexpected file in a redacted capture",
+      redacted
+        ? "Unexpected file in a redacted capture"
+        : "Unexpected file in an indexed capture",
     );
   requireThat(
     isDeepStrictEqual(index.records, locations),

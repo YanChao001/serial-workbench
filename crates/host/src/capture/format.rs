@@ -11,8 +11,9 @@ use std::{
 pub const MAGIC: &[u8; 7] = b"SWBR01\n";
 pub const TIMED_MAGIC: &[u8; 7] = b"SWBR02\n";
 const REDACTED_MAGIC: &[u8; 7] = b"SWBR03\n";
+const INDEXED_MAGIC: &[u8; 7] = b"SWBR04\n";
 pub const MAX_RECORD: usize = 1024 * 1024;
-pub(super) const MAX_CAPTURE_RECORDS: usize = 100_000;
+pub(super) const MAX_CAPTURE_RECORDS: usize = 1_100_000;
 pub(crate) const REPLAY_PEER_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
 
@@ -21,6 +22,7 @@ pub(crate) enum CaptureFormat {
     Legacy,
     RecorderClock,
     Redacted,
+    Indexed,
 }
 
 impl CaptureFormat {
@@ -29,6 +31,7 @@ impl CaptureFormat {
             Some("0.1") => Ok(Self::Legacy),
             Some("0.2") => Ok(Self::RecorderClock),
             Some("0.3") => Ok(Self::Redacted),
+            Some("0.4") => Ok(Self::Indexed),
             _ => Err(HostError::new(
                 "FUTURE_FORMAT",
                 "Capture format is unsupported",
@@ -41,6 +44,7 @@ impl CaptureFormat {
             Self::Legacy => "0.1",
             Self::RecorderClock => "0.2",
             Self::Redacted => "0.3",
+            Self::Indexed => "0.4",
         }
     }
 
@@ -49,6 +53,15 @@ impl CaptureFormat {
             Self::Legacy => MAGIC,
             Self::RecorderClock => TIMED_MAGIC,
             Self::Redacted => REDACTED_MAGIC,
+            Self::Indexed => INDEXED_MAGIC,
+        }
+    }
+
+    pub(super) fn max_records(self) -> usize {
+        if self == Self::Indexed {
+            MAX_CAPTURE_RECORDS
+        } else {
+            100_000
         }
     }
 
@@ -304,6 +317,26 @@ pub struct CaptureIndex {
     pub format_version: String,
     pub records: Vec<IndexEntry>,
 }
+#[cfg(test)]
+pub(super) fn replace_fixture_rx(original: &[u8]) -> Vec<u8> {
+    assert!(original.starts_with(CaptureFormat::Indexed.magic()));
+    let length_at = CaptureFormat::Indexed.magic().len();
+    let time_at = length_at + 4;
+    let json_at = time_at + 8;
+    let length = u32::from_le_bytes(original[length_at..time_at].try_into().unwrap()) as usize;
+    let digest_at = json_at + length;
+    let json = std::str::from_utf8(&original[json_at..digest_at])
+        .unwrap()
+        .replace("AQID", "CQID");
+    assert_eq!(json.len(), length);
+    assert_ne!(json.as_bytes(), &original[json_at..digest_at]);
+    let mut altered = original.to_vec();
+    altered[json_at..digest_at].copy_from_slice(json.as_bytes());
+    let checksum = Sha256::digest(&altered[time_at..digest_at]);
+    altered[digest_at..digest_at + 32].copy_from_slice(&checksum);
+    altered
+}
+
 pub fn volume_name(ordinal: u64) -> String {
     format!("volume-{ordinal:06}.swbr")
 }

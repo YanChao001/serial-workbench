@@ -1,9 +1,12 @@
-use super::format::*;
+use super::{
+    format::*,
+    volume_index::{self, VolumeIndexReader},
+};
 use serial_workbench_core::*;
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
     path::Path,
 };
 #[derive(Default)]
@@ -109,17 +112,18 @@ fn scan_directory(
     {
         return Err(corrupt());
     }
-    let stored_index = if rebuild_index {
+    let indexed = format == CaptureFormat::Indexed;
+    let stored_index = if rebuild_index || indexed {
         None
     } else {
         read_json::<CaptureIndex>(&path.join("index.json"))
             .ok()
             .filter(|index| {
                 index.format_version == format.version()
-                    && index.records.len() <= MAX_CAPTURE_RECORDS
+                    && index.records.len() <= format.max_records()
             })
     };
-    let index_available = rebuild_index || stored_index.is_some();
+    let index_available = rebuild_index || indexed || stored_index.is_some();
     let mut index = stored_index.unwrap_or(CaptureIndex {
         format_version: format.version().into(),
         records: vec![],
@@ -147,6 +151,7 @@ fn scan_directory(
         let id = Id::try_from(format!("volume-{ordinal:06}").as_str())?;
         if volume.ordinal.get() != ordinal
             || volume.record_start.get() != prefix + 1
+            || volume.record_end < volume.record_start
             || volume.previous_digest != previous
         {
             all = false;
@@ -157,7 +162,7 @@ fn scan_directory(
             });
             break;
         }
-        let mut file = match open_read(&path.join(volume_name(ordinal))) {
+        let file = match open_read(&path.join(volume_name(ordinal))) {
             Ok(f) => f,
             Err(_) => {
                 all = false;
@@ -183,27 +188,32 @@ fn scan_directory(
                 opened_length,
             ),
         );
-        if file.read_exact(&mut magic).is_err() || &magic != format.magic() {
+        let mut reader = BufReader::new(file.take(opened_length));
+        if reader.read_exact(&mut magic).is_err() || &magic != format.magic() {
             all = false;
         }
+        let mut volume_index = if indexed && !rebuild_index {
+            match VolumeIndexReader::open(path, ordinal) {
+                Ok(index) => Some(index),
+                Err(_) => {
+                    all = false;
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let mut offset = 7u64;
         while all && prefix + 1 < volume.record_end.get() {
             if interactive_budget.is_some() && prefix >= super::recorded_peer::MAX_RECORDS as u64 {
                 return Err(super::recorded_peer::limit());
             }
-            if prefix >= MAX_CAPTURE_RECORDS as u64 {
+            if prefix >= format.max_records() as u64 {
                 all = false;
                 break;
             }
             let record_start = offset;
-            let decoded = if interactive_budget.is_some() {
-                decode_record(
-                    &mut (&mut file).take(opened_length.saturating_sub(offset)),
-                    format,
-                )
-            } else {
-                decode_record(&mut file, format)
-            };
+            let decoded = decode_record(&mut reader, format);
             let (record, observed, length, json) = match decoded {
                 Ok(r) => r,
                 Err(_) => {
@@ -224,9 +234,16 @@ fn scan_directory(
                 offset: record_start.into(),
                 length: length.into(),
             };
-            if !rebuild_index && index.records.get(prefix as usize) != Some(&expected) {
-                all = false;
-                break;
+            if !rebuild_index {
+                let matches = if let Some(volume_index) = &mut volume_index {
+                    volume_index.check(&expected).is_ok()
+                } else {
+                    index.records.get(prefix as usize) == Some(&expected)
+                };
+                if !matches {
+                    all = false;
+                    break;
+                }
             }
             if format.validate_entry(&record.entry).is_err() {
                 all = false;
@@ -311,7 +328,7 @@ fn scan_directory(
                     sequences.insert(source, gap.missing_event_range.end.get().saturating_sub(1));
                 }
             }
-            if rebuild_index {
+            if rebuild_index || indexed {
                 index.records.push(expected);
             }
             last_recorded_ns = observed;
@@ -319,6 +336,10 @@ fn scan_directory(
             prefix += 1;
             offset += length;
         }
+        if let Some(index) = &mut volume_index {
+            all &= index.at_end().unwrap_or(false);
+        }
+        let mut file = reader.into_inner().into_inner();
         let length = file.metadata().map_err(io_error)?.len();
         let hash = if interactive_budget.is_some() {
             hash_file_bounded(&mut file, opened_length)?
@@ -344,6 +365,9 @@ fn scan_directory(
         || prefix != manifest.watermarks.written.get()
     {
         all = false
+    }
+    if indexed {
+        all &= volume_index::only_declared_files(path, manifest.volumes.len() as u64)?;
     }
     let w = &manifest.watermarks;
     if !(w.verified <= w.synced && w.synced <= w.flushed && w.flushed <= w.written) {

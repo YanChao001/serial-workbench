@@ -32,7 +32,7 @@ fn recovery_checks_source_change_and_never_clobbers() {
             .code,
         "TARGET_EXISTS"
     );
-    std::fs::write(source.join("index.json"), b"{}").unwrap();
+    std::fs::write(source.join("index-000001.swbi"), b"{}").unwrap();
     assert_eq!(
         recover_directory(
             &source,

@@ -434,13 +434,15 @@ mod tests {
                 ..CaptureLimits::default()
             },
         );
-        let stored_index = path.join("index.json");
-        let mut incorrect_index: CaptureIndex = read_json(&stored_index).unwrap();
-        let last = incorrect_index.records.last_mut().unwrap();
+        let scan = verify_directory(&path).unwrap();
+        let last = scan.index.records.last().unwrap();
         assert!(last.volume.get() > 2);
         let volume_path = path.join(volume_name(last.volume.get()));
-        last.offset = last.offset.checked_next().unwrap();
-        let incorrect_bytes = serde_json::to_vec(&incorrect_index).unwrap();
+        let stored_index = path.join(crate::capture::volume_index::name(last.volume.get()));
+        let mut incorrect_bytes = fs::read(&stored_index).unwrap();
+        let last_offset =
+            incorrect_bytes.len() - crate::capture::volume_index::ENTRY_BYTES as usize;
+        incorrect_bytes[last_offset] ^= 1;
         fs::write(&stored_index, &incorrect_bytes).unwrap();
         assert!(!verify_directory(&path).unwrap().report.container_complete);
 

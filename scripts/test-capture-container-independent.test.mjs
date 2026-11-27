@@ -155,10 +155,10 @@ function expectations(records) {
 }
 // This encoder exists only in tests, implements the published byte contract,
 // and never imports the Rust writer or the reader's parsing/hash helpers.
-function saveContainer(directory, records, expected, times) {
+function saveContainer(directory, records, expected, times, indexed = false) {
   const capture = join(directory, "capture");
   const redacted = expected.mode === "redacted";
-  const version = redacted ? "0.3" : times ? "0.2" : "0.1";
+  const version = redacted ? "0.3" : indexed ? "0.4" : times ? "0.2" : "0.1";
   mkdirSync(capture, { recursive: true });
   const locations = [],
     volumes = [];
@@ -198,6 +198,18 @@ function saveContainer(directory, records, expected, times) {
       join(capture, `volume-${String(ordinal).padStart(6, "0")}.swbr`),
       bytes,
     );
+    if (indexed) {
+      const entries = locations.slice(start).map(({ offset, length }) => {
+        const entry = Buffer.alloc(12);
+        entry.writeBigUInt64LE(BigInt(offset));
+        entry.writeUInt32LE(Number(length), 8);
+        return entry;
+      });
+      writeFileSync(
+        join(capture, `index-${String(ordinal).padStart(6, "0")}.swbi`),
+        Buffer.concat([Buffer.from("SWBI01\n"), ...entries]),
+      );
+    }
     volumes.push({
       ordinal: String(ordinal),
       recordStart: String(start + 1),
@@ -230,13 +242,14 @@ function saveContainer(directory, records, expected, times) {
       verifiedPrefix: "0",
     }),
   );
-  writeFileSync(
-    join(capture, "index.json"),
-    JSON.stringify({
-      formatVersion: version,
-      records: locations,
-    }),
-  );
+  if (!indexed)
+    writeFileSync(
+      join(capture, "index.json"),
+      JSON.stringify({
+        formatVersion: version,
+        records: locations,
+      }),
+    );
   writeFileSync(join(directory, "expected.json"), JSON.stringify(expected));
 }
 function fixture(change = (records) => records) {
@@ -567,6 +580,30 @@ test("unknown container format is rejected read-only", () => {
   writeFileSync(path, JSON.stringify(manifest));
   const before = sourceHashes(directory);
   assert.throws(() => readFixtureContainer(directory), /format|future/i);
+  assert.deepEqual(sourceHashes(directory), before);
+});
+
+test("checks 0.4 index entries against independently decoded positions", () => {
+  const directory = mkdtempSync(join(tmpdir(), "swb-independent-index-"));
+  const records = inputs();
+  const times = records.map((_, position) => String(position * 25));
+  saveContainer(
+    directory,
+    records,
+    {
+      ...expectations(records),
+      recordedMonoNs: times,
+    },
+    times,
+    true,
+  );
+  assert.deepEqual(readFixtureContainer(directory).recordedMonoNs, times);
+  const path = join(directory, "capture", "index-000002.swbi");
+  const bytes = readFileSync(path);
+  bytes[7] ^= 1;
+  writeFileSync(path, bytes);
+  const before = sourceHashes(directory);
+  assert.throws(() => readFixtureContainer(directory), /Index offset/);
   assert.deepEqual(sourceHashes(directory), before);
 });
 

@@ -452,8 +452,7 @@ mod format_tests {
     use super::*;
     use crate::capture::writer::{CaptureLimits, CaptureWriter, native_volume_opener};
 
-    #[test]
-    fn legacy_mixed_clocks_keep_exact_order_without_a_recorder_timeline() {
+    fn mixed_clock_capture(format: CaptureFormat) -> (tempfile::TempDir, std::path::PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().canonicalize().unwrap().join("capture");
         let hosts = ["first", "second"];
@@ -481,7 +480,7 @@ mod format_tests {
             sources,
             CaptureLimits::default(),
             native_volume_opener(),
-            CaptureFormat::Legacy,
+            format,
             None,
         )
         .unwrap();
@@ -503,6 +502,12 @@ mod format_tests {
                 .unwrap();
         }
         writer.finish().unwrap();
+        (directory, path)
+    }
+
+    #[test]
+    fn legacy_mixed_clocks_keep_exact_order_without_a_recorder_timeline() {
+        let (_directory, path) = mixed_clock_capture(CaptureFormat::Legacy);
         let unavailable = ReplayReader::open(&path, ReplayMode::OriginalTiming)
             .err()
             .unwrap();
@@ -517,6 +522,97 @@ mod format_tests {
         );
         assert_eq!(reader.step(0).unwrap().next_record, U64::from(2));
         assert!(reader.step(0).unwrap().at_end);
+    }
+
+    #[test]
+    fn indexed_append_checks_capacity_before_creating_volume_for_gap() {
+        let (_directory, path) = mixed_clock_capture(CaptureFormat::Indexed);
+        let before = crate::capture::verify::verify_directory(&path).unwrap();
+        let positions = vec![3.into(), 1.into()];
+        for limits in [
+            CaptureLimits {
+                max_records: 2,
+                ..CaptureLimits::default()
+            },
+            CaptureLimits {
+                capacity_bytes: 1,
+                ..CaptureLimits::default()
+            },
+        ] {
+            let result = CaptureWriter::append_at_positions(
+                crate::files::references::PathGuard::new(&path).unwrap(),
+                before.manifest.streams.clone(),
+                limits,
+                native_volume_opener(),
+                Some(positions.clone()),
+                None,
+            );
+            assert_eq!(result.err().unwrap().code, "CAPTURE_IO_FAILED");
+            assert_eq!(
+                fingerprint(&path).unwrap(),
+                before.report.source_fingerprint
+            );
+        }
+        let (writer, _) = CaptureWriter::append_at_positions(
+            crate::files::references::PathGuard::new(&path).unwrap(),
+            before.manifest.streams,
+            CaptureLimits::default(),
+            native_volume_opener(),
+            Some(positions),
+            None,
+        )
+        .unwrap();
+        let summary = writer.finish().unwrap();
+        assert_eq!(summary.watermarks.verified.get(), 3);
+        assert!(!summary.source_continuous);
+
+        // Use the size of the successful append to exercise the narrow gap
+        // between the original manifest budget and the one with another volume.
+        let data_and_index_bytes: u64 = std::fs::read_dir(&path)
+            .unwrap()
+            .map(|entry| entry.unwrap())
+            .filter(|entry| entry.file_name() != "manifest.json")
+            .map(|entry| entry.metadata().unwrap().len())
+            .sum();
+        let (_tight_directory, tight_path) = mixed_clock_capture(CaptureFormat::Indexed);
+        let mut prior = crate::capture::verify::verify_directory(&tight_path).unwrap();
+        prior.manifest.state = CaptureState::Recording;
+        let capacity_bytes =
+            data_and_index_bytes + serde_json::to_vec(&prior.manifest).unwrap().len() as u64 + 512;
+        let result = CaptureWriter::append_at_positions(
+            crate::files::references::PathGuard::new(&tight_path).unwrap(),
+            prior.manifest.streams,
+            CaptureLimits {
+                capacity_bytes,
+                ..CaptureLimits::default()
+            },
+            native_volume_opener(),
+            Some(vec![3.into(), 1.into()]),
+            None,
+        );
+        assert_eq!(result.err().unwrap().code, "CAPTURE_IO_FAILED");
+        assert_eq!(
+            fingerprint(&tight_path).unwrap(),
+            prior.report.source_fingerprint
+        );
+    }
+
+    #[test]
+    fn legacy_recorder_clock_capture_still_replays_and_appends_as_json_index() {
+        let (_directory, path) = mixed_clock_capture(CaptureFormat::RecorderClock);
+        let before = crate::capture::verify::verify_directory(&path).unwrap();
+        assert!(before.report.container_complete);
+        let summary =
+            CaptureWriter::append(&path, before.manifest.streams, CaptureLimits::default())
+                .unwrap()
+                .finish()
+                .unwrap();
+        assert_eq!(summary.watermarks.verified.get(), 2);
+        let index: CaptureIndex = read_json(&path.join("index.json")).unwrap();
+        assert_eq!(index.format_version, "0.2");
+        assert_eq!(index.records.len(), 2);
+        let mut reader = ReplayReader::open(&path, ReplayMode::OriginalTiming).unwrap();
+        assert!(reader.read(2, 0).unwrap().at_end);
     }
 }
 

@@ -195,7 +195,8 @@ fn expected(source: &CaptureSource, records: &[CaptureRecord]) -> Result<Value> 
         }
     }
     Ok(
-        json!({"fixtureVersion":"1","minimumVolumes":2,"streams":[source],"records":records,"recordJsonSha256":record_hashes,"rawPayloads":raw,"finalReceipts":receipts}),
+        json!({"fixtureVersion":"1","minimumVolumes":2,"streams":[source],"records":records,"recordJsonSha256":record_hashes,"rawPayloads":raw,"finalReceipts":receipts,
+            "recordedMonoNs": (0..records.len()).map(|position| (position as u64 * 1_000_000_000).to_string()).collect::<Vec<_>>() }),
     )
 }
 fn output(args: impl IntoIterator<Item = OsString>) -> Result<PathBuf> {

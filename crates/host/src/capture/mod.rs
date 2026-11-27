@@ -6,6 +6,7 @@ pub mod replay;
 mod replay_transmit;
 pub mod text_export;
 pub mod verify;
+mod volume_index;
 pub mod writer;
 
 use crate::{
