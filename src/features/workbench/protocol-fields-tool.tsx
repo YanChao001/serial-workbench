@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { useI18n } from "@/providers/i18n";
 import type { FramingFrame } from "./framing-model";
+import type { LiveFieldInput } from "./live-field-table";
 import type { FramingInspection } from "./framing-anomalies-model";
 import type { ModbusTransactionAccess } from "./modbus-transaction";
 import type { ModbusSlaveAccess } from "./modbus-server-tool";
@@ -20,6 +21,7 @@ const AtTool = lazy(() => import("./at-tool"));
 export function ProtocolFieldsTool({
   frames,
   inspection,
+  liveFields,
   fileAccess,
   modbusTimeline,
   modbusSlave,
@@ -28,6 +30,7 @@ export function ProtocolFieldsTool({
 }: {
   frames: readonly FramingFrame[];
   inspection?: FramingInspection;
+  liveFields?: LiveFieldInput;
   fileAccess?: ProtocolDefinitionFileAccess;
   modbusTimeline?: ModbusTransactionAccess;
   modbusSlave?: ModbusSlaveAccess;
@@ -41,6 +44,7 @@ export function ProtocolFieldsTool({
         frames={frames}
         fileAccess={fileAccess}
         inspection={inspection}
+        liveFields={liveFields}
         sourceSelection={sourceSelection}
         onRevealSource={onRevealSource}
       />

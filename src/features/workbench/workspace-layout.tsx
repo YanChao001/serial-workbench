@@ -366,6 +366,7 @@ export type WorkbenchToolContext = {
   isReplay: boolean;
   items: readonly import("@serial-workbench/contracts").StreamItem[];
   sourceItems?: readonly import("@serial-workbench/contracts").StreamItem[];
+  rawSourceKey?: string;
   openError?: WorkbenchFailure;
   onInspectBytes?: () => void;
   chartSelection?: ChartSourceSelection;
@@ -3579,6 +3580,13 @@ export function WorkspaceLayout({
                     : isReplay),
                 items,
                 sourceItems,
+                rawSourceKey:
+                  receiveRemapOwner && session
+                    ? JSON.stringify([
+                        receiveRemapOwner,
+                        session.configurationRevision,
+                      ])
+                    : undefined,
                 chartSelection: currentChartLink?.selection,
                 onRevealChartSource: (source) =>
                   void beforeReplace().then((allowed) => {

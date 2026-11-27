@@ -1111,6 +1111,7 @@ export function WorkbenchTools({
           )?.systemName
         }
         items={context.sourceItems ?? context.items}
+        rawSourceKey={context.sourceItems ? context.rawSourceKey : undefined}
         invoke={invoke}
         waitForOperation={host.waitForOperation}
         readFile={host.readFile}

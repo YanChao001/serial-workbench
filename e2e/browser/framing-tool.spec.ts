@@ -12,6 +12,222 @@ import { xyCaptureFixture } from "./xy-capture.fixture";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
+test("structured field table follows verified frames, reports quality and drops the source after a gap", async ({
+  page,
+}, info) => {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-framing/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid framing manifest");
+  const action = manifest.contributes.parsers[0];
+  const sample = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (!action || sample?.kind !== "source")
+    throw new Error("Missing framing and RX fixtures");
+  const fileRef = {
+    hostId: sample.event.hostId,
+    kind: "plugin_result",
+    id: "live-field-anchor",
+    revision: "1",
+  };
+  const frames = [
+    {
+      bytesBase64: Buffer.from([24, 24]).toString("base64"),
+      source: {
+        hostId: fileRef.hostId,
+        sessionId: sample.event.sessionId,
+        sessionEpoch: sample.event.sessionEpoch,
+        direction: "rx",
+        eventStart: "3",
+        eventEnd: "4",
+        byteStart: "0",
+        byteEnd: "2",
+      },
+    },
+  ];
+  const body = Buffer.from(JSON.stringify({ frames, incompleteBytes: 0 }));
+  await page.setViewportSize({ width: 420, height: 460 });
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    framing: {
+      action,
+      page: {
+        fileRef,
+        offset: "0",
+        nextOffset: String(body.length),
+        totalBytes: String(body.length),
+        bytesBase64: body.toString("base64"),
+        fingerprint: createHash("sha256").update(body).digest("hex"),
+        atEnd: true,
+      },
+    },
+  });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const rx = (sequence: number, offset: number, data: number[]) => ({
+    kind: "source",
+    event: {
+      ...sample.event,
+      kind: "rx",
+      eventSeq: String(sequence),
+      time: { ...sample.event.time, sourceMonoNs: String(sequence * 1000000) },
+      payload: {
+        bytesBase64: Buffer.from(data).toString("base64"),
+        byteStart: String(offset),
+        byteEnd: String(offset + data.length),
+      },
+    },
+  });
+  const emit = async (items: unknown[]) => {
+    expect(
+      await page.evaluate(
+        (batch) => window.workbenchFixture.emitRaw(batch),
+        items,
+      ),
+    ).toBe(1);
+  };
+  await emit([rx(3, 0, [24, 24])]);
+  await page
+    .getByRole("region", { name: "Receive", exact: true })
+    .getByRole("radio", { name: "HEX", exact: true })
+    .click();
+  await expect(page.getByRole("log")).toContainText("18 18");
+  await page.getByRole("button", { name: en["workbench.tools.more"] }).click();
+  await page
+    .getByRole("menuitem", { name: en["workbench.tools.framing"] })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: en["workbench.tools.framing"],
+  });
+  await expect(dialog.getByLabel(en["workbench.framing.start"])).toHaveValue(
+    "3",
+  );
+  await dialog
+    .getByLabel(en["workbench.framing.fixedLength"], { exact: true })
+    .fill("2");
+  await dialog
+    .getByRole("button", { name: en["workbench.framing.scan"] })
+    .click();
+  await expect(
+    dialog.getByRole("region", { name: en["workbench.framing.results"] }),
+  ).toContainText("18 18");
+  const definition = dialog.getByLabel(en["workbench.fields.definition"]);
+  await definition.fill(
+    JSON.stringify({
+      version: "1",
+      byteLength: 2,
+      fields: [
+        {
+          id: "temperature",
+          kind: "integer",
+          byteOffset: 0,
+          width: 1,
+          order: "big",
+          unit: "°C",
+          calibration: {
+            kind: "table",
+            revision: "temp-1",
+            interpolation: "exact",
+            points: [
+              { raw: "24", value: "24.6" },
+              { raw: "73", value: "73.1" },
+            ],
+          },
+        },
+        {
+          id: "sum",
+          kind: "checksum",
+          byteOffset: 1,
+          order: "big",
+          algorithm: "sum",
+          coverageStart: 0,
+          coverageEnd: 1,
+        },
+      ],
+    }),
+  );
+  const follow = dialog.getByRole("button", {
+    name: en["workbench.fieldTable.follow"],
+  });
+  await follow.click();
+  const table = dialog.getByRole("table", {
+    name: en["workbench.fieldTable.title"],
+  });
+  const row = table.getByRole("row").filter({
+    has: page.getByRole("rowheader", { name: "temperature", exact: true }),
+  });
+  await expect(row).toContainText("24.6");
+  await expect(row).toContainText("°C");
+  await expect(row).toContainText(en["workbench.fieldTable.complete"]);
+  await table.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("structured-fields-narrow.png"),
+  });
+
+  await emit([rx(4, 2, [73])]);
+  await expect(
+    dialog.getByText(en["workbench.fieldTable.waiting"]),
+  ).toBeVisible();
+  await expect(row).toContainText("24.6");
+  await emit([rx(5, 3, [73])]);
+  await expect(row).toContainText("73.1");
+  await emit([rx(6, 4, [43, 43])]);
+  await expect(row).toContainText(en["workbench.fieldTable.unmapped"]);
+  await emit([rx(7, 6, [24, 25])]);
+  await expect(row).toContainText(en["workbench.fieldTable.checksumFailed"]);
+  await expect(
+    dialog.getByText("RX Bytes [6, 8)", { exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await table.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("structured-fields-wide.png"),
+  });
+
+  await emit([
+    {
+      kind: "reader_gap",
+      gap: {
+        hostId: fileRef.hostId,
+        instanceEpoch: sample.event.instanceEpoch,
+        sessionId: sample.event.sessionId,
+        sessionEpoch: sample.event.sessionEpoch,
+        reason: "reader_overflow",
+        missingEventRange: { start: "8", end: "9" },
+      },
+    },
+    rx(9, 8, [73, 73]),
+  ]);
+  await expect(table).toHaveCount(0);
+  await expect(
+    dialog.getByText(en["workbench.fieldTable.sourceChanged"], { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.workbenchFixture.invocations.filter(
+          (item) => item.actionId === id,
+        ).length,
+      action.actionId,
+    ),
+  ).toBe(1);
+});
+
 test("Modbus registers watch confirmed values and write the selected register words", async ({
   page,
 }) => {
@@ -165,9 +381,12 @@ test("Modbus registers watch confirmed values and write the selected register wo
   const data = view.getByRole("table", {
     name: en["workbench.registers.lastRead"],
   });
-  await expect(
-    data.getByRole("row", { name: "101 5678 1234 305419896" }),
-  ).toBeVisible();
+  const firstRow = data.getByRole("row").filter({
+    has: page.getByRole("rowheader", { name: "101", exact: true }),
+  });
+  await expect(firstRow).toContainText("305419896");
+  await expect(firstRow).toContainText("5678 1234");
+  await expect(firstRow).toContainText(en["workbench.fieldTable.confirmed"]);
   await expect
     .poll(async () => (await transactions()).length)
     .toBeGreaterThanOrEqual(2);
@@ -200,12 +419,20 @@ test("Modbus registers watch confirmed values and write the selected register wo
       quantity: 2,
     }),
   );
-  await view
-    .getByRole("spinbutton", { name: en["workbench.registers.writeAddress"] })
-    .fill("103");
-  await view
-    .getByRole("textbox", { name: en["workbench.registers.writeValue"] })
-    .fill("305419896");
+  await data
+    .getByRole("button", { name: "Edit write 103", exact: true })
+    .click();
+  await expect(
+    view.getByRole("spinbutton", {
+      name: en["workbench.registers.writeAddress"],
+    }),
+  ).toHaveValue("103");
+  const value = view.getByRole("textbox", {
+    name: en["workbench.registers.writeValue"],
+  });
+  await expect(value).toBeFocused();
+  await value.fill("305419896");
+  expect((await transactions()).length).toBe(settledCount);
   await expect(
     view.getByText("PDU address 102 · wire words (HEX)", { exact: false }),
   ).toBeVisible();

@@ -45,6 +45,7 @@ const modes: readonly [FramingMode, MessageKey][] = [
 
 export function FramingTool({
   items,
+  rawSourceKey,
   target,
   sourceName,
   invoke,
@@ -57,6 +58,7 @@ export function FramingTool({
   onRevealSource,
 }: {
   items: readonly StreamItem[];
+  rawSourceKey?: string;
   target: Target;
   sourceName?: string;
   invoke: HostContextValue["invoke"];
@@ -76,6 +78,7 @@ export function FramingTool({
   const [applied, setApplied] = useState(draft);
   const [result, setResult] = useState<{
     params: Call["params"];
+    sourceKey?: string;
     page: FramingPage;
     inspection: FramingInspection;
   }>();
@@ -145,6 +148,7 @@ export function FramingTool({
       setApplied(snapshot);
       setResult((previous) => ({
         params: query,
+        sourceKey: rawSourceKey,
         page,
         inspection: {
           target,
@@ -369,6 +373,18 @@ export function FramingTool({
       <ProtocolFieldsTool
         frames={result?.page.frames ?? []}
         inspection={result?.inspection}
+        liveFields={{
+          items,
+          target,
+          subscription: rawSourceKey,
+          anchor:
+            !dirty &&
+            rawSourceKey !== undefined &&
+            result?.sourceKey === rawSourceKey &&
+            typeof result.params.fixedLength === "number"
+              ? result.page.frames.at(-1)
+              : undefined,
+        }}
         fileAccess={definitionFileAccess}
         modbusTimeline={modbusTimeline}
         modbusSlave={modbusSlave}
