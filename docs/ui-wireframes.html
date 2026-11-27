@@ -1,0 +1,3354 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>串口工作台界面草稿</title>
+    <style>
+      :root {
+        font-family:
+          "Geist Variable", "Segoe UI", "Microsoft YaHei", sans-serif;
+        color: #20252a;
+        background: #f1f2f4;
+        --chrome-height: 40px;
+        --tool-height: 32px;
+        --field-height: 36px;
+        --mono: "Cascadia Mono", Consolas, monospace;
+        --surface: #fff;
+        --panel: #f8f9fa;
+        --ink: #20252a;
+        --muted: #535e67;
+        --line: #c9cfd5;
+        --active: #e7ebef;
+        --action: #252b30;
+        --on-action: #fff;
+        --focus: #155ea1;
+        --good: #146447;
+        --bad: #a42f26;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      button,
+      select,
+      input,
+      summary {
+        font: inherit;
+      }
+      button,
+      select,
+      summary {
+        cursor: pointer;
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      input:focus-visible,
+      summary:focus-visible,
+      [tabindex]:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      button,
+      select,
+      .control,
+      summary.control {
+        min-height: var(--tool-height);
+        padding: 0.25rem 0.55rem;
+        color: inherit;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+
+      button[aria-pressed="true"],
+      button.current,
+      .current {
+        background: var(--active);
+      }
+
+      button.primary {
+        background: var(--action);
+        border-color: var(--action);
+        color: var(--on-action);
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.56;
+      }
+
+      .viewer {
+        max-width: 82rem;
+        margin-inline: auto;
+        padding: 1.15rem clamp(0.5rem, 2vw, 1.5rem) 2rem;
+      }
+
+      .view-head,
+      .preview-options {
+        display: flex;
+        align-items: end;
+        flex-wrap: wrap;
+        gap: 0.55rem 0.8rem;
+      }
+
+      .view-head {
+        justify-content: space-between;
+        margin-bottom: 0.8rem;
+      }
+
+      .view-head h1 {
+        margin: 0;
+        font-size: 1.2rem;
+        letter-spacing: -0.015em;
+      }
+
+      .view-head p {
+        margin: 0.2rem 0 0;
+        font-size: 0.8rem;
+        color: #535e67;
+      }
+      .preview-options label {
+        display: grid;
+        gap: 0.25rem;
+        font-size: 0.8rem;
+      }
+      .preview-options select {
+        max-width: min(18rem, 82vw);
+        font-size: 0.875rem;
+      }
+
+      .frame {
+        width: min(100%, var(--frame-width, 1240px));
+        height: var(--frame-height, 760px);
+        min-width: 0;
+        margin-inline: auto;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--ink);
+        container: prototype / inline-size;
+        font-size: 0.875rem;
+        overflow-wrap: anywhere;
+      }
+
+      .frame[data-theme="dark"] {
+        color-scheme: dark;
+        --surface: #1e2125;
+        --panel: #282c30;
+        --ink: #f0f3f6;
+        --muted: #bdc6cf;
+        --line: #535b65;
+        --active: #373f48;
+        --action: #f0f2f4;
+        --on-action: #1e2125;
+        --focus: #9dcaff;
+        --good: #84d6b3;
+        --bad: #ffaba3;
+      }
+
+      .frame h2,
+      .frame h3,
+      .frame p {
+        margin: 0;
+      }
+      .frame h2 {
+        font-size: 1rem;
+        line-height: 1.3;
+      }
+      .frame h3 {
+        font-size: 0.875rem;
+        line-height: 1.35;
+      }
+
+      .product {
+        height: 100%;
+        display: grid;
+        grid-template-rows: var(--chrome-height) minmax(0, 1fr);
+      }
+
+      .titlebar {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        padding-inline: 0.55rem;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .product-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+
+      .product-body {
+        min-height: 0;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+      }
+
+      .rail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        padding: 0.45rem;
+        background: var(--panel);
+        border-inline-end: 1px solid var(--line);
+      }
+
+      .rail button:last-child {
+        margin-top: auto;
+      }
+
+      .rail button {
+        border-color: transparent;
+        background: transparent;
+        text-align: start;
+      }
+
+      .rail button.current {
+        background: var(--active);
+      }
+      .rail button:hover {
+        border-color: var(--line);
+      }
+
+      .drop-menu {
+        position: relative;
+        flex: none;
+      }
+      .drop-menu > summary {
+        white-space: nowrap;
+      }
+
+      .tool-menu-items {
+        display: grid;
+        gap: 0.25rem;
+        padding-block-start: 0.25rem;
+        padding-inline-start: 0.55rem;
+      }
+
+      .tool-menu-group button {
+        text-align: start;
+      }
+
+      .drop-content {
+        position: absolute;
+        z-index: 3;
+        inset-inline-start: 0;
+        inset-block-start: calc(100% + 0.25rem);
+        display: grid;
+        width: max-content;
+        max-width: min(19rem, 78cqi);
+        max-height: 17rem;
+        overflow: auto;
+        gap: 0.35rem;
+        padding: 0.45rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        box-shadow: 0 5px 15px #0002;
+      }
+
+      .workbench {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .bar,
+      .filters,
+      .tabs {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.65rem;
+      }
+
+      .bar,
+      .tabs {
+        border-bottom: 1px solid var(--line);
+      }
+      .tabs {
+        overflow-x: auto;
+      }
+      .tabs > * {
+        flex-shrink: 0;
+      }
+
+      .connection-status {
+        text-align: end;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .connection-status[data-connected="true"] {
+        color: var(--good);
+      }
+
+      .bar .target {
+        font-variant-numeric: tabular-nums;
+      }
+      .bar .targets {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      .bar .drop-menu {
+        margin-inline-start: auto;
+      }
+      .bar .drop-content {
+        inset-inline: auto 0;
+      }
+
+      .main-scroll {
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+        scrollbar-gutter: stable;
+      }
+
+      .section {
+        padding: 0.75rem 0.9rem;
+      }
+
+      .section-head {
+        display: flex;
+        gap: 0.45rem 0.9rem;
+        justify-content: space-between;
+        align-items: start;
+        padding-block-end: 0.55rem;
+      }
+
+      .section-head p,
+      .subtle {
+        color: var(--muted);
+        font-size: 0.8125rem;
+        margin-top: 0.2rem;
+      }
+
+      .section-head button {
+        flex-shrink: 0;
+      }
+
+      .section:not(.shell-preview) .filters {
+        padding-inline: 0;
+        padding-block-start: 0;
+        flex-wrap: wrap;
+      }
+
+      .scope-chip {
+        color: var(--muted);
+        font-size: 0.8rem;
+        padding: 0.2rem 0.35rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .data-area {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: auto;
+        background: var(--surface);
+        min-width: 0;
+      }
+
+      .log-table {
+        min-width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+        text-align: start;
+      }
+
+      .log-table th,
+      .log-table td {
+        border-bottom: 1px solid var(--line);
+        padding: 0.45rem 0.65rem;
+        text-align: start;
+        white-space: nowrap;
+      }
+
+      .log-table th {
+        background: var(--panel);
+        font-weight: 600;
+      }
+      .log-table tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .log-table .selected {
+        background: var(--active);
+      }
+      .packet,
+      pre,
+      code {
+        font-family: var(--mono);
+      }
+      .log-table .rx {
+        color: var(--good);
+      }
+
+      .terminal-view {
+        background: var(--panel);
+        line-height: 1.6;
+        min-height: 9rem;
+        padding: 0.75rem;
+        margin: 0;
+      }
+
+      .detail-grid,
+      .two-source {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(13rem, 1fr);
+        gap: 0.8rem;
+        align-items: start;
+      }
+
+      .two-source {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .two-source h3 {
+        margin-bottom: 0.4rem;
+      }
+
+      .field-grid {
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem 0.9rem;
+        min-width: 0;
+      }
+
+      .field {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(6.6rem, min(36%, 9rem)) minmax(0, 1fr);
+        align-items: baseline;
+        gap: 0.35rem 0.5rem;
+      }
+
+      .field .control {
+        margin: 0;
+        min-width: 0;
+        min-height: var(--field-height);
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+
+      .field .control > span {
+        min-width: 0;
+      }
+
+      .field-grid + .data-area,
+      .field-grid + .detail-grid,
+      .field-grid + details,
+      .field-grid + .editor-sample,
+      .field-grid + .feedback,
+      .data-area + .feedback {
+        margin-top: 0.65rem;
+      }
+
+      .detail-grid .field-grid,
+      .page-content .field-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .split-view {
+        display: grid;
+        grid-template-columns: minmax(12rem, 1fr) minmax(0, 3fr);
+        gap: 0.9rem;
+        align-items: start;
+      }
+
+      .list {
+        display: grid;
+        gap: 0.35rem;
+        min-width: 0;
+        border-inline-end: 1px solid var(--line);
+        padding-inline-end: 0.65rem;
+      }
+
+      .list button {
+        text-align: start;
+      }
+
+      .page-content {
+        max-width: 64rem;
+      }
+
+      .scene {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        padding: 0;
+      }
+
+      .scene-scroll {
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .task-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.4rem 0.8rem;
+        align-items: center;
+        padding: 0.45rem 0.65rem;
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .feedback {
+        min-width: 0;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .feedback[role="alert"],
+      .error-text {
+        color: var(--bad);
+      }
+      .task-footer button {
+        flex-shrink: 0;
+      }
+
+      .action-context {
+        min-width: 0;
+      }
+
+      .confirmation-facts {
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: 0.65rem;
+        font-size: 0.8rem;
+      }
+
+      .command-preview {
+        margin-block-end: 0.65rem;
+        padding: 0.65rem;
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .command-preview .filters {
+        padding-block: 0.4rem 0;
+      }
+
+      .composer {
+        position: relative;
+        display: grid;
+        gap: 0.45rem;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: start;
+        padding: 0.5rem 0.65rem;
+        border-top: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .draft,
+      .composer > .primary {
+        min-height: 48px;
+      }
+      .composer > .primary {
+        min-width: 4rem;
+      }
+
+      .draft {
+        position: relative;
+        min-width: 0;
+        padding: 0.38rem 0.55rem 1rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+      }
+
+      .draft input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font-family: var(--mono);
+      }
+
+      .draft small {
+        position: absolute;
+        inset-inline-end: 0.45rem;
+        inset-block-end: 0.18rem;
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+      }
+
+      .composer .drop-content {
+        inset-block: auto calc(100% + 0.25rem);
+      }
+
+      .composer-receipt {
+        position: absolute;
+        inset-block-end: calc(100% + 0.35rem);
+        inset-inline-end: 0.65rem;
+        z-index: 2;
+        max-width: min(22rem, 85cqi);
+        color: var(--ink);
+        font-size: 0.8125rem;
+      }
+
+      .composer-receipt:not(:empty) {
+        padding: 0.45rem 0.65rem;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+      }
+
+      .inline-details {
+        padding-block: 0.45rem;
+      }
+      .inline-details > summary {
+        color: var(--muted);
+      }
+
+      .editor-sample,
+      .file-preview {
+        padding: 0.65rem;
+        margin-bottom: 0;
+        background: var(--panel);
+        line-height: 1.45;
+      }
+
+      .transfer-pages {
+        display: flex;
+        gap: 0.35rem;
+        margin-block-end: 0.55rem;
+      }
+
+      .transfer-pages button {
+        border-color: transparent;
+      }
+
+      .file-preview {
+        min-height: 3rem;
+        white-space: pre-wrap;
+      }
+      .file-field .control {
+        justify-content: space-between;
+      }
+      .file-field button {
+        flex-shrink: 0;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 13rem;
+      }
+
+      canvas.wave {
+        width: max(100%, 32rem);
+        height: 8rem;
+      }
+
+      .narrow-only {
+        display: none;
+      }
+
+      @container prototype (max-width: 42rem) {
+        .product-body {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .rail,
+        .wide-only {
+          display: none;
+        }
+        .narrow-only {
+          display: inline-flex;
+        }
+        .bar {
+          flex-wrap: wrap;
+        }
+        .section {
+          padding: 0.55rem 0.65rem;
+        }
+        .field-grid,
+        .detail-grid,
+        .two-source,
+        .split-view {
+          grid-template-columns: 1fr;
+        }
+        .field {
+          grid-template-columns: 1fr;
+        }
+        .field .control {
+          font-size: 1rem;
+        }
+        .list {
+          border: 0;
+          padding: 0;
+        }
+        .list[data-collapse="true"] {
+          display: none;
+        }
+        .task-footer {
+          flex-wrap: wrap;
+        }
+        .task-footer button {
+          margin-inline-start: auto;
+        }
+        .connection-status {
+          text-align: start;
+          margin-inline-start: 0;
+        }
+        .file-field .control {
+          flex-wrap: wrap;
+        }
+        canvas {
+          height: 9rem;
+        }
+      }
+
+      @container prototype (max-width: 23rem) {
+        .bar,
+        .tabs,
+        .composer {
+          padding-inline: 0.4rem;
+        }
+        .composer > .primary {
+          min-width: 3rem;
+        }
+      }
+
+      @media (forced-colors: active) {
+        button[aria-pressed="true"],
+        button.current {
+          outline: 1px solid Highlight;
+        }
+        canvas {
+          border: 1px solid CanvasText;
+        }
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="viewer">
+      <header class="view-head">
+        <div>
+          <h1 id="viewer-title">串口工作台界面草稿</h1>
+          <p id="viewer-note">示例数据，用于核对界面结构与预留位置</p>
+        </div>
+        <div class="preview-options">
+          <label
+            ><span id="area-label">功能区</span
+            ><select id="area"></select
+          ></label>
+          <label
+            ><span id="size-label">窗口</span
+            ><select id="size"></select
+          ></label>
+          <label
+            ><span id="mode-label">示例状态</span
+            ><select id="mode"></select
+          ></label>
+          <label
+            ><span id="theme-label">主题</span
+            ><select id="theme"></select
+          ></label>
+          <label
+            ><span id="language-label">语言</span>
+            <select id="language">
+              <option value="zh">简体中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+        </div>
+      </header>
+      <div
+        id="frame"
+        class="frame"
+        role="region"
+        aria-labelledby="viewer-title"
+      ></div>
+    </main>
+    <script>
+      const drafts = [
+        {
+          id: "shell",
+          title: ["窗口与命令", "Window and commands"],
+          group: "应用外壳",
+          mode: "shell",
+          target: ["本机窗口", "Local window"],
+          fields: [
+            [
+              ["应用菜单", "App menu"],
+              ["文件、视图、帮助", "File, View, Help"],
+            ],
+            [
+              ["命令", "Commands"],
+              ["查找命令或页面", "Find a command or page"],
+            ],
+            [
+              ["窗口状态", "Window status"],
+              ["主窗口", "Main window"],
+            ],
+          ],
+          action: ["打开命令面板", "Open command palette"],
+          receipt: ["定位到「连接配置」", "Located Connection settings"],
+        },
+        {
+          id: "session",
+          title: ["连接栏与会话标签", "Connection bar and sessions"],
+          group: "工作台",
+          mode: "raw",
+          target: ["本机 · COM7", "Local · COM7"],
+          fields: [
+            [
+              ["工作区", "Workspace"],
+              ["调试 STM32", "调试 STM32"],
+            ],
+            [
+              ["端口", "Port"],
+              ["COM7", "COM7"],
+            ],
+            [
+              ["波特率", "Baud rate"],
+              ["115200 baud", "115200 baud"],
+            ],
+          ],
+          action: ["连接", "Connect"],
+          receipt: [
+            "已连接 COM7 · 会话代次 3",
+            "COM7 connected · Session generation 3",
+          ],
+        },
+        {
+          id: "device",
+          title: ["设备库", "Device library"],
+          group: "工作台",
+          mode: "catalog",
+          target: ["本机 · COM7", "Local · COM7"],
+          fields: [
+            [
+              ["设备", "Device"],
+              [
+                "CP2102 USB to UART Bridge (COM7)",
+                "CP2102 USB to UART Bridge (COM7)",
+              ],
+            ],
+            [
+              ["设备指纹", "Device identity"],
+              ["VID 10C4 / PID EA60", "VID 10C4 / PID EA60"],
+            ],
+            [
+              ["匹配依据", "Match evidence"],
+              ["序列号一致", "Same serial number"],
+            ],
+            [
+              ["驱动与位置", "Driver and location"],
+              ["USB-Serial · USB 3/2", "USB-Serial · USB 3/2"],
+            ],
+          ],
+          action: ["绑定所选设备", "Bind selected device"],
+          receipt: ["已核对选定设备的标识", "Selected device identity checked"],
+        },
+        {
+          id: "connection",
+          title: ["连接配置", "Connection settings"],
+          group: "工作台",
+          mode: "tool",
+          target: ["配置 COM7", "Configure COM7"],
+          fields: [
+            [
+              ["连接类型", "Transport"],
+              ["系统串口", "System serial"],
+            ],
+            [
+              ["波特率", "Baud rate"],
+              ["115200", "115200"],
+            ],
+            [
+              ["数据位", "Data bits"],
+              ["8", "8"],
+            ],
+            [
+              ["校验", "Parity"],
+              ["无", "None"],
+            ],
+            [
+              ["停止位", "Stop bits"],
+              ["1", "1"],
+            ],
+            [
+              ["流控", "Flow control"],
+              ["无", "None"],
+            ],
+            [
+              ["重连间隔（毫秒）", "Reconnect interval (milliseconds)"],
+              ["500", "500"],
+            ],
+          ],
+          action: ["应用参数", "Apply settings"],
+          receipt: ["读回 115200 / 8 / N / 1", "Read back 115200 / 8 / N / 1"],
+        },
+        {
+          id: "line",
+          title: ["会话控制", "Session controls"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · 会话代次 3", "COM7 · Session generation 3"],
+          fields: [
+            [
+              ["控制线", "Control lines"],
+              ["DTR on / RTS off", "DTR on / RTS off"],
+            ],
+            [
+              ["实际输入采样", "Input signal sample"],
+              ["CTS on / DSR off", "CTS on / DSR off"],
+            ],
+            [
+              ["Break 时长（毫秒）", "Break duration (milliseconds)"],
+              ["120", "120"],
+            ],
+            [
+              ["队列操作", "Queue operation"],
+              ["等待 TX 排空", "Drain TX"],
+            ],
+          ],
+          action: ["应用控制线", "Apply line control"],
+          receipt: [
+            "DTR 已置位 · 读回与请求一致",
+            "DTR asserted · Readback matches request",
+          ],
+        },
+        {
+          id: "workspace",
+          title: ["工作区与视图布局", "Workspace and view layout"],
+          group: "工作台",
+          mode: "catalog",
+          target: ["调试 STM32 · 修订 7", "Debug STM32 · Revision 7"],
+          fields: [
+            [
+              ["当前视图", "Current view"],
+              ["接收与图表", "Receive and chart"],
+            ],
+            [
+              ["会话绑定", "Session binding"],
+              ["COM7", "COM7"],
+            ],
+            [
+              ["显示名称", "Display name"],
+              ["温控板 A", "Thermal controller A"],
+            ],
+            [
+              ["候选布局", "Layout preview"],
+              ["原始流在左、图表在右", "Raw stream left, chart right"],
+            ],
+          ],
+          action: ["保存布局", "Save layout"],
+          receipt: ["工作区已保存 · 修订 8", "Workspace saved · Revision 8"],
+        },
+        {
+          id: "raw",
+          title: ["原始流", "Raw stream"],
+          group: "工作台",
+          mode: "raw",
+          target: ["COM7 · 读取原始字节", "COM7 · Original bytes"],
+          fields: [
+            [
+              ["格式", "Format"],
+              ["HEX", "HEX"],
+            ],
+            [
+              ["源方向", "Direction"],
+              ["RX + TX", "RX + TX"],
+            ],
+            [
+              ["时间戳", "Timestamp"],
+              ["HH:mm:ss.SSS", "HH:mm:ss.SSS"],
+            ],
+            [
+              ["所选范围", "Selection"],
+              ["[1, 3)", "[1, 3)"],
+            ],
+          ],
+          action: ["复制所选字节", "Copy selected bytes"],
+          receipt: ["已选择 2 B · 偏移 1", "Selected 2 bytes at offset 1"],
+        },
+        {
+          id: "terminal",
+          title: ["终端", "Terminal"],
+          group: "工作台",
+          mode: "terminal",
+          target: ["COM7 · VT100/ANSI", "COM7 · VT100/ANSI"],
+          fields: [
+            [
+              ["编码", "Encoding"],
+              ["UTF-8", "UTF-8"],
+            ],
+            [
+              ["大小", "Dimensions"],
+              ["80 × 24", "80 × 24"],
+            ],
+            [
+              ["本地回显", "Local echo"],
+              ["关闭", "Off"],
+            ],
+            [
+              ["输入模式", "Keyboard mode"],
+              ["终端键", "Terminal keys"],
+            ],
+          ],
+          action: ["搜索终端", "Search terminal"],
+          receipt: ["匹配 1 条 · 终端历史", "1 match in terminal history"],
+        },
+        {
+          id: "compare",
+          title: ["会话对比", "Compare sessions"],
+          group: "工作台",
+          mode: "compare",
+          target: ["COM7 与 Virtual Echo", "COM7 and Virtual Echo"],
+          fields: [
+            [
+              ["对齐方式", "Align by"],
+              ["事件序号", "Event sequence"],
+            ],
+            [
+              ["来源 A", "Source A"],
+              ["COM7 (RX)", "COM7 (RX)"],
+            ],
+            [
+              ["来源 B", "Source B"],
+              ["Virtual Echo (RX)", "Virtual Echo (RX)"],
+            ],
+          ],
+          action: ["查看差异", "Inspect difference"],
+          receipt: ["两端第 3 条记录相差 1 B", "Record 3 differs by one byte"],
+        },
+        {
+          id: "fields",
+          title: ["字段与寄存器", "Fields and registers"],
+          group: "工作台",
+          mode: "table",
+          target: ["COM7 · 解析当前事件", "COM7 · Decode selected event"],
+          fields: [
+            [
+              ["当前输入", "Current input"],
+              ["事件 1286", "Event 1286"],
+            ],
+            [
+              ["功能码", "Function code"],
+              ["03", "03"],
+            ],
+            [
+              ["地址与字序", "Address and word order"],
+              ["40001 · BE", "40001 · BE"],
+            ],
+          ],
+          action: ["定位源字节", "Locate source bytes"],
+          receipt: [
+            "寄存器 40001 · 源偏移 [1, 3)",
+            "Register 40001 · Source byte range [1, 3)",
+          ],
+        },
+        {
+          id: "chart",
+          title: ["图表与监控", "Charts and monitoring"],
+          group: "工作台",
+          mode: "chart",
+          target: ["温控板 A · COM7", "Thermal controller A · COM7"],
+          fields: [
+            [
+              ["数据源", "Data source"],
+              ["温度", "Temperature"],
+            ],
+            [
+              ["范围", "Range"],
+              ["最近 60 秒", "Last 60 seconds"],
+            ],
+            [
+              ["选中样本", "Selected sample"],
+              ["29.4 °C", "29.4 °C"],
+            ],
+          ],
+          action: ["导出所选范围", "Export selection"],
+          receipt: [
+            "显示 180 点 · 有 1 处源缺口",
+            "180 points visible · 1 source gap",
+          ],
+        },
+        {
+          id: "send",
+          title: ["发送区", "Send composer"],
+          group: "工作台",
+          mode: "raw",
+          target: ["COM7 · HEX 草稿", "COM7 · HEX draft"],
+          fields: [
+            [
+              ["发送模式", "Send mode"],
+              ["HEX", "HEX"],
+            ],
+            [
+              ["预览", "Preview"],
+              ["FE 23", "FE 23"],
+            ],
+            [
+              ["最终字节数", "Final byte count"],
+              ["2 B", "2 B"],
+            ],
+          ],
+          action: ["发送", "Send"],
+          receipt: [
+            "样例回执 · 已确认写入 2 B",
+            "Sample receipt · 2 bytes confirmed",
+          ],
+        },
+        {
+          id: "library",
+          title: ["命令库与发送历史", "Command library and send history"],
+          group: "工作台",
+          mode: "catalog",
+          target: ["命令库 · 温控板", "Command library · Thermal controller"],
+          fields: [
+            [
+              ["分组", "Group"],
+              ["设备指令", "Device commands"],
+            ],
+            [
+              ["命令名称", "Command name"],
+              ["读取温度", "Read temperature"],
+            ],
+            [
+              ["正文", "Body"],
+              ["09 FF 00 41", "09 FF 00 41"],
+            ],
+            [
+              ["变量", "Variables"],
+              ["站号 = 9", "Unit ID = 9"],
+            ],
+          ],
+          action: ["加入发送草稿", "Add to send draft"],
+          receipt: ["已准备 4 B 草稿", "4-byte draft prepared"],
+        },
+        {
+          id: "transform",
+          title: ["发送配置", "Send options"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · 当前发送草稿", "COM7 · Current draft"],
+          fields: [
+            [
+              ["编码", "Encoding"],
+              ["UTF-8", "UTF-8"],
+            ],
+            [
+              ["行尾", "Line ending"],
+              ["CRLF", "CRLF"],
+            ],
+            [
+              ["校验算法", "Checksum"],
+              ["CRC-16/Modbus", "CRC-16/Modbus"],
+            ],
+            [
+              ["预处理顺序", "Processing order"],
+              ["JSON 封装 → UTF-8", "JSON wrapper → UTF-8"],
+            ],
+          ],
+          action: ["预览最终字节", "Preview final bytes"],
+          receipt: [
+            "预览已更新 · 可展开各步输入与输出",
+            "Preview ready · Inspect each step's input and output",
+          ],
+        },
+        {
+          id: "protocol",
+          title: ["分帧与协议定义", "Framing and protocol definitions"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · 样本 1286", "COM7 · Sample 1286"],
+          fields: [
+            [
+              ["规则", "Framing rule"],
+              ["帧头与长度字段", "Header and length field"],
+            ],
+            [
+              ["帧头", "Header"],
+              ["AA 55", "AA 55"],
+            ],
+            [
+              ["字段定义", "Field definition"],
+              ["温度 · uint16 BE", "Temperature · uint16 BE"],
+            ],
+            [
+              ["样本来源", "Sample source"],
+              ["原始流 [1, 7)", "Raw stream [1, 7)"],
+            ],
+          ],
+          action: ["预览解析", "Preview decoding"],
+          receipt: ["解析 1 帧 · CRC 通过", "1 frame decoded · CRC passed"],
+        },
+        {
+          id: "modbus",
+          title: ["Modbus", "Modbus"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · Modbus 主站", "COM7 · Modbus client"],
+          fields: [
+            [
+              ["传输方式", "Transport"],
+              ["RTU", "RTU"],
+            ],
+            [
+              ["单元号与功能码", "Unit ID and function code"],
+              ["1 · FC03", "1 · FC03"],
+            ],
+            [
+              ["起始寄存器", "Starting register"],
+              ["40001", "40001"],
+            ],
+            [
+              ["应答超时（毫秒）", "Response timeout (milliseconds)"],
+              ["500", "500"],
+            ],
+            [
+              ["封装", "Wire preview"],
+              ["01 03 00 00 00 01 84 0A", "01 03 00 00 00 01 84 0A"],
+            ],
+          ],
+          action: ["执行事务", "Run transaction"],
+          receipt: [
+            "应答已匹配 · 23 ms · 可展开 TX/RX",
+            "Response matched · 23 ms · TX/RX available",
+          ],
+        },
+        {
+          id: "infer",
+          title: ["协议候选与草案", "Protocol candidates and drafts"],
+          group: "工作台",
+          mode: "catalog",
+          target: ["捕获样本 · 1286–1294", "Capture samples · 1286–1294"],
+          fields: [
+            [
+              ["样本范围", "Sample range"],
+              ["9 帧 / 72 B", "9 frames / 72 bytes"],
+            ],
+            [
+              ["候选字段", "Candidate field"],
+              ["偏移 2 · 长度 2 B", "Offset 2 · Length 2 bytes"],
+            ],
+            [
+              ["依据", "Evidence"],
+              ["8 / 9 个样本一致", "8 of 9 samples agree"],
+            ],
+            [
+              ["草案差异", "Draft changes"],
+              ["新增温度字段", "Add temperature field"],
+            ],
+          ],
+          action: ["保存为草案", "Save as draft"],
+          receipt: [
+            "草案已保存 · 可回到原样本",
+            "Draft saved · Source samples available",
+          ],
+        },
+        {
+          id: "transfer",
+          title: ["文件传输", "File transfer"],
+          group: "工作台",
+          mode: "transfer",
+          target: ["COM7 · 源文件预览", "COM7 · Source file preview"],
+          fields: [
+            [
+              ["源文件", "Source file"],
+              ["firmware.bin", "firmware.bin"],
+            ],
+            [
+              ["字节偏移", "Byte offset"],
+              ["1", "1"],
+            ],
+            [
+              ["长度（字节）", "Length (bytes)"],
+              ["2", "2"],
+            ],
+            [
+              ["实际发送字节", "Bytes to send"],
+              ["[1, 3) / 4", "[1, 3) / 4"],
+            ],
+            [
+              ["选区开头字节", "Selection preview"],
+              ["1: FE 23", "1: FE 23"],
+            ],
+          ],
+          action: ["发送文件", "Send file"],
+          receipt: [
+            "已读取 2 B · 已确认写入 2 B",
+            "2 bytes read · 2 bytes written to host port",
+          ],
+        },
+        {
+          id: "flash",
+          title: ["设备文件与烧录", "Device files and flashing"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · STM32", "COM7 · STM32"],
+          fields: [
+            [
+              ["目标固件", "Firmware"],
+              ["temperature-control-v1.2.bin", "temperature-control-v1.2.bin"],
+            ],
+            [
+              ["工具来源与版本", "Tool source and version"],
+              ["已选可信工具", "Trusted tool selected"],
+            ],
+            [
+              ["端口交接", "Port handoff"],
+              ["等待在途事务结束", "Waiting for active transactions"],
+            ],
+            [
+              ["目标列表", "Target list"],
+              ["COM7、COM8", "COM7、COM8"],
+            ],
+          ],
+          action: ["确认交接", "Confirm handoff"],
+          receipt: [
+            "COM7 已重新打开 · 已核对设备身份",
+            "COM7 reopened · Device identity verified",
+          ],
+        },
+        {
+          id: "schedule",
+          title: ["发送任务与自动化", "Send tasks and automation"],
+          group: "工作台",
+          mode: "editor",
+          target: ["COM7 · 命令序列", "COM7 · Command sequence"],
+          fields: [
+            [
+              ["触发", "Trigger"],
+              ["手动启动", "Start manually"],
+            ],
+            [
+              ["步骤 1", "Step 1"],
+              ["发送 FE 23", "Send FE 23"],
+            ],
+            [
+              ["步骤 2", "Step 2"],
+              ["等待 A5 · 500 ms", "Wait for A5 · 500 ms"],
+            ],
+            [
+              ["重试", "Retry"],
+              ["关闭", "Off"],
+            ],
+          ],
+          action: ["启动序列", "Start sequence"],
+          receipt: [
+            "步骤 2 已匹配应答 · 可查看实际字节",
+            "Step 2 matched a response · Inspect bytes",
+          ],
+        },
+        {
+          id: "script",
+          title: ["脚本编辑与调试", "Script editor and debugger"],
+          group: "工作台",
+          mode: "editor",
+          target: ["COM7 · 自动化", "COM7 · Automation"],
+          fields: [
+            [
+              ["运行时", "Runtime"],
+              ["固定 Node · JS/TS", "Bundled Node · JS/TS"],
+            ],
+            [
+              ["脚本", "Script"],
+              ["inspect-frame.ts", "inspect-frame.ts"],
+            ],
+            [
+              ["执行信任", "Execution trust"],
+              ["已审阅本次执行范围", "Execution scope reviewed"],
+            ],
+            [
+              ["当前断点", "Current breakpoint"],
+              ["Line 12", "Line 12"],
+            ],
+          ],
+          action: ["运行脚本", "Run script"],
+          receipt: [
+            "已暂停在第 12 行 · 采集仍继续",
+            "Paused at line 12 · Capture continues",
+          ],
+        },
+        {
+          id: "suite",
+          title: ["测试套件与夹具", "Test suites and fixtures"],
+          group: "工作台",
+          mode: "editor",
+          target: ["设备回环 · 套件", "Device loopback · Suite"],
+          fields: [
+            [
+              ["输入", "Input"],
+              ["thermal-controller-cases.csv", "thermal-controller-cases.csv"],
+            ],
+            [
+              ["轮次", "Runs"],
+              ["4", "4"],
+            ],
+            [
+              ["时钟及种子", "Clock and seed"],
+              ["固定时钟 · 42", "Fixed clock · 42"],
+            ],
+            [
+              ["断言", "Assertion"],
+              ["回复序号与 CRC 一致", "Response sequence and CRC match"],
+            ],
+          ],
+          action: ["运行套件", "Run suite"],
+          receipt: [
+            "4 轮完成 · 3 通过 · 1 超时",
+            "4 runs complete · 3 passed · 1 timed out",
+          ],
+        },
+        {
+          id: "capture",
+          title: ["录制", "Capture"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · 本地录制", "COM7 · Local capture"],
+          fields: [
+            [
+              ["目标文件", "Destination file"],
+              ["com7-2026-11-27.swbc", "com7-2026-11-27.swbc"],
+            ],
+            [
+              ["写入方式", "Write mode"],
+              ["新建", "Create"],
+            ],
+            [
+              ["分卷容量", "Volume size"],
+              ["128 MiB", "128 MiB"],
+            ],
+            [
+              ["记录方式", "Recording mode"],
+              ["原始录制", "Raw capture"],
+            ],
+            [
+              ["磁盘预留", "Free space reserve"],
+              ["256 MiB", "256 MiB"],
+            ],
+          ],
+          action: ["开始录制", "Start capture"],
+          receipt: [
+            "已写入 512 条 · 已同步 500 条",
+            "512 records written · 500 synced",
+          ],
+        },
+        {
+          id: "replay",
+          title: ["回放与证据导出", "Replay and export"],
+          group: "工作台",
+          mode: "replay",
+          target: [
+            "com7-2026-11-27.swbc · 只读",
+            "com7-2026-11-27.swbc · Read only",
+          ],
+          fields: [
+            [
+              ["当前位置", "Position"],
+              ["1286 / 4096", "1286 / 4096"],
+            ],
+            [
+              ["速度", "Speed"],
+              ["1×", "1×"],
+            ],
+            [
+              ["搜索", "Search"],
+              ["FE 23", "FE 23"],
+            ],
+            [
+              ["索引", "Index"],
+              ["可用", "Available"],
+            ],
+          ],
+          action: ["定位下一条", "Locate next result"],
+          receipt: ["索引命中 · 事件 1290", "Index match · Event 1290"],
+        },
+        {
+          id: "experiment",
+          title: ["复现实验与共享", "Reproducible experiment"],
+          group: "工作台",
+          mode: "catalog",
+          target: ["温控台架 · 工程预览", "Thermal bench · Experiment preview"],
+          fields: [
+            [
+              ["工程文件", "Experiment file"],
+              ["thermal-bench.swexp", "thermal-bench.swexp"],
+            ],
+            [
+              ["包含内容", "Included"],
+              [
+                "工作区、解析器、录制引用",
+                "Workspace, parser, capture reference",
+              ],
+            ],
+            [
+              ["依赖检查", "Dependencies"],
+              ["已识别 2 个包", "2 packages identified"],
+            ],
+            [
+              ["敏感内容", "Sensitive content"],
+              ["排除密钥及录制正文", "Secrets and raw capture content omitted"],
+            ],
+          ],
+          action: ["查看导入预览", "Review import"],
+          receipt: [
+            "可导入 · 依赖预览已就绪",
+            "Ready to import · Dependency preview available",
+          ],
+        },
+        {
+          id: "task",
+          title: ["任务与回执", "Tasks and receipts"],
+          group: "工作台",
+          mode: "activity",
+          target: ["COM7 · 文件传输", "COM7 · File transfer"],
+          fields: [
+            [
+              ["操作", "Operation"],
+              ["发送 firmware.bin", "Send firmware.bin"],
+            ],
+            [
+              ["已接纳", "Accepted"],
+              ["2 B", "2 B"],
+            ],
+            [
+              ["目标", "Target"],
+              ["COM7 · 会话代次 3", "COM7 · Session generation 3"],
+            ],
+            [
+              ["当前阶段", "Current stage"],
+              ["等待停止", "Waiting to stop"],
+            ],
+          ],
+          action: ["查看回执", "Inspect receipt"],
+          receipt: ["已停止 · 已写入 2 B", "Stopped · 2 bytes written"],
+        },
+        {
+          id: "activity",
+          title: ["活动跟随与接管", "Activity and takeover"],
+          group: "工作台",
+          mode: "activity",
+          target: ["本机 · 当前观看窗口", "Local · Current viewing window"],
+          fields: [
+            [
+              ["来源", "Actor"],
+              ["MCP · Test client", "MCP · Test client"],
+            ],
+            [
+              ["最新动作", "Latest action"],
+              ["查询应答范围", "Inspect response range"],
+            ],
+            [
+              ["跟随", "Follow"],
+              ["当前工作台窗口", "Current workbench window"],
+            ],
+            [
+              ["人工草稿", "Manual draft"],
+              ["已保留", "Preserved"],
+            ],
+          ],
+          action: ["暂停跟随", "Pause navigation follow"],
+          receipt: [
+            "已暂停界面导航 · 查询任务可继续",
+            "Navigation follow paused · Query may continue",
+          ],
+        },
+        {
+          id: "metrics",
+          title: ["指标与缺口", "Metrics and gaps"],
+          group: "工作台",
+          mode: "table",
+          target: ["COM7 · Host 状态", "COM7 · Host state"],
+          fields: [
+            [
+              ["采样窗口", "Sampling window"],
+              ["最近 10 秒", "Last 10 seconds"],
+            ],
+            [
+              ["源时间", "Clock source"],
+              ["主机读块", "Host read chunk"],
+            ],
+            [
+              ["设备速率", "Device throughput"],
+              ["12.8 KiB/s", "12.8 KiB/s"],
+            ],
+          ],
+          action: ["查看来源详情", "Inspect source"],
+          receipt: [
+            "采集持续 · 记录端等待磁盘刷新",
+            "Capture continues · Recording waiting for disk flush",
+          ],
+        },
+        {
+          id: "diagnostics",
+          title: ["诊断与自检", "Diagnostics and loopback"],
+          group: "工作台",
+          mode: "tool",
+          target: ["COM7 · 已确认接线", "COM7 · Wiring confirmed"],
+          fields: [
+            [
+              ["检查项目", "Check"],
+              ["环回自检", "Loopback self-test"],
+            ],
+            [
+              ["回环来源", "Loopback source"],
+              ["TX/RX 短接", "TX/RX loopback"],
+            ],
+            [
+              ["帧数", "Frames"],
+              ["4", "4"],
+            ],
+            [
+              ["每帧字节数", "Bytes per frame"],
+              ["64", "64"],
+            ],
+            [
+              ["种子与等待", "Seed and timeout"],
+              ["1 · 500 ms", "1 · 500 ms"],
+            ],
+          ],
+          action: ["启动自检", "Run self-test"],
+          receipt: ["已比较 256 B · 误码 0 B", "256 bytes compared · 0 errors"],
+        },
+        {
+          id: "waveform",
+          title: ["UART 波形与仪器", "UART waveform and instruments"],
+          group: "工作台",
+          mode: "waveform",
+          target: ["COM7 · 离线波形", "COM7 · Offline waveform"],
+          fields: [
+            [
+              ["样本文件", "Sample file"],
+              ["uart-frame.vcd", "uart-frame.vcd"],
+            ],
+            [
+              ["采样率", "Sample rate"],
+              ["10 MHz", "10 MHz"],
+            ],
+            [
+              ["方向与速率", "Direction and baud rate"],
+              ["RX · 115200 baud", "RX · 115200 baud"],
+            ],
+          ],
+          action: ["解码所选范围", "Decode selection"],
+          receipt: [
+            "已定位起止位 · 数据 0x55",
+            "Start and stop bits located · Data 0x55",
+          ],
+        },
+        {
+          id: "plugin",
+          title: ["插件列表与详情", "Plugins and details"],
+          group: "插件",
+          mode: "catalog",
+          target: ["已安装 · 本机", "Installed · Local"],
+          fields: [
+            [
+              ["名称", "Name"],
+              ["串口字段图表", "Serial field charts"],
+            ],
+            [
+              ["版本", "Version"],
+              ["0.1.2", "0.1.2"],
+            ],
+            [
+              ["来源及签名", "Source and signature"],
+              ["首方归档 · 已验证", "Bundled archive · Verified"],
+            ],
+            [
+              ["能力", "Capabilities"],
+              ["字段、图表、导出", "Fields, charts, export"],
+            ],
+          ],
+          action: ["打开视图", "Open view"],
+          receipt: ["所选视图可用于 COM7", "View available for COM7"],
+        },
+        {
+          id: "plugin-view",
+          title: ["插件视图与专业分析", "Plugin view and analysis"],
+          group: "插件",
+          mode: "chart",
+          target: [
+            "串口字段图表 · 已选区间",
+            "Serial field charts · Selected range",
+          ],
+          fields: [
+            [
+              ["分析类型", "Analysis"],
+              ["频谱", "Spectrum"],
+            ],
+            [
+              ["采样率", "Sample rate"],
+              ["1024 Hz", "1024 Hz"],
+            ],
+            [
+              ["窗口与缺样", "Window and gaps"],
+              ["256 samples · 1 gap", "256 samples · 1 gap"],
+            ],
+          ],
+          action: ["导出分析", "Export analysis"],
+          receipt: [
+            "主峰 64 Hz · 可检查输入窗口",
+            "Peak at 64 Hz · Input window available",
+          ],
+        },
+        {
+          id: "access",
+          title: ["浏览器访问与接管确认", "Browser access and approval"],
+          group: "设置",
+          mode: "settings",
+          target: ["本机 Host · 浏览器访问", "Local Host · Browser access"],
+          fields: [
+            [
+              ["当前访问", "Current access"],
+              ["只读", "Read only"],
+            ],
+            [
+              ["下一次配对", "Next pairing"],
+              ["查看与操作", "View and control"],
+            ],
+            [
+              ["一次性码", "One-time code"],
+              ["002 271", "002 271"],
+            ],
+            [
+              ["请求来源", "Request source"],
+              ["配对浏览器", "Paired browser"],
+            ],
+          ],
+          action: ["生成配对码", "Generate pairing code"],
+          receipt: [
+            "码仅用于本次打开的配对会话",
+            "Code belongs to this pairing session",
+          ],
+        },
+        {
+          id: "lan",
+          title: ["局域网共享与远端连接", "LAN sharing and remote connection"],
+          group: "设置",
+          mode: "settings",
+          target: ["Host A · 来自 Host B 的 COM7", "Host A · COM7 on Host B"],
+          fields: [
+            [
+              ["共享设备", "Shared device"],
+              ["Host B / COM7", "Host B / COM7"],
+            ],
+            [
+              ["活动客户端", "Active clients"],
+              ["2 readers", "2 readers"],
+            ],
+            [
+              ["写入租约", "Write lease"],
+              ["Host A", "Host A"],
+            ],
+            [
+              ["对端身份", "Peer identity"],
+              ["已核对指纹", "Fingerprint verified"],
+            ],
+          ],
+          action: ["查看共享权限", "Inspect sharing permissions"],
+          receipt: [
+            "Host B 保持持口与仲裁",
+            "Host B owns the device and arbitrates writes",
+          ],
+        },
+        {
+          id: "security",
+          title: ["权限与来源管理", "Permissions and sources"],
+          group: "设置",
+          mode: "settings",
+          target: [
+            "本机用户 · 设备与数据授权",
+            "Local user · Device and data grants",
+          ],
+          fields: [
+            [
+              ["来源", "Source"],
+              ["MCP · Test client", "MCP · Test client"],
+            ],
+            [
+              ["目标", "Target"],
+              ["COM7 · 会话代次 3", "COM7 · Session generation 3"],
+            ],
+            [
+              ["数据范围", "Data scope"],
+              ["只读元数据", "Read-only metadata"],
+            ],
+            [
+              ["写入授权", "Write grant"],
+              ["未授权", "Not granted"],
+            ],
+            [
+              ["执行信任", "Execution trust"],
+              ["随包工具 · 已确认", "Bundled tool · Confirmed"],
+            ],
+          ],
+          action: ["查看授权详情", "Inspect grant details"],
+          receipt: [
+            "写入与文件正文需单独授权",
+            "Writes and file bodies require separate grants",
+          ],
+        },
+        {
+          id: "preferences",
+          title: ["外观、输入与应用偏好", "Appearance, input and preferences"],
+          group: "设置",
+          mode: "settings",
+          target: ["此窗口 · 显示偏好", "This window · Display preferences"],
+          fields: [
+            [
+              ["主题", "Theme"],
+              ["跟随系统", "Follow system"],
+            ],
+            [
+              ["应用语言", "App language"],
+              ["简体中文", "Simplified Chinese"],
+            ],
+            [
+              ["终端字号", "Terminal font size"],
+              ["14 px", "14 px"],
+            ],
+            [
+              ["减少动效", "Reduce motion"],
+              ["开启", "On"],
+            ],
+            [
+              ["通知", "Notifications"],
+              ["仅任务终态", "Task completion only"],
+            ],
+          ],
+          action: ["应用显示设置", "Apply display preferences"],
+          receipt: [
+            "偏好已应用 · 焦点和选区保留",
+            "Preferences applied · Focus and selection retained",
+          ],
+        },
+        {
+          id: "recovery",
+          title: ["系统状态、恢复与更新", "System, recovery and updates"],
+          group: "设置",
+          mode: "settings",
+          target: ["本机 · 安装和数据", "Local · Installation and data"],
+          fields: [
+            [
+              ["当前版本", "Current version"],
+              ["0.1.2", "0.1.2"],
+            ],
+            [
+              ["文件位置", "Data directory"],
+              [
+                "C:\\Users\\Operator\\AppData\\Roaming\\SerialWorkbench",
+                "C:\\Users\\Operator\\AppData\\Roaming\\SerialWorkbench",
+              ],
+            ],
+            [
+              ["恢复原件", "Recovery source"],
+              ["只读保留", "Preserved read only"],
+            ],
+            [
+              ["在途任务", "Active tasks"],
+              ["1 operation", "1 operation"],
+            ],
+          ],
+          action: ["查看恢复详情", "Inspect recovery details"],
+          receipt: [
+            "等待录制完成后才能切换版本",
+            "Version switch waits for capture to finish",
+          ],
+        },
+        {
+          id: "native",
+          title: ["平台原生交互", "Native platform interaction"],
+          group: "系统界面",
+          mode: "native",
+          target: [
+            "Windows 系统向导示意",
+            "Illustration of a Windows system dialog",
+          ],
+          fields: [
+            [
+              ["安装目录", "Installation directory"],
+              [
+                "C:\\Program Files\\Serial Workbench",
+                "C:\\Program Files\\Serial Workbench",
+              ],
+            ],
+            [
+              ["用户数据", "User data"],
+              ["保留", "Keep"],
+            ],
+            [
+              ["应用接回结果", "Result returned to app"],
+              ["等待系统确认", "Awaiting system confirmation"],
+            ],
+          ],
+          action: ["确认", "Confirm"],
+          receipt: [
+            "返回应用后在原入口查看系统结果",
+            "Return to the original action for the system result",
+          ],
+        },
+      ];
+      const byId = new Map(drafts.map((draft) => [draft.id, draft]));
+      const controls = {
+        area: document.querySelector("#area"),
+        size: document.querySelector("#size"),
+        mode: document.querySelector("#mode"),
+        theme: document.querySelector("#theme"),
+        language: document.querySelector("#language"),
+      };
+      const frame = document.querySelector("#frame");
+      const rootAreas = ["session", "plugin", "preferences"];
+      const workbenchViews = [
+        "shell",
+        "session",
+        "raw",
+        "terminal",
+        "compare",
+        "fields",
+        "chart",
+        "send",
+      ];
+      const settingsAreas = [
+        "preferences",
+        "access",
+        "lan",
+        "security",
+        "recovery",
+        "native",
+      ];
+      const workbenchTools = [
+        [
+          ["连接与会话", "Connection and sessions"],
+          ["device", "line", "workspace"],
+        ],
+        [
+          ["观察与协议", "Observation and protocols"],
+          ["compare", "protocol", "metrics"],
+        ],
+        [
+          ["传输与自动化", "Transfer and automation"],
+          ["transfer", "schedule", "suite"],
+        ],
+        [
+          ["录制与回放", "Capture and replay"],
+          ["capture", "replay"],
+        ],
+        [
+          ["任务与诊断", "Tasks and diagnostics"],
+          ["task", "activity", "diagnostics"],
+        ],
+      ];
+      const replacesDeviceState = new Set([
+        "session",
+        "device",
+        "connection",
+        "line",
+        "send",
+        "modbus",
+        "transfer",
+        "flash",
+        "schedule",
+        "script",
+        "suite",
+        "diagnostics",
+      ]);
+
+      const dimensions = {
+        wide: [1240, 760],
+        compact: [840, 600],
+        narrow: [420, 460],
+      };
+      const modes = {
+        normal: ["有数据", "With data"],
+        empty: ["空态", "Empty"],
+        readonly: ["只读", "Read only"],
+        revoked: ["授权撤回", "Access revoked"],
+        failure: ["失败", "Failure"],
+      };
+      const taskModes = {
+        running: ["正在运行", "Running"],
+        stopping: ["等待停止", "Waiting to stop"],
+        unknown: ["无法确认", "Unconfirmed result"],
+      };
+      const groups = {
+        应用外壳: ["应用外壳", "Application shell"],
+        工作台: ["工作台", "Workbench"],
+        插件: ["插件", "Plugins"],
+        设置: ["设置", "Settings"],
+        系统界面: ["系统界面", "Native UI"],
+      };
+      const area = location.hash.slice(1);
+      const state = {
+        area: byId.has(area) ? area : "session",
+        size: "wide",
+        mode: "normal",
+        theme: "light",
+        language: "zh",
+        connected: true,
+        transferPage: "general",
+        transferRange: "all",
+        commandPreview: false,
+        commandChanged: false,
+        history: [],
+      };
+
+      function text(labels) {
+        return typeof labels === "string"
+          ? labels
+          : labels[state.language === "en" ? 1 : 0];
+      }
+
+      function tr(zh, en) {
+        return text([zh, en]);
+      }
+
+      function esc(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function modeFor(draft = byId.get(state.area)) {
+        const mode = state.mode;
+        if (
+          (mode === "readonly" || mode === "revoked") &&
+          draft.group !== "工作台" &&
+          draft.id !== "plugin-view"
+        )
+          return "normal";
+        if (
+          Object.hasOwn(taskModes, mode) &&
+          draft.id !== "transfer" &&
+          draft.id !== "task"
+        )
+          return "normal";
+        return mode;
+      }
+
+      function isUnavailable(draft) {
+        return ["empty", "revoked"].includes(modeFor(draft));
+      }
+
+      function cannotRun(draft) {
+        return (
+          isUnavailable(draft) ||
+          (modeFor(draft) === "readonly" &&
+            replacesDeviceState.has(draft.id)) ||
+          (!state.connected && ["send", "transfer"].includes(draft.id))
+        );
+      }
+
+      function linked(
+        id,
+        labels = byId.get(id).title,
+        from = id,
+        active = false,
+      ) {
+        return (
+          '<button type="button" data-open="' +
+          id +
+          '" data-trigger="' +
+          from +
+          '"' +
+          (active ? ' class="current" aria-current="page"' : "") +
+          ">" +
+          esc(text(labels)) +
+          "</button>"
+        );
+      }
+
+      function action(
+        draft,
+        labels = draft.action,
+        style = "primary",
+        disabled = false,
+      ) {
+        return (
+          '<button type="button" class="' +
+          style +
+          '" data-action="' +
+          draft.id +
+          '"' +
+          (disabled || cannotRun(draft) ? " disabled" : "") +
+          (draft.id === "plugin" ? ' data-trigger="open-plugin-view"' : "") +
+          ">" +
+          esc(text(labels)) +
+          "</button>"
+        );
+      }
+
+      function menu(labels, id, content) {
+        return (
+          '<details class="drop-menu"><summary class="control" data-trigger="' +
+          id +
+          '">' +
+          esc(text(labels)) +
+          '</summary><div class="drop-content">' +
+          content +
+          "</div></details>"
+        );
+      }
+
+      function groupedTools() {
+        return workbenchTools
+          .map(
+            ([label, ids]) =>
+              '<details class="tool-menu-group" name="workbench-tool-group"><summary class="control" data-tool-group="' +
+              ids[0] +
+              '">' +
+              esc(text(label)) +
+              '</summary><div class="tool-menu-items">' +
+              ids
+                .map((id) => linked(id, byId.get(id).title, "tool-" + id))
+                .join("") +
+              "</div></details>",
+          )
+          .join("");
+      }
+
+      function dismissButton() {
+        return (
+          '<button type="button" data-back aria-label="' +
+          esc(tr("关闭草稿详情", "Close draft details")) +
+          '">' +
+          esc(tr("关闭", "Close")) +
+          "</button>"
+        );
+      }
+
+      function heading(draft, dismissible) {
+        return (
+          '<header class="section-head"><div><h2 data-heading tabindex="-1">' +
+          esc(text(draft.title)) +
+          "</h2><p>" +
+          esc(text(draft.target)) +
+          "</p></div>" +
+          (dismissible ? dismissButton() : "") +
+          "</header>"
+        );
+      }
+
+      function message(draft, submitted = false) {
+        const mode = modeFor(draft);
+        if (mode === "empty")
+          return tr(
+            "暂无数据。请先选择目标或来源。",
+            "No data yet. Select a target or source.",
+          );
+        if (mode === "revoked")
+          return tr(
+            "授权已撤回。重新核对当前目标的访问范围。",
+            "Access revoked. Review grants for this target.",
+          );
+        if (mode === "readonly")
+          return tr(
+            "当前为只读。可查看获准的内容和回执。",
+            "Read only. Granted data and receipts remain available.",
+          );
+        if (mode === "running")
+          return tr(
+            "任务正在运行。按收到的回执更新写入量。",
+            "The task is running. Written bytes follow the receipt.",
+          );
+        if (mode === "stopping")
+          return tr(
+            "已请求停止。等待同一任务结算。",
+            "Stop requested. Waiting for the task result.",
+          );
+        if (mode === "unknown")
+          return tr(
+            "已确认写入 1 B。其余范围无法确认。",
+            "One byte confirmed. The remaining range is unconfirmed.",
+          );
+        if (mode === "failure" && draft.id === "transfer")
+          return tr(
+            "未发送。请核对当前目标和写入权限。",
+            "Nothing sent. Check the current target and write permission.",
+          );
+        if (mode === "failure")
+          return tr(
+            "操作失败。检查当前目标和详情后重试。",
+            "Action failed. Check the current target and details, then retry.",
+          );
+        if (draft.id === "session" && !state.connected)
+          return tr("COM7 已断开。", "COM7 disconnected.");
+        if (draft.id === "transfer" && !submitted)
+          return state.connected
+            ? tr("确认范围后发送。", "Confirm the range to send.")
+            : tr("连接所选端口后发送。", "Connect the selected port to send.");
+        return text(draft.receipt);
+      }
+
+      function feedback(draft) {
+        const role = modeFor(draft) === "failure" ? "alert" : "status";
+        return (
+          '<p class="feedback" tabindex="-1" role="' +
+          role +
+          '" data-feedback="' +
+          draft.id +
+          '">' +
+          esc(message(draft)) +
+          "</p>"
+        );
+      }
+
+      function selectedBytes() {
+        const bytes = ["00", "FE", "23", "FF"];
+        const [offset, end] =
+          state.transferRange === "sample" ? [1, 3] : [0, bytes.length];
+        return {
+          offset,
+          length: end - offset,
+          range: "[" + offset + ", " + end + ") / " + bytes.length,
+          hex: bytes.slice(offset, end).join(" "),
+        };
+      }
+
+      function fieldValue(draft, value, index) {
+        if (isUnavailable(draft)) return "—";
+        if (draft.id === "transfer" && index >= 1 && index <= 3) {
+          const selection = selectedBytes();
+          return [selection.offset, selection.length, selection.range][
+            index - 1
+          ];
+        }
+        if (draft.id === "library" && index === 2)
+          return state.commandChanged ? "09 FF 00 41" : "01 03 00 00";
+        if (draft.id === "task" && index === 3)
+          return Object.hasOwn(taskModes, modeFor(draft))
+            ? text(taskModes[modeFor(draft)])
+            : tr("已停止", "Stopped");
+        return text(value);
+      }
+
+      function fields(draft, omit = []) {
+        return (
+          '<dl class="field-grid">' +
+          draft.fields
+            .map(([label, value], index) => {
+              if (omit.includes(index)) return "";
+              const file = draft.mode === "transfer" && index === 0;
+              const commandBody = draft.id === "library" && index === 2;
+              const valueText = fieldValue(draft, value, index);
+              return (
+                '<div class="field' +
+                (file || commandBody ? " file-field" : "") +
+                '"><dt>' +
+                esc(text(label)) +
+                '</dt><dd class="control"><span>' +
+                esc(valueText) +
+                "</span>" +
+                (file
+                  ? '<button type="button" data-file-preview' +
+                    (["revoked", "running", "stopping"].includes(modeFor(draft))
+                      ? " disabled"
+                      : "") +
+                    ">" +
+                    esc(tr("选择源文件", "Choose source file")) +
+                    "</button>"
+                  : "") +
+                (commandBody
+                  ? '<button type="button" data-command-preview' +
+                    (isUnavailable(draft) || modeFor(draft) === "readonly"
+                      ? " disabled"
+                      : "") +
+                    ">" +
+                    esc(tr("选择正文文件", "Choose command body file")) +
+                    "</button>"
+                  : "") +
+                "</dd></div>"
+              );
+            })
+            .join("") +
+          "</dl>"
+        );
+      }
+
+      function table(label, headers, values, selected = -1) {
+        return (
+          '<div class="data-area" role="region" tabindex="0" aria-label="' +
+          esc(text(label)) +
+          '"><table class="log-table"><thead><tr>' +
+          headers
+            .map((header) => '<th scope="col">' + esc(text(header)) + "</th>")
+            .join("") +
+          "</tr></thead><tbody>" +
+          (isUnavailable()
+            ? '<tr><td colspan="' +
+              headers.length +
+              '">' +
+              esc(tr("无可显示数据", "No data to show")) +
+              "</td></tr>"
+            : values
+                .map(
+                  (row, index) =>
+                    "<tr" +
+                    (index === selected ? ' class="selected"' : "") +
+                    ">" +
+                    row
+                      .map(
+                        (value, column) =>
+                          "<td" +
+                          (column === row.length - 1
+                            ? ' class="packet"'
+                            : value === "RX"
+                              ? ' class="rx"'
+                              : "") +
+                          ">" +
+                          esc(text(value)) +
+                          "</td>",
+                      )
+                      .join("") +
+                    "</tr>",
+                )
+                .join("")) +
+          "</tbody></table></div>"
+        );
+      }
+
+      function rawTable(different = false) {
+        return table(
+          ["字节流", "Byte stream"],
+          [
+            ["时间", "Time"],
+            ["方向", "Direction"],
+            ["偏移", "Offset"],
+            ["数据", "Data"],
+          ],
+          [
+            ["13:40:12.224", "RX", "00000000", "00 FE 23 FF"],
+            ["13:40:12.312", "TX", "00000004", "FE 23"],
+            ["13:40:12.335", "RX", "00000006", different ? "A4" : "A5"],
+            ["13:40:12.478", "RX", "00000007", "AA 55 02 01 26"],
+          ],
+          1,
+        );
+      }
+
+      function graph(kind) {
+        const title =
+          kind === "wave"
+            ? tr("UART 电平波形", "UART signal waveform")
+            : tr("所选样本图表", "Selected sample chart");
+        return (
+          '<div class="data-area" role="region" tabindex="0" aria-label="' +
+          esc(title) +
+          '"><canvas role="img" aria-label="' +
+          esc(title) +
+          '" data-plot="' +
+          kind +
+          '"' +
+          (kind === "wave" ? ' class="wave"' : "") +
+          "></canvas></div>"
+        );
+      }
+
+      function details(labels, body) {
+        return (
+          '<details class="inline-details"><summary>' +
+          esc(text(labels)) +
+          "</summary>" +
+          body +
+          "</details>"
+        );
+      }
+
+      function picker(ids, current, label) {
+        return (
+          '<select data-slot-picker aria-label="' +
+          esc(text(label)) +
+          '">' +
+          ids
+            .map(
+              (id) =>
+                '<option value="' +
+                id +
+                '"' +
+                (id === current ? " selected" : "") +
+                ">" +
+                esc(text(byId.get(id).title)) +
+                "</option>",
+            )
+            .join("") +
+          "</select>"
+        );
+      }
+
+      function secondary(draft) {
+        const neighbors = {
+          workspace: ["experiment", "session"],
+          library: ["send", "transform"],
+          protocol: ["modbus", "infer", "fields"],
+          modbus: ["protocol", "fields", "task"],
+          schedule: ["script", "suite", "task"],
+          suite: ["experiment", "task", "metrics"],
+          capture: ["replay", "task"],
+          replay: ["capture", "compare"],
+          diagnostics: ["waveform", "metrics", "device"],
+          task: ["activity", "transfer"],
+          transfer: ["flash", "task", "library"],
+        };
+        const keys = neighbors[draft.id];
+        return keys
+          ? '<div class="filters">' +
+              keys
+                .map((id) => linked(id, byId.get(id).title, "related-" + id))
+                .join("") +
+              "</div>"
+          : "";
+      }
+
+      function examples(draft) {
+        if (draft.id === "transfer") {
+          const { offset, hex } = selectedBytes();
+          return (
+            '<pre class="file-preview data-area" aria-label="' +
+            esc(tr("选区开头字节", "Selection preview")) +
+            '">' +
+            esc(
+              isUnavailable()
+                ? "—"
+                : String(offset).padStart(8, "0") + "    " + hex,
+            ) +
+            "</pre>"
+          );
+        }
+        if (draft.id === "waveform")
+          return isUnavailable() ? "" : graph("wave");
+        if (draft.id === "replay") return rawTable();
+        if (draft.id === "metrics") {
+          return table(
+            ["指标详情", "Metric details"],
+            [
+              ["来源", "Source"],
+              ["度量", "Metric"],
+              ["值", "Value"],
+            ],
+            [
+              [["串口采集", "Serial capture"], ["已读", "Read"], "12.8 KiB/s"],
+              [["录制", "Capture file"], ["已同步", "Synced"], "500"],
+              [["读者", "Reader"], ["缺口", "Gap"], "2 B"],
+            ],
+          );
+        }
+        if (draft.mode === "editor" && !isUnavailable()) {
+          const value =
+            draft.id === "script"
+              ? "12    onReceive(frame) {\n13      inspect(frame);\n14    }"
+              : draft.id === "suite"
+                ? "row   expected    result\n01    A5          PASS\n02    A5          TIMEOUT"
+                : "01    TX     FE 23\n02    WAIT   A5 · 500 ms";
+          return (
+            '<pre class="editor-sample data-area">' + esc(value) + "</pre>"
+          );
+        }
+        return "";
+      }
+
+      function sideList(draft, title, listItems, ids = []) {
+        const label = esc(text(title));
+        if (ids.length) {
+          return (
+            '<nav class="list" data-collapse="true" aria-label="' +
+            label +
+            '">' +
+            ids
+              .map((id) =>
+                linked(id, byId.get(id).title, "list-" + id, id === draft.id),
+              )
+              .join("") +
+            "</nav>"
+          );
+        }
+        return (
+          '<div class="list" role="list" aria-label="' +
+          label +
+          '">' +
+          listItems
+            .map(
+              (item, index) =>
+                '<span role="listitem" class="control' +
+                (index === 0 ? " current" : "") +
+                '">' +
+                esc(text(item)) +
+                "</span>",
+            )
+            .join("") +
+          "</div>"
+        );
+      }
+
+      function fieldBody(draft) {
+        if (draft.id === "transfer")
+          return (
+            transferPages() +
+            fields(draft, state.transferPage === "advanced" ? [4] : [1, 2, 4]) +
+            (state.transferPage === "advanced" && modeFor(draft) === "normal"
+              ? '<div class="filters"><button type="button" data-transfer-range="' +
+                (state.transferRange === "all" ? "sample" : "all") +
+                '">' +
+                esc(
+                  state.transferRange === "all"
+                    ? tr("预览示例选区 [1, 3)", "Preview sample range [1, 3)")
+                    : tr("恢复全文件范围", "Restore the full-file range"),
+                ) +
+                "</button></div>"
+              : "") +
+            examples(draft)
+          );
+        if (draft.mode === "catalog") {
+          const list = {
+            device: ["CP2102 · COM7", "Virtual Echo"],
+            workspace: [
+              ["接收与图表", "Receive and chart"],
+              ["调试视图", "Debug view"],
+            ],
+            library: [
+              ["读取温度", "Read temperature"],
+              ["固件版本", "Firmware version"],
+            ],
+            infer: [
+              ["温度字段", "Temperature field"],
+              ["候选校验", "Checksum candidate"],
+            ],
+            experiment: ["thermal-bench.swexp", "capture.swbc"],
+            plugin: [
+              ["串口字段图表", "Serial field charts"],
+              ["串口终端", "Serial terminal"],
+            ],
+          };
+          return (
+            '<div class="split-view">' +
+            sideList(draft, ["条目", "Items"], list[draft.id] ?? []) +
+            "<div>" +
+            (draft.id === "library" &&
+            state.commandPreview &&
+            !isUnavailable(draft)
+              ? commandBodyPreview()
+              : "") +
+            fields(draft) +
+            examples(draft) +
+            "</div></div>"
+          );
+        }
+        return fields(draft) + examples(draft);
+      }
+
+      function transferPages() {
+        const pages = {
+          general: ["常规", "General"],
+          advanced: ["高级", "Advanced"],
+        };
+        return (
+          '<div class="transfer-pages" role="group" aria-label="' +
+          esc(tr("传输参数", "Transfer parameters")) +
+          '">' +
+          Object.entries(pages)
+            .map(
+              ([id, label]) =>
+                '<button type="button" data-transfer-page="' +
+                id +
+                '" aria-pressed="' +
+                (state.transferPage === id) +
+                '">' +
+                esc(text(label)) +
+                "</button>",
+            )
+            .join("") +
+          "</div>"
+        );
+      }
+
+      function commandBodyPreview() {
+        return (
+          '<section class="command-preview" aria-label="' +
+          esc(tr("正文替换预览", "Command body replacement preview")) +
+          '">' +
+          "<p>" +
+          esc(
+            tr(
+              "read-temperature.bin 将替换「读取温度」的编辑草稿。",
+              "read-temperature.bin will replace the draft for Read temperature.",
+            ),
+          ) +
+          "</p>" +
+          "<p><code>01 03 00 00</code> → <code>09 FF 00 41</code></p>" +
+          '<div class="filters"><button type="button" data-command-dismiss>' +
+          esc(tr("取消", "Cancel")) +
+          '</button><button type="button" class="primary" data-command-apply>' +
+          esc(tr("应用到正文", "Apply to body")) +
+          "</button></div></section>"
+        );
+      }
+
+      function footerAction(draft) {
+        const mode = modeFor(draft);
+        if (mode === "running")
+          return (
+            '<button type="button" data-demo-stop>' +
+            esc(tr("停止任务", "Stop task")) +
+            "</button>"
+          );
+        if (mode === "stopping")
+          return (
+            '<button type="button" disabled>' +
+            esc(tr("等待停止", "Waiting to stop")) +
+            "</button>"
+          );
+        if (mode === "unknown")
+          return action(draft, ["查看回执", "Inspect receipt"]);
+        if (draft.id === "library" && state.commandChanged)
+          return action(
+            draft,
+            ["保存命令", "Save command"],
+            "primary",
+            mode === "readonly",
+          );
+        return action(draft);
+      }
+
+      function confirmation(draft) {
+        if (
+          draft.id !== "transfer" ||
+          !["normal", "readonly", "failure"].includes(modeFor(draft))
+        )
+          return "";
+        const { range, length, hex } = selectedBytes();
+        return (
+          '<div class="confirmation-facts" data-confirmation>' +
+          "<strong>COM7 · " +
+          esc(range) +
+          " · " +
+          length +
+          " B</strong><code>" +
+          esc(hex) +
+          "</code></div>"
+        );
+      }
+
+      function draftFooter(draft) {
+        return (
+          '<footer class="task-footer">' +
+          '<div class="action-context">' +
+          confirmation(draft) +
+          feedback(draft) +
+          "</div>" +
+          footerAction(draft) +
+          "</footer>"
+        );
+      }
+
+      function tool(draft) {
+        const related = secondary(draft);
+        return (
+          '<section class="scene main-scroll"><div class="scene-scroll section">' +
+          heading(draft, true) +
+          fieldBody(draft) +
+          details(["来源与回执", "Source and receipt"], feedback(draft)) +
+          (related ? details(["相关工具", "Related tools"], related) : "") +
+          "</div>" +
+          draftFooter(draft) +
+          "</section>"
+        );
+      }
+
+      function readArea(draft) {
+        const isRawView = draft.id === "session" || draft.id === "send";
+        const headingMarkup = heading(
+          isRawView ? byId.get("raw") : draft,
+          draft.id === "compare",
+        );
+        if (draft.id === "compare") {
+          return (
+            headingMarkup +
+            fields(draft) +
+            '<div class="two-source"><div><h3>COM7</h3>' +
+            rawTable() +
+            "</div><div><h3>Virtual Echo</h3>" +
+            rawTable(true) +
+            "</div></div>" +
+            feedback(draft)
+          );
+        }
+        if (draft.id === "fields") {
+          return (
+            headingMarkup +
+            table(
+              ["解析字段", "Decoded fields"],
+              [
+                ["字段", "Field"],
+                ["值", "Value"],
+                ["单位", "Unit"],
+                ["质量", "Quality"],
+                ["源偏移", "Source offset"],
+              ],
+              [
+                [
+                  ["温度", "Temperature"],
+                  "29.4",
+                  "°C",
+                  ["已确认", "Confirmed"],
+                  "[1, 3)",
+                ],
+                [
+                  ["采样周期", "Sampling interval"],
+                  "200",
+                  "ms",
+                  ["已确认", "Confirmed"],
+                  "[3, 5)",
+                ],
+                [
+                  ["序号", "Sequence"],
+                  "1286",
+                  "—",
+                  ["无缺口", "No gap"],
+                  "[5, 7)",
+                ],
+              ],
+              0,
+            ) +
+            secondary(draft) +
+            feedback(draft)
+          );
+        }
+        if (draft.id === "chart") {
+          return (
+            headingMarkup +
+            '<div class="detail-grid">' +
+            (isUnavailable() ? feedback(draft) : graph("stream")) +
+            "<div>" +
+            fields(draft) +
+            action(draft) +
+            "</div></div>" +
+            feedback(draft)
+          );
+        }
+        if (draft.id === "terminal") {
+          return (
+            headingMarkup +
+            '<div class="data-area"><pre tabindex="0" class="terminal-view">' +
+            esc(
+              isUnavailable()
+                ? tr("等待终端数据", "Waiting for terminal data")
+                : "STM32 console 1.2\nuart0: 115200 8N1\n> temp\n29.4 C\n> _",
+            ) +
+            "</pre></div>" +
+            details(["会话选项", "Session options"], fields(draft)) +
+            feedback(draft)
+          );
+        }
+        if (draft.id === "shell") {
+          return (
+            headingMarkup +
+            '<div class="split-view">' +
+            sideList(draft, ["应用导航", "App navigation"], [], rootAreas) +
+            "<div>" +
+            fields(draft) +
+            action(draft) +
+            feedback(draft) +
+            "</div></div>"
+          );
+        }
+        return (
+          headingMarkup +
+          '<div class="detail-grid">' +
+          rawTable() +
+          "<aside>" +
+          details(
+            ["来源与选区", "Source and selection"],
+            fields(byId.get("raw")),
+          ) +
+          "</aside></div>" +
+          feedback(draft)
+        );
+      }
+
+      function composer(active) {
+        const draft = byId.get("send");
+        return (
+          '<div class="composer">' +
+          menu(
+            ["HEX", "HEX"],
+            "send-menu",
+            linked("transform") + linked("library") + linked("schedule"),
+          ) +
+          '<label class="draft"><span class="sr-only">' +
+          esc(tr("发送草稿", "Send draft")) +
+          '</span><input readonly value="' +
+          (isUnavailable() ? "" : "FE 23") +
+          '" /><small>' +
+          (isUnavailable() ? "0 B" : "2 B") +
+          "</small></label>" +
+          action(draft, draft.action, "primary", !active) +
+          '<span class="composer-receipt" role="status" aria-atomic="true"></span></div>'
+        );
+      }
+
+      function workbench(draft) {
+        const active = workbenchViews.includes(draft.id);
+        const mode = modeFor(byId.get("session"));
+        const status = esc(
+          mode === "revoked"
+            ? tr("连接状态不可查询", "Connection state unavailable")
+            : mode === "empty" || !state.connected
+              ? tr("未连接", "Disconnected")
+              : mode === "readonly"
+                ? tr("只读", "Read only")
+                : tr("COM7 已连接", "COM7 connected"),
+        );
+        const viewIds = ["raw", "terminal", "fields", "chart"];
+        const viewChoices =
+          '<div class="filters"><div class="wide-only">' +
+          viewIds
+            .map((id) =>
+              linked(
+                id,
+                id === "fields" ? ["字段", "Fields"] : byId.get(id).title,
+                "view-" + id,
+                id === draft.id,
+              ),
+            )
+            .join(" ") +
+          '</div><div class="narrow-only">' +
+          picker(viewIds, draft.id, ["观察视图", "Data view"]) +
+          "</div>" +
+          linked("task", ["任务", "Tasks"], "workbench-tasks") +
+          "</div>";
+
+        const connectionBar =
+          '<div class="bar"><div class="targets">' +
+          '<span class="wide-only">' +
+          linked("workspace", ["调试 STM32", "Debug STM32"], "workspace") +
+          "</span>" +
+          linked(
+            "device",
+            isUnavailable() ? ["端口", "Port"] : ["COM7", "COM7"],
+            "port",
+          ) +
+          linked("connection", ["参数", "Parameters"], "parameters") +
+          action(
+            byId.get("session"),
+            state.connected && !isUnavailable()
+              ? ["断开", "Disconnect"]
+              : ["连接", "Connect"],
+          ) +
+          "</div>" +
+          '<span class="connection-status wide-only" data-connected="' +
+          (mode === "normal" && state.connected) +
+          '">' +
+          status +
+          "</span>" +
+          menu(["工具", "Tools"], "workbench-tools", groupedTools()) +
+          "</div>";
+        const sessions =
+          '<div class="tabs" aria-label="' +
+          esc(tr("会话", "Sessions")) +
+          '">' +
+          linked("session", ["COM7", "COM7"], "session-tab", true) +
+          '<span class="control">Virtual Echo</span>' +
+          '<span class="scope-chip">' +
+          esc(tr("本机 Host", "Local Host")) +
+          '</span><span class="scope-chip narrow-only">' +
+          status +
+          "</span></div>";
+        return (
+          '<div class="workbench">' +
+          connectionBar +
+          sessions +
+          (active
+            ? '<section class="main-scroll section">' +
+              (draft.id === "compare" ? "" : viewChoices) +
+              readArea(draft) +
+              "</section>"
+            : tool(draft)) +
+          composer(active && draft.id !== "compare") +
+          "</div>"
+        );
+      }
+
+      function page(draft) {
+        const group = draft.group === "插件" ? pluginAreas : settingsAreas;
+        const title =
+          draft.group === "插件"
+            ? ["插件入口", "Plugin areas"]
+            : ["设置类别", "Settings categories"];
+        const body =
+          draft.id === "plugin-view" && !isUnavailable()
+            ? '<div class="detail-grid">' +
+              graph("spectrum") +
+              fields(draft) +
+              "</div>"
+            : fields(draft);
+        const pageNav =
+          draft.id === "native"
+            ? '<p class="subtle">' +
+              esc(
+                tr(
+                  "示例窗口由系统呈现",
+                  "Example displayed by the operating system",
+                ),
+              ) +
+              "</p>"
+            : '<div class="filters"><label><span class="sr-only">' +
+              esc(text(title)) +
+              '</span><input class="control" type="search" readonly placeholder="' +
+              esc(tr("搜索当前页面", "Search this page")) +
+              '" /></label><div class="narrow-only">' +
+              picker(group, draft.id, title) +
+              "</div></div>";
+        return (
+          '<section class="scene main-scroll"><div class="scene-scroll section">' +
+          pageNav +
+          '<div class="split-view">' +
+          sideList(draft, title, [], group) +
+          '<article class="page-content">' +
+          heading(draft, draft.id !== "plugin" && draft.id !== "preferences") +
+          body +
+          secondary(draft) +
+          details(["实际影响", "Effect"], feedback(draft)) +
+          "</article></div></div>" +
+          draftFooter(draft) +
+          "</section>"
+        );
+      }
+
+      const pluginAreas = ["plugin", "plugin-view"];
+      const rootLabel = {
+        session: ["串口工作台", "Workbench"],
+        plugin: ["插件", "Plugins"],
+        preferences: ["设置", "Settings"],
+      };
+
+      function currentRoot(draft) {
+        if (draft.group === "插件") return "plugin";
+        if (draft.group === "设置" || draft.group === "系统界面")
+          return "preferences";
+        return "session";
+      }
+
+      function titlebar(draft) {
+        const menuItems =
+          rootAreas
+            .map((id) => linked(id, rootLabel[id], "app-" + id))
+            .join("") +
+          linked("shell", ["命令与帮助", "Commands and Help"], "app-shell");
+        return (
+          '<header class="titlebar">' +
+          menu(["应用菜单", "App menu"], "app-menu", menuItems) +
+          '<div class="product-name">' +
+          esc(text(rootLabel[currentRoot(draft)])) +
+          "</div>" +
+          linked("shell", ["命令", "Commands"], "title-commands") +
+          "</header>"
+        );
+      }
+
+      function canvasPaint(plot) {
+        const ctx = plot.getContext("2d");
+        const rect = plot.getBoundingClientRect();
+        plot.width = rect.width * devicePixelRatio;
+        plot.height = rect.height * devicePixelRatio;
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        const palette = getComputedStyle(frame);
+        const width = rect.width;
+        const height = rect.height;
+        const pad = 26;
+        ctx.strokeStyle = palette.getPropertyValue("--line");
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i <= 4; i++) {
+          const y = (i * (height - pad)) / 4;
+          ctx.moveTo(pad, y);
+          ctx.lineTo(width - pad, y);
+        }
+        ctx.stroke();
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = palette.getPropertyValue("--good");
+        ctx.beginPath();
+        if (plot.dataset.plot === "wave") {
+          const bits = [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+          const step = (width - 2 * pad) / bits.length;
+          let last = 1;
+          bits.forEach((bit, i) => {
+            const x = pad + i * step;
+            const y = height * (bit ? 0.29 : 0.67);
+            if (i === 0) ctx.moveTo(x, y);
+            else if (bit !== last) ctx.lineTo(x, y);
+            ctx.lineTo(x + step, y);
+            last = bit;
+          });
+        } else {
+          const spectrum = plot.dataset.plot === "spectrum";
+          for (let i = 0; i <= 100; i++) {
+            const x = pad + (i / 100) * (width - 2 * pad);
+            const y =
+              (height - pad) *
+              (spectrum
+                ? 0.88 -
+                  Math.exp(-Math.pow((i - 27) / 5, 2)) * 0.7 -
+                  Math.sin(i * 1.2) * 0.035
+                : 0.52 - Math.sin(i / 6) * 0.21 - i / 800);
+            if (i === 0 || i === 53) ctx.moveTo(x, y);
+            else if (i < 48 || i > 53) ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = palette.getPropertyValue("--ink");
+        ctx.font = "12px Consolas, monospace";
+        ctx.fillText(
+          plot.dataset.plot === "wave"
+            ? "µs"
+            : plot.dataset.plot === "spectrum"
+              ? "Hz"
+              : "s",
+          width - pad,
+          height - 6,
+        );
+      }
+
+      function renderFrame() {
+        const draft = byId.get(state.area);
+        const root = currentRoot(draft);
+        const [width, height] = dimensions[state.size];
+        frame.style.setProperty("--frame-width", width + "px");
+        frame.style.setProperty("--frame-height", height + "px");
+        frame.dataset.theme = state.theme;
+        frame.innerHTML =
+          '<div class="product">' +
+          titlebar(draft) +
+          '<div class="product-body"><nav class="rail" aria-label="' +
+          esc(tr("主导航", "Main navigation")) +
+          '">' +
+          rootAreas
+            .map((id) => linked(id, rootLabel[id], "rail-" + id, id === root))
+            .join("") +
+          "</nav>" +
+          (root === "session" ? workbench(draft) : page(draft)) +
+          "</div></div>";
+        frame.querySelectorAll("[data-plot]").forEach(canvasPaint);
+      }
+
+      function options(select, values, selected) {
+        select.replaceChildren(
+          ...Object.entries(values).map(
+            ([id, labels]) => new Option(text(labels), id),
+          ),
+        );
+        select.value = selected;
+      }
+
+      function updateModeControl() {
+        const values =
+          state.area === "transfer" || state.area === "task"
+            ? { ...modes, ...taskModes }
+            : modes;
+        options(
+          controls.mode,
+          values,
+          Object.hasOwn(values, state.mode) ? state.mode : "normal",
+        );
+      }
+
+      function renderControls() {
+        document.documentElement.lang =
+          state.language === "zh" ? "zh-CN" : "en";
+        document.querySelector("#viewer-title").textContent = tr(
+          "串口工作台界面草稿",
+          "Serial Workbench wireframes",
+        );
+        document.querySelector("#viewer-note").textContent = tr(
+          "示例数据，用于核对界面结构与预留位置",
+          "Sample data for reviewing interface layout and placement",
+        );
+        const labels = {
+          area: ["功能区", "Area"],
+          size: ["窗口", "Window"],
+          mode: ["示例状态", "Sample state"],
+          theme: ["主题", "Theme"],
+          language: ["语言", "Language"],
+        };
+        Object.entries(labels).forEach(([key, label]) => {
+          document.querySelector("#" + key + "-label").textContent =
+            text(label);
+        });
+        controls.area.replaceChildren(
+          ...Object.keys(groups).map((group) => {
+            const optgroup = document.createElement("optgroup");
+            optgroup.label = text(groups[group]);
+            drafts
+              .filter((draft) => draft.group === group)
+              .forEach((draft) => {
+                optgroup.append(new Option(text(draft.title), draft.id));
+              });
+            return optgroup;
+          }),
+        );
+        controls.area.value = state.area;
+        options(
+          controls.size,
+          {
+            wide: ["宽窗 1240 × 760", "Wide 1240 × 760"],
+            compact: ["中窗 840 × 600", "Medium 840 × 600"],
+            narrow: ["窄短窗 420 × 460", "Narrow 420 × 460"],
+          },
+          state.size,
+        );
+        updateModeControl();
+        options(
+          controls.theme,
+          { light: ["浅色", "Light"], dark: ["深色", "Dark"] },
+          state.theme,
+        );
+        controls.language.value = state.language;
+      }
+
+      function openArea(id, trigger) {
+        if (id !== state.area && trigger)
+          state.history.push({ area: state.area, trigger });
+        state.area = id;
+        controls.area.value = id;
+        updateModeControl();
+        if (location.hash !== "#" + id)
+          history.replaceState(null, "", "#" + id);
+        renderFrame();
+        if (trigger)
+          frame.querySelector("[data-heading]").focus({ preventScroll: true });
+      }
+
+      function closeArea() {
+        const last = state.history.pop();
+        const area = last?.area ?? currentRoot(byId.get(state.area));
+        openArea(area);
+        const target =
+          last &&
+          frame.querySelector(
+            '[data-trigger="' + CSS.escape(last.trigger) + '"]',
+          );
+        const menuParent =
+          target?.closest(".drop-menu") ?? target?.closest("details");
+        const fallback = frame.querySelector('[data-trigger="app-menu"]');
+        const destination = menuParent?.querySelector("summary") ?? target;
+        (destination?.getClientRects().length ? destination : fallback).focus({
+          preventScroll: true,
+        });
+      }
+
+      function focusWithinFrame(selector) {
+        frame.querySelector(selector)?.focus();
+      }
+
+      function closeCommandPreview(apply) {
+        state.commandPreview = false;
+        if (apply) state.commandChanged = true;
+        renderFrame();
+        if (apply) {
+          frame.querySelector(
+            '.task-footer [data-feedback="library"]',
+          ).textContent = tr(
+            "已替换编辑草稿。保存后写入命令库。",
+            "Draft body replaced. Save it to the command library.",
+          );
+        }
+        focusWithinFrame("[data-command-preview]");
+      }
+
+      function showTaskPhase(phase) {
+        state.mode = phase;
+        updateModeControl();
+        renderFrame();
+        focusWithinFrame(
+          phase === "running" ? "[data-demo-stop]" : ".task-footer .feedback",
+        );
+      }
+
+      controls.area.addEventListener("change", () => {
+        state.history.length = 0;
+        openArea(controls.area.value);
+      });
+
+      controls.language.addEventListener("change", () => {
+        state.language = controls.language.value;
+        renderControls();
+        renderFrame();
+      });
+
+      ["size", "mode", "theme"].forEach((key) => {
+        controls[key].addEventListener("change", () => {
+          state[key] = controls[key].value;
+          if (
+            key === "mode" &&
+            (state.mode === "revoked" || state.mode === "readonly")
+          )
+            state.commandPreview = false;
+          renderFrame();
+        });
+      });
+
+      frame.addEventListener("change", (event) => {
+        if (event.target.matches("[data-slot-picker]"))
+          openArea(event.target.value, "app-menu");
+      });
+
+      frame.addEventListener("click", (event) => {
+        const link = event.target.closest("[data-open]");
+        if (link) {
+          openArea(link.dataset.open, link.dataset.trigger);
+          return;
+        }
+        if (event.target.closest("[data-back]")) {
+          closeArea();
+          return;
+        }
+        const transferPage = event.target.closest("[data-transfer-page]");
+        if (transferPage) {
+          state.transferPage = transferPage.dataset.transferPage;
+          renderFrame();
+          frame
+            .querySelector('[data-transfer-page="' + state.transferPage + '"]')
+            .focus();
+          return;
+        }
+        if (event.target.closest("[data-file-preview]")) {
+          state.transferRange = "all";
+          if (state.mode === "empty" || state.mode === "unknown") {
+            state.mode = "normal";
+            updateModeControl();
+          }
+          renderFrame();
+          focusWithinFrame("[data-file-preview]");
+          const result = frame.querySelector(
+            '.task-footer [data-feedback="transfer"]',
+          );
+          result.textContent = tr(
+            "已选 firmware.bin。请核对字节范围。",
+            "firmware.bin selected. Review the byte range.",
+          );
+          return;
+        }
+        const range = event.target.closest("[data-transfer-range]");
+        if (range) {
+          state.transferRange = range.dataset.transferRange;
+          renderFrame();
+          focusWithinFrame("[data-transfer-range]");
+          return;
+        }
+        if (event.target.closest("[data-command-preview]")) {
+          state.commandPreview = true;
+          renderFrame();
+          focusWithinFrame("[data-command-dismiss]");
+          return;
+        }
+        if (
+          event.target.closest("[data-command-dismiss], [data-command-apply]")
+        ) {
+          closeCommandPreview(
+            Boolean(event.target.closest("[data-command-apply]")),
+          );
+          return;
+        }
+        if (event.target.closest("[data-demo-stop]")) {
+          showTaskPhase("stopping");
+          return;
+        }
+        const command = event.target.closest("[data-action]");
+        if (!command) return;
+        const draft = byId.get(command.dataset.action);
+        const mode = modeFor(draft);
+        if (draft.id === "transfer" && mode === "normal") {
+          showTaskPhase("running");
+          return;
+        }
+        if (draft.id === "plugin" && mode === "normal") {
+          openArea("plugin-view", "open-plugin-view");
+          return;
+        }
+        if (draft.id === "session" && mode === "normal") {
+          state.connected = !state.connected;
+          renderFrame();
+          frame.querySelector('[data-action="session"]').focus();
+          return;
+        }
+        const resultTarget =
+          (draft.id === "send"
+            ? frame.querySelector(".composer-receipt")
+            : null) ??
+          frame.querySelector(
+            '.task-footer [data-feedback="' + draft.id + '"]',
+          ) ??
+          frame.querySelector('[data-feedback="' + draft.id + '"]') ??
+          frame.querySelector(
+            '.main-scroll [role="status"], .main-scroll [role="alert"]',
+          );
+        if (resultTarget)
+          resultTarget.textContent =
+            draft.id === "library" && state.commandChanged && mode === "normal"
+              ? tr(
+                  "样例命令已保存，可重新打开查看正文。",
+                  "Sample command saved. Reopen it to inspect the body.",
+                )
+              : tr("示例回执 · ", "Sample receipt · ") + message(draft, true);
+      });
+
+      frame.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        const details = event.target.closest("details[open]");
+        if (details) {
+          details.open = false;
+          details.querySelector("summary").focus();
+        } else if (state.area === "library" && state.commandPreview) {
+          closeCommandPreview(false);
+        } else if (state.history.length || frame.querySelector("[data-back]")) {
+          closeArea();
+        } else {
+          return;
+        }
+        event.preventDefault();
+      });
+
+      window.addEventListener("hashchange", () => {
+        const id = location.hash.slice(1);
+        if (byId.has(id)) {
+          state.history.length = 0;
+          openArea(id);
+        }
+      });
+      new ResizeObserver(() =>
+        frame.querySelectorAll("[data-plot]").forEach(canvasPaint),
+      ).observe(frame);
+      renderControls();
+      renderFrame();
+    </script>
+  </body>
+</html>

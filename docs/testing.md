@@ -83,6 +83,8 @@ cargo fmt --all -- --check
 
 ## 持续集成
 
+当前执行 [Windows 本地验收优先](./plan.md#windows-本地验收优先)。按影响在 Windows 本机做构建、定向测试、无头 UI 和具备条件的专项验收。macOS/Linux 平台测试及 Windows/macOS/Linux 的 CI 统一排到功能实现完成后。下列 CI 入口和复验参数用于该阶段。真实窗口、安装、实机和长稳按各自的环境条件取证。 [桌面边界](#桌面边界) · [专项验收](./acceptance.md)
+
 [手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
 
 原生预检设置 `native_preflight=true` 和 `desktop_e2e=true`。`native_preflight_target` 可选择单个目标，`macos` 一次复验两种 macOS 架构，`windows-and-macos` 同时复验 Windows。各目标复用原生 E2E 并分别保留日志和收据，完整候选继续按四目标验收。
