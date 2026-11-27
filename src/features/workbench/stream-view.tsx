@@ -573,10 +573,11 @@ export function StreamView({
         : 0,
     [pendingBoundary, items],
   );
-  const following = fixedPageKey === undefined && !frozen && !reviewed;
+  const fixedPage = fixedPageKey !== undefined;
+  const following = !fixedPage && !frozen && !reviewed;
   const followingActive = useRef(true);
   const reviewHistory = () => {
-    if (frozen || fixedPageKey !== undefined) return;
+    if (frozen || fixedPage) return;
     setReviewed((current) => current ?? new Set(items.map(streamItemIdentity)));
   };
   const resume = useCallback(() => {
@@ -1416,6 +1417,9 @@ export function StreamView({
         <span
           className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
         >
+          {replay && !fixedPage && presentationLabels
+            ? `${presentationLabels.replay} · `
+            : ""}
           {row.kind === "rx" && !row.continuation && (
             <Download aria-hidden="true" />
           )}
@@ -1581,6 +1585,7 @@ export function StreamView({
     copyLocation,
     labels,
     replay,
+    fixedPage,
     presentationLabels,
     times,
     displayed,
@@ -2317,7 +2322,7 @@ export function StreamView({
             className="workbench-stream-log app-scroll-region"
             data-surface="transparent"
             data-following={following}
-            data-fixed-page={fixedPageKey !== undefined || undefined}
+            data-fixed-page={fixedPage || undefined}
             data-stream-windowed={rowWindow.enabled || undefined}
             data-locating={locatedItem !== undefined || undefined}
             onWheel={(event) => {
@@ -2345,7 +2350,7 @@ export function StreamView({
               if (event.target !== event.currentTarget) return;
               const element = event.currentTarget;
               if (
-                (rowWindow.enabled || fixedPageKey !== undefined) &&
+                (rowWindow.enabled || fixedPage) &&
                 (event.key === "Home" || event.key === "End")
               ) {
                 event.preventDefault();

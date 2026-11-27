@@ -721,7 +721,17 @@ export function ReplayPanel({
             initialEncoding={searchEncoding}
             closeLabel={labels.closeView}
             jumpDisabled={!availableControls}
-            fallbackFocus={archiveAccess ? browseTrigger : undefined}
+            fallbackFocus={
+              archiveAccess
+                ? {
+                    get current() {
+                      return browseTrigger.current?.isConnected
+                        ? browseTrigger.current
+                        : seekInput.current;
+                    },
+                  }
+                : undefined
+            }
             onSourceUnavailable={archiveAccess ? clearArchive : undefined}
             onJump={locateSearchHit}
           />

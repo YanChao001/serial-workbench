@@ -1086,7 +1086,7 @@ it("retracts a visible archive immediately when a read detects a changed source"
   expect(toggle).toHaveAttribute("aria-disabled", "false");
 });
 
-it.each(["scan", "locate", "revoke"] as const)(
+it.each(["scan", "locate", "revoke", "capability"] as const)(
   "clears the archive and keeps a focus target when search loses source access during %s",
   async (phase) => {
     const initial: ReplayReadResult = {
@@ -1143,19 +1143,19 @@ it.each(["scan", "locate", "revoke"] as const)(
       return () => {};
     };
     const archiveAccess = { hostId: "host", watchActions };
-    render(
-      <ReplayPanel
-        session={session()}
-        labels={labels}
-        disabled={false}
-        playbackSupported
-        archiveAccess={archiveAccess}
-        read={read}
-        readRecord={vi.fn()}
-        control={vi.fn()}
-        search={{ ...archiveAccess, run, t: searchLabels }}
-      />,
-    );
+    const props = {
+      session: session(),
+      labels,
+      disabled: false,
+      playbackSupported: true,
+      archiveAccess,
+      read,
+      readRecord: vi.fn(),
+      control: vi.fn(),
+      search: { ...archiveAccess, run, t: searchLabels },
+    };
+    const { rerender } = render(<ReplayPanel {...props} />);
+    const seek = screen.getByRole("textbox", { name: labels.seekRecord });
     const toggle = screen.getByRole("button", { name: labels.browseReplay });
     fireEvent.click(toggle);
     expect(await screen.findByText("1–1 / 1")).toBeVisible();
@@ -1164,6 +1164,10 @@ it.each(["scan", "locate", "revoke"] as const)(
     const dialog = screen.getByRole("dialog", { name: "Search recording" });
     if (phase === "revoke") {
       await act(async () => publishAccess(false));
+    } else if (phase === "capability") {
+      rerender(
+        <ReplayPanel {...props} archiveAccess={undefined} search={undefined} />,
+      );
     } else {
       fireEvent.change(
         within(dialog).getByRole("textbox", { name: "Search content" }),
@@ -1193,7 +1197,9 @@ it.each(["scan", "locate", "revoke"] as const)(
     await waitFor(() => {
       expect(dialog).not.toBeInTheDocument();
       expect(screen.queryByText("1–1 / 1")).not.toBeInTheDocument();
-      expect(phase === "scan" ? trigger : toggle).toHaveFocus();
+      const focus =
+        phase === "scan" ? trigger : phase === "capability" ? seek : toggle;
+      expect(focus).toHaveFocus();
     });
   },
 );
