@@ -272,6 +272,7 @@ export async function seedWorkbenchFixture(
     diagnosticLogs,
     experiment,
     extraActions = [],
+    extensionQueryResults = {},
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -325,6 +326,10 @@ export async function seedWorkbenchFixture(
       sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
     extraActions?: ActionSpec[];
+    extensionQueryResults?: Record<
+      string,
+      Extract<QueryResult, { kind: "extension" }>
+    >;
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -643,6 +648,7 @@ export async function seedWorkbenchFixture(
   const fixturePayload = {
     hostAttachment: attachment,
     hostQueryResults: queryResults,
+    extensionQueryResults,
     settingsState: settingsDocument,
     workspaceState: workspaceDocument,
     initialClientState: clientState,
@@ -699,6 +705,7 @@ export async function seedWorkbenchFixture(
     const {
       hostAttachment,
       hostQueryResults,
+      extensionQueryResults,
       settingsState,
       workspaceState,
       initialClientState,
@@ -2649,6 +2656,11 @@ export async function seedWorkbenchFixture(
               const query = request.params;
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
+              if (Object.hasOwn(extensionQueryResults, query.actionId))
+                return {
+                  ok: true,
+                  result: extensionQueryResults[query.actionId],
+                };
               if (
                 query.actionId === "workspace.experiment.export" &&
                 Array.isArray(query.params.recordings) &&

@@ -371,6 +371,33 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await expect(row.getByText("Ctrl+Shift+F9", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect.poll(enabled).toBe(true);
+
+  const beforePreprocess = await revision();
+  await page.getByRole("button", { name: "Send preprocessing" }).click();
+  const preprocess = page.getByRole("dialog", { name: "Send preprocessing" });
+  await preprocess
+    .getByRole("switch", { name: "Enable preprocessing" })
+    .click();
+  await expect.poll(enabled).toBe(false);
+  await press(beforePreprocess);
+  expect(await writes()).toEqual(["QVQ=", "T0s=", "TkVX", "TkVX"]);
+  await preprocess.getByRole("button", { name: "Load JSON example" }).click();
+  await preprocess.getByRole("button", { name: "Generate preview" }).click();
+  await expect(
+    preprocess.getByRole("region", { name: /Final HEX/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(enabled).toBe(true);
+  await press(await revision());
+  const finalWrites = [
+    "QVQ=",
+    "T0s=",
+    "TkVX",
+    "TkVX",
+    Buffer.from('{"data":"NEW"}').toString("base64"),
+  ];
+  await expect.poll(writes).toEqual(finalWrites);
+
   const connectedRevision = await revision();
   expect(
     await page.evaluate(() => window.workbenchFixture.failHost()),
@@ -379,7 +406,7 @@ test("desktop global send keeps the registered key on conflict and follows autho
   await expect.poll(revision).toBeGreaterThan(connectedRevision);
   await press(connectedRevision);
   await press(await revision());
-  expect(await writes()).toEqual(["QVQ=", "T0s=", "TkVX", "TkVX"]);
+  expect(await writes()).toEqual(finalWrites);
 });
 
 test("browser shortcuts do not expose system registration", async ({

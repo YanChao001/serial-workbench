@@ -28,7 +28,7 @@ import {
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { WorkbenchLabels } from "./labels";
 
-const example = '[\n  {"kind":"json","field":"data","format":"text"}\n]';
+const example = '[{"kind":"json","field":"data","format":"text"}]';
 
 type Input = { prepared: TextSendPreview; ending: Uint8Array };
 type Snapshot = {
