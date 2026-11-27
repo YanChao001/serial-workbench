@@ -8,6 +8,7 @@ import { OptionsSelect } from "@/components/options-select";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n";
 import { formatSerialLine } from "./serial-configuration";
+import { SampleProject } from "./sample-project";
 import { sessionTemplates } from "./session-templates";
 import type { ModbusSlaveAccess } from "./modbus-server-tool";
 
@@ -103,8 +104,10 @@ export default function SessionTemplateTool({
           value={selected}
           options={[
             { value: "stm32", label: t("sessionTemplate.stm32") },
+            { value: "arduino", label: t("sessionTemplate.arduino") },
             { value: "at", label: t("sessionTemplate.at") },
             { value: "modbus", label: t("sessionTemplate.modbus") },
+            { value: "modbusRead", label: t("sessionTemplate.modbusRead") },
           ]}
           disabled={connection.opening}
           onValueChange={(next) =>
@@ -171,7 +174,10 @@ export default function SessionTemplateTool({
           <code>Boot OK</code>
         </div>
       )}
-      {selected !== "stm32" && (
+      {"project" in template && (
+        <SampleProject key={template.project} project={template.project} />
+      )}
+      {(selected === "at" || selected === "modbus") && (
         <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
           {selected === "at" ? (
             <AtTool initiallyExpanded />

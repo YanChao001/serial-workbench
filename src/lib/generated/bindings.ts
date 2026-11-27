@@ -41,6 +41,10 @@ export const commands = {
     typedError<string | null, NativeError>(
       __TAURI_INVOKE("save_text_export", { name, content }),
     ),
+  saveSampleProjectArtifact: (artifact: SampleProjectArtifact) =>
+    typedError<string | null, NativeError>(
+      __TAURI_INVOKE("save_sample_project_artifact", { artifact }),
+    ),
   hostSaveChartSvg: (generation: U64, operationId: Id) =>
     typedError<boolean, HostError_Serialize>(
       __TAURI_INVOKE("host_save_chart_svg", { generation, operationId }),
@@ -5068,6 +5072,8 @@ export type RxPayload_Serialize = {
 };
 
 export type SafeInteger = number;
+
+export type SampleProjectArtifact = "peer" | "arduinoSketch";
 
 export type SchemaValue =
   | null

@@ -4,21 +4,34 @@ import { expect, test, type Page } from "@playwright/test";
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { session } from "../../src/features/workbench/test-fixtures";
+import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
 
-async function openTemplates(page: Page) {
+async function openTemplates(
+  page: Page,
+  labels: Record<"workbench.tools.more" | "sessionTemplate.title", string> = en,
+) {
   await page
-    .getByRole("button", { name: "Workspace menu", exact: true })
+    .getByRole("button", { name: labels["workbench.tools.more"], exact: true })
     .press("ArrowDown");
   await page
-    .getByRole("menuitem", { name: "Session templates", exact: true })
+    .getByRole("menuitem", {
+      name: labels["sessionTemplate.title"],
+      exact: true,
+    })
     .click();
-  return page.getByRole("dialog", { name: "Session templates", exact: true });
+  return page.getByRole("dialog", {
+    name: labels["sessionTemplate.title"],
+    exact: true,
+  });
 }
 
-async function selectTemplate(page: Page, name: string) {
-  await page
-    .getByRole("combobox", { name: "Session template", exact: true })
-    .click();
+async function selectTemplate(
+  page: Page,
+  name: string,
+  label = "Session template",
+) {
+  await page.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name, exact: true }).click();
 }
 
@@ -69,6 +82,160 @@ test("session templates preview locally and require an explicit serial open", as
   expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
     [],
   );
+});
+
+test("the three runnable examples preview and save fixed artifacts without opening or writing to a device", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 780 });
+  await seedWorkbenchFixture(page, { language: "en" });
+  await page.goto("./#/");
+  const dialog = await openTemplates(page);
+  await selectTemplate(page, "Arduino sample");
+  const example = dialog.getByRole("region", { name: "Run the example" });
+  await expect(example.getByText("READ", { exact: true })).toBeVisible();
+  await expect(example.getByText("3.250", { exact: true })).toBeVisible();
+  await expect(
+    example.getByText("node swb-example-peer.mjs arduino"),
+  ).toBeVisible();
+  const savePeer = example.getByRole("button", { name: "Save simulator" });
+  const saveSketch = example.getByRole("button", {
+    name: "Save Arduino sketch",
+  });
+  await page.evaluate(() => {
+    window.workbenchFixture.cancelSampleProjectExport = true;
+  });
+  await savePeer.press("Space");
+  await expect(savePeer).toBeFocused();
+  await expect(example.getByRole("status")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.workbenchFixture.cancelSampleProjectExport = false;
+  });
+  await saveSketch.click();
+  await expect(example.getByRole("status")).toHaveText("Example file saved.");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.sampleProjectExports),
+    )
+    .toEqual(["peer", "arduinoSketch"]);
+  await example.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("sample-project-wide.png") });
+  await expect(example.getByText(/runtime\/node\//)).toBeVisible();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    savePeer.evaluate((button) => {
+      if (!(button instanceof HTMLButtonElement))
+        throw new Error("Expected save button");
+      const key = "__TAURI_INTERNALS__";
+      const native = Object.getOwnPropertyDescriptor(window, key);
+      Reflect.deleteProperty(window, key);
+      try {
+        button.click();
+      } finally {
+        if (native) Object.defineProperty(window, key, native);
+      }
+    }),
+  ]);
+  expect(download.suggestedFilename()).toBe("swb-example-peer.mjs");
+  const downloaded = await download.path();
+  if (!downloaded)
+    throw new Error("Expected the browser to download the simulator");
+  expect(readFileSync(downloaded)).toEqual(
+    readFileSync(
+      new URL(
+        "../../resources/examples/workbench/swb-example-peer.mjs",
+        import.meta.url,
+      ),
+    ),
+  );
+  await expect(example.getByRole("status")).toHaveText(
+    "Example download started.",
+  );
+  expect(
+    await page.evaluate(() => window.workbenchFixture.sampleProjectExports),
+  ).toEqual(["peer", "arduinoSketch"]);
+
+  await selectTemplate(page, "AT module");
+  await expect(example.getByText("AT+CREG?", { exact: true })).toBeVisible();
+  await expect(example.getByText(/\+CREG: 0,1\s+OK/)).toBeVisible();
+  await expect(example.getByText("node swb-example-peer.mjs at")).toBeVisible();
+  await expect(saveSketch).toHaveCount(0);
+  await expect(
+    dialog.getByRole("textbox", { name: "Pending AT command (optional)" }),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 420, height: 600 });
+  await selectTemplate(page, "Modbus RTU register read");
+  await expect(
+    example.getByText("01 03 00 00 00 02 C4 0B", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByText("01 03 04 12 34 00 2A 3F 5A", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByText("node swb-example-peer.mjs modbus"),
+  ).toBeVisible();
+  expect(
+    await example.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await example.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("sample-project-narrow.png") });
+
+  const workbenchActions = () =>
+    page.evaluate(() => ({
+      connections: window.workbenchFixture.connectRequests,
+      sends: window.workbenchFixture.sentBytes,
+    }));
+  expect(await workbenchActions()).toEqual({ connections: [], sends: [] });
+  await dialog.getByRole("button", { name: "Open with template" }).click();
+  await expect.poll(workbenchActions).toMatchObject({
+    connections: [
+      { params: { configuration: { baudRate: "19200", parity: "even" } } },
+    ],
+    sends: [],
+  });
+});
+
+test("the short dark Chinese example keeps the AT transfer and bundled runtime instructions readable", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 610 });
+  await seedWorkbenchFixture(page, { language: "zh", theme: "dark" });
+  await page.goto("./#/");
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  const dialog = await openTemplates(page, zhCN);
+  await selectTemplate(
+    page,
+    zhCN["sessionTemplate.at"],
+    zhCN["sessionTemplate.label"],
+  );
+  const example = dialog.getByRole("region", {
+    name: zhCN["sessionProject.title"],
+  });
+  await expect(
+    example.getByText(zhCN["sessionProject.request"], { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByText(zhCN["sessionProject.crlf"]).first(),
+  ).toBeVisible();
+  await expect(
+    example.getByText(zhCN["sessionProject.runtime"], { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByRole("button", { name: zhCN["sessionProject.savePeer"] }),
+  ).toBeEnabled();
+  expect(
+    await example.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await example.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("sample-project-zh-dark.png"),
+  });
 });
 
 test("an available Modbus slave action permits opening with the template without starting the slave", async ({

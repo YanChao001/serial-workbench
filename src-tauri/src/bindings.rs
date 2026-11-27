@@ -12,6 +12,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::global_send::open_global_send_settings,
             crate::global_send::set_global_send_target,
             crate::file_commands::save_text_export,
+            crate::file_commands::save_sample_project_artifact,
             crate::file_commands::host_save_chart_svg,
             file_resource_commands::choose_file_resource,
             crate::transfer_drop::claim_transfer_drop,

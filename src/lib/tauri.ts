@@ -310,6 +310,15 @@ export async function saveTextExport(
   return name;
 }
 
+export type SampleProjectArtifact =
+  import("./generated/bindings").SampleProjectArtifact;
+
+export function saveSampleProjectArtifact(
+  artifact: SampleProjectArtifact,
+): Promise<string | null> {
+  return callNative((commands) => commands.saveSampleProjectArtifact(artifact));
+}
+
 /** 用系统默认浏览器打开外链；在浏览器预览时退化为新标签页。 */
 export async function openExternal(url: string): Promise<void> {
   const target = new URL(url);
