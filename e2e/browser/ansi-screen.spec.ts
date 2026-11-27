@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { expect, test } from "@playwright/test";
+import { session } from "../../src/features/workbench/test-fixtures";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
@@ -181,7 +182,17 @@ test("ANSI clipboard waits for confirmation and submits one paced paste", async 
   context,
 }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await seedWorkbenchFixture(page, {
+    sidebarCollapsed: true,
+    language: "en",
+    openedConfiguration: {
+      ...session().configuration,
+      baudRate: "1200",
+      dataBits: "8",
+      parity: "none",
+      stopBits: "one",
+    },
+  });
   await page.goto("./#/");
   await page.getByRole("button", { name: "Open Virtual serial" }).click();
   await expect
@@ -227,6 +238,11 @@ test("ANSI clipboard waits for confirmation and submits one paced paste", async 
   });
   const clipboard = "a\r\nb\n" + "x".repeat(1200);
   const payload = Buffer.from("a\rb\r" + "x".repeat(1200));
+  const pacing = {
+    chunkBytes: "12",
+    bytesPerSecond: "120",
+    interChunkMs: "20",
+  };
   const paste = async () => {
     await input.focus();
     await page.evaluate(
@@ -265,10 +281,8 @@ test("ANSI clipboard waits for confirmation and submits one paced paste", async 
     executionMode: "independent",
     target: { sessionId: "session", sessionEpoch: "1" },
     params: {
+      ...pacing,
       bytesBase64: payload.toString("base64"),
-      chunkBytes: expect.stringMatching(/^\d+$/),
-      bytesPerSecond: expect.stringMatching(/^\d+$/),
-      interChunkMs: "20",
     },
   });
   await paste();
@@ -284,5 +298,7 @@ test("ANSI clipboard waits for confirmation and submits one paced paste", async 
   ]);
   const orderedCalls = await pasteCalls();
   expect(orderedCalls).toHaveLength(2);
-  expect(orderedCalls[1]?.params.bytesBase64).toBe(wrapped.toString("base64"));
+  expect(orderedCalls[1]).toMatchObject({
+    params: { ...pacing, bytesBase64: wrapped.toString("base64") },
+  });
 });

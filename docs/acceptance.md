@@ -490,7 +490,7 @@ gdbus call --session --dest org.freedesktop.portal.Desktop \
 
 IO-12 和 TERM-10 共用 Host 的 `transfer.paste`。在可写会话的接收区切到「ANSI 终端」，启用「发送键盘输入」，聚焦终端后粘贴多行文本。确认区出现后先取消，核对没有发送请求。对端启用括号粘贴后重复，分别保留和关闭「本次使用括号粘贴」，对照待发送字节数、换行转换及包裹序列。每次确认只提交一个绑定当前会话代次的独立任务。应用按当前串口配置计算限速和块长，配置的最小块间隔为 20 毫秒。
 
-用 `pnpm test:ui e2e/browser/ansi-screen.spec.ts --workers=1` 核对真实剪贴板事件、焦点、确认前静默和两种发送字节。用 `pnpm exec vitest run src/features/workbench/use-ansi-paste.test.ts` 核对接纳回执前请求取消时，客户端等到原操作 ID 才提交取消，并保持等待直到收到结算。等待期间不接纳另一份粘贴。
+用 `pnpm test:ui e2e/browser/ansi-screen.spec.ts --workers=1` 核对 Chromium 的剪贴板事件、焦点、确认前静默和两种发送字节。1200 波特、8N1 的会话在两种括号模式下均应提交 120 B/s、12 字节块和 20 毫秒最小间隔。用 `pnpm exec vitest run src/features/workbench/use-ansi-paste.test.ts` 核对接纳回执前请求取消时，客户端等到原操作 ID 才提交取消，并保持等待直到收到结算。等待期间不接纳另一份粘贴。
 
 用 `cargo test --locked -p serial-workbench-host --test file_transfer paste_` 在可控时钟下检查分片顺序、限速等待、独占租约和编号回执。让另一写任务在两块间尝试发送，核对它在粘贴分片之后写入。第一次分片后取消时，从原操作回执核对已写前缀、未知范围，并确认后续分片未提交。确认后若要停止等待或取消发送，分别按[Host 操作契约](./contracts/host-v0.md)处理。
 

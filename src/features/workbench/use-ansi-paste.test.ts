@@ -35,9 +35,9 @@ it("cancels the original paste after admission and waits for its actual written 
   );
   expect(result.current.current?.phase).toBe("sending");
 
-  let stopped!: Promise<void>;
+  let cancelRequest!: Promise<void>;
   act(() => {
-    stopped = result.current.cancel();
+    cancelRequest = result.current.cancel();
     result.current.prepare("another paste", false);
   });
   expect(target.cancel).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ it("cancels the original paste after admission and waits for its actual written 
   };
   await act(async () => {
     admit(admitted);
-    await stopped;
+    await cancelRequest;
   });
   expect(target.cancel).toHaveBeenCalledExactlyOnceWith(admitted);
   expect(target.wait).toHaveBeenCalledExactlyOnceWith(
