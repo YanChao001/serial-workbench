@@ -272,6 +272,45 @@ test("keeps focused HEX boundaries through window activation and eviction", asyn
   expect(await log.locator(".workbench-stream-row").count()).toBeLessThan(192);
 });
 
+test("keeps a measured mid-history record when widening would clamp the scroll offset", async ({
+  page,
+}) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 420, height: 530 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const log = page.getByRole("log");
+  for (let start = 1; start <= 420; start += 60) {
+    await page.evaluate(
+      (items) => window.workbenchFixture.emitRaw(items),
+      packets(start, 60, 640),
+    );
+  }
+  await expect(log.locator('[data-offset="268160"]')).toBeInViewport();
+  await log.press("Home");
+  await expect(log.locator('[data-offset="0"]')).toBeInViewport();
+  for (let step = 0; step < 8; step++) {
+    const before = await firstVisibleOffset(log);
+    await log.evaluate((element) => (element.scrollTop += 6500));
+    await expect.poll(() => firstVisibleOffset(log)).not.toBe(before);
+  }
+  expect(await log.evaluate((element) => element.scrollTop)).toBeGreaterThan(
+    40_000,
+  );
+  const offset = await firstVisibleOffset(log);
+  expect(Number(offset)).toBeGreaterThan(30_000);
+  expect(Number(offset)).toBeLessThan(230_000);
+
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await expect(log.locator(`[data-offset="${offset}"]`)).toBeInViewport();
+});
+
 test("restores the selected page of a long record after returning to its row", async ({
   page,
 }) => {

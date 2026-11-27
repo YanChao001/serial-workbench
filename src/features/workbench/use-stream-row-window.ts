@@ -22,6 +22,8 @@ type ViewportAnchor = {
   row: HTMLElement;
   key: string;
   inset: number;
+  measurementKey: string;
+  viewportHeight: number;
   scrollTop: number;
   waiting?: boolean;
 };
@@ -184,6 +186,8 @@ export function useStreamRowWindow({
 
   const sync = useCallback(
     (node: HTMLDivElement) => {
+      const resized =
+        enabled && (node.clientWidth !== width || node.clientHeight !== height);
       if (enabled) {
         setHeight(node.clientHeight);
         setWidth(node.clientWidth);
@@ -193,13 +197,19 @@ export function useStreamRowWindow({
       if (following) anchor.current = undefined;
       else if (
         currentBody &&
-        (!previous || previous.scrollTop !== node.scrollTop)
+        (!previous || (!resized && previous.scrollTop !== node.scrollTop))
       ) {
         const visible = visibleAnchor(node, currentBody);
         const key = visible?.row.dataset.streamRowKey;
         anchor.current =
           visible && key !== undefined
-            ? { ...visible, key, scrollTop: node.scrollTop }
+            ? {
+                ...visible,
+                key,
+                measurementKey,
+                viewportHeight: node.clientHeight,
+                scrollTop: node.scrollTop,
+              }
             : undefined;
       }
       if (!enabled && following) return;
@@ -210,7 +220,7 @@ export function useStreamRowWindow({
           : next,
       );
     },
-    [body, enabled, following, offsets],
+    [body, enabled, following, height, measurementKey, offsets, width],
   );
   useLayoutEffect(() => {
     const log = viewport.current;
@@ -220,7 +230,9 @@ export function useStreamRowWindow({
     if (
       !following &&
       previous &&
-      Math.abs(log.scrollTop - previous.scrollTop) <= 1
+      (previous.measurementKey !== measurementKey ||
+        previous.viewportHeight !== height ||
+        Math.abs(log.scrollTop - previous.scrollTop) <= 1)
     ) {
       let row = root.contains(previous.row) ? previous.row : undefined;
       if (!row) {
@@ -238,10 +250,10 @@ export function useStreamRowWindow({
           Math.max(0, log.clientHeight - bounds.height),
         );
         const change = bounds.top - top - inset;
-        if (Math.abs(change) > 0.5) {
-          log.scrollTop += change;
-          previous.scrollTop = log.scrollTop;
-        }
+        if (Math.abs(change) > 0.5) log.scrollTop += change;
+        previous.scrollTop = log.scrollTop;
+        previous.measurementKey = measurementKey;
+        previous.viewportHeight = height;
       } else if (!previous.waiting) {
         const index = indexOfRow(previous.key);
         if (index >= 0) {
@@ -253,7 +265,16 @@ export function useStreamRowWindow({
     }
     const frame = requestAnimationFrame(() => sync(log));
     return () => cancelAnimationFrame(frame);
-  }, [body, following, height, offsets, render, sync, viewport]);
+  }, [
+    body,
+    following,
+    height,
+    measurementKey,
+    offsets,
+    render,
+    sync,
+    viewport,
+  ]);
   useEffect(() => {
     const root = body.current;
     if (!root) return;
