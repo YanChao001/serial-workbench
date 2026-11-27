@@ -1529,7 +1529,8 @@
         "status": "in-progress",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/109",
-          "https://github.com/YanChao001/serial-workbench/pull/110"
+          "https://github.com/YanChao001/serial-workbench/pull/110",
+          "https://github.com/YanChao001/serial-workbench/pull/111"
         ]
       },
       "hardware": {
@@ -3607,7 +3608,8 @@
         "status": "in-progress",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/109",
-          "https://github.com/YanChao001/serial-workbench/pull/110"
+          "https://github.com/YanChao001/serial-workbench/pull/110",
+          "https://github.com/YanChao001/serial-workbench/pull/111"
         ]
       },
       "hardware": {
