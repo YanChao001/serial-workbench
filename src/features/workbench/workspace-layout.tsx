@@ -467,7 +467,12 @@ export type WorkspaceLayoutProps = {
   readOperationInput?: OperationInputReader;
   replay?: Pick<
     ReplayPanelProps,
-    "read" | "readRecord" | "control" | "playbackSupported" | "search"
+    | "read"
+    | "readRecord"
+    | "control"
+    | "playbackSupported"
+    | "archiveAccess"
+    | "search"
   >;
   initialWorkspace?: WorkspaceDocument;
   savedWorkspace?: WorkspaceDocument;

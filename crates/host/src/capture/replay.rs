@@ -236,8 +236,83 @@ impl ReplayReader {
             next_record: (playback.position as u64 + 1).into(),
             at_end: playback.position == self.archive.index.records.len(),
             playback: report_playback.then(|| playback.state()),
+            archive_total_records: None,
         }
     }
+
+    fn read_archive(
+        &self,
+        range: ReplayArchiveRange,
+        max: usize,
+        max_bytes: usize,
+        mut publish: impl FnMut(U64, &[u8]) -> HostResult<ReplayRecord>,
+    ) -> HostResult<ReplayReadResult> {
+        validate_read_budget(max, max_bytes)?;
+        let total = self.archive.index.records.len();
+        let (ordinal, backwards) = match range {
+            ReplayArchiveRange::From { record } => (record, false),
+            ReplayArchiveRange::Before { record } => (record, true),
+        };
+        if ordinal.get() == 0 || ordinal.get() > total as u64 + 1 {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Replay archive position is outside the capture",
+            ));
+        }
+
+        let edge = ordinal.get() as usize - 1;
+        let count = max.min(if backwards { edge } else { total - edge });
+        self.archive.ensure_directory()?;
+        let mut result = ReplayReadResult {
+            mode: self.archive.format.mode(),
+            records: Vec::new(),
+            reader_generation: self.generation,
+            next_record: ordinal,
+            at_end: edge == total,
+            playback: None,
+            archive_total_records: Some((total as u64).into()),
+        };
+        let mut records = Vec::with_capacity(count);
+        let mut used = 0;
+        for offset in 0..count {
+            let position = if backwards {
+                edge - 1 - offset
+            } else {
+                edge + offset
+            };
+            let (record, _, json) = self.archive.read_verified_record(position)?;
+            let next = if backwards { edge } else { position + 1 };
+            result.next_record = (next as u64 + 1).into();
+            result.at_end = next == total;
+            let overhead = serde_json::to_vec(&result).map_err(|_| corrupt())?.len();
+            let Some((record, size)) = bounded_replay_record(
+                record,
+                &json,
+                used,
+                records.len(),
+                overhead,
+                max_bytes,
+                &mut publish,
+            )?
+            else {
+                break;
+            };
+            used += size;
+            records.push(record);
+        }
+        self.archive.ensure_directory()?;
+        if backwards {
+            records.reverse();
+        } else {
+            let next = edge + records.len();
+            result.next_record = (next as u64 + 1).into();
+            result.at_end = next == total;
+        }
+        result.records = records;
+        validate_reply_budget(&result, max_bytes)?;
+        Ok(result)
+    }
+
     fn read_with_references(
         &mut self,
         max: usize,
@@ -247,12 +322,7 @@ impl ReplayReader {
         report_playback: bool,
         mut publish: impl FnMut(U64, &[u8]) -> HostResult<ReplayRecord>,
     ) -> HostResult<ReplayReadResult> {
-        if max == 0 || max > 100 || max_bytes == 0 || max_bytes > 1024 * 1024 {
-            return Err(HostError::new(
-                "INVALID_ARGUMENT",
-                "Invalid replay read budget",
-            ));
-        }
+        validate_read_budget(max, max_bytes)?;
         self.archive.ensure_directory()?;
         let mut playback = self.playback;
         if mode != ReplayReadMode::Inspect {
@@ -306,24 +376,20 @@ impl ReplayReader {
                 advanced.pause_on_record(source_time, now);
             }
 
-            let mut record = ReplayRecord::Inline { record };
-            let mut size = serde_json::to_vec(&record).map_err(|_| corrupt())?.len();
             let envelope = self.reply(advanced, vec![], report_playback);
             let overhead = serde_json::to_vec(&envelope).map_err(|_| corrupt())?.len();
-            if used + size + records.len() + overhead > max_bytes {
-                if records.is_empty() {
-                    record = publish(ordinal, &json)?;
-                    size = serde_json::to_vec(&record).map_err(|_| corrupt())?.len();
-                    if size + overhead > max_bytes {
-                        return Err(HostError::new(
-                            "LIMIT_EXCEEDED",
-                            "Replay reference exceeds requested batch budget",
-                        ));
-                    }
-                } else {
-                    break;
-                }
-            }
+            let Some((record, size)) = bounded_replay_record(
+                record,
+                &json,
+                used,
+                records.len(),
+                overhead,
+                max_bytes,
+                &mut publish,
+            )?
+            else {
+                break;
+            };
             used += size;
             records.push(record);
             playback = advanced;
@@ -337,15 +403,62 @@ impl ReplayReader {
             records,
             report_playback || mode == ReplayReadMode::Inspect,
         );
-        if serde_json::to_vec(&result).map_err(|_| corrupt())?.len() > max_bytes {
-            return Err(HostError::new(
-                "LIMIT_EXCEEDED",
-                "Replay reply exceeds requested batch budget",
-            ));
-        }
+        validate_reply_budget(&result, max_bytes)?;
         self.playback = playback;
         Ok(result)
     }
+}
+
+fn validate_read_budget(max: usize, max_bytes: usize) -> HostResult<()> {
+    if max == 0 || max > 100 || max_bytes == 0 || max_bytes > 1024 * 1024 {
+        return Err(HostError::new(
+            "INVALID_ARGUMENT",
+            "Invalid replay read budget",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_reply_budget(result: &ReplayReadResult, max_bytes: usize) -> HostResult<()> {
+    if serde_json::to_vec(result).map_err(|_| corrupt())?.len() > max_bytes {
+        return Err(HostError::new(
+            "LIMIT_EXCEEDED",
+            "Replay reply exceeds requested batch budget",
+        ));
+    }
+    Ok(())
+}
+
+fn bounded_replay_record(
+    record: CaptureRecord,
+    json: &[u8],
+    used: usize,
+    count: usize,
+    overhead: usize,
+    max_bytes: usize,
+    publish: &mut impl FnMut(U64, &[u8]) -> HostResult<ReplayRecord>,
+) -> HostResult<Option<(ReplayRecord, usize)>> {
+    let remaining = max_bytes.saturating_sub(used + count + overhead);
+    let ordinal = record.record_ordinal;
+    let inline = ReplayRecord::Inline { record };
+    let size = serde_json::to_vec(&inline).map_err(|_| corrupt())?.len();
+    if size <= remaining {
+        return Ok(Some((inline, size)));
+    }
+    if count > 0 {
+        return Ok(None);
+    }
+    if remaining > 0 {
+        let reference = publish(ordinal, json)?;
+        let size = serde_json::to_vec(&reference).map_err(|_| corrupt())?.len();
+        if size <= remaining {
+            return Ok(Some((reference, size)));
+        }
+    }
+    Err(HostError::new(
+        "LIMIT_EXCEEDED",
+        "Replay reference exceeds requested batch budget",
+    ))
 }
 
 impl ReplayArchive {
@@ -1049,10 +1162,25 @@ impl ReplayService {
             service.authorize(&session, &target, &actor, "content.read")?;
             let source = session.source.clone();
             let reader = session.reader.as_mut().ok_or_else(replay_closed)?;
-            let mode = match (
-                params.single_step.unwrap_or_default(),
-                params.inspect_playback.unwrap_or_default(),
-            ) {
+            let max_records =
+                usize::try_from(params.max_records.get()).map_err(|_| super::invalid())?;
+            let max_bytes =
+                usize::try_from(params.max_bytes.get()).map_err(|_| super::invalid())?;
+            let single_step = params.single_step.unwrap_or_default();
+            let inspect = params.inspect_playback.unwrap_or_default();
+            let report_playback = params.report_playback.unwrap_or_default();
+            let publish =
+                |ordinal, json: &[u8]| service.files.publish_record(&source, &actor, ordinal, json);
+            if let Some(range) = params.archive {
+                if single_step || inspect || report_playback {
+                    return Err(HostError::new(
+                        "INVALID_ARGUMENT",
+                        "Replay archive paging cannot be combined with playback",
+                    ));
+                }
+                return reader.read_archive(range, max_records, max_bytes, publish);
+            }
+            let mode = match (single_step, inspect) {
                 (false, false) => ReplayReadMode::Batch,
                 (true, false) => ReplayReadMode::Step,
                 (false, true) => ReplayReadMode::Inspect,
@@ -1064,12 +1192,12 @@ impl ReplayService {
                 }
             };
             reader.read_with_references(
-                usize::try_from(params.max_records.get()).map_err(|_| super::invalid())?,
-                usize::try_from(params.max_bytes.get()).map_err(|_| super::invalid())?,
+                max_records,
+                max_bytes,
                 service.clock.mono_ns(),
                 mode,
-                params.report_playback.unwrap_or_default(),
-                |ordinal, json| service.files.publish_record(&source, &actor, ordinal, json),
+                report_playback,
+                publish,
             )
         })
         .await

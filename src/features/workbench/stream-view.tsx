@@ -196,6 +196,7 @@ export type StreamViewProps = {
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
   replay?: boolean;
+  fixedPageKey?: number;
   allowTerminalLinks?: boolean;
   mappedReceive?: { rules: CharacterRemapRules; label: string };
   initialMode?: "text" | "hex";
@@ -242,6 +243,7 @@ export function StreamView({
   terminalSettings,
   presentationLabels,
   replay = false,
+  fixedPageKey,
   allowTerminalLinks = false,
   mappedReceive,
   onOpenCapture,
@@ -571,13 +573,13 @@ export function StreamView({
         : 0,
     [pendingBoundary, items],
   );
-  const following = !frozen && !reviewed;
+  const following = fixedPageKey === undefined && !frozen && !reviewed;
   const followingActive = useRef(true);
   const reviewHistory = () => {
-    if (frozen) return;
+    if (frozen || fixedPageKey !== undefined) return;
     setReviewed((current) => current ?? new Set(items.map(streamItemIdentity)));
   };
-  const resume = () => {
+  const resume = useCallback(() => {
     scrollIntent.current = null;
     searching.current?.abort();
     found.current = undefined;
@@ -588,7 +590,16 @@ export function StreamView({
     setLocationTarget(undefined);
     setFreeze(null);
     setReviewed(null);
-  };
+  }, []);
+  const previousFixedPage = useRef(fixedPageKey);
+  useLayoutEffect(() => {
+    const wasFixed = previousFixedPage.current !== undefined;
+    previousFixedPage.current = fixedPageKey;
+    if (fixedPageKey === undefined && !wasFixed) return;
+    resume();
+    if (fixedPageKey !== undefined && viewport.current)
+      viewport.current.scrollTop = 0;
+  }, [fixedPageKey, resume]);
   const projected = useMemo(() => projectStreamItems(displayed), [displayed]);
   const detectEncoding = encoding === null || encodingMenuOpen;
   const mappedSource = freeze?.source ?? rawItems;

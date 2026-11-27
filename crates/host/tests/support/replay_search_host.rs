@@ -78,7 +78,7 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
     let f = Fixture::new().await;
     let path = f.dir.path().join("replay-search.swbc");
     let bytes = Bytes::try_from(STANDARD.encode([0x41; 70]).as_str()).unwrap();
-    recording(&path, 10, [(bytes, 70)]);
+    recording(&path, 10, [(bytes.clone(), 70)]);
     std::fs::rename(
         path.join("index-000001.swbi"),
         f.dir.path().join("original-index.swbi"),
@@ -120,6 +120,13 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
             }),
         ))
     };
+    let browse =
+        |client, ordinal: U64| {
+            RpcRequest::Query(f.query(client, "replay.read", target.clone(), json!({
+            "sessionId":target.id, "sessionEpoch":target.session_epoch,
+            "maxRecords":"100","maxBytes":"65536","archive":{"kind":"from","record":ordinal},
+        })))
+        };
     let search_id = "a6b21411-cf47-472c-98d4-79482bd9d433";
     let start = json!({"kind":"start","searchId":search_id,"bytesBase64":"QQ==","direction":"rx"});
     let next = json!({"kind":"next","searchId":search_id,"page":"2"});
@@ -145,6 +152,29 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
     assert_eq!(result.hits[0].byte_start.get(), 10);
     assert_eq!(result.hits[63].byte_end.get(), 74);
     assert!(!result.complete);
+    let hit = &result.hits[0];
+    let RpcResult::Query(QueryResult::ReplayRead(archive)) = success(
+        raw.request(browse(&f.user, hit.first_record))
+            .await
+            .unwrap(),
+    ) else {
+        panic!("archive page expected");
+    };
+    let [ReplayRecord::Inline { record }] = archive.records.as_slice() else {
+        panic!("indexed RX record expected");
+    };
+    let CaptureEntry::Event(event) = &record.entry else {
+        panic!("event expected");
+    };
+    let RawPayload::Rx(rx) = &event.payload else {
+        panic!("RX expected");
+    };
+    assert_eq!(record.record_ordinal, hit.first_record);
+    assert_eq!(rx.byte_start, hit.byte_start);
+    assert_eq!(rx.byte_end.get(), 80);
+    assert_eq!(rx.bytes_base64, bytes);
+    assert_eq!(archive.archive_total_records, Some(1.into()));
+    assert!(archive.at_end);
     assert_eq!(
         search_reply(&raw, command(&f.user, start.clone())).await,
         first
@@ -187,7 +217,26 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
         .code,
         "PERMISSION_DENIED",
     );
+    assert_eq!(
+        failure(
+            observer_raw
+                .request(browse(&f.observer, 1.into()))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED",
+    );
     f.grant("content.read", f.reference_target(&source));
+    assert_eq!(
+        success(
+            observer_raw
+                .request(browse(&f.observer, 1.into()))
+                .await
+                .unwrap()
+        ),
+        RpcResult::Query(QueryResult::ReplayRead(archive.clone())),
+    );
     assert_eq!(
         search_reply(&observer_raw, command(&f.observer, start.clone())).await,
         first
@@ -202,6 +251,16 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
             },
         )
         .unwrap();
+    assert_eq!(
+        failure(
+            observer_raw
+                .request(browse(&f.observer, 1.into()))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED",
+    );
     f.grant("content.read", f.reference_target(&source));
     assert_eq!(
         failure(
@@ -278,6 +337,7 @@ async fn raw_replay_search_pages_keep_connection_and_source_authority() {
         panic!("playback position expected");
     };
     assert_eq!(playback.next_record.get(), 1);
+    assert_eq!(playback.reader_generation, archive.reader_generation);
 
     assert_eq!(
         search_reply(&raw, command(&f.user, start.clone())).await,

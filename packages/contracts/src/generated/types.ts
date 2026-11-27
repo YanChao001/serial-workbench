@@ -4800,6 +4800,9 @@ export type RegisterFileParams = {
   purpose: FilePurpose;
 };
 
+export type ReplayArchiveRange =
+  { kind: "from"; record: U64 } | { kind: "before"; record: U64 };
+
 export type ReplayControlParams =
   ReplayControlParams_Serialize | ReplayControlParams_Deserialize;
 
@@ -4918,6 +4921,7 @@ export type ReplayReadParams_Deserialize = {
   singleStep?: boolean;
   inspectPlayback?: boolean;
   reportPlayback?: boolean;
+  archive?: ReplayArchiveRange;
 };
 
 export type ReplayReadParams_Serialize = {
@@ -4928,6 +4932,7 @@ export type ReplayReadParams_Serialize = {
   singleStep?: boolean;
   inspectPlayback?: boolean;
   reportPlayback?: boolean;
+  archive?: ReplayArchiveRange;
 };
 
 export type ReplayReadResult =
@@ -4940,6 +4945,7 @@ export type ReplayReadResult_Deserialize = {
   nextRecord: U64;
   atEnd: boolean;
   playback?: ReplayPlaybackState_Deserialize;
+  archiveTotalRecords?: U64;
 };
 
 export type ReplayReadResult_Serialize = {
@@ -4949,6 +4955,7 @@ export type ReplayReadResult_Serialize = {
   nextRecord: U64;
   atEnd: boolean;
   playback?: ReplayPlaybackState_Serialize;
+  archiveTotalRecords?: U64;
 };
 
 export type ReplayRecord = ReplayRecord_Serialize | ReplayRecord_Deserialize;

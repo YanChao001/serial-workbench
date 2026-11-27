@@ -69,6 +69,26 @@ fn replay_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
         json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"1","maxBytes":"65536","singleStep":null}),
         false,
     )?;
+    f.add::<ReplayReadParams>(
+        "replay-archive-before",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"100","maxBytes":"65536","archive":{"kind":"before","record":"1000000"}}),
+        true,
+    )?;
+    f.add::<ReplayReadParams>(
+        "replay-archive-requires-an-exact-record",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"100","maxBytes":"65536","archive":{"kind":"from","record":1000000}}),
+        false,
+    )?;
+    f.add::<ReplayReadParams>(
+        "replay-null-archive",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"100","maxBytes":"65536","archive":null}),
+        false,
+    )?;
+    f.add::<ReplayReadResult>(
+        "replay-empty-archive",
+        json!({"records":[],"readerGeneration":"3","nextRecord":"1","atEnd":true,"archiveTotalRecords":"0"}),
+        true,
+    )?;
     f.add::<ReplayControlParams>(
         "replay-set-timed-rate",
         json!({"sessionId":"replay","sessionEpoch":"1","paused":false,"playback":{"kind":"set_rate","rate":{"kind":"timed","speedPercent":200}}}),
@@ -1815,6 +1835,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ReplayTransmitParams,
         ReplayTransmitSpan,
         ReplayTransmitPreview,
+        ReplayArchiveRange,
         ReplayReadParams,
         ReplayReadResult,
         ReplaySearchParams,

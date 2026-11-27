@@ -771,6 +771,178 @@ function searchPage(
   };
 }
 
+it("browses exact archive ordinals and locates search hits without moving playback", async () => {
+  const play: ReplayReadResult = {
+    records: [],
+    readerGeneration: "3",
+    nextRecord: "17",
+    atEnd: false,
+    playback: {
+      rate: { kind: "fastest" },
+      paused: false,
+      breakpointHit: false,
+    },
+  };
+  const read = vi.fn(
+    async (params: ReplayReadParams): Promise<ReplayReadResult> => {
+      if (!params.archive) return play;
+      const first =
+        BigInt(params.archive.record) -
+        (params.archive.kind === "before" ? 1n : 0n);
+      return {
+        records: [
+          {
+            kind: "reference",
+            recordOrdinal: String(first),
+            jsonBytes: "200",
+            jsonSha256: "a".repeat(64),
+            recordRef: {
+              hostId: "host",
+              kind: "capture_record",
+              id: "archive-record",
+              revision: "1",
+            },
+          },
+        ],
+        readerGeneration: "3",
+        nextRecord: String(first + 1n),
+        atEnd: first === 1000000n,
+        archiveTotalRecords: "1000000",
+      };
+    },
+  );
+  const control = vi.fn();
+  const run = vi.fn(
+    async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> =>
+      command.kind === "stop"
+        ? { kind: "stopped", searchId: command.searchId, stopped: true }
+        : searchPage(command.searchId, "1", [match], true),
+  );
+  const archiveAccess = { hostId: "host", watchActions: allowSearch };
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      archiveAccess={archiveAccess}
+      read={read}
+      readRecord={vi.fn()}
+      control={control}
+      search={{ ...archiveAccess, run, t: searchLabels }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.readReplay }));
+  expect(
+    await screen.findByText(labels.replayNextRecord + " 17"),
+  ).toBeVisible();
+  const toggle = screen.getByRole("button", { name: labels.browseReplay });
+  fireEvent.click(toggle);
+  expect(await screen.findByText("1–1 / 1000000")).toBeVisible();
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByRole("button", { name: labels.previousReplayPage }),
+  ).toBeDisabled();
+  const seek = screen.getByRole("textbox", { name: labels.seekRecord });
+  fireEvent.change(seek, { target: { value: "1000000" } });
+  fireEvent.keyDown(seek, { key: "Enter" });
+  expect(await screen.findByText("1000000–1000000 / 1000000")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: labels.nextReplayPage }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: labels.previousReplayPage }),
+  );
+  expect(await screen.findByText("999999–999999 / 1000000")).toBeVisible();
+  expect(read.mock.lastCall?.[0].archive).toEqual({
+    kind: "before",
+    record: "1000000",
+  });
+  fireEvent.click(screen.getByRole("button", { name: labels.nextReplayPage }));
+  expect(await screen.findByText("1000000–1000000 / 1000000")).toBeVisible();
+
+  fireEvent.click(screen.getByRole("button", { name: "Search recording" }));
+  const dialog = screen.getByRole("dialog", { name: "Search recording" });
+  fireEvent.change(
+    within(dialog).getByRole("textbox", { name: "Search content" }),
+    {
+      target: { value: "PING" },
+    },
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Start search" }));
+  fireEvent.click(
+    await within(dialog).findByRole("button", { name: "Go to record" }),
+  );
+  expect(
+    await screen.findByText(/43–43 \/ 1000000.*Located record 43/),
+  ).toBeVisible();
+  expect(read.mock.lastCall?.[0].archive).toEqual({
+    kind: "from",
+    record: "43",
+  });
+  expect(control).not.toHaveBeenCalled();
+  fireEvent.click(toggle);
+  expect(screen.getByText(labels.replayNextRecord + " 17")).toBeVisible();
+  expect(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
+it("aborts a pending archive page on source revocation and discards the late result", async () => {
+  let publishAccess = (_allowed: boolean) => {};
+  const watchActions: HostContextValue["watchActions"] = (inputs, publish) => {
+    publishAccess = (allowed) =>
+      publish(
+        inputs.map((input) => ({
+          input,
+          result: { actionId: input.actionId, target: input.target, allowed },
+          error: null,
+        })),
+      );
+    publishAccess(true);
+    return () => {};
+  };
+  let finish: ((value: ReplayReadResult) => void) | undefined;
+  const read = vi.fn(
+    (_params: ReplayReadParams, _signal?: AbortSignal) =>
+      new Promise<ReplayReadResult>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(
+    <ReplayPanel
+      session={session()}
+      labels={labels}
+      disabled={false}
+      playbackSupported
+      archiveAccess={{ hostId: "host", watchActions }}
+      read={read}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+    />,
+  );
+  const toggle = screen.getByRole("button", { name: labels.browseReplay });
+  fireEvent.click(toggle);
+  const signal = read.mock.calls[0]?.[1];
+  expect(signal?.aborted).toBe(false);
+  await act(async () => publishAccess(false));
+  expect(signal?.aborted).toBe(true);
+  await act(async () =>
+    finish?.({
+      readerGeneration: "1",
+      nextRecord: "1",
+      archiveTotalRecords: "0",
+      atEnd: true,
+      records: [],
+    }),
+  );
+  await act(async () => publishAccess(true));
+  expect(
+    screen.getByRole("button", { name: labels.browseReplay }),
+  ).toHaveAttribute("aria-pressed", "false");
+  expect(
+    screen.queryByRole("button", { name: labels.nextReplayPage }),
+  ).not.toBeInTheDocument();
+});
+
 it("scans to a hit, reads its first record without resuming playback and restores focus", async () => {
   const run = vi.fn(
     async ({ command }: ReplaySearchParams): Promise<ReplaySearchResult> => {
