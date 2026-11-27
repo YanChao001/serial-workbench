@@ -1031,6 +1031,14 @@ Windows 签名终端原生专项在独立 runner 的同一桌面应用中使用�
 
 显式取消发送，检查取消请求先沿用原操作 ID，再按实际终态保留已接纳和未知字节数。用 `pnpm exec vitest run src/features/workbench/transfer-progress.test.tsx src/features/workbench/transfer-options.test.tsx src/features/workbench/operation-panel.test.tsx src/features/workbench/operation-actions.test.tsx` 检查百分比、单调速率、估算失效及权限。用 `pnpm test:ui e2e/browser/transfer-progress.spec.ts --workers=1` 确认工作台通过操作订阅读到累计值和终态。在第二块写入未结算时观察已读量先于已接纳量，取消后再查询同一操作的封存回执。用 `cargo test --locked -p serial-workbench-host --test file_transfer --test file_api_host --test transfer_evidence_storage` 核对分块读取、取消、旧回执未知、撤权、过期回收和原子回滚。用真实对端记录实际接收量和确认，与 Host 写入回执分别对照。正式发行包沿用同一场景复验。
 
+### 文件发送与原始流传输
+
+IO-11 和 XFER-03 共用工作台「文件传输选项」和 Host 的 `transfer.file`。分别选择一份已知 UTF-8 文本和一份含 `00`、`FF` 的二进制文件。检查完整文件和非零偏移选区，以原始字节记录起点、长度和摘要。设定分块、限速与块间隔，显式确认后查看同一操作的读取量、写入量、顺序块回执及取消结果。按块编号和原始偏移拼接已接纳部分，与来源选区逐字节比对。注入部分写入或取消时，保留已接纳前缀和未知范围，核对后续块未发出。进度和取消沿用[文件传输进度](#文件传输进度xfer-04)的检查。
+
+软件验收用 Host 的 `file_token_bucket` 用例核对速率、首块额度和块间隔，用 `file_transfer` 验证回执、取消及源修订。真实配对选区按[文件交接专项](#真实配对工作台专项)打开生产工作台，用独立 Raw 读端对照实际发送的范围。工作台应按 Host 回执呈现已接纳写入。裸流设备确认来自独立对端，在 Host 回执中保持未确认。
+
+实际设备使用独立串口对端记录收到的字节、块间时序及摘要，核对范围、全量和取消前缀。接收端确认及日志单独附在 Host 操作和块回执后。正式签名包在独立环境断网安装后，经系统选取文件并重跑同一场景。
+
 ### 协议字节分色（DISP-08）
 
 在分帧或只读回放的字段预览选择一帧。先显示完整 HEX，再显示可选字段及其说明。窄窗让十六进制段和字段按钮自然换行，详情置于字段之后。宽窄版均可用键盘选择字段，详情显示值、原始字节、绝对半开区间和适用的位范围。
