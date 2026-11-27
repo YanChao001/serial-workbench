@@ -479,6 +479,27 @@ export default function Overview({
       escapedDraftTooLong: t("workbench.escapedDraftTooLong"),
       lineEnding: t("workbench.lineEnding"),
       sendChecksum: t("workbench.sendChecksum"),
+      preprocess: {
+        title: t("workbench.preprocessTitle"),
+        enabled: t("workbench.preprocessEnabled"),
+        example: t("workbench.preprocessExample"),
+        definition: t("workbench.preprocessDefinition"),
+        preview: t("workbench.preprocessPreview"),
+        running: t("workbench.preprocessRunning"),
+        pending: t("workbench.preprocessPending"),
+        final: (count: number) =>
+          t("workbench.preprocessFinal", { count: String(count) }),
+        stepError: (step: number, reason: string) =>
+          t("workbench.preprocessStepError", { step: String(step), reason }),
+        errors: {
+          definition: t("workbench.preprocessError.definition"),
+          encoding: t("workbench.preprocessError.encoding"),
+          empty: t("workbench.preprocessError.empty"),
+          limit: t("workbench.preprocessError.limit"),
+          query: t("workbench.preprocessError.query"),
+          output: t("workbench.preprocessError.output"),
+        },
+      },
       checksumAlgorithm: t("workbench.checksumAlgorithm"),
       checksumOrder: t("workbench.checksumOrder"),
       checksumLittleEndian: t("workbench.checksumLittleEndian"),

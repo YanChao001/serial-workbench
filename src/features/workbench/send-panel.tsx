@@ -81,6 +81,11 @@ import {
   type SendChecksum,
 } from "./send-checksum";
 import { SendChecksumSettings } from "./send-checksum-settings";
+import {
+  SendPreprocessSettings,
+  useSendPreprocess,
+} from "./send-preprocess-settings";
+import type { SendPreprocessQuery } from "./send-preprocess";
 import { convertSendDraft } from "./send-draft-conversion";
 import { expandSendEscapes, SendEscapeError } from "./send-escapes";
 import { MixedSendInput } from "./mixed-send-input";
@@ -103,6 +108,23 @@ import {
   type CharacterRemapRules,
 } from "./character-remap";
 const NO_LINE_ENDING: LineEnding = { kind: "none" };
+type SendPreview = {
+  prepared?: TextSendPreview;
+  ending?: Uint8Array;
+  invalid: boolean;
+  reason?: "unrepresentable" | "loading" | "hex" | "limit" | "checksum";
+  checksumHex?: string;
+  source?: TxSourceText;
+  hexIssue?: { field: "draft" | "ending"; start: number; end: number };
+};
+
+function bytePreview(bytes: Uint8Array): TextSendPreview {
+  return Object.freeze({
+    byteLength: bytes.length,
+    readBytes: () => bytes.slice(),
+  });
+}
+
 function sameReceiptIdentity(value: Operation, admitted: Operation): boolean {
   return (
     value.operationId === admitted.operationId &&
@@ -140,7 +162,7 @@ export type SendPanelProps = {
   initialMode?: "text" | "hex";
   session?: SessionSnapshot;
   draft: string;
-  checksumDraftKey?: string;
+  draftOwnerKey?: string;
   onDraftChange: (value: string) => void;
   labels: WorkbenchLabels;
   onSend: (
@@ -155,6 +177,9 @@ export type SendPanelProps = {
     wait: (operation: Operation, signal: AbortSignal) => Promise<Operation>;
   };
   globalSendPreview?: TextSendPreview;
+  preprocessDraftOwners?: readonly string[];
+  preprocessScope?: string;
+  preprocessQuery?: SendPreprocessQuery;
   sendRemap?: CharacterRemapRules;
   onClearSendRemap?: () => void;
   /** 最终发送字节的不可变快照，非法输入和卸载时为 null。 */
@@ -229,12 +254,15 @@ export function SendPanel({
   draftsDirty = false,
   session,
   draft,
-  checksumDraftKey,
+  draftOwnerKey,
   onDraftChange,
   labels,
   onSend,
   holdSend,
   globalSendPreview,
+  preprocessDraftOwners,
+  preprocessScope,
+  preprocessQuery,
   sendRemap,
   onClearSendRemap,
   onPreviewChange,
@@ -293,7 +321,7 @@ export function SendPanel({
   const sessionScope = session
     ? JSON.stringify([session.sessionId, session.sessionEpoch])
     : null;
-  const checksumOwner = JSON.stringify([checksumDraftKey, sessionScope]);
+  const checksumOwner = JSON.stringify([draftOwnerKey, sessionScope]);
   const [checksumState, setChecksumState] = useState({
     owner: checksumOwner,
     value: DEFAULT_SEND_CHECKSUM,
@@ -391,14 +419,7 @@ export function SendPanel({
   }, [sessionScope]);
   const endingKind = ending.kind;
   const customSuffixHex = endingKind === "custom" ? suffixHex : "";
-  const preview = useMemo<{
-    prepared?: TextSendPreview;
-    invalid: boolean;
-    reason?: "unrepresentable" | "loading" | "hex" | "limit" | "checksum";
-    checksumHex?: string;
-    source?: TxSourceText;
-    hexIssue?: { field: "draft" | "ending"; start: number; end: number };
-  }>(() => {
+  const basePreview = useMemo<SendPreview>(() => {
     let field: "draft" | "ending" = "ending";
     try {
       if (mode !== "hex" && encodingStatus !== "ready")
@@ -432,28 +453,11 @@ export function SendPanel({
           mapping: { ...sendRemap, replacements: [...sendRemap.replacements] },
         };
       }
-      let prepared = createTextSendPreview(text, mode, suffix, encoding);
-      let checksumHex: string | undefined;
-      if (checksum.algorithm !== "none") {
-        const bytes = prepared.readBytes();
-        const endingLength = encodeTextSend("", mode, suffix, encoding).length;
-        const checked = appendSendChecksum(bytes, bytes.length - endingLength, {
-          ...checksum,
-          algorithm: checksum.algorithm,
-        });
-        if (!checked) return { invalid: true, reason: "checksum" };
-        checksumHex = formatHex(checked.checksum);
-        prepared = Object.freeze({
-          byteLength: checked.bytes.length,
-          readBytes: () => checked.bytes.slice(),
-        });
-      }
       return {
-        prepared,
-        checksumHex,
+        prepared: createTextSendPreview(text, mode, suffix, encoding),
+        ending: encodeTextSend("", mode, suffix, encoding),
         source,
-        invalid: prepared.byteLength > TX_MAX_BYTES,
-        reason: prepared.byteLength > TX_MAX_BYTES ? "limit" : undefined,
+        invalid: false,
       };
     } catch (error) {
       return {
@@ -472,9 +476,61 @@ export function SendPanel({
     customSuffixHex,
     encoding,
     encodingStatus,
-    checksum,
     sendRemap,
   ]);
+  const preprocessInput = useMemo(() => {
+    const { prepared, ending } = basePreview;
+    return prepared && ending ? { prepared, ending } : undefined;
+  }, [basePreview]);
+  const preprocessOwner = draftOwnerKey ?? "";
+  const preprocessTarget = JSON.stringify([preprocessScope, sessionScope]);
+  const preprocessDisabled =
+    draftReadOnly || preprocessDraftOwners?.includes(preprocessOwner) === false;
+  const preprocess = useSendPreprocess(
+    preprocessOwner,
+    preprocessTarget,
+    session?.revision,
+    preprocessInput,
+    preprocessQuery,
+    preprocessDraftOwners,
+  );
+  const processed =
+    preprocess.current?.status === "ready"
+      ? preprocess.current.bytes
+      : undefined;
+  const waitingForPreprocess = preprocess.enabled && !processed;
+  const preview = useMemo<SendPreview>(() => {
+    const ending = basePreview.ending;
+    let prepared = basePreview.prepared;
+    if (basePreview.invalid || !prepared || !ending) return basePreview;
+    if (waitingForPreprocess) return { invalid: false };
+    if (processed) {
+      const bytes = new Uint8Array(processed.length + ending.length);
+      bytes.set(processed);
+      bytes.set(ending, processed.length);
+      prepared = bytePreview(bytes);
+    }
+    let checksumHex: string | undefined;
+    if (checksum.algorithm !== "none") {
+      const bytes = prepared.readBytes();
+      const checked = appendSendChecksum(bytes, bytes.length - ending.length, {
+        ...checksum,
+        algorithm: checksum.algorithm,
+      });
+      if (!checked) return { invalid: true, reason: "checksum" };
+      checksumHex = formatHex(checked.checksum);
+      prepared = bytePreview(checked.bytes);
+    }
+    return {
+      ...basePreview,
+      prepared,
+      checksumHex,
+      invalid: prepared.byteLength > TX_MAX_BYTES,
+      reason: prepared.byteLength > TX_MAX_BYTES ? "limit" : undefined,
+    };
+  }, [basePreview, waitingForPreprocess, processed, checksum]);
+  const finalPreprocessed =
+    preprocess.enabled && !preview.invalid ? preview.prepared : undefined;
   const hexIssue = preview.hexIssue;
   const hexPosition = hexIssue
     ? Array.from(
@@ -548,11 +604,13 @@ export function SendPanel({
     disabledReason ??
     (preview.invalid
       ? previewError
-      : busy
-        ? labels.sending
-        : !preview.prepared?.byteLength
-          ? labels.emptyDraft
-          : `${formatShortcut(SEND_EDITOR_SHORTCUT)} ${labels.send}`);
+      : waitingForPreprocess
+        ? labels.preprocess.pending
+        : busy
+          ? labels.sending
+          : !preview.prepared?.byteLength
+            ? labels.emptyDraft
+            : `${formatShortcut(SEND_EDITOR_SHORTCUT)} ${labels.send}`);
   async function send(scopeSignal?: AbortSignal) {
     const prepared = preview.prepared;
     if (
@@ -590,11 +648,12 @@ export function SendPanel({
       }
       const source =
         sourceText && transforms ? { sourceText, transforms } : undefined;
-      const result = scopeSignal
-        ? await onSend(bytes, controller.signal, source, session?.revision)
-        : source
-          ? await onSend(bytes, controller.signal, source)
-          : await onSend(bytes, controller.signal);
+      const result =
+        scopeSignal || preprocess.enabled
+          ? await onSend(bytes, controller.signal, source, session?.revision)
+          : source
+            ? await onSend(bytes, controller.signal, source)
+            : await onSend(bytes, controller.signal);
       if (isCurrent()) {
         setSendState({ scope: sessionScope, busy: false, receipt: result });
         return result;
@@ -784,7 +843,7 @@ export function SendPanel({
           </WorkbenchIconButton>
         )}
         <MixedSendInput
-          key={`mixed-${checksumDraftKey ?? ""}`}
+          key={`mixed-${draftOwnerKey ?? ""}`}
           readDraft={() => currentDraft.current}
           encoding={encoding}
           disabled={draftReadOnly === true || encodingStatus !== "ready"}
@@ -888,6 +947,13 @@ export function SendPanel({
           onChange={(value: SendChecksum) =>
             setChecksumState({ owner: checksumOwner, value })
           }
+        />
+        <SendPreprocessSettings
+          key={`preprocess:${preprocessOwner}`}
+          preprocess={preprocess}
+          labels={labels.preprocess}
+          final={finalPreprocessed}
+          disabled={preprocessDisabled}
         />
         <span className="workbench-toolbar-spacer" />
         {draftActions}
@@ -1002,11 +1068,15 @@ export function SendPanel({
       fileBusy,
       onSendFile,
       emptyDraft,
-      checksumDraftKey,
+      draftOwnerKey,
       checksumOwner,
       checksum,
       preview.checksumHex,
       invalidChecksum,
+      preprocess,
+      preprocessDisabled,
+      preprocessOwner,
+      finalPreprocessed,
     ],
   );
   return (
@@ -1109,7 +1179,8 @@ export function SendPanel({
             className="workbench-draft-bytes"
             aria-label={labels.draftByteCount}
           >
-            {preview.invalid && preview.reason !== "limit"
+            {waitingForPreprocess ||
+            (preview.invalid && preview.reason !== "limit")
               ? "—"
               : formatByteSize(String(preview.prepared?.byteLength ?? 0))}
           </span>

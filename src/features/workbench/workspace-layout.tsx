@@ -1,5 +1,6 @@
 import type { StreamHighlightRule } from "./stream-highlight";
 import type { CharacterRemapRules } from "./character-remap";
+import type { SendPreprocessQuery } from "./send-preprocess";
 import type { TestSuiteWorkspace } from "./test-suite-tool";
 import { TestSuiteSessionsContext } from "./test-suite-sessions";
 import {
@@ -1068,6 +1069,13 @@ export function WorkspaceLayout({
         ? viewDraftKey(draftScopeKey, selectedTab.id)
         : "unconnected";
   const usesUnconnectedDraft = draftKey === "unconnected";
+  const preprocessDraftOwners = useMemo(
+    () =>
+      tabs
+        .filter((tab) => !tab.captureRef && (tab.view || tab.sessionId))
+        .map((tab) => viewDraftKey(draftScopeKey, tab.id)),
+    [draftScopeKey, tabs],
+  );
   const controlledSendMode = usesUnconnectedDraft
     ? unboundSendMode
     : (viewModes[selected ?? "unconnected"]?.sendMode ??
@@ -1824,6 +1832,37 @@ export function WorkspaceLayout({
         }
       : undefined;
   }, [targetHostId, targetSessionId, targetSessionEpoch]);
+  const preprocessConnection = host.connection;
+  const preprocessQuery = useMemo<SendPreprocessQuery | undefined>(() => {
+    if (
+      !target ||
+      !preprocessConnection ||
+      preprocessConnection.attachment.hostId !== target.hostId
+    )
+      return undefined;
+    return async (actionId, params, signal) => {
+      const spec = catalog.find(
+        (entry) =>
+          entry.actionId === actionId &&
+          entry.kind === "query" &&
+          entry.executionLocation === "resource_host" &&
+          entry.targetKinds.includes("session") &&
+          entry.permissions.every(
+            (permission) =>
+              permission === "metadata.read" || permission === "content.read",
+          ),
+      );
+      if (!spec) throw new Error("Invalid preprocessing query");
+      const query = preprocessConnection.buildQuery(actionId, target, params);
+      const reply = await preprocessConnection.client.query(
+        { ...query, revealTarget: spec.revealTarget },
+        signal,
+      );
+      if (reply.kind !== "extension")
+        throw new Error("Invalid preprocessing result");
+      return reply.value;
+    };
+  }, [catalog, preprocessConnection, target]);
   const inputs = useMemo<HostActionCheckInput[]>((): HostActionCheckInput[] => {
     const values: HostActionCheckInput[] = [];
     if (target && checkedWriteWaitMs !== undefined) {
@@ -2795,6 +2834,9 @@ export function WorkspaceLayout({
             ? sendPermissionPreview?.prepared
             : undefined
         }
+        preprocessDraftOwners={preprocessDraftOwners}
+        preprocessScope={nativeOwnershipKey}
+        preprocessQuery={preprocessQuery}
         holdSend={
           writableViewScope && target
             ? { scope: writableViewScope, target, wait: host.waitForOperation }
