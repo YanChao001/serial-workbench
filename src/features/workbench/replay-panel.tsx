@@ -231,6 +231,11 @@ export function ReplayPanel({
     setSearchLocation(undefined);
   }, []);
   const clearArchive = useCallback(() => {
+    if (pending.current?.scope === "archive") {
+      pending.current.controller.abort();
+      pending.current = null;
+      setBusy(false);
+    }
     const focused = seekInput.current?.ownerDocument.activeElement;
     if (focused?.hasAttribute("data-archive-page-action"))
       (browseTrigger.current ?? seekInput.current)?.focus();
@@ -332,13 +337,11 @@ export function ReplayPanel({
     activeArchive?.result ?? (archivePage ? undefined : playbackPage);
   latestPage.current = page;
   useEffect(() => {
-    if (archiveAllowed) return;
-    if (pending.current?.scope === "archive") {
-      pending.current.controller.abort();
-      pending.current = null;
-      setBusy(false);
-    }
-    if (archivePage) clearArchive();
+    if (
+      !archiveAllowed &&
+      (archivePage || pending.current?.scope === "archive")
+    )
+      clearArchive();
   }, [archiveAllowed, archivePage, clearArchive]);
 
   const records = useMemo(
@@ -718,6 +721,8 @@ export function ReplayPanel({
             initialEncoding={searchEncoding}
             closeLabel={labels.closeView}
             jumpDisabled={!availableControls}
+            fallbackFocus={archiveAccess ? browseTrigger : undefined}
+            onSourceUnavailable={archiveAccess ? clearArchive : undefined}
             onJump={locateSearchHit}
           />
         )}

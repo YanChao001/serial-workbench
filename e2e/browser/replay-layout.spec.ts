@@ -930,6 +930,7 @@ for (const {
     await page.setViewportSize({ width, height });
     await seedWorkbenchFixture(page, {
       language,
+      sidebarCollapsed: width <= 420,
       hostStart: "pending",
       replay: {
         session: replaySession,

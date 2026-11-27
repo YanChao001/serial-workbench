@@ -1416,9 +1416,6 @@ export function StreamView({
         <span
           className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
         >
-          {replay && presentationLabels
-            ? `${presentationLabels.replay} · `
-            : ""}
           {row.kind === "rx" && !row.continuation && (
             <Download aria-hidden="true" />
           )}
@@ -2320,6 +2317,7 @@ export function StreamView({
             className="workbench-stream-log app-scroll-region"
             data-surface="transparent"
             data-following={following}
+            data-fixed-page={fixedPageKey !== undefined || undefined}
             data-stream-windowed={rowWindow.enabled || undefined}
             data-locating={locatedItem !== undefined || undefined}
             onWheel={(event) => {
@@ -2347,7 +2345,7 @@ export function StreamView({
               if (event.target !== event.currentTarget) return;
               const element = event.currentTarget;
               if (
-                rowWindow.enabled &&
+                (rowWindow.enabled || fixedPageKey !== undefined) &&
                 (event.key === "Home" || event.key === "End")
               ) {
                 event.preventDefault();
