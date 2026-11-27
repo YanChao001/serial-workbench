@@ -8,7 +8,7 @@ export type FixedFramingRules = {
   idleMs?: number;
 };
 
-function marker(value: Call["params"][string]) {
+function marker(value: unknown) {
   if (typeof value === "string")
     return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }
