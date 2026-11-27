@@ -44,6 +44,8 @@ export type ActionResult_Deserialize =
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
   | { kind: "capture_verification"; value: VerificationReport_Deserialize }
   | { kind: "replay_position"; value: ReplayReadResult_Deserialize }
+  | { kind: "replay_peer_progress"; value: ReplayPeerProgress }
+  | { kind: "replay_peer_closed"; value: ReplayPeerClosed }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
   | {
       kind: "node_package_installed";
@@ -82,6 +84,8 @@ export type ActionResult_Serialize =
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
   | { kind: "capture_verification"; value: VerificationReport_Serialize }
   | { kind: "replay_position"; value: ReplayReadResult_Serialize }
+  | { kind: "replay_peer_progress"; value: ReplayPeerProgress }
+  | { kind: "replay_peer_closed"; value: ReplayPeerClosed }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
   | { kind: "node_package_installed"; value: NodePackageChangeResult_Serialize }
   | { kind: "node_package_changed"; value: NodePackageChangeResult_Serialize }
@@ -2021,7 +2025,8 @@ export type FileMetadata_Serialize = {
   fingerprint: Digest;
 };
 
-export type FilePurpose = "read_file" | "capture_source" | "capture_target";
+export type FilePurpose =
+  "read_file" | "capture_source" | "capture_peer_source" | "capture_target";
 
 export type FileReadParams =
   FileReadParams_Serialize | FileReadParams_Deserialize;
@@ -4487,6 +4492,7 @@ export type QueryResult_Deserialize =
   | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
   | { kind: "capture_redaction_preview"; value: CaptureRedactionPreviewResult }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
+  | { kind: "replay_peer_state"; value: ReplayPeerState }
   | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
@@ -4547,6 +4553,7 @@ export type QueryResult_Serialize =
   | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
   | { kind: "capture_redaction_preview"; value: CaptureRedactionPreviewResult }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
+  | { kind: "replay_peer_state"; value: ReplayPeerState }
   | { kind: "replay_search"; value: ReplaySearchResult }
   | { kind: "recent"; value: RecentList_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
@@ -4818,6 +4825,48 @@ export type ReplayOpenParams_Deserialize = {
 export type ReplayOpenParams_Serialize = {
   captureRef: ObjectRef_Serialize;
   mode: ReplayMode;
+};
+
+export type ReplayPeerClosed = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  revision: U64;
+};
+
+export type ReplayPeerOpenParams =
+  ReplayPeerOpenParams_Serialize | ReplayPeerOpenParams_Deserialize;
+
+export type ReplayPeerOpenParams_Deserialize = {
+  captureRef: ObjectRef_Deserialize;
+};
+
+export type ReplayPeerOpenParams_Serialize = {
+  captureRef: ObjectRef_Serialize;
+};
+
+export type ReplayPeerProgress = {
+  revision: U64;
+  completedTurns: U64;
+  remainingRequestBytes: U64;
+  responseStart: U64;
+  responseCount: U64;
+  atEnd: boolean;
+};
+
+export type ReplayPeerResponse = {
+  recordOrdinal: U64;
+  bytesBase64: Bytes;
+};
+
+export type ReplayPeerState = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  progress: ReplayPeerProgress;
+  responses: ReplayPeerResponse[];
+};
+
+export type ReplayPeerSubmitParams = {
+  bytesBase64: Bytes;
 };
 
 export type ReplayPlaybackControl =

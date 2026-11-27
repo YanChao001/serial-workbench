@@ -180,6 +180,10 @@ pub enum BuiltinAction {
     CaptureRecover,
     CaptureExport,
     ReplayOpen,
+    ReplayPeerOpen,
+    ReplayPeerState,
+    ReplayPeerSubmit,
+    ReplayPeerClose,
     ReplayRead,
     ReplaySearch,
     ReplayControl,
@@ -246,7 +250,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 119] = [
+    pub const ALL: [Self; 123] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::WorkspaceConfigurationInspect,
@@ -302,6 +306,10 @@ impl BuiltinAction {
         Self::CaptureRecover,
         Self::CaptureExport,
         Self::ReplayOpen,
+        Self::ReplayPeerOpen,
+        Self::ReplayPeerState,
+        Self::ReplayPeerSubmit,
+        Self::ReplayPeerClose,
         Self::ReplayRead,
         Self::ReplaySearch,
         Self::ReplayControl,
@@ -395,6 +403,10 @@ impl BuiltinAction {
             Self::CaptureRecover => "capture.recover",
             Self::CaptureExport => "capture.export",
             Self::ReplayOpen => "replay.open",
+            Self::ReplayPeerOpen => "replay.peer.open",
+            Self::ReplayPeerState => "replay.peer.state",
+            Self::ReplayPeerSubmit => "replay.peer.submit",
+            Self::ReplayPeerClose => "replay.peer.close",
             Self::ReplayRead => "replay.read",
             Self::ReplaySearch => "replay.search",
             Self::ReplayControl => "replay.control",
@@ -523,6 +535,10 @@ impl BuiltinAction {
                 | Self::CaptureRecover
                 | Self::CaptureExport
                 | Self::ReplayOpen
+                | Self::ReplayPeerOpen
+                | Self::ReplayPeerState
+                | Self::ReplayPeerSubmit
+                | Self::ReplayPeerClose
                 | Self::ReplayRead
                 | Self::ReplaySearch
                 | Self::ReplayControl
@@ -564,6 +580,7 @@ impl BuiltinAction {
                         | Self::CaptureTail
                         | Self::CaptureRedactionPreview
                         | Self::ReplayRead
+                        | Self::ReplayPeerState
                         | Self::ReplaySearch
                 ))
             || matches!(
@@ -622,10 +639,15 @@ impl BuiltinAction {
             | Self::CaptureTail
             | Self::CaptureVerify
             | Self::CaptureExport
-            | Self::ReplayOpen => &["file", "capture"],
-            Self::ReplayRead | Self::ReplaySearch | Self::ReplayControl | Self::ReplayClose => {
-                &["session"]
-            }
+            | Self::ReplayOpen
+            | Self::ReplayPeerOpen => &["file", "capture"],
+            Self::ReplayRead
+            | Self::ReplaySearch
+            | Self::ReplayControl
+            | Self::ReplayClose
+            | Self::ReplayPeerState
+            | Self::ReplayPeerSubmit
+            | Self::ReplayPeerClose => &["session"],
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
             Self::FileMetadata => &["file", "capture", "plugin_result"],
             Self::FileRead => &["file", "capture_record", "plugin_result"],
@@ -995,6 +1017,19 @@ impl BuiltinAction {
             }
             Self::ReplayRead => {
                 ActionSpec::of_with_dialect::<ReplayReadParams, ReplayReadResult>(meta, dialect)
+            }
+            Self::ReplayPeerOpen => {
+                ActionSpec::of_with_dialect::<ReplayPeerOpenParams, OpenResult>(meta, dialect)
+            }
+            Self::ReplayPeerState => {
+                ActionSpec::of_with_dialect::<EmptyParams, ReplayPeerState>(meta, dialect)
+            }
+            Self::ReplayPeerSubmit => ActionSpec::of_with_dialect::<
+                ReplayPeerSubmitParams,
+                ReplayPeerProgress,
+            >(meta, dialect),
+            Self::ReplayPeerClose => {
+                ActionSpec::of_with_dialect::<EmptyParams, ReplayPeerClosed>(meta, dialect)
             }
             Self::ReplaySearch => {
                 ActionSpec::of_with_dialect::<ReplaySearchParams, ReplaySearchResult>(meta, dialect)

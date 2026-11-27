@@ -253,6 +253,7 @@ pub struct RecoverPrefixParams {
 pub enum FilePurpose {
     ReadFile,
     CaptureSource,
+    CapturePeerSource,
     CaptureTarget,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
@@ -337,6 +338,53 @@ pub struct ReplayOpenParams {
     pub capture_ref: ObjectRef,
     #[serde(default)]
     pub mode: ReplayMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPeerOpenParams {
+    pub capture_ref: ObjectRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPeerSubmitParams {
+    pub bytes_base64: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPeerResponse {
+    pub record_ordinal: U64,
+    pub bytes_base64: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPeerProgress {
+    pub revision: U64,
+    pub completed_turns: U64,
+    pub remaining_request_bytes: U64,
+    pub response_start: U64,
+    pub response_count: U64,
+    pub at_end: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPeerClosed {
+    pub session_id: Id,
+    pub session_epoch: U64,
+    pub revision: U64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPeerState {
+    pub session_id: Id,
+    pub session_epoch: U64,
+    pub progress: ReplayPeerProgress,
+    pub responses: Vec<ReplayPeerResponse>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

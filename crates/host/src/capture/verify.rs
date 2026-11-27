@@ -84,16 +84,24 @@ pub(crate) enum CopyPhase {
     AfterRecord,
 }
 pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
-    scan_directory(path, false)
+    scan_directory(path, false, None)
 }
 
-pub(super) fn index_replay_directory(path: &Path) -> HostResult<VerifiedCapture> {
-    scan_directory(path, true)
+pub(super) fn index_replay_directory(
+    path: &Path,
+    interactive_budget: Option<u64>,
+) -> HostResult<VerifiedCapture> {
+    scan_directory(path, true, interactive_budget)
 }
 
-fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCapture> {
-    let before = fingerprint(path)?;
-    let value: serde_json::Value = read_json(&path.join("manifest.json"))?;
+fn scan_directory(
+    path: &Path,
+    rebuild_index: bool,
+    interactive_budget: Option<u64>,
+) -> HostResult<VerifiedCapture> {
+    let before = fingerprint_with_budget(path, interactive_budget)?;
+    let value: serde_json::Value =
+        read_json_with_budget(&path.join("manifest.json"), interactive_budget)?;
     let format = CaptureFormat::from_version(value.get("formatVersion").and_then(|v| v.as_str()))?;
     let manifest: Manifest = serde_json::from_value(value).map_err(|_| corrupt())?;
     if manifest.mode != format.mode()
@@ -130,6 +138,7 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
     let mut mixed_source_clocks = false;
     let mut last_recorded_ns = None;
     let mut volume_identities = HashMap::new();
+    let mut volume_bytes_left = interactive_budget;
     for (position, volume) in manifest.volumes.iter().enumerate() {
         if !all {
             break;
@@ -161,11 +170,17 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
             }
         };
         let mut magic = [0; 7];
+        let opened_length = file.metadata().map_err(io_error)?.len();
+        if let Some(remaining) = &mut volume_bytes_left {
+            *remaining = remaining
+                .checked_sub(opened_length)
+                .ok_or_else(super::recorded_peer::limit)?;
+        }
         volume_identities.insert(
             ordinal,
             (
                 crate::files::references::file_identity(&file)?,
-                file.metadata().map_err(io_error)?.len(),
+                opened_length,
             ),
         );
         if file.read_exact(&mut magic).is_err() || &magic != format.magic() {
@@ -173,12 +188,23 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
         }
         let mut offset = 7u64;
         while all && prefix + 1 < volume.record_end.get() {
+            if interactive_budget.is_some() && prefix >= super::recorded_peer::MAX_RECORDS as u64 {
+                return Err(super::recorded_peer::limit());
+            }
             if prefix >= MAX_CAPTURE_RECORDS as u64 {
                 all = false;
                 break;
             }
             let record_start = offset;
-            let (record, observed, length, json) = match decode_record(&mut file, format) {
+            let decoded = if interactive_budget.is_some() {
+                decode_record(
+                    &mut (&mut file).take(opened_length.saturating_sub(offset)),
+                    format,
+                )
+            } else {
+                decode_record(&mut file, format)
+            };
+            let (record, observed, length, json) = match decoded {
                 Ok(r) => r,
                 Err(_) => {
                     all = false;
@@ -294,7 +320,11 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
             offset += length;
         }
         let length = file.metadata().map_err(io_error)?.len();
-        let hash = hash_file(&mut file)?;
+        let hash = if interactive_budget.is_some() {
+            hash_file_bounded(&mut file, opened_length)?
+        } else {
+            hash_file(&mut file)?
+        };
         if offset != length || length != volume.length.get() || hash != volume.digest {
             all = false
         }
@@ -341,7 +371,7 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
                         })
                 });
     }
-    let after = fingerprint(path)?;
+    let after = fingerprint_with_budget(path, interactive_budget)?;
     if before != after {
         return Err(changed());
     }
@@ -394,7 +424,7 @@ fn scan_directory(path: &Path, rebuild_index: bool) -> HostResult<VerifiedCaptur
     })
 }
 fn decode_record(
-    file: &mut File,
+    file: &mut impl Read,
     format: CaptureFormat,
 ) -> HostResult<(CaptureRecord, Option<u64>, u64, Vec<u8>)> {
     let mut size = [0; 4];

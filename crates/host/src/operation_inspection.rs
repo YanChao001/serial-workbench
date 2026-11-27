@@ -32,7 +32,12 @@ impl Host {
             };
             let source = if matches!(
                 record.0.action_id.as_str(),
-                "capture.recover" | "replay.control" | "replay.close" | "session.close"
+                "capture.recover"
+                    | "replay.control"
+                    | "replay.close"
+                    | "session.close"
+                    | "replay.peer.open"
+                    | "replay.peer.submit"
             ) {
                 match store.operation_source_authority(&record.0.operation_id) {
                     Ok(source) => Some(source),
@@ -63,7 +68,7 @@ impl Host {
         }
         let replay = matches!(
             operation.action_id.as_str(),
-            "replay.control" | "replay.close"
+            "replay.control" | "replay.close" | "replay.peer.open" | "replay.peer.submit"
         ) || (operation.action_id.as_str() == "session.close" && source.is_some());
         let auth = self.inner.auth.clone();
         let files = self.inner.files.clone();
@@ -112,7 +117,21 @@ pub(super) fn redact_error_details(operation: &mut Operation) {
                 .details
                 .as_deref()
                 .is_some_and(crate::device::plugin_transport::is_public_rfc2217_open_detail);
-        if !public_open_detail {
+        let peer_position = operation.action_id.as_str() == "replay.peer.submit"
+            && error.code == "REPLAY_PEER_MISMATCH"
+            && error.details.as_deref().is_some_and(|details| {
+                details.len() == 3
+                    && ["turn", "matchedBytes", "mismatchOffset"]
+                        .iter()
+                        .all(|key| {
+                            details
+                                .get(*key)
+                                .and_then(|value| serde_json::to_value(value).ok())
+                                .and_then(|value| value.as_u64())
+                                .is_some_and(|value| value <= 512 * 1024)
+                        })
+            });
+        if !public_open_detail && !peer_position {
             error.details = None;
         }
     }
@@ -173,7 +192,19 @@ fn authorize_inspection(
             let input: ReplayOpenParams = decode(stored()?)?;
             file_read(&input.capture_ref)?;
         }
-        "replay.control" | "replay.close" => {} // Current rights on the persisted source were checked above.
+        "replay.peer.open" => {
+            let input: ReplayPeerOpenParams = decode(stored()?)?;
+            file_read(&input.capture_ref)?;
+        }
+        "replay.control" | "replay.close" | "replay.peer.submit" => {} // Current rights on the persisted source were checked above.
+        "replay.peer.close" => {
+            if actor.id() != &operation.actor_id {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "The recorded peer belongs to another actor",
+                ));
+            }
+        }
         "workspace.commands.export" => {
             auth.require(actor, "metadata.read", &operation.target)?;
             auth.require(actor, "content.read", &operation.target)?;

@@ -1283,6 +1283,30 @@ export const en = {
   "workbench.tools.configurationFileName": "workspace-configuration.json",
   "workbench.configuration.importContents": "Configuration package contents",
   "workbench.configuration.commandCount": "Quick commands to add ({count})",
+  "workbench.replayPeer.open": "Simulate recorded peer",
+  "workbench.replayPeer.closed": "The simulated peer is closed.",
+  "workbench.replayPeer.ineligible":
+    "Simulation needs a complete raw recording of one byte stream with confirmed writes. Use Open replay to inspect this recording.",
+  "workbench.replayPeer.tooLarge":
+    "This recording exceeds the simulation size limit. Use Open replay to inspect it.",
+  "workbench.replayPeer.title": "Recorded peer",
+  "workbench.replayPeer.sourceUnavailable":
+    "The recording is unavailable to this simulated session.",
+  "workbench.replayPeer.loading": "Checking the recorded peer…",
+  "workbench.replayPeer.mismatchAt":
+    "Input differs at byte {position} of the recorded request. The matching position is unchanged.",
+  "workbench.replayPeer.mismatch":
+    "Input does not match the recorded request. The matching position is unchanged.",
+  "workbench.replayPeer.complete": "All recorded requests matched.",
+  "workbench.replayPeer.hexInput": "Input HEX",
+  "workbench.replayPeer.invalidHex": "Enter complete hexadecimal byte pairs.",
+  "workbench.replayPeer.submit": "Send to simulated peer",
+  "workbench.replayPeer.progress":
+    "{turns} requests matched · {bytes} bytes left in the current request",
+  "workbench.replayPeer.responses": "Recorded responses",
+  "workbench.replayPeer.record": "RX · record {ordinal}",
+  "workbench.replayPeer.noResponse":
+    "No recorded response for this submission.",
   "workbench.startup.title": "Start workspace",
   "workbench.startup.connections": "Session connections",
   "workbench.startup.noViews": "This workspace has no saved session views.",

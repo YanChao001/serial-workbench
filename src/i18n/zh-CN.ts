@@ -1193,6 +1193,27 @@ export const zhCN = {
   "workbench.tools.configurationFileName": "工作区配置.json",
   "workbench.configuration.importContents": "配置包内容",
   "workbench.configuration.commandCount": "将追加 {count} 条快捷命令",
+  "workbench.replayPeer.open": "模拟录制对端",
+  "workbench.replayPeer.closed": "模拟对端已关闭。",
+  "workbench.replayPeer.ineligible":
+    "交互模拟需要一份连续的单流原始录制，且写入已全部确认。可用「打开回放」查看这份录制。",
+  "workbench.replayPeer.tooLarge":
+    "当前录制超过交互模拟的容量上限。可用「打开回放」查看这份录制。",
+  "workbench.replayPeer.title": "录制对端",
+  "workbench.replayPeer.sourceUnavailable": "当前模拟会话无法读取这份录制。",
+  "workbench.replayPeer.loading": "正在检查录制对端…",
+  "workbench.replayPeer.mismatchAt":
+    "输入在录制请求的第 {position} 字节不匹配，当前位置保持不变。",
+  "workbench.replayPeer.mismatch": "输入与录制请求不匹配，当前位置保持不变。",
+  "workbench.replayPeer.complete": "录制中的请求已全部匹配。",
+  "workbench.replayPeer.hexInput": "输入 HEX",
+  "workbench.replayPeer.invalidHex": "请输入完整的十六进制字节对。",
+  "workbench.replayPeer.submit": "提交到模拟对端",
+  "workbench.replayPeer.progress":
+    "已匹配 {turns} 次请求 · 当前请求还需 {bytes} 字节",
+  "workbench.replayPeer.responses": "录制响应",
+  "workbench.replayPeer.record": "RX · 录制序号 {ordinal}",
+  "workbench.replayPeer.noResponse": "本次提交没有录制响应。",
   "workbench.startup.title": "启动工作区",
   "workbench.startup.connections": "会话连接",
   "workbench.startup.noViews": "此工作区没有已保存的会话视图。",

@@ -5,7 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import type { CaptureRecord, ReplayRecord } from "@serial-workbench/contracts";
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
-import { session } from "../../src/features/workbench/test-fixtures";
+import { operation, session } from "../../src/features/workbench/test-fixtures";
 import { en } from "../../src/i18n/en";
 import { xyCaptureFixture } from "./xy-capture.fixture";
 import {
@@ -1515,3 +1515,392 @@ for (const options of [
     },
   );
 }
+
+test("keeps interactive recorded sends on the simulated peer and clears responses on lost access", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 660 });
+  await seedWorkbenchFixture(page, { language: "en" });
+  await page.goto("./#/");
+  await expect(page.locator(".workbench")).toBeVisible();
+  await page.evaluate(
+    ({ snapshotJson, receiptJson }) => {
+      const snapshot: unknown = JSON.parse(snapshotJson);
+      const receipt: unknown = JSON.parse(receiptJson);
+      const native: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
+      const object = (value: unknown): value is Record<string, unknown> =>
+        typeof value === "object" && value !== null;
+      if (
+        !object(native) ||
+        typeof native.invoke !== "function" ||
+        !object(snapshot) ||
+        !object(receipt)
+      )
+        throw new Error("Missing recorded peer fixture");
+      const invoke = native.invoke;
+      const fixture = {
+        allowed: true,
+        eligible: true,
+        tooLarge: false,
+        invocations: [] as unknown[],
+      };
+      Reflect.set(window, "recordedPeerFixture", fixture);
+      const source = {
+        hostId: "workbench-gui-host",
+        kind: "file",
+        id: "recorded-source",
+        revision: "1",
+      };
+      let progress = {
+        revision: "1",
+        completedTurns: "0",
+        remainingRequestBytes: "3",
+        responseStart: "0",
+        responseCount: "0",
+        atEnd: false,
+      };
+      let responses: { recordOrdinal: string; bytesBase64: string }[] = [];
+      Reflect.set(
+        native,
+        "invoke",
+        async (command: string, args: Record<string, unknown> = {}) => {
+          if (
+            command === "choose_file_resource" &&
+            args.role === "capturePeerSource"
+          ) {
+            return {
+              reference: source,
+              name: "controller.swbc",
+              length: "850",
+              mime: "application/octet-stream",
+            };
+          }
+          const request = args.request;
+          if (
+            command === "host_request" &&
+            object(request) &&
+            object(request.params)
+          ) {
+            const call = request.params;
+            const target = call.target;
+            if (request.method === "action.query" && object(target)) {
+              if (
+                call.actionId === "session.get" &&
+                target.id === snapshot.sessionId
+              )
+                return {
+                  ok: true,
+                  result: { kind: "session", value: snapshot },
+                };
+              if (
+                call.actionId === "action.check" &&
+                object(call.params) &&
+                (call.params.actionId === "replay.peer.state" ||
+                  call.params.actionId === "replay.peer.close")
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "action_check",
+                    value: {
+                      actionId: call.params.actionId,
+                      target,
+                      allowed:
+                        call.params.actionId === "replay.peer.close" ||
+                        fixture.allowed,
+                    },
+                  },
+                };
+              if (call.actionId === "replay.peer.state")
+                return {
+                  ok: true,
+                  result: {
+                    kind: "replay_peer_state",
+                    value: {
+                      sessionId: snapshot.sessionId,
+                      sessionEpoch: snapshot.sessionEpoch,
+                      progress,
+                      responses,
+                    },
+                  },
+                };
+            }
+            if (
+              request.method === "action.invoke" &&
+              (call.actionId === "replay.peer.open" ||
+                call.actionId === "replay.peer.submit" ||
+                call.actionId === "replay.peer.close")
+            ) {
+              fixture.invocations.push({
+                actionId: call.actionId,
+                target,
+                params: call.params,
+                revision: call.expectedRevision,
+              });
+              const operationId = crypto.randomUUID();
+              const base = {
+                ...receipt,
+                operationId,
+                rootOperationId: operationId,
+                executionHostId: call.hostId,
+                requestId: call.requestId,
+                actionId: call.actionId,
+                target,
+                executionMode: "independent",
+                owner: { kind: "host", id: call.hostId },
+                revealTarget: {
+                  pageId: "workbench",
+                  sessionId: snapshot.sessionId,
+                },
+              };
+              if (call.actionId === "replay.peer.open" && !fixture.eligible)
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      state: "failed",
+                      error: {
+                        code: "REPLAY_PEER_INELIGIBLE",
+                        message: "Incomplete recorded source",
+                        retryable: false,
+                      },
+                    },
+                  },
+                };
+              if (call.actionId === "replay.peer.open")
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      result: {
+                        kind: "opened",
+                        value: {
+                          sessionId: snapshot.sessionId,
+                          sessionEpoch: snapshot.sessionEpoch,
+                          revision: "1",
+                          reused: false,
+                        },
+                      },
+                    },
+                  },
+                };
+              if (call.actionId === "replay.peer.close")
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      result: {
+                        kind: "replay_peer_closed",
+                        value: {
+                          sessionId: snapshot.sessionId,
+                          sessionEpoch: snapshot.sessionEpoch,
+                          revision: "4",
+                        },
+                      },
+                    },
+                  },
+                };
+              if (fixture.tooLarge)
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      state: "failed",
+                      error: {
+                        code: "REPLAY_PEER_LIMIT",
+                        message: "Recording grew",
+                        retryable: false,
+                      },
+                    },
+                  },
+                };
+              const data = object(call.params) ? call.params.bytesBase64 : null;
+              if (data === "AQ==" && call.expectedRevision === "1") {
+                progress = {
+                  revision: "2",
+                  completedTurns: "0",
+                  remainingRequestBytes: "2",
+                  responseStart: "0",
+                  responseCount: "0",
+                  atEnd: false,
+                };
+              } else if (data === "AgM=" && call.expectedRevision === "2") {
+                progress = {
+                  revision: "3",
+                  completedTurns: "1",
+                  remainingRequestBytes: "1",
+                  responseStart: "0",
+                  responseCount: "1",
+                  atEnd: false,
+                };
+                responses = [{ recordOrdinal: "8", bytesBase64: "3q0=" }];
+              } else {
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...base,
+                      state: "failed",
+                      error: {
+                        code: "REPLAY_PEER_MISMATCH",
+                        message: "Unexpected byte",
+                        retryable: false,
+                        details: {
+                          turn: 1,
+                          matchedBytes: 1,
+                          mismatchOffset: 1,
+                        },
+                      },
+                    },
+                  },
+                };
+              }
+              return {
+                ok: true,
+                result: {
+                  operation: {
+                    ...base,
+                    result: { kind: "replay_peer_progress", value: progress },
+                  },
+                },
+              };
+            }
+          }
+          return Reflect.apply(invoke, native, [command, args]);
+        },
+      );
+    },
+    {
+      snapshotJson: JSON.stringify({
+        ...session("replay-peer-demo"),
+        readOnly: true,
+      }),
+      receiptJson: JSON.stringify(operation(crypto.randomUUID())),
+    },
+  );
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Open replay", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "Simulate recorded peer", exact: true })
+    .click();
+  const peer = page.getByRole("region", { name: "Recorded peer", exact: true });
+  const input = peer.getByRole("textbox", { name: "Input HEX" });
+  const send = peer.getByRole("button", { name: "Send to simulated peer" });
+  await expect(
+    peer.getByText("controller.swbc", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", {
+      name: "Recorded peer · controller.swbc",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".workbench-send")).toHaveCount(0);
+  await input.fill("01");
+  await send.click();
+  await expect(peer.getByRole("status")).toContainText("2 bytes left");
+  await input.fill("FF");
+  await send.click();
+  await expect(peer.getByRole("alert")).toContainText("differs at byte 2");
+  await expect(input).toHaveValue("FF");
+  await input.fill("02 03");
+  await send.click();
+  await expect(peer.getByText("DE AD", { exact: true })).toBeVisible();
+  await expect(peer.getByText("RX · record 8", { exact: true })).toBeVisible();
+  await expect(send).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("recorded-peer-narrow.png") });
+  await page.setViewportSize({ width: 1240, height: 820 });
+  await page.screenshot({ path: info.outputPath("recorded-peer-wide.png") });
+
+  const observed: unknown = await page.evaluate(() =>
+    Reflect.get(Reflect.get(window, "recordedPeerFixture"), "invocations"),
+  );
+  expect(observed).toEqual([
+    expect.objectContaining({
+      actionId: "replay.peer.open",
+      params: {
+        captureRef: expect.objectContaining({ id: "recorded-source" }),
+      },
+    }),
+    ...[
+      ["AQ==", "1"],
+      ["/w==", "2"],
+      ["AgM=", "2"],
+    ].map(([bytesBase64, revision]) => ({
+      actionId: "replay.peer.submit",
+      params: { bytesBase64 },
+      revision,
+      target: {
+        hostId: "workbench-gui-host",
+        kind: "session",
+        id: "replay-peer-demo",
+        sessionId: "replay-peer-demo",
+        sessionEpoch: "1",
+      },
+    })),
+  ]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await page.evaluate(() =>
+    Reflect.set(Reflect.get(window, "recordedPeerFixture"), "tooLarge", true),
+  );
+  await input.fill("04");
+  await send.click();
+  await expect(peer.getByRole("alert")).toContainText(
+    "exceeds the simulation size limit",
+  );
+  await expect(peer.getByText("DE AD", { exact: true })).toBeHidden();
+  await page.evaluate(() =>
+    Reflect.set(Reflect.get(window, "recordedPeerFixture"), "allowed", false),
+  );
+  await expect(peer.getByText("DE AD", { exact: true })).toBeHidden();
+  await expect(peer.getByRole("status")).toContainText(
+    "recording is unavailable",
+  );
+  await page
+    .getByRole("button", { name: "Close session", exact: true })
+    .click();
+  await expect(peer.getByRole("status")).toContainText(
+    "simulated peer is closed",
+  );
+  const closed: unknown = await page.evaluate(() =>
+    Reflect.get(Reflect.get(window, "recordedPeerFixture"), "invocations").at(
+      -1,
+    ),
+  );
+  expect(closed).toEqual(
+    expect.objectContaining({
+      actionId: "replay.peer.close",
+      target: expect.objectContaining({
+        id: "replay-peer-demo",
+        sessionEpoch: "1",
+      }),
+    }),
+  );
+  await page.evaluate(() =>
+    Reflect.set(Reflect.get(window, "recordedPeerFixture"), "eligible", false),
+  );
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Open replay", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "Simulate recorded peer", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Use Open replay to inspect this recording" }),
+  ).toBeVisible();
+});

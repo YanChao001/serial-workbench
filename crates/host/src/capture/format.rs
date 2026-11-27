@@ -12,6 +12,7 @@ pub const TIMED_MAGIC: &[u8; 7] = b"SWBR02\n";
 const REDACTED_MAGIC: &[u8; 7] = b"SWBR03\n";
 pub const MAX_RECORD: usize = 1024 * 1024;
 pub(super) const MAX_CAPTURE_RECORDS: usize = 100_000;
+pub(crate) const REPLAY_PEER_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -324,20 +325,36 @@ pub fn no_clobber(error: std::io::Error) -> HostError {
     }
 }
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> HostResult<T> {
-    let file = open_read(path)?;
-    if file.metadata().map_err(io_error)?.len() > MAX_METADATA {
-        return Err(corrupt());
-    }
-    read_json_content(file)
+    read_json_with_budget(path, None)
 }
-fn read_json_content<T: serde::de::DeserializeOwned>(reader: impl Read) -> HostResult<T> {
+pub(crate) fn read_json_with_budget<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    budget: Option<u64>,
+) -> HostResult<T> {
+    let file = open_read(path)?;
+    let maximum = budget.unwrap_or(MAX_METADATA).min(MAX_METADATA);
+    let exceeded = if budget.is_some() {
+        peer_directory_limit
+    } else {
+        corrupt
+    };
+    if file.metadata().map_err(io_error)?.len() > maximum {
+        return Err(exceeded());
+    }
+    read_json_content(file, maximum, exceeded)
+}
+fn read_json_content<T: serde::de::DeserializeOwned>(
+    reader: impl Read,
+    maximum: u64,
+    exceeded: fn() -> HostError,
+) -> HostResult<T> {
     let mut data = Vec::new();
     reader
-        .take(MAX_METADATA + 1)
+        .take(maximum + 1)
         .read_to_end(&mut data)
         .map_err(io_error)?;
-    if data.len() as u64 > MAX_METADATA {
-        return Err(corrupt());
+    if data.len() as u64 > maximum {
+        return Err(exceeded());
     }
     serde_json::from_slice(&data).map_err(|_| corrupt())
 }
@@ -346,6 +363,17 @@ pub fn open_read(path: &Path) -> HostResult<File> {
 }
 pub fn hash_file(file: &mut File) -> HostResult<Digest> {
     file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    hash_read(file)
+}
+pub(super) fn hash_file_bounded(file: &mut File, length: u64) -> HostResult<Digest> {
+    file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    let digest = hash_read((&mut *file).take(length + 1))?;
+    if file.metadata().map_err(io_error)?.len() != length {
+        return Err(changed());
+    }
+    Ok(digest)
+}
+fn hash_read(mut file: impl Read) -> HostResult<Digest> {
     let mut hash = Sha256::new();
     let mut bytes = [0; 65536];
     loop {
@@ -406,11 +434,28 @@ pub fn sync_directory(path: &Path) -> HostResult<()> {
     Ok(())
 }
 pub fn fingerprint(path: &Path) -> HostResult<Digest> {
+    fingerprint_with_budget(path, None)
+}
+
+pub(crate) fn fingerprint_with_budget(
+    path: &Path,
+    mut bytes_left: Option<u64>,
+) -> HostResult<Digest> {
     crate::files::references::validate_path(path, false)?;
+    const PEER_MAX_FILES: usize = 4098;
+    let entry_limit = if bytes_left.is_some() {
+        PEER_MAX_FILES + 1
+    } else {
+        usize::MAX
+    };
     let mut names = fs::read_dir(path)
         .map_err(io_error)?
+        .take(entry_limit)
         .map(|e| e.map(|e| e.path()).map_err(io_error))
         .collect::<HostResult<Vec<_>>>()?;
+    if bytes_left.is_some() && names.len() > PEER_MAX_FILES {
+        return Err(peer_directory_limit());
+    }
     names.sort();
     let mut hash = Sha256::new();
     hash.update(crate::files::references::directory_identity(path)?.as_bytes());
@@ -425,11 +470,27 @@ pub fn fingerprint(path: &Path) -> HostResult<Digest> {
         let mut file = open_read(&name)?;
         hash.update(file_name.as_bytes());
         hash.update(crate::files::references::file_identity(&file)?.as_bytes());
-        hash.update(file.metadata().map_err(io_error)?.len().to_le_bytes());
-        hash.update(hash_file(&mut file)?.as_str().as_bytes());
+        let length = file.metadata().map_err(io_error)?.len();
+        hash.update(length.to_le_bytes());
+        let digest = if let Some(remaining) = &mut bytes_left {
+            *remaining = remaining
+                .checked_sub(length)
+                .ok_or_else(peer_directory_limit)?;
+            hash_file_bounded(&mut file, length)?
+        } else {
+            hash_file(&mut file)?
+        };
+        hash.update(digest.as_str().as_bytes());
     }
     Digest::try_from(format!("{:x}", hash.finalize()).as_str())
 }
+fn peer_directory_limit() -> HostError {
+    HostError::new(
+        "REPLAY_PEER_LIMIT",
+        "Interactive recording exceeds the source size limit",
+    )
+}
+
 pub fn record_time(record: &CaptureRecord) -> Option<u64> {
     if let CaptureEntry::Event(event) = &record.entry {
         Some(event.time.source_mono_ns.get())
@@ -485,14 +546,25 @@ mod tests {
     #[test]
     fn metadata_growth_is_bounded_by_actual_read_bytes() {
         let mut growing = GrowingMetadata { consumed: 0 };
-        let result: HostResult<serde_json::Value> = read_json_content(&mut growing);
+        let result: HostResult<serde_json::Value> =
+            read_json_content(&mut growing, MAX_METADATA, corrupt);
         assert_eq!(result.unwrap_err().code, "CAPTURE_CORRUPT");
         assert_eq!(growing.consumed, MAX_METADATA + 1);
+        growing.consumed = 0;
+        let budget = 128;
+        let result: HostResult<serde_json::Value> =
+            read_json_content(&mut growing, budget, peer_directory_limit);
+        assert_eq!(result.unwrap_err().code, "REPLAY_PEER_LIMIT");
+        assert_eq!(growing.consumed, budget + 1);
     }
     #[test]
     fn metadata_content_accepts_valid_json() {
-        let result: serde_json::Value =
-            read_json_content(b"{\"formatVersion\":\"1\"}".as_slice()).unwrap();
+        let result: serde_json::Value = read_json_content(
+            b"{\"formatVersion\":\"1\"}".as_slice(),
+            MAX_METADATA,
+            corrupt,
+        )
+        .unwrap();
         assert_eq!(result["formatVersion"], "1");
     }
 }

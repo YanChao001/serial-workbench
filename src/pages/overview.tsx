@@ -915,7 +915,12 @@ export default function Overview({
             return Promise.reject(new Error("SESSION_NOT_FOUND"));
           return host.invoke(
             {
-              actionId: "session.close",
+              actionId:
+                sessionId.startsWith("replay-peer-") &&
+                host.state.replaySessionEpochs?.get(sessionId) ===
+                  session.sessionEpoch
+                  ? "replay.peer.close"
+                  : "session.close",
               target: {
                 hostId,
                 kind: "session",
@@ -947,6 +952,24 @@ export default function Overview({
         onSendFile={files.send}
         onStartCapture={files.capture}
         onOpenReplay={files.replay}
+        onOpenReplayPeer={
+          host.readReplayPeer &&
+          host.state.catalog.some(
+            ({ actionId }) => actionId === "replay.peer.open",
+          )
+            ? files.replayPeer
+            : undefined
+        }
+        replayPeer={
+          host.readReplayPeer
+            ? {
+                read: host.readReplayPeer,
+                watchActions: host.watchActions,
+                invoke: host.invoke,
+                waitForOperation: host.waitForOperation,
+              }
+            : undefined
+        }
         replay={{
           read: host.readReplay,
           readRecord: host.readReplayRecord,

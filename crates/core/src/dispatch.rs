@@ -129,6 +129,7 @@ pub enum QueryResult {
     CaptureTail(CaptureTailResult),
     CaptureRedactionPreview(CaptureRedactionPreviewResult),
     ReplayRead(ReplayReadResult),
+    ReplayPeerState(ReplayPeerState),
     ReplaySearch(ReplaySearchResult),
     Recent(RecentList),
     FileMetadata(FileMetadata),
@@ -256,6 +257,8 @@ impl BuiltinAction {
             Self::CaptureRecover => typed!(RecoverPrefixParams),
             Self::CaptureExport => typed!(TextExportParams),
             Self::ReplayOpen => typed!(ReplayOpenParams),
+            Self::ReplayPeerOpen => typed!(ReplayPeerOpenParams),
+            Self::ReplayPeerSubmit => typed!(ReplayPeerSubmitParams),
             Self::ReplayRead => typed!(ReplayReadParams),
             Self::ReplaySearch => typed!(ReplaySearchParams),
             Self::ReplayControl => typed!(ReplayControlParams),
@@ -352,6 +355,8 @@ impl BuiltinAction {
             Self::ClientList
             | Self::StartupConfigGet
             | Self::ReplayClose
+            | Self::ReplayPeerState
+            | Self::ReplayPeerClose
             | Self::DeviceRefresh
             | Self::RecentList
             | Self::StreamCursor
