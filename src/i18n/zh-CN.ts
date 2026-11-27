@@ -2532,6 +2532,25 @@ export const zhCN = {
   "sessionTemplate.open": "按模板打开",
   "sessionTemplate.opening": "正在打开端口",
   "sessionTemplate.stm32Sample": "固件日志示例",
+  "sessionTemplate.arduino": "Arduino 采样",
+  "sessionTemplate.modbusRead": "Modbus RTU 读寄存器",
+  "sessionTemplate.help.arduino": "从随附的 Arduino 固件读取固定采样值。",
+  "sessionTemplate.help.modbusRead": "从示例设备读取两个保持寄存器。",
+  "sessionProject.title": "运行示例",
+  "sessionProject.request": "请求",
+  "sessionProject.response": "预期应答",
+  "sessionProject.crlf": "文本，使用 CRLF 行尾",
+  "sessionProject.simulator":
+    "在 Host 所在计算机上用 Node 运行保存的模拟对端，再打开 TCP 客户端连接 127.0.0.1:7411 并发送请求。",
+  "sessionProject.device.arduino":
+    "使用真板时，将 SwbExample.ino 放在 SwbExample 文件夹中，通过 Arduino IDE 上传，再打开开发板串口。",
+  "sessionProject.device.at":
+    "使用模组时，按模组线路参数打开串口，并在 AT 工具里检查实际注册应答。",
+  "sessionProject.device.modbus":
+    "使用 HEX 发送，关闭额外行尾，再用 Modbus RTU 帧检查工具核对应答。连接实物时，使用设备站号及其可读取的寄存器地址。",
+  "sessionProject.savePeer": "保存模拟对端",
+  "sessionProject.saveArduino": "保存 Arduino 源码",
+  "sessionProject.saved": "示例文件已保存。",
   "workbench.tools.more": "工作区菜单",
   "workbench.tools.displayOptions": "显示选项",
   "workbench.tools.clearView": "清空接收视图",

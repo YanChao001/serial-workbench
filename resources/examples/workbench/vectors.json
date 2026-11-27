@@ -1,0 +1,17 @@
+{
+  "arduino": {
+    "format": "text",
+    "request": "READ",
+    "response": "3.250"
+  },
+  "at": {
+    "format": "text",
+    "request": "AT+CREG?",
+    "response": "AT+CREG?\r\n+CREG: 0,1\r\nOK"
+  },
+  "modbus": {
+    "format": "hex",
+    "request": "01 03 00 00 00 02 C4 0B",
+    "response": "01 03 04 12 34 00 2A 3F 5A"
+  }
+}

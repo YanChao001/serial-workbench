@@ -71,6 +71,86 @@ test("session templates preview locally and require an explicit serial open", as
   );
 });
 
+test("the three runnable examples preview and save fixed artifacts without opening or writing to a device", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 780 });
+  await seedWorkbenchFixture(page, { language: "en" });
+  await page.goto("./#/");
+  const dialog = await openTemplates(page);
+  await selectTemplate(page, "Arduino sample");
+  const example = dialog.getByRole("region", { name: "Run the example" });
+  await expect(example.getByText("READ", { exact: true })).toBeVisible();
+  await expect(example.getByText("3.250", { exact: true })).toBeVisible();
+  await expect(
+    example.getByText("node swb-example-peer.mjs arduino"),
+  ).toBeVisible();
+  const savePeer = example.getByRole("button", { name: "Save simulator" });
+  const saveSketch = example.getByRole("button", {
+    name: "Save Arduino sketch",
+  });
+  await page.evaluate(() => {
+    window.workbenchFixture.cancelSampleProjectExport = true;
+  });
+  await savePeer.press("Space");
+  await expect(savePeer).toBeFocused();
+  await expect(example.getByRole("status")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.workbenchFixture.cancelSampleProjectExport = false;
+  });
+  await saveSketch.click();
+  await expect(example.getByRole("status")).toHaveText("Example file saved.");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.sampleProjectExports),
+    )
+    .toEqual(["peer", "arduinoSketch"]);
+  await example.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("sample-project-wide.png") });
+
+  await selectTemplate(page, "AT module");
+  await expect(example.getByText("AT+CREG?", { exact: true })).toBeVisible();
+  await expect(example.getByText(/\+CREG: 0,1\s+OK/)).toBeVisible();
+  await expect(example.getByText("node swb-example-peer.mjs at")).toBeVisible();
+  await expect(saveSketch).toHaveCount(0);
+  await expect(
+    dialog.getByRole("textbox", { name: "Pending AT command (optional)" }),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 420, height: 600 });
+  await selectTemplate(page, "Modbus RTU register read");
+  await expect(
+    example.getByText("01 03 00 00 00 02 C4 0B", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByText("01 03 04 12 34 00 2A 3F 5A", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    example.getByText("node swb-example-peer.mjs modbus"),
+  ).toBeVisible();
+  expect(
+    await example.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await example.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("sample-project-narrow.png") });
+
+  const workbenchActions = () =>
+    page.evaluate(() => ({
+      connections: window.workbenchFixture.connectRequests,
+      sends: window.workbenchFixture.sentBytes,
+    }));
+  expect(await workbenchActions()).toEqual({ connections: [], sends: [] });
+  await dialog.getByRole("button", { name: "Open with template" }).click();
+  await expect.poll(workbenchActions).toMatchObject({
+    connections: [
+      { params: { configuration: { baudRate: "19200", parity: "even" } } },
+    ],
+    sends: [],
+  });
+});
+
 test("an available Modbus slave action permits opening with the template without starting the slave", async ({
   page,
 }, info) => {

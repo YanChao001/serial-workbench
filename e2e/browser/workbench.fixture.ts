@@ -119,6 +119,8 @@ export type WorkbenchFixture = {
   clientStateReads: number;
   sentBytes: string[];
   savedTextExports: { name: string; content: string }[];
+  sampleProjectExports: ("peer" | "arduinoSketch")[];
+  cancelSampleProjectExport: boolean;
   chartArtifactSaves: { generation: string; operationId: string }[];
   chartArtifactSaveResult: boolean;
   openedExternalLinks: string[];
@@ -1204,6 +1206,8 @@ export async function seedWorkbenchFixture(
       clientStateReads: 0,
       sentBytes: [],
       savedTextExports: [],
+      sampleProjectExports: [],
+      cancelSampleProjectExport: false,
       chartArtifactSaves: [],
       chartArtifactSaveResult: true,
       openedExternalLinks: [],
@@ -1521,6 +1525,18 @@ export async function seedWorkbenchFixture(
                 operationId: args.operationId,
               });
               return fixture.chartArtifactSaveResult;
+            case "save_sample_project_artifact":
+              if (
+                Object.keys(args).length !== 1 ||
+                (args.artifact !== "peer" && args.artifact !== "arduinoSketch")
+              )
+                throw new Error("Expected a fixed sample project artifact");
+              fixture.sampleProjectExports.push(args.artifact);
+              return fixture.cancelSampleProjectExport
+                ? null
+                : args.artifact === "peer"
+                  ? "swb-example-peer.mjs"
+                  : "SwbExample.ino";
             case "save_text_export":
               if (
                 typeof args.name !== "string" ||

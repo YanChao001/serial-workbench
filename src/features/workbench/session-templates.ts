@@ -16,11 +16,22 @@ const textLine: LineSettings = {
   flowControl: "none",
 };
 
+const modbusLine: LineSettings = {
+  ...textLine,
+  baudRate: "19200",
+  parity: "even",
+};
+
 export const sessionTemplates = {
   stm32: { line: textLine },
-  at: { line: textLine },
-  modbus: { line: { ...textLine, baudRate: "19200", parity: "even" } },
-} satisfies Record<string, { line: LineSettings }>;
+  arduino: { line: textLine, project: "arduino" },
+  at: { line: textLine, project: "at" },
+  modbus: { line: modbusLine },
+  modbusRead: { line: modbusLine, project: "modbus" },
+} satisfies Record<
+  string,
+  { line: LineSettings; project?: "arduino" | "at" | "modbus" }
+>;
 
 export function supportsSessionTemplates(transport?: DeviceTransportKind) {
   return (

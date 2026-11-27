@@ -2770,6 +2770,27 @@ export const en = {
   "sessionTemplate.open": "Open with template",
   "sessionTemplate.opening": "Opening port",
   "sessionTemplate.stm32Sample": "Example firmware log",
+  "sessionTemplate.arduino": "Arduino sample",
+  "sessionTemplate.modbusRead": "Modbus RTU register read",
+  "sessionTemplate.help.arduino":
+    "Read a fixed sample from the included Arduino sketch.",
+  "sessionTemplate.help.modbusRead":
+    "Read two holding registers from the demo device.",
+  "sessionProject.title": "Run the example",
+  "sessionProject.request": "Request",
+  "sessionProject.response": "Expected response",
+  "sessionProject.crlf": "Text with CRLF line ending",
+  "sessionProject.simulator":
+    "On the Host computer, run the saved simulator with Node. Then open a TCP client to 127.0.0.1:7411 and send the request.",
+  "sessionProject.device.arduino":
+    "For a board, put SwbExample.ino in a SwbExample folder, upload it with Arduino IDE, and open the board's serial port.",
+  "sessionProject.device.at":
+    "For a modem, use its serial settings and check the received registration result in the AT inspector.",
+  "sessionProject.device.modbus":
+    "Send HEX bytes with no extra line ending. Check the reply using the Modbus RTU frame inspector. For hardware, use its unit ID and a readable register range.",
+  "sessionProject.savePeer": "Save simulator",
+  "sessionProject.saveArduino": "Save Arduino sketch",
+  "sessionProject.saved": "Example file saved.",
   "workbench.tools.more": "Workspace menu",
   "workbench.tools.displayOptions": "Display options",
   "workbench.tools.clearView": "Clear receive view",

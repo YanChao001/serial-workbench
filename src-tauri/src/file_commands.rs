@@ -218,6 +218,34 @@ pub async fn save_text_export(
         .await
 }
 
+#[derive(serde::Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum SampleProjectArtifact {
+    Peer,
+    ArduinoSketch,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn save_sample_project_artifact(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    artifact: SampleProjectArtifact,
+) -> NativeResult<Option<String>> {
+    crate::commands::require_host_window(window.label())?;
+    let (name, content) = match artifact {
+        SampleProjectArtifact::Peer => (
+            "swb-example-peer.mjs",
+            include_str!("../../resources/examples/workbench/swb-example-peer.mjs"),
+        ),
+        SampleProjectArtifact::ArduinoSketch => (
+            "SwbExample.ino",
+            include_str!("../../resources/examples/workbench/SwbExample.ino"),
+        ),
+    };
+    blocking::run(move || file_access::save_text_content(&app, name, content, 64 * 1024)).await
+}
+
 pub(crate) fn validate_export_name(name: &str) -> NativeResult<()> {
     if name.len() > 100
         || name.is_empty()
