@@ -38,6 +38,25 @@ function closedObject(value, required, optional, label) {
     `Unexpected ${label} fields`,
   );
 }
+export function readCaptureFrame(bytes, offset, timed, name, ordinal) {
+  requireThat(offset + 4 <= bytes.length, `Truncated record length in ${name}`);
+  const length = bytes.readUInt32LE(offset);
+  requireThat(
+    length > 0 && length <= MAX_RECORD,
+    `Record JSON length exceeds 1 MiB limit in ${name}`,
+  );
+  const bodyStart = offset + 4 + (timed ? 8 : 0);
+  const bodyEnd = bodyStart + length;
+  const end = bodyEnd + 32;
+  requireThat(end <= bytes.length, `Truncated record digest/body in ${name}`);
+  requireThat(
+    bytes.subarray(bodyEnd, end).toString("hex") ===
+      hash(bytes.subarray(offset + 4, bodyEnd)),
+    `Record digest mismatch at ordinal ${ordinal}`,
+  );
+  return { body: bytes.subarray(bodyStart, bodyEnd), end };
+}
+
 function directionalByteRange(range) {
   closedObject(range, ["direction", "start", "end"], [], "redacted byte range");
   requireThat(
@@ -350,27 +369,12 @@ export function readFixtureContainer(fixtureDirectory) {
     );
     let offset = 7;
     while (offset < bytes.length) {
-      requireThat(
-        offset + 4 <= bytes.length,
-        `Truncated record length in ${name}`,
-      );
-      const length = bytes.readUInt32LE(offset);
-      requireThat(
-        length > 0 && length <= MAX_RECORD,
-        `Record JSON length exceeds 1 MiB limit in ${name}`,
-      );
-      const bodyStart = offset + 4 + (timed ? 8 : 0);
-      const bodyEnd = bodyStart + length;
-      const end = bodyEnd + 32;
-      requireThat(
-        end <= bytes.length,
-        `Truncated record digest/body in ${name}`,
-      );
-      const body = bytes.subarray(bodyStart, bodyEnd);
-      requireThat(
-        bytes.subarray(bodyEnd, end).toString("hex") ===
-          hash(bytes.subarray(offset + 4, bodyEnd)),
-        `Record digest mismatch at ordinal ${records.length + 1}`,
+      const { body, end } = readCaptureFrame(
+        bytes,
+        offset,
+        timed,
+        name,
+        records.length + 1,
       );
       const record = json(body, `record ${records.length + 1}`);
       if (timed) {

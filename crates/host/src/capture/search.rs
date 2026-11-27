@@ -1,11 +1,11 @@
 use super::ReplayArchive;
-use crate::capture::format::*;
+use crate::capture::{format::*, verify::SearchVolumeReader};
 use base64::Engine as _;
 use serial_workbench_core::*;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Weak};
 
-const MAX_PAGE_RECORDS: usize = 64;
+const MAX_PAGE_RECORDS: usize = 1024;
 const MAX_PAGE_DISK_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_PAGE_HITS: usize = 64;
 const MAX_STREAM_DIRECTIONS: usize = 32;
@@ -148,6 +148,7 @@ impl ReplayArchive {
         let mut pending = search.clone();
         let mut hits = Vec::new();
         let mut disk_bytes = 0;
+        let mut volumes = SearchVolumeReader::new(&self.path, self.format);
         for _ in 0..MAX_PAGE_RECORDS {
             let Some(location) = self.index.records.get(pending.record) else {
                 break;
@@ -156,13 +157,15 @@ impl ReplayArchive {
                 break;
             }
             check()?;
-            let (record, _, _) = self.read_verified_record(pending.record)?;
+            let (record, observed, bytes) = volumes.read(location)?;
+            self.ensure_record_digest(pending.record, observed, &bytes)?;
             disk_bytes += location.length.get();
             pending.scan_record(&record, &mut hits)?;
             if hits.len() == MAX_PAGE_HITS {
                 break;
             }
         }
+        volumes.verify()?;
         self.ensure_directory()?;
         check()?;
         let scanned_records = pending.record;
@@ -451,11 +454,14 @@ mod tests {
             .archive
             .start_search(needle.to_vec(), Some(Direction::Rx))
             .unwrap();
-        for page in 1..=RECORDS / MAX_PAGE_RECORDS as u64 {
+        let mut scanned = 0;
+        loop {
             let result = reader.archive.search_page(&mut search, || Ok(())).unwrap();
             assert_eq!(result.total_records.get(), RECORDS);
-            assert_eq!(result.scanned_records.get(), page * MAX_PAGE_RECORDS as u64);
-            assert_eq!(result.complete, page * MAX_PAGE_RECORDS as u64 == RECORDS);
+            let next = result.scanned_records.get();
+            assert!(next > scanned && next - scanned <= MAX_PAGE_RECORDS as u64);
+            assert_eq!(result.complete, next == RECORDS);
+            scanned = next;
             if result.complete {
                 let [hit] = result.hits.as_slice() else {
                     panic!("expected exactly one hit in the final volume");
@@ -473,6 +479,7 @@ mod tests {
                     panic!("expected the original record at the search hit");
                 };
                 assert_eq!(record.record_ordinal.get(), RECORDS);
+                break;
             } else {
                 assert!(result.hits.is_empty());
             }
@@ -502,44 +509,76 @@ mod tests {
 
     #[test]
     fn indexed_recording_search_spans_pages_without_mixing_sources_or_moving_playback() {
-        let mut entries: Vec<_> = (1..64)
+        let boundary = MAX_PAGE_RECORDS as u64;
+        let mut entries: Vec<_> = (1..boundary)
             .map(|seq| event("primary", seq, 1, RawPayload::Control(Default::default())))
             .collect();
-        entries.push(rx("primary", 64, 1, 0, b"AB"));
+        entries.push(rx("primary", boundary, 1, 0, b"AB"));
         entries.push(rx("secondary", 1, 1, 2, b"A"));
-        entries.push(rx("primary", 65, 1, 2, b"ABA"));
+        entries.push(rx("primary", boundary + 1, 1, 2, b"ABA"));
         let (_directory, mut reader) = recording(entries);
         reader.seek(42.into(), 0).unwrap();
         let mut search = reader.archive.start_search(b"ABA".to_vec(), None).unwrap();
 
         let first = reader.archive.search_page(&mut search, || Ok(())).unwrap();
-        assert_eq!(first.scanned_records, U64::from(64));
+        assert_eq!(first.scanned_records, U64::from(boundary));
         assert!(!first.complete);
         assert!(first.hits.is_empty());
 
         let second = reader.archive.search_page(&mut search, || Ok(())).unwrap();
         assert!(second.complete);
-        assert_eq!(second.total_records, U64::from(66));
+        assert_eq!(second.total_records, U64::from(boundary + 2));
         assert_eq!(
             second.hits,
             [
                 ReplaySearchHit {
                     direction: Direction::Rx,
-                    first_record: 64.into(),
-                    last_record: 66.into(),
+                    first_record: boundary.into(),
+                    last_record: (boundary + 2).into(),
                     byte_start: 0.into(),
                     byte_end: 3.into(),
                 },
                 ReplaySearchHit {
                     direction: Direction::Rx,
-                    first_record: 66.into(),
-                    last_record: 66.into(),
+                    first_record: (boundary + 2).into(),
+                    last_record: (boundary + 2).into(),
                     byte_start: 2.into(),
                     byte_end: 5.into(),
                 },
             ]
         );
         assert_eq!(reader.step(0).unwrap().next_record, U64::from(43));
+    }
+
+    #[test]
+    fn changing_the_path_of_a_buffered_volume_rejects_the_uncommitted_page() {
+        for replace in [false, true] {
+            reject_changed_buffered_volume(replace);
+        }
+    }
+
+    fn reject_changed_buffered_volume(replace: bool) {
+        let (directory, reader) =
+            recording([rx("primary", 1, 1, 0, b"AB"), rx("primary", 2, 1, 2, b"CD")]);
+        let volume = reader.archive.path.join(volume_name(1));
+        let bytes = fs::read(&volume).unwrap();
+        let mut search = reader.archive.start_search(b"AB".to_vec(), None).unwrap();
+        let mut checks = 0;
+        let error = reader
+            .archive
+            .search_page(&mut search, || {
+                checks += 1;
+                if checks == 3 {
+                    fs::rename(&volume, directory.path().join("old-volume")).unwrap();
+                    if replace {
+                        fs::write(&volume, &bytes).unwrap();
+                    }
+                }
+                Ok(())
+            })
+            .unwrap_err();
+        assert_eq!(error.code, "SOURCE_CHANGED");
+        assert_eq!(search.record, 0);
     }
 
     #[test]

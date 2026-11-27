@@ -7,8 +7,10 @@ use std::{
     collections::{HashMap, HashSet},
     fs::File,
     io::{BufReader, Read, Seek, SeekFrom},
-    path::Path,
+    path::{Path, PathBuf},
 };
+
+use crate::files::references::{ChangeStamp, change_stamp, file_identity};
 #[derive(Default)]
 struct RedactionBounds {
     event_position: u64,
@@ -490,9 +492,75 @@ fn read_record_from(
 ) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
     file.seek(SeekFrom::Start(location.offset.get()))
         .map_err(io_error)?;
+    read_indexed_frame(file, location, format)
+}
+
+fn read_indexed_frame(
+    file: &mut impl Read,
+    location: &IndexEntry,
+    format: CaptureFormat,
+) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
     let (record, observed, len, json) = decode_record(file, format)?;
     if record.record_ordinal != location.record_ordinal || len != location.length.get() {
         return Err(corrupt());
     }
     Ok((record, observed, json))
+}
+
+/// Holds one volume handle at a time and verifies each touched path before publishing the page.
+pub(super) struct SearchVolumeReader<'a> {
+    directory: &'a Path,
+    format: CaptureFormat,
+    current: Option<(U64, u64, BufReader<File>)>,
+    touched: Vec<(PathBuf, String, ChangeStamp)>,
+}
+impl<'a> SearchVolumeReader<'a> {
+    pub(super) fn new(directory: &'a Path, format: CaptureFormat) -> Self {
+        Self {
+            directory,
+            format,
+            current: None,
+            touched: Vec::new(),
+        }
+    }
+
+    pub(super) fn read(
+        &mut self,
+        location: &IndexEntry,
+    ) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
+        if self
+            .current
+            .as_ref()
+            .is_none_or(|(volume, _, _)| *volume != location.volume)
+        {
+            let path = self.directory.join(volume_name(location.volume.get()));
+            let file = open_read(&path)?;
+            let identity = file_identity(&file)?;
+            let stamp = change_stamp(&file)?;
+            self.touched.push((path, identity, stamp));
+            self.current = Some((
+                location.volume,
+                0,
+                BufReader::with_capacity(64 * 1024, file),
+            ));
+        }
+        let (_, next, file) = self.current.as_mut().expect("Current search volume");
+        if *next != location.offset.get() {
+            file.seek(SeekFrom::Start(location.offset.get()))
+                .map_err(io_error)?;
+        }
+        let result = read_indexed_frame(file, location, self.format)?;
+        *next = location.offset.get() + location.length.get();
+        Ok(result)
+    }
+
+    pub(super) fn verify(self) -> HostResult<()> {
+        for (path, identity, stamp) in &self.touched {
+            let file = open_read(path).map_err(|_| changed())?;
+            if file_identity(&file)? != *identity || change_stamp(&file)? != *stamp {
+                return Err(changed());
+            }
+        }
+        Ok(())
+    }
 }
