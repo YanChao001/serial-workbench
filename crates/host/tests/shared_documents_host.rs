@@ -208,6 +208,7 @@ fn call(
         expected_revision: revision,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     }
 }
 async fn read(client: &HostClient, target: &Target, action: &str, params: Value) -> Value {
@@ -1653,6 +1654,74 @@ async fn configuration_import_checks_both_revisions_and_preserves_command_collis
         repeated.result,
         Some(ActionResult::WorkspaceConfigurationImport(saved))
     );
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn workspace_startup_plan_recovers_script_references_for_one_read_only_revision() {
+    let f = Fixture::new(0).await;
+    let work = f.target("workspace", "reopen-bench");
+    f.grant("document-a", "workspace.modify", &work);
+    f.grant("document-b", "metadata.read", &work);
+    f.grant("document-b", "metadata.read", &f.host_target());
+    let saved_script = json!({
+        "packageId":"org.example.session",
+        "version":"1.0.0",
+        "archiveSha256":"a".repeat(64),
+        "actionId":"org.example.session.check"
+    });
+    let configuration = json!({
+        "format":WORKSPACE_CONFIGURATION_FORMAT,
+        "version":WORKSPACE_CONFIGURATION_VERSION,
+        "workspace":preview_document("Workspace to reopen"),
+        "groups":[],
+        "commands":[],
+        "scripts":[saved_script],
+        "credentialRefs":[]
+    });
+    let admitted = invoke(
+        &f.first,
+        call(
+            &f.first,
+            &work,
+            "workspace.configuration.import",
+            Some(0.into()),
+            json!({"json": configuration.to_string()}),
+        ),
+    )
+    .await;
+    let applied = settled(&f.first, &f.host_target(), admitted).await;
+    assert_eq!(applied.state, OperationState::Succeeded, "{applied:?}");
+    let grant_revision = f.auth.current_revision().unwrap();
+    let workspace = read(&f.second, &work, "workspace.read", json!({})).await;
+    let stale = query(
+        &f.second,
+        &work,
+        "workspace.startupPlan",
+        json!({"workspaceRevision":"0"}),
+    );
+    assert!(matches!(
+        f.second.request(RpcRequest::Query(stale)).await.unwrap(),
+        RpcReply::Failure { error, .. } if error.code == "REVISION_CONFLICT"
+    ));
+    let plan = read(
+        &f.second,
+        &work,
+        "workspace.startupPlan",
+        json!({"workspaceRevision":"1"}),
+    )
+    .await;
+    assert_eq!(plan["scope"], workspace["scope"]);
+    assert_eq!(plan["workspaceRevision"], "1");
+    assert_eq!(
+        plan["scripts"],
+        json!([{"reference":saved_script,"status":"missing","targetKinds":[]}])
+    );
+    assert_eq!(
+        read(&f.second, &work, "workspace.read", json!({})).await,
+        workspace
+    );
+    assert_eq!(f.auth.current_revision().unwrap(), grant_revision);
     f.finish().await;
 }
 

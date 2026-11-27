@@ -36,16 +36,18 @@ impl NodePackageManager {
         actor: &AuthenticatedActor,
         query: &Query,
         kind: ActionKind,
+        pin: Option<&WorkspaceScriptReference>,
         budget: Arc<tokio::sync::OwnedSemaphorePermit>,
     ) -> HostResult<()> {
         let deadline = Instant::now() + NodePackageLimits::default().timeout;
         let manager = self.clone();
         let caller = actor.clone();
         let request = query.clone();
+        let pin = pin.cloned();
         let preparation_budget = budget.clone();
         let (activation, stamp, permissions) = tokio::task::spawn_blocking(move || {
             let _budget = preparation_budget;
-            manager.request_contribution(&caller, &request, kind, deadline)
+            manager.request_contribution(&caller, &request, kind, pin.as_ref(), deadline)
         })
         .await
         .map_err(|_| failure("HOST_BUSY", "activationPreparation"))??;
@@ -117,6 +119,7 @@ impl NodePackageManager {
         actor: &AuthenticatedActor,
         query: &Query,
         kind: ActionKind,
+        pin: Option<&WorkspaceScriptReference>,
         deadline: Instant,
     ) -> HostResult<(Arc<ContributionActivation>, Option<GrantStamp>, Vec<String>)> {
         let snapshot = NodePackageInstaller::read_snapshot(&self.store)?;
@@ -136,6 +139,16 @@ impl NodePackageManager {
                     .map(|spec| (package, spec))
             })
             .ok_or_else(|| failure("UNSUPPORTED_CAPABILITY", "contributionNotRegistered"))?;
+        if pin.is_some_and(|pin| {
+            pin.package_id != package.manifest.id
+                || pin.version != package.manifest.version
+                || pin.archive_sha256 != package.archive_sha256
+        }) {
+            return Err(failure(
+                "WORKSPACE_DEPENDENCY_UNAVAILABLE",
+                "contributionArchiveChanged",
+            ));
+        }
         if spec.kind != kind || !spec.target_kinds.contains(&query.target.kind) {
             return Err(super::super::invalid("contributionTarget"));
         }

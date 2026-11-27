@@ -119,6 +119,36 @@ pub struct WorkspaceConfigurationExportParams {
     pub scripts: Option<Vec<WorkspaceScriptReference>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceStartupPlanParams {
+    pub workspace_revision: U64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceStartupSelection {
+    pub workspace_id: Id,
+    pub workspace_revision: U64,
+    pub reference: WorkspaceScriptReference,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceStartupPlan {
+    pub scope: crate::StateScopeRef,
+    pub workspace_revision: U64,
+    pub scripts: Vec<WorkspaceStartupScript>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceStartupScript {
+    pub reference: WorkspaceScriptReference,
+    pub status: WorkspaceScriptStatus,
+    pub target_kinds: Vec<crate::ResourceKind>,
+}
+
 impl WorkspaceConfigurationExportParams {
     pub fn validate(&self) -> HostResult<()> {
         if self.command_ids.len() > WORKSPACE_CONFIGURATION_COMMANDS

@@ -2112,6 +2112,7 @@ async fn explicit_device_connect_grants_only_selected_device_and_real_session() 
         expected_revision: None,
         lease_id: None,
         execution_mode: Some(ExecutionMode::Interactive),
+        workspace_startup: None,
     };
     assert!(
         matches!(bridge.request_at_generation("main", attached.generation, RpcRequest::Invoke(call)).await.unwrap(),

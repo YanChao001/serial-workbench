@@ -125,11 +125,13 @@ impl Store {
         call: &Call,
         digest: &Digest,
         plugin: &PluginOperation,
+        startup_revisions: Option<[(Id, U64); 2]>,
     ) -> HostResult<Acceptance> {
         let (actor, call, digest, plugin) =
             (actor.clone(), call.clone(), digest.clone(), plugin.clone());
-        let result =
-            self.request(move |database| database.accept_plugin(&actor, &call, &digest, &plugin))?;
+        let result = self.request(move |database| {
+            database.accept_plugin(&actor, &call, &digest, &plugin, startup_revisions)
+        })?;
         if matches!(result, Acceptance::New(_)) {
             self.publish_operation_change();
         }

@@ -731,6 +731,7 @@ export type Call_Deserialize = {
   expectedRevision?: U64;
   leaseId?: Id;
   executionMode?: ExecutionMode;
+  workspaceStartup?: WorkspaceStartupSelection;
 };
 
 export type Call_Serialize = {
@@ -747,6 +748,7 @@ export type Call_Serialize = {
   expectedRevision?: U64;
   leaseId?: Id;
   executionMode?: ExecutionMode;
+  workspaceStartup?: WorkspaceStartupSelection;
 };
 
 export type Cancellation = "none" | "cooperative";
@@ -4390,6 +4392,7 @@ export type QueryResult_Deserialize =
       kind: "workspace_configuration_inspection";
       value: WorkspaceConfigurationInspection_Deserialize;
     }
+  | { kind: "workspace_startup_plan"; value: WorkspaceStartupPlan_Deserialize }
   | { kind: "experiment_package"; value: ExperimentPackage_Deserialize }
   | { kind: "experiment_inspection"; value: ExperimentInspection_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
@@ -4452,6 +4455,7 @@ export type QueryResult_Serialize =
       kind: "workspace_configuration_inspection";
       value: WorkspaceConfigurationInspection_Serialize;
     }
+  | { kind: "workspace_startup_plan"; value: WorkspaceStartupPlan_Serialize }
   | { kind: "experiment_package"; value: ExperimentPackage_Serialize }
   | { kind: "experiment_inspection"; value: ExperimentInspection_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
@@ -5804,6 +5808,33 @@ export type WorkspaceSnapshot_Deserialize = {
 export type WorkspaceSnapshot_Serialize = {
   revision: U64;
   value: WorkspaceDocument_Serialize;
+};
+
+export type WorkspaceStartupPlan =
+  WorkspaceStartupPlan_Serialize | WorkspaceStartupPlan_Deserialize;
+
+export type WorkspaceStartupPlan_Deserialize = {
+  scope: StateScopeRef_Deserialize;
+  workspaceRevision: U64;
+  scripts: WorkspaceStartupScript[];
+};
+
+export type WorkspaceStartupPlan_Serialize = {
+  scope: StateScopeRef_Serialize;
+  workspaceRevision: U64;
+  scripts: WorkspaceStartupScript[];
+};
+
+export type WorkspaceStartupScript = {
+  reference: WorkspaceScriptReference;
+  status: WorkspaceScriptStatus;
+  targetKinds: ResourceKind[];
+};
+
+export type WorkspaceStartupSelection = {
+  workspaceId: Id;
+  workspaceRevision: U64;
+  reference: WorkspaceScriptReference;
 };
 
 export type WorkspaceSummary =

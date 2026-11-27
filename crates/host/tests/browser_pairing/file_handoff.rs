@@ -227,6 +227,7 @@ async fn browser_file_upload_sends_the_selected_range_once_and_returns_quota_aft
                 expected_revision: None,
                 lease_id: None,
                 execution_mode: Some(ExecutionMode::Independent),
+                workspace_startup: None,
             }),
         }
     };

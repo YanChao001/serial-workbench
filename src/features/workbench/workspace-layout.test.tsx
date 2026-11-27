@@ -3404,3 +3404,56 @@ it("compacts only the disabled capture close control after a real connection and
   expect(close).toHaveBeenCalledOnce();
   expect(adapter.send).not.toHaveBeenCalled();
 });
+
+it("releases the same-workspace connection control when an older startup wait is invalidated", async () => {
+  const { adapter, document, first } = deviceSelectionFixture();
+  adapter.state.sessions = [];
+  let resolveOld!: (value: ReturnType<typeof session>) => void;
+  const pending = new Promise<ReturnType<typeof session>>((resolve) => {
+    resolveOld = resolve;
+  });
+  const connect = vi.fn<NonNullable<WorkbenchHost["trustedConnect"]>>(
+    () => pending,
+  );
+  adapter.trustedConnect = connect;
+  const props: import("./workspace-layout").WorkspaceLayoutProps = {
+    host: adapter,
+    labels,
+    toolLabels: workbenchToolLabels(createTranslator(en)).layout,
+    initialWorkspace: document,
+    savedWorkspace: document,
+    workspaceKey: "startup-revision",
+    workspaceSelection: 0,
+    renderTool: (tool, context) => {
+      if (tool !== "workspace") return null;
+      const startup = context.startupConnections;
+      return (
+        <button
+          disabled={!startup || startup.busy}
+          onClick={() =>
+            startup?.connect(
+              "primary-view",
+              first.deviceId,
+              document.bindings[0]!.configuration,
+            )
+          }
+        >
+          Connect saved port
+        </button>
+      );
+    },
+  };
+  const view = render(<WorkspaceLayout {...props} workspaceRevision="1" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+  const start = screen.getByRole("button", { name: "Connect saved port" });
+  fireEvent.click(start);
+  await waitFor(() => expect(connect).toHaveBeenCalledOnce());
+  expect(start).toBeDisabled();
+  const oldSignal = connect.mock.calls[0]?.[1];
+  view.rerender(<WorkspaceLayout {...props} workspaceRevision="2" />);
+  expect(oldSignal?.aborted).toBe(true);
+  expect(start).toBeEnabled();
+  await act(async () => resolveOld(session("retired-startup-result")));
+  expect(start).toBeEnabled();
+  expect(connect).toHaveBeenCalledOnce();
+});

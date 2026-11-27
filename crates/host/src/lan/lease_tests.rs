@@ -56,6 +56,7 @@ fn call(
         reveal_target: query.reveal_target,
         request_context: attachment.request_context.clone(),
         execution_mode: Some(execution),
+        workspace_startup: None,
         expected_revision: None,
         lease_id,
     }

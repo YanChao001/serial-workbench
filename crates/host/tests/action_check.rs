@@ -183,6 +183,7 @@ fn call(
         expected_revision: revision,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     }
 }
 async fn read(client: &HostClient, target: &Target, action: &str, params: Value) -> Value {

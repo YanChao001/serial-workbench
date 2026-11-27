@@ -8,8 +8,9 @@ import type {
   DeviceFingerprint,
   SessionSnapshot,
   WorkspaceDocument,
+  WorkspaceScriptReference,
 } from "@serial-workbench/contracts";
-import { session } from "../../src/features/workbench/test-fixtures";
+import { operation, session } from "../../src/features/workbench/test-fixtures";
 
 declare global {
   interface Window {
@@ -940,4 +941,363 @@ test("missing saved ports and ports on another Host stay explicitly unmatched wh
   expect(
     await page.evaluate(() => window.workbenchFixture.workspaceWrites),
   ).toEqual([]);
+});
+
+test("reopens saved views and starts only the explicitly selected connection or script", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 650 });
+  const { workspace, devices } = restartedSerialWorkspace({
+    transport: "serial",
+    evidence: "unreliable",
+  });
+  const binding = workspace.bindings[0]!;
+  binding.configuration = { ...binding.configuration, baudRate: "9600" };
+  workspace.bindings.push({
+    ...binding,
+    bindingId: "same-port",
+    portName: "COM5",
+  });
+  workspace.views.push({
+    ...workspace.views[0]!,
+    id: "same-port-view",
+    name: "COM5 monitor",
+    bindingId: "same-port",
+  });
+  workspace.bindings.push({
+    ...binding,
+    bindingId: "different-port-identity",
+    deviceId: "another-prior-device",
+    portName: "COM5",
+  });
+  workspace.views.push({
+    ...workspace.views[0]!,
+    id: "different-port-view",
+    name: "Independent COM5 binding",
+    bindingId: "different-port-identity",
+  });
+  const connectedSession = {
+    ...session("startup-com5"),
+    deviceId: "current-host-com5",
+    configuration: binding.configuration,
+  };
+  const reference: WorkspaceScriptReference = {
+    packageId: "example.startup",
+    version: "2.1.0",
+    archiveSha256: "1".repeat(64),
+    actionId: "example.startup.status",
+  };
+  const receipt = operation(crypto.randomUUID());
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    hostStart: "pending",
+    workspace,
+  });
+  await page.goto("./#/");
+  await page.reload();
+  await provideDeviceCatalog(page, devices, connectedSession);
+  await page.evaluate(
+    ({ reference, receiptJson }) => {
+      const receipt: unknown = JSON.parse(receiptJson);
+      const native: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
+      const isObject = (value: unknown): value is Record<string, unknown> =>
+        typeof value === "object" && value !== null;
+      if (
+        !isObject(native) ||
+        typeof native.invoke !== "function" ||
+        !isObject(receipt)
+      )
+        throw new Error("Missing Native fixture or script receipt");
+      const invoke = native.invoke;
+      const launches: unknown[] = [];
+      Reflect.set(window, "workspaceStartupLaunches", launches);
+      Reflect.set(
+        native,
+        "invoke",
+        async (command: string, args: Record<string, unknown> = {}) => {
+          const request = args.request;
+          if (
+            command === "host_request" &&
+            isObject(request) &&
+            isObject(request.params)
+          ) {
+            const call = request.params;
+            if (request.method === "action.query" && isObject(call.params)) {
+              if (call.actionId === "workspace.startupPlan") {
+                return {
+                  ok: true,
+                  result: {
+                    kind: "workspace_startup_plan",
+                    value: {
+                      scope: {
+                        scopeId: "workspace.default",
+                        target: call.target,
+                      },
+                      workspaceRevision: call.params.workspaceRevision,
+                      scripts: [
+                        { reference, status: "matched", targetKinds: ["host"] },
+                        {
+                          reference: {
+                            ...reference,
+                            packageId: "example.missing",
+                            actionId: "example.missing.status",
+                          },
+                          status: "missing",
+                          targetKinds: [],
+                        },
+                      ],
+                    },
+                  },
+                };
+              }
+              if (
+                call.actionId === "action.check" &&
+                call.params.actionId === reference.actionId
+              )
+                return {
+                  ok: false,
+                  error: {
+                    code: "UNSUPPORTED_CAPABILITY",
+                    message: "Dormant",
+                    retryable: false,
+                  },
+                };
+            }
+            if (
+              request.method === "action.invoke" &&
+              call.actionId === reference.actionId
+            ) {
+              launches.push(call);
+              if (isObject(call.target))
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...receipt,
+                      executionHostId: call.hostId,
+                      requestId: call.requestId,
+                      actionId: call.actionId,
+                      target: call.target,
+                      executionMode: "independent",
+                      owner: {
+                        kind: "plugin",
+                        id: reference.packageId,
+                        version: reference.version,
+                      },
+                      revealTarget: { pageId: "workbench" },
+                    },
+                  },
+                };
+            }
+          }
+          return Reflect.apply(invoke, native, [command, args]);
+        },
+      );
+    },
+    { reference, receiptJson: JSON.stringify(receipt) },
+  );
+  await expect(
+    page.getByRole("tab", { name: "COM5", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Virtual serial", exact: true }),
+  ).toBeVisible();
+  const dialog = await openWorkspace(page);
+  await dialog
+    .getByRole("button", { name: "Start workspace", exact: true })
+    .click();
+  await expect(
+    dialog.getByText("Install the signed package", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual([]);
+  expect(
+    await page.evaluate(() => Reflect.get(window, "workspaceStartupLaunches")),
+  ).toEqual([]);
+  await dialog
+    .getByRole("button", {
+      name: `Select script ${reference.actionId}`,
+      exact: true,
+    })
+    .click();
+  const run = dialog.getByRole("button", { name: "Run script", exact: true });
+  await expect(run).toBeDisabled();
+  await dialog.getByRole("combobox", { name: "Run target" }).click();
+  await page.getByRole("option", { name: "Current Host", exact: true }).click();
+  const params = dialog.getByRole("textbox", {
+    name: "Script parameters (JSON object)",
+  });
+  await params.fill("[]");
+  await expect(run).toBeDisabled();
+  await params.fill('{"channel":2}');
+  await run.scrollIntoViewIfNeeded();
+  await expect(run).toBeInViewport();
+  await run.click();
+  const completed = dialog.getByText(new RegExp(receipt.operationId));
+  await expect(completed).toContainText("Completed");
+  await completed.scrollIntoViewIfNeeded();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual([]);
+  const launches: unknown = await page.evaluate(() =>
+    Reflect.get(window, "workspaceStartupLaunches"),
+  );
+  expect(launches).toEqual([
+    expect.objectContaining({
+      workspaceStartup: {
+        workspaceId: "default",
+        workspaceRevision: "1",
+        reference,
+      },
+      target: {
+        hostId: "workbench-gui-host",
+        kind: "host",
+        id: "workbench-gui-host",
+      },
+      params: { channel: 2 },
+    }),
+  ]);
+  await evidence(page, info, "workspace-startup-script-narrow");
+
+  await dialog
+    .getByRole("button", { name: "Connect COM5", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.connectRequests))
+    .toEqual([
+      {
+        deviceId: "current-host-com5",
+        params: { configuration: connectedSession.configuration },
+      },
+    ]);
+  await expect(dialog.getByText("Connected", { exact: true })).toHaveCount(2);
+  await expect(
+    dialog.getByRole("button", {
+      name: "Connect Independent COM5 binding",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    dialog.getByRole("button", { name: "Connect Virtual serial", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => Reflect.get(window, "workspaceStartupLaunches")),
+  ).toEqual(launches);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+});
+
+test("closing the startup panel leaves its late connection receipt with the Host", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 820 });
+  const { workspace, devices } = restartedSerialWorkspace({
+    transport: "serial",
+    evidence: "unreliable",
+  });
+  workspace.layout = { sidebarWidth: 308, panelHeight: 200 };
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    hostStart: "pending",
+    workspace,
+  });
+  await page.goto("./#/");
+  await provideDeviceCatalog(page, devices, {
+    ...session("late-open"),
+    deviceId: "current-host-com5",
+    configuration: workspace.bindings[0]!.configuration,
+  });
+  await page.evaluate(() => {
+    const native: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
+    if (typeof native !== "object" || native === null)
+      throw new Error("Missing Native fixture");
+    const invoke: unknown = Reflect.get(native, "invoke");
+    if (typeof invoke !== "function") throw new Error("Missing invoke");
+    let finishAdmission!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      finishAdmission = resolve;
+    });
+    const gate = {
+      started: false,
+      returned: false,
+      release: finishAdmission,
+    };
+    Reflect.set(window, "workspaceStartupConnectionGate", gate);
+    Reflect.set(
+      native,
+      "invoke",
+      async (command: string, args: Record<string, unknown> = {}) => {
+        if (command !== "host_connect_device")
+          return Reflect.apply(invoke, native, [command, args]);
+        gate.started = true;
+        await admission;
+        const result: unknown = await Reflect.apply(invoke, native, [
+          command,
+          args,
+        ]);
+        gate.returned = true;
+        return result;
+      },
+    );
+  });
+  await expect(
+    page.getByRole("separator", { name: "Resize sidebar" }),
+  ).toHaveAttribute("aria-valuenow", "308");
+  await expect
+    .poll(() =>
+      page
+        .locator(".workbench-draft-frame")
+        .evaluate((frame) => frame.getBoundingClientRect().height),
+    )
+    .toBeGreaterThan(120);
+  const virtual = page.getByRole("tab", {
+    name: "Virtual serial",
+    exact: true,
+  });
+  await virtual.click();
+  const dialog = await openWorkspace(page);
+  await dialog
+    .getByRole("button", { name: "Start workspace", exact: true })
+    .click();
+  await evidence(page, info, "workspace-startup-wide");
+  await dialog
+    .getByRole("button", { name: "Connect COM5", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Reflect.get(
+          Reflect.get(window, "workspaceStartupConnectionGate"),
+          "started",
+        ),
+      ),
+    )
+    .toBe(true);
+  await dialog.getByRole("button", { name: "Close view", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await page.evaluate(() =>
+    Reflect.get(
+      Reflect.get(window, "workspaceStartupConnectionGate"),
+      "release",
+    )(),
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Reflect.get(
+          Reflect.get(window, "workspaceStartupConnectionGate"),
+          "returned",
+        ),
+      ),
+    )
+    .toBe(true);
+  await expect(virtual).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("button", { name: "Workspace", exact: true }),
+  ).toBeFocused();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
 });

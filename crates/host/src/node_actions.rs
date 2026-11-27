@@ -141,6 +141,15 @@ impl Host {
         if call.action_id.as_str() == "swb.builtin.automation.loopback" {
             self.validate_loopback_target(&call)?;
         }
+        if let Some(selection) = &call.workspace_startup {
+            let reference = &selection.reference;
+            if binding.package() != &reference.package_id
+                || binding.version() != reference.version.as_str()
+                || binding.archive_sha256() != &reference.archive_sha256
+            {
+                return Err(super::workspace_configuration_api::startup_dependency_unavailable());
+            }
+        }
         binding.current()?;
         call.reveal_target = binding.spec().reveal_target.clone();
         if serde_json::to_vec(&call).map_err(|_| invalid())?.len()
@@ -234,7 +243,10 @@ impl Host {
         }
         #[cfg(test)]
         self.inner.node_test_gates.action_lookup_missing.arrive();
-        match self.prepare_extension_call(caller, call.clone()) {
+        let prepared = self
+            .check_workspace_startup(caller, &call)
+            .and_then(|()| self.prepare_extension_call(caller, call.clone()));
+        match prepared {
             Ok(prepared) => Ok(ExtensionRequest::New(Box::new(prepared))),
             Err(error) => match self.replay_extension_call(caller, &call)? {
                 Some(existing) => Ok(ExtensionRequest::Existing(Box::new(existing))),
@@ -262,20 +274,31 @@ impl Host {
                 .try_acquire_owned()
                 .map_err(|_| busy())?;
             let permit = Arc::new(permit);
-            self.ensure_extension_active(
-                actor,
-                &call_query(&raw_call),
-                ActionKind::Action,
-                permit.clone(),
-            )
-            .await?;
+            let activation = self
+                .ensure_extension_active(
+                    actor,
+                    &call_query(&raw_call),
+                    ActionKind::Action,
+                    raw_call
+                        .workspace_startup
+                        .as_ref()
+                        .map(|selection| &selection.reference),
+                    permit.clone(),
+                )
+                .await;
             let host = self.clone();
             let caller = actor.clone();
             let call = raw_call.clone();
             let preparation_budget = permit.clone();
             prepared = blocking(move || {
                 let _budget = preparation_budget;
-                host.prepare_extension_request(&caller, call)
+                match activation {
+                    Ok(()) => host.prepare_extension_request(&caller, call),
+                    Err(error) => host
+                        .replay_extension_call(&caller, &call)?
+                        .map(|operation| ExtensionRequest::Existing(Box::new(operation)))
+                        .ok_or(error),
+                }
             })
             .await?;
             activation_permit = Some(permit);
@@ -345,16 +368,40 @@ impl Host {
                 let gates = host.inner.node_test_gates.clone();
                 let accepted = blocking(move || {
                     let attempt = (|| {
+                        let auth = &replay_host.inner.auth;
+                        let stamp = if accept_call.workspace_startup.is_some() {
+                            auth.capture_grants(&accept_actor)?
+                        } else {
+                            None
+                        };
                         check.check()?;
                         active.current()?;
+                        let startup_revisions = if accept_call.workspace_startup.is_some() {
+                            let revisions = replay_host
+                                .inner
+                                .node_packages
+                                .workspace_script_admission_revisions()?;
+                            replay_host.check_workspace_startup(&accept_actor, &accept_call)?;
+                            Some(revisions)
+                        } else {
+                            None
+                        };
                         #[cfg(test)]
                         gates.action_before_accept.arrive();
-                        store.accept_plugin(
-                            &accept_actor,
-                            &accept_call,
-                            &canonical_digest(&accept_call)?,
-                            &plugin,
-                        )
+                        let digest = canonical_digest(&accept_call)?;
+                        let commit = || {
+                            store.accept_plugin(
+                                &accept_actor,
+                                &accept_call,
+                                &digest,
+                                &plugin,
+                                startup_revisions,
+                            )
+                        };
+                        match stamp {
+                            Some(stamp) => auth.commit_grant_stamp(&stamp, commit),
+                            None => commit(),
+                        }
                     })();
                     let acceptance = match attempt {
                         Ok(Acceptance::New(operation)) => Acceptance::New(operation),
@@ -453,8 +500,10 @@ impl Host {
             let observation_id = id.clone();
             let observation_instance = binding.instance_id().clone();
             let observation_epoch = accepted.call.instance_epoch;
+            let mut invocation = accepted.call;
+            invocation.workspace_startup = None;
             let value = binding.invoke_reserved(
-                accepted.call,
+                invocation,
                 permit,
                 move || check.check(),
                 move || {

@@ -129,6 +129,7 @@ impl DesktopHostBridge {
             expected_revision: Some(revision),
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
+            workspace_startup: None,
         };
         if !is_control {
             return self
@@ -240,6 +241,7 @@ mod tests {
                     expected_revision: Some(0.into()),
                     lease_id: None,
                     execution_mode: Some(ExecutionMode::Interactive),
+                    workspace_startup: None,
                 }),
             )
             .await

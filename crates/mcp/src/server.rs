@@ -197,6 +197,7 @@ impl McpBridge {
                 expected_revision: input.expected_revision,
                 lease_id: input.lease_id,
                 execution_mode: input.execution_mode,
+                workspace_startup: None,
             })
         } else {
             if input.expected_revision.is_some()

@@ -200,6 +200,7 @@ impl Fixture {
             expected_revision: None,
             lease_id: None,
             execution_mode: (action == "capture.start").then_some(ExecutionMode::Independent),
+            workspace_startup: None,
         }
     }
     async fn invoke(

@@ -1159,6 +1159,14 @@ Host 分块交接运行 `cargo test --locked -p serial-workbench-host --lib --te
 
 运行 `cargo test --locked -p serial-workbench-host --test shared_documents --test shared_documents_host -- --test-threads=1` 核对真实 IPC、独立修订、冲突、回执和重新导出。运行 `pnpm test:ui e2e/browser/workspace-configuration.spec.ts e2e/browser/workspace-workflow.spec.ts --workers=1` 核对宽窄窗和工作区真实入口。正式候选在原生窗口确认文件对话框、回焦和重启后的读回，再用启用或停用的签名包及系统凭据服务复验依赖状态和重新绑定。配置包只验证线路参数的保存和恢复，实际线路行为使用连接及线路参数专项验收。
 
+### 工作区打开与恢复（SESS-02）
+
+准备一个含两个不同会话视图、非默认布局及签名动作引用的工作区。保留一份未发送草稿。重开时核对视图、布局和草稿归属，连接及脚本保持等待。展开「启动工作区」，逐项检查已保存线路参数、同一设备的共享会话、无法唯一匹配的端口，以及签名依赖的缺失、变化或不可用状态。
+
+先只运行独立的 Host 脚本，核对目标、入参、实际包摘要和原操作回执，同时核对连接数与 Raw 无变化。再选择一个会话连接，确认只有所选端口及其线路参数进入接纳，另一个视图仍待连接，草稿无发送。对仅支持会话目标的脚本，重连后重新选择当前会话代次。脚本提交等待期间改动工作区修订、撤销包来源或切换 Host，同一请求不得跨修订或使用替代包运行。
+
+用 `cargo test --locked -p serial-workbench-host --test shared_documents_host workspace_startup_plan -- --test-threads=1` 核对独立 IPC 客户端只读恢复。配置固定 Node 运行时后运行 `cargo test --locked -p serial-workbench-host --lib native_node_workspace_startup_pins_revision_package_and_receipt -- --ignored --test-threads=1`，覆盖并发保存、签名包摘要、重复请求和撤销。用 `pnpm test:ui e2e/browser/workspace-workflow.spec.ts e2e/browser/workspace-configuration.spec.ts --workers=1` 核对实际工作台入口及独立选择。独立原生桌面、已接线串口和签名候选就绪后，复验工作区重开、系统焦点、实际线路参数、无先行写入和回执。RFC 2217 在已保存的非默认线路下只填写端点，核对实际接纳参数，对当前传输不支持的保存流控明确重新选择。
+
 ### 复现实验包（SESS-09）
 
 从「工作区配置」进入「复现实验包」。按[宽窄草稿](./ui-design.md#复现实验包草稿)核对导出证据选择、脱敏预览、文件保存、导入依赖检查和配置替换。

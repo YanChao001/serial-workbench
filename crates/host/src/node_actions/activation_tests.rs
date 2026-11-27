@@ -513,3 +513,214 @@ async fn native_node_lazy_activation_requires_trigger_and_actual_registered_hand
         );
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT pointing to a prepared native distribution"]
+async fn native_node_workspace_startup_pins_revision_package_and_receipt() {
+    let fixture = node_host_actions::Fixture::new().await;
+    let user = &fixture.client;
+    let workspace = Target {
+        kind: ResourceKind::try_from("workspace").unwrap(),
+        id: id("startup"),
+        ..fixture.target.clone()
+    };
+    for (target, permissions) in [
+        (&workspace, vec!["metadata.read", "workspace.modify"]),
+        (&fixture.target, vec!["metadata.read"]),
+    ] {
+        let authorized = fixture.invoke(&fixture.user, fixture.call(
+            &fixture.user, &fixture.target, "auth.authorize",
+            json!({"clientId":user.attachment().client_id,"permissions":permissions,"targets":[target]}),
+        )).await;
+        assert_eq!(
+            fixture
+                .wait(&fixture.user, &authorized.operation_id)
+                .await
+                .state,
+            OperationState::Succeeded
+        );
+    }
+    let reference = WorkspaceScriptReference {
+        package_id: NodePackageId::try_from("example.terminal").unwrap(),
+        version: NodePackageVersion::try_from("1.0.0").unwrap(),
+        archive_sha256: fixture.archive.clone(),
+        action_id: id("example.terminal.compute"),
+    };
+    let configuration = WorkspaceConfiguration {
+        format: WORKSPACE_CONFIGURATION_FORMAT.into(),
+        version: WORKSPACE_CONFIGURATION_VERSION,
+        workspace: WorkspaceDocument {
+            name: "Saved bench".into(),
+            ..Default::default()
+        },
+        groups: vec![],
+        commands: vec![],
+        scripts: vec![reference.clone()],
+        credential_refs: vec![],
+    };
+    let mut import = fixture.call(
+        user,
+        &workspace,
+        "workspace.configuration.import",
+        json!({"json":configuration.to_json().unwrap()}),
+    );
+    import.expected_revision = Some(0.into());
+    let imported = fixture.invoke(user, import).await;
+    let imported = fixture.wait(user, &imported.operation_id).await;
+    assert_eq!(imported.state, OperationState::Succeeded, "{imported:?}");
+
+    let QueryResult::WorkspaceStartupPlan(plan) = fixture
+        .query(
+            user,
+            &workspace,
+            "workspace.startupPlan",
+            json!({"workspaceRevision":"1"}),
+        )
+        .await
+    else {
+        panic!("Expected saved startup plan");
+    };
+    assert_eq!(plan.scripts[0].reference, reference);
+    assert_eq!(plan.scripts[0].status, WorkspaceScriptStatus::Matched);
+    assert_eq!(
+        plan.scripts[0].target_kinds,
+        vec![fixture.target.kind.clone()]
+    );
+
+    let launch = |revision| {
+        let mut call = fixture.call(
+            user,
+            &fixture.target,
+            reference.action_id.as_str(),
+            json!({"value":10}),
+        );
+        call.workspace_startup = Some(WorkspaceStartupSelection {
+            workspace_id: workspace.id.clone(),
+            workspace_revision: revision,
+            reference: reference.clone(),
+        });
+        call
+    };
+    let mut forged = launch(1.into());
+    forged
+        .workspace_startup
+        .as_mut()
+        .unwrap()
+        .reference
+        .archive_sha256 = Digest::try_from("1".repeat(64).as_str()).unwrap();
+    rejected(
+        user.request(RpcRequest::Invoke(forged)).await.unwrap(),
+        "WORKSPACE_DEPENDENCY_UNAVAILABLE",
+    );
+
+    {
+        let mut boundary = fixture
+            .host
+            .inner
+            .node_test_gates
+            .action_before_accept
+            .arm();
+        let pending = user.request(RpcRequest::Invoke(launch(1.into())));
+        tokio::pin!(pending);
+        tokio::select! {
+            reply = &mut pending => panic!("Expected action to await commit: {reply:?}"),
+            () = boundary.entered() => {}
+        }
+        let mut save = fixture.call(
+            user,
+            &workspace,
+            "workspace.save",
+            json!({"value":configuration.workspace}),
+        );
+        save.expected_revision = Some(1.into());
+        let saved = fixture.invoke(user, save).await;
+        let saved = fixture.wait(user, &saved.operation_id).await;
+        assert_eq!(saved.state, OperationState::Succeeded, "{saved:?}");
+        boundary.release();
+        rejected(pending.await.unwrap(), "REVISION_CONFLICT");
+    }
+
+    let call = launch(2.into());
+    let receipt = fixture.invoke(user, call.clone()).await;
+    let terminal = fixture.wait(user, &receipt.operation_id).await;
+    assert_eq!(terminal.state, OperationState::Succeeded, "{terminal:?}");
+    assert_eq!(
+        terminal.dependencies.unwrap()[0].digest,
+        reference.archive_sha256
+    );
+    let replay = fixture.invoke(user, call.clone()).await;
+    assert_eq!(replay.operation_id, receipt.operation_id);
+    let mut changed = call;
+    changed
+        .workspace_startup
+        .as_mut()
+        .unwrap()
+        .workspace_revision = 1.into();
+    rejected(
+        user.request(RpcRequest::Invoke(changed)).await.unwrap(),
+        "REQUEST_CONFLICT",
+    );
+
+    {
+        let mut boundary = fixture
+            .host
+            .inner
+            .node_test_gates
+            .action_before_accept
+            .arm();
+        let pending = user.request(RpcRequest::Invoke(launch(2.into())));
+        tokio::pin!(pending);
+        tokio::select! {
+            reply = &mut pending => panic!("Expected action to await grant commit: {reply:?}"),
+            () = boundary.entered() => {}
+        }
+        let revoked = fixture.invoke(&fixture.user, fixture.call(&fixture.user, &fixture.target, "auth.revoke", json!({"actorId":user.attachment().actor_id,"permissions":["workspace.modify"],"targets":[workspace]}))).await;
+        assert_eq!(
+            fixture
+                .wait(&fixture.user, &revoked.operation_id)
+                .await
+                .state,
+            OperationState::Succeeded
+        );
+        boundary.release();
+        rejected(pending.await.unwrap(), "PERMISSION_DENIED");
+    }
+
+    use sha2::{Digest as _, Sha256};
+    let public_key = ed25519_dalek::SigningKey::from_bytes(&[7; 32])
+        .verifying_key()
+        .to_bytes();
+    let fingerprint = format!("{:x}", Sha256::digest(public_key));
+    {
+        let mut boundary = fixture
+            .host
+            .inner
+            .node_test_gates
+            .action_before_accept
+            .arm();
+        let pending = user.request(RpcRequest::Invoke(launch(2.into())));
+        tokio::pin!(pending);
+        tokio::select! {
+            reply = &mut pending => panic!("Expected action to await source commit: {reply:?}"),
+            () = boundary.entered() => {}
+        }
+        let revoked = fixture
+            .mutate(
+                &fixture.user,
+                "node.sources.revokeKey",
+                json!({"source":"test-source","keyId":"test-key","publicKeySha256":fingerprint}),
+                1,
+            )
+            .await;
+        assert_eq!(revoked.state, OperationState::Succeeded, "{revoked:?}");
+        boundary.release();
+        rejected(pending.await.unwrap(), "WORKSPACE_DEPENDENCY_UNAVAILABLE");
+    }
+    rejected(
+        user.request(RpcRequest::Invoke(launch(2.into())))
+            .await
+            .unwrap(),
+        "WORKSPACE_DEPENDENCY_UNAVAILABLE",
+    );
+    fixture.finish().await;
+}

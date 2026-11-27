@@ -206,6 +206,7 @@ async fn invoke(
         expected_revision: None,
         lease_id: None,
         execution_mode: Some(mode),
+        workspace_startup: None,
     };
     let RpcResult::Operation(receipt) = success(
         bridge
@@ -866,6 +867,7 @@ async fn deny_confirmation(
             expected_revision: Some(revision),
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
+            workspace_startup: None,
         }))
         .await
         .unwrap();

@@ -658,7 +658,7 @@
   /* 长草稿重排保持在编辑框内，外层仍按可见尺寸布局。 */
   contain: layout;
   grid-template-rows: minmax(0, 1fr) var(--workbench-stat-height);
-  height: 5.5rem;
+  height: var(--workbench-draft-height, 5.5rem);
   min-height: 5.5rem;
   max-height: 12rem;
   resize: vertical;

@@ -14,6 +14,7 @@ import {
   useMemo,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { defaults } from "@serial-workbench/contracts";
@@ -292,6 +293,13 @@ function editingField(element: EventTarget | null): boolean {
   );
 }
 
+type StartupConnection = {
+  viewId: string;
+  configuration: SerialConfiguration;
+  scope: string;
+  signal: AbortSignal;
+};
+
 export type WorkbenchToolContext = {
   trackCapture: CaptureTracker;
   selectedViewId?: string;
@@ -322,6 +330,15 @@ export type WorkbenchToolContext = {
   >;
   onInspectMetrics: () => void;
   onReconnect?: () => void;
+  startupConnections?: {
+    busy: boolean;
+    connect(
+      viewId: string,
+      deviceId: string,
+      configuration: SerialConfiguration,
+    ): void;
+    sessions: ReadonlyMap<string, SessionSnapshot>;
+  };
   beforeReplace: () => Promise<boolean>;
   snapshotWorkspace?: (
     preservePresets?: boolean,
@@ -749,7 +766,40 @@ export function WorkspaceLayout({
   const [transportPrompt, setTransportPrompt] = useState<{
     deviceId: string;
     scope: string;
+    startup?: StartupConnection;
   }>();
+  const startupConnectionScope = JSON.stringify([
+    nativeOwnershipKey,
+    workspaceKey,
+    workspaceRevision,
+    workspaceSelection,
+  ]);
+  const startupWait = useRef<
+    | {
+        controller: AbortController;
+        deviceId: string;
+        waiting: boolean;
+        scope: string;
+      }
+    | undefined
+  >(undefined);
+  const stopWorkspaceStartupConnection = useCallback(() => {
+    const waiting = startupWait.current;
+    if (!waiting) return;
+    startupWait.current = undefined;
+    waiting.controller.abort();
+    if (waiting.waiting)
+      setOpening((current) => (current === waiting.deviceId ? null : current));
+  }, []);
+  useLayoutEffect(() => {
+    if (
+      startupWait.current &&
+      startupWait.current.scope !== startupConnectionScope
+    )
+      stopWorkspaceStartupConnection();
+  }, [startupConnectionScope, stopWorkspaceStartupConnection]);
+  const activeStartupScope = useRef(startupConnectionScope);
+  activeStartupScope.current = startupConnectionScope;
   const transportScope = JSON.stringify([
     nativeOwnershipKey,
     workspaceKey,
@@ -757,6 +807,9 @@ export function WorkspaceLayout({
   ]);
   const promptDevice =
     transportPrompt?.scope === transportScope &&
+    (!transportPrompt.startup ||
+      (!transportPrompt.startup.signal.aborted &&
+        transportPrompt.startup.scope === startupConnectionScope)) &&
     state.status === "ready" &&
     !state.devicesStale
       ? state.devices.find(
@@ -1264,6 +1317,7 @@ export function WorkspaceLayout({
       deviceId?: string,
       preferredViewId?: string,
       openedSession?: SessionSnapshot,
+      fromStartup = false,
     ) => {
       setDeviceChoice(undefined);
       const device = state.devices.find(
@@ -1272,6 +1326,28 @@ export function WorkspaceLayout({
           (deviceId ??
             state.sessions.find((value) => value.sessionId === id)?.deviceId),
       );
+      const restoredBindingIds = new Set<string>();
+      if (fromStartup && savedWorkspace) {
+        const preferred = savedWorkspace.views.find(
+          ({ id }) => id === preferredViewId,
+        );
+        const binding = savedWorkspace.bindings.find(
+          ({ bindingId }) => bindingId === preferred?.bindingId,
+        );
+        if (binding)
+          for (const related of savedWorkspace.bindings)
+            if (
+              related.hostId === binding.hostId &&
+              related.deviceId === binding.deviceId
+            )
+              restoredBindingIds.add(related.bindingId);
+      }
+      const matchesRestoredView = restoredBindingIds.size
+        ? (tab: SessionTab) => {
+            const view = savedWorkspace?.views.find(({ id }) => id === tab.id);
+            return view !== undefined && restoredBindingIds.has(view.bindingId);
+          }
+        : undefined;
       const connected = connectSessionTabs(
         tabs,
         initialWorkspace,
@@ -1280,6 +1356,7 @@ export function WorkspaceLayout({
         state.sessions,
         preferredViewId,
         openedSession,
+        matchesRestoredView,
       );
       const matchingTab = tabs.find((tab) => tab.id === connected.selected);
       const draftKey = viewDraftKey(draftScopeKey, connected.selected);
@@ -1324,6 +1401,7 @@ export function WorkspaceLayout({
           state.sessions,
           preferredViewId,
           openedSession,
+          matchesRestoredView,
         );
         return next.selected === current.selected &&
           next.tabs.length === current.tabs.length &&
@@ -1334,6 +1412,7 @@ export function WorkspaceLayout({
     },
     [
       initialWorkspace,
+      savedWorkspace,
       state.devices,
       state.sessions,
       tabs,
@@ -1621,8 +1700,15 @@ export function WorkspaceLayout({
     transportParams?: OpenParams["transportParams"],
     template?: SerialConfiguration,
     transportConfiguration?: Rfc2217SerialConfiguration,
+    startup?: StartupConnection,
   ) {
-    if (connectionDefaultsLoading) return;
+    if (
+      connectionDefaultsLoading ||
+      (startup &&
+        (startup.signal.aborted ||
+          startup.scope !== activeStartupScope.current))
+    )
+      return;
     focusRevision.current++;
     setFollowing(false);
     const existing = state.sessions.find(
@@ -1646,11 +1732,19 @@ export function WorkspaceLayout({
       if (dialog === null && active instanceof HTMLElement)
         dialogTrigger.current = active;
       setDialog(null);
-      setTransportPrompt({ deviceId, scope: transportScope });
+      setTransportPrompt({ deviceId, scope: transportScope, startup });
       return;
     }
     const revision = focusRevision.current;
     const controller = new AbortController();
+    const signal = startup
+      ? AbortSignal.any([controller.signal, startup.signal])
+      : controller.signal;
+    const startupAttempt =
+      startup && startupWait.current?.controller.signal === startup.signal
+        ? startupWait.current
+        : undefined;
+    if (startupAttempt) startupAttempt.waiting = true;
     pending.current.add(controller);
     setOpening(deviceId);
     setError(undefined);
@@ -1664,25 +1758,25 @@ export function WorkspaceLayout({
         existing && !existing.readOnly
           ? existing.configuration
           : (template ?? {
-              ...requestedConfiguration(deviceId),
+              ...(startup?.configuration ?? requestedConfiguration(deviceId)),
               ...transportConfiguration,
             });
       const opened =
         transportParams === undefined
-          ? await connect(deviceId, controller.signal, configuration)
-          : await connect(
-              deviceId,
-              controller.signal,
-              configuration,
-              transportParams,
-            );
+          ? await connect(deviceId, signal, configuration)
+          : await connect(deviceId, signal, configuration, transportParams);
       // 只沿用本窗口明确打开且实例/会话代次一致的连接，不为其他会话补授权。
       if (
-        controller.signal.aborted ||
-        openedHere.current.key !== nativeOwnershipKey
+        signal.aborted ||
+        openedHere.current.key !== nativeOwnershipKey ||
+        (startup &&
+          (startup.signal.aborted ||
+            startup.scope !== activeStartupScope.current))
       )
         return;
       openedHere.current.sessions.set(opened.sessionId, opened.sessionEpoch);
+      if (startupAttempt && startupWait.current === startupAttempt)
+        startupWait.current = undefined;
       if (transportParams !== undefined)
         setTransportPrompt((prompt) =>
           prompt?.deviceId === deviceId && prompt.scope === transportScope
@@ -1690,7 +1784,7 @@ export function WorkspaceLayout({
             : prompt,
         );
       if (
-        !controller.signal.aborted &&
+        !signal.aborted &&
         !opened.readOnly &&
         opened.txGate === "ready" &&
         configurationEdit ===
@@ -1698,23 +1792,29 @@ export function WorkspaceLayout({
       ) {
         rememberConfiguration(deviceId, opened.configuration);
       }
-      if (!controller.signal.aborted && revision === focusRevision.current)
+      if (!signal.aborted && revision === focusRevision.current)
         selectSession(
           opened.sessionId,
           opened.deviceId,
-          session?.state !== "open" || session.deviceId === opened.deviceId
-            ? selected
-            : undefined,
+          startup?.viewId ??
+            (session?.state !== "open" || session.deviceId === opened.deviceId
+              ? selected
+              : undefined),
           opened,
+          startup !== undefined,
         );
     } catch (reason) {
-      if (!controller.signal.aborted) {
+      if (
+        !signal.aborted &&
+        (!startup || startup.scope === activeStartupScope.current)
+      ) {
         setOpenError(true);
         setError(actionError(reason, "connection", deviceId));
       }
     } finally {
       pending.current.delete(controller);
-      if (!controller.signal.aborted) setOpening(null);
+      if (startupAttempt) startupAttempt.waiting = false;
+      if (!signal.aborted) setOpening(null);
     }
   }
   async function act(
@@ -2182,11 +2282,28 @@ export function WorkspaceLayout({
     )
       return;
     setSavingLayout(true);
+    const savedLayout = snapshotWorkspace() ?? initialWorkspace;
+    const frame = workbenchRoot.current?.querySelector<HTMLElement>(
+      ".workbench-draft-frame",
+    );
+    const resizedHeight = frame?.style.height
+      ? frame.closest(".workbench-send")?.getBoundingClientRect().height
+      : undefined;
+    const value =
+      resizedHeight && resizedHeight > 0
+        ? {
+            ...savedLayout,
+            layout: {
+              ...savedLayout.layout,
+              panelHeight: Math.round(resizedHeight),
+            },
+          }
+        : savedLayout;
     const submission = {
       key: workspaceKey,
       selection: workspaceSelection,
       document: enrichWorkspacePorts(
-        snapshotWorkspace() ?? initialWorkspace,
+        value,
         state.devices,
         state.devicesStale,
         savedWorkspace ?? initialWorkspace,
@@ -2296,10 +2413,24 @@ export function WorkspaceLayout({
   ]);
   const currentChartLink =
     chartLink?.scope === chartScope ? chartLink : undefined;
+  const panelHeight = savedWorkspace?.layout.panelHeight;
+  useLayoutEffect(() => {
+    workbenchRoot.current
+      ?.querySelector<HTMLElement>(".workbench-draft-frame")
+      ?.style.removeProperty("height");
+  }, [panelHeight, workspaceKey, workspaceSelection]);
+  const panelStyle =
+    panelHeight !== undefined &&
+    panelHeight !== defaults.workspace.layout.panelHeight
+      ? ({
+          "--workbench-draft-height": `clamp(5.5rem, calc(${panelHeight}px - var(--app-chrome-height) - var(--workbench-block-inset)), min(12rem, max(5.5rem, 35dvh)))`,
+        } as CSSProperties)
+      : undefined;
   return (
     <section
       className="workbench"
       ref={workbenchRoot}
+      style={panelStyle}
       onFocusCapture={(event) => setEditing(editingField(event.target))}
       onBlurCapture={(event) => {
         if (
@@ -2876,11 +3007,15 @@ export function WorkspaceLayout({
         }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
-        onRequestClose={() => setTransportPrompt(undefined)}
+        onRequestClose={() => {
+          if (transportPrompt?.startup) stopWorkspaceStartupConnection();
+          setTransportPrompt(undefined);
+        }}
       >
         {promptDevice && (
           <TransportParameters
             key={promptDevice.deviceId}
+            initialConfiguration={transportPrompt?.startup?.configuration}
             device={promptDevice.systemName}
             labels={labels}
             opening={opening === promptDevice.deviceId}
@@ -2899,6 +3034,7 @@ export function WorkspaceLayout({
                 params,
                 undefined,
                 lineConfiguration,
+                transportPrompt?.startup,
               );
             }}
           />
@@ -2933,6 +3069,7 @@ export function WorkspaceLayout({
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
         onRequestClose={() => {
+          if (dialog === "workspace") stopWorkspaceStartupConnection();
           setSequenceRecording(undefined);
           setDialog(null);
         }}
@@ -3227,6 +3364,45 @@ export function WorkspaceLayout({
                       }
                     : undefined,
                 onInspectMetrics: () => showDialog("metrics"),
+                startupConnections:
+                  dialog === "workspace"
+                    ? {
+                        busy:
+                          disabled ||
+                          opening !== null ||
+                          connectionDefaultsLoading ||
+                          !draftsReady,
+                        connect: (viewId, id, configuration) => {
+                          stopWorkspaceStartupConnection();
+                          const controller = new AbortController();
+                          startupWait.current = {
+                            controller,
+                            deviceId: id,
+                            waiting: false,
+                            scope: startupConnectionScope,
+                          };
+                          void open(id, undefined, undefined, undefined, {
+                            viewId,
+                            configuration,
+                            scope: startupConnectionScope,
+                            signal: controller.signal,
+                          });
+                        },
+                        sessions: new Map(
+                          tabs.flatMap(({ id, sessionId, captureRef }) => {
+                            if (captureRef || !sessionId) return [];
+                            const current = state.sessions.find(
+                              (session) =>
+                                session.sessionId === sessionId &&
+                                session.state === "open" &&
+                                openedHere.current.sessions.get(sessionId) ===
+                                  session.sessionEpoch,
+                            );
+                            return current ? [[id, current] as const] : [];
+                          }),
+                        ),
+                      }
+                    : undefined,
                 onReconnect:
                   !isReplay &&
                   !isCapture &&

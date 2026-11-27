@@ -31,6 +31,7 @@ impl HostClient {
             lease_id: None,
             reveal_target: action.reveal_target.clone(),
             execution_mode: None,
+            workspace_startup: None,
         });
         match tokio::time::timeout(Duration::from_secs(10), self.request(request)).await {
             Ok(Ok(RpcReply::Success { result, .. })) => match *result {

@@ -236,7 +236,7 @@ fn validate_key(bytes: &[u8; 32]) -> HostResult<()> {
 fn digest(bytes: &[u8]) -> HostResult<Digest> {
     Digest::try_from(format!("{:x}", Sha256::digest(bytes)).as_str())
 }
-fn document_id() -> Id {
+pub(super) fn document_id() -> Id {
     Id::try_from("node-packages:sources").expect("source trust document id")
 }
 fn corrupt() -> HostError {

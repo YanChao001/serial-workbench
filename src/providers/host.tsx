@@ -84,6 +84,7 @@ function withLocalWorkspace(
     rebindDevice: local.rebindDevice,
     exportWorkspace: local.exportWorkspace,
     previewWorkspaceImport: local.previewWorkspaceImport,
+    readWorkspaceStartupPlan: local.readWorkspaceStartupPlan,
     inspectWorkspaceConfiguration: local.inspectWorkspaceConfiguration,
     importWorkspaceConfiguration: local.importWorkspaceConfiguration,
     exportWorkspaceConfiguration: local.exportWorkspaceConfiguration,

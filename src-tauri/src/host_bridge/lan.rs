@@ -339,6 +339,7 @@ mod tests {
             expected_revision: None,
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
+            workspace_startup: None,
         };
         let RpcReply::Success { result, .. } = bridge
             .request_for_generation("main", remote.generation, RpcRequest::Invoke(call))

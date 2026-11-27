@@ -73,6 +73,7 @@ async fn native_mdf4_saved_bytes_match_the_signed_mcp_export() {
                 expected_revision: None,
                 lease_id: None,
                 execution_mode: Some(ExecutionMode::Independent),
+                workspace_startup: None,
             }))
             .await
             .unwrap();

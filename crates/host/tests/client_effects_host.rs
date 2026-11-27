@@ -140,6 +140,7 @@ async fn ordinary_actor_cannot_write_clipboard_without_explicit_client_permissio
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     };
     assert_eq!(
         h.host.invoke(&h.actor, call).await.unwrap_err().code,
@@ -306,6 +307,7 @@ impl ComponentFixture {
             expected_revision: None,
             lease_id: None,
             execution_mode: None,
+            workspace_startup: None,
         };
         let Acceptance::New(operation) = self
             .store
@@ -988,6 +990,7 @@ fn action_call(
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     }
 }
 fn admit_call(f: &ComponentFixture, call: &Call) -> Operation {

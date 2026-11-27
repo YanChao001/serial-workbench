@@ -366,18 +366,48 @@ impl NodePackageManager {
         })
     }
 
+    pub(crate) fn workspace_script_admission_revisions(&self) -> HostResult<[(Id, U64); 2]> {
+        let revision = |id: Id| -> HostResult<(Id, U64)> {
+            let revision = self
+                .store
+                .read_document(&id)?
+                .map_or(0.into(), |document| document.revision);
+            Ok((id, revision))
+        };
+        Ok([
+            revision(super::install::document_id())?,
+            revision(super::source_store::document_id())?,
+        ])
+    }
+
     pub(crate) fn workspace_script_statuses(
         &self,
         actor: &AuthenticatedActor,
         target: &Target,
         scripts: &[WorkspaceScriptReference],
     ) -> HostResult<Vec<WorkspaceScriptStatus>> {
+        Ok(self
+            .workspace_script_availability(actor, target, scripts)?
+            .into_iter()
+            .map(|(status, _)| status)
+            .collect())
+    }
+
+    pub(crate) fn workspace_script_availability(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        scripts: &[WorkspaceScriptReference],
+    ) -> HostResult<Vec<(WorkspaceScriptStatus, Vec<ResourceKind>)>> {
         if scripts.is_empty() {
             return Ok(Vec::new());
         }
         if let Err(error) = self.auth.require(actor, "metadata.read", target) {
             return if error.code == "PERMISSION_DENIED" {
-                Ok(vec![WorkspaceScriptStatus::Unavailable; scripts.len()])
+                Ok(vec![
+                    (WorkspaceScriptStatus::Unavailable, vec![]);
+                    scripts.len()
+                ])
             } else {
                 Err(error)
             };
@@ -400,39 +430,47 @@ impl NodePackageManager {
             .iter()
             .map(|script| {
                 let Some(package) = packages.get(&script.package_id) else {
-                    return Ok(WorkspaceScriptStatus::Missing);
+                    return Ok((WorkspaceScriptStatus::Missing, vec![]));
                 };
-                if package.manifest.version != script.version
-                    || package.archive_sha256 != script.archive_sha256
-                    || !package
-                        .manifest
-                        .contributes
-                        .actions
-                        .iter()
-                        .any(|action| action.action_id == script.action_id)
-                {
-                    return Ok(WorkspaceScriptStatus::Changed);
-                }
+                let action = package
+                    .manifest
+                    .contributes
+                    .actions
+                    .iter()
+                    .find(|action| action.action_id == script.action_id);
+                let Some(action) = action.filter(|_| {
+                    package.manifest.version == script.version
+                        && package.archive_sha256 == script.archive_sha256
+                }) else {
+                    return Ok((WorkspaceScriptStatus::Changed, vec![]));
+                };
                 let Some(source) = package.verified_source.as_ref() else {
-                    return Ok(WorkspaceScriptStatus::Unavailable);
+                    return Ok((WorkspaceScriptStatus::Unavailable, vec![]));
                 };
                 if !package.enabled || !package.execution_approved() {
-                    return Ok(WorkspaceScriptStatus::Unavailable);
+                    return Ok((WorkspaceScriptStatus::Unavailable, vec![]));
                 }
-                if let Some(status) = trust.get(&script.package_id) {
-                    return Ok(*status);
-                }
-                let status = match sources.require_current(source) {
-                    Ok(()) => WorkspaceScriptStatus::Matched,
-                    Err(error)
-                        if matches!(error.code.as_str(), "PERMISSION_DENIED" | "NOT_FOUND") =>
-                    {
-                        WorkspaceScriptStatus::Unavailable
-                    }
-                    Err(error) => return Err(error),
+                let status = if let Some(status) = trust.get(&script.package_id) {
+                    *status
+                } else {
+                    let status = match sources.require_current(source) {
+                        Ok(()) => WorkspaceScriptStatus::Matched,
+                        Err(error)
+                            if matches!(error.code.as_str(), "PERMISSION_DENIED" | "NOT_FOUND") =>
+                        {
+                            WorkspaceScriptStatus::Unavailable
+                        }
+                        Err(error) => return Err(error),
+                    };
+                    trust.insert(&script.package_id, status);
+                    status
                 };
-                trust.insert(&script.package_id, status);
-                Ok(status)
+                let target_kinds = if status == WorkspaceScriptStatus::Matched {
+                    action.target_kinds.clone()
+                } else {
+                    vec![]
+                };
+                Ok((status, target_kinds))
             })
             .collect::<HostResult<Vec<_>>>()?;
         self.auth.require(actor, "metadata.read", target)?;

@@ -80,6 +80,7 @@ fn invoke_request(client: &HostClient, action: &str, target: Target, params: Val
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     };
     RpcRequest::Invoke(call)
 }

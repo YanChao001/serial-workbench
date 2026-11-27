@@ -53,6 +53,7 @@ import type {
   WorkspaceDocumentResult,
   WorkspaceConfigurationExportParams,
   WorkspaceConfigurationInspection,
+  WorkspaceStartupPlan,
   WorkspaceListResult,
   Target,
 } from "@serial-workbench/contracts";
@@ -63,7 +64,12 @@ export type SendSourceMetadata = Required<
 
 export type HostInvocation = Pick<
   Call,
-  "actionId" | "target" | "params" | "expectedRevision" | "leaseId"
+  | "actionId"
+  | "target"
+  | "params"
+  | "expectedRevision"
+  | "leaseId"
+  | "workspaceStartup"
 > &
   Required<Pick<Call, "executionMode">>;
 
@@ -250,6 +256,10 @@ export type HostContextValue = {
     json: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceDocument>;
+  readWorkspaceStartupPlan?(
+    base: WorkspaceDocumentResult,
+    signal: AbortSignal,
+  ): Promise<WorkspaceStartupPlan>;
   inspectWorkspaceConfiguration(
     workspaceId: string,
     json: string,

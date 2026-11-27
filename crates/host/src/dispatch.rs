@@ -585,6 +585,7 @@ impl Host {
                             | BuiltinAction::WorkspaceImportPreview
                             | BuiltinAction::WorkspaceConfigurationInspect
                             | BuiltinAction::WorkspaceConfigurationExport
+                            | BuiltinAction::WorkspaceStartupPlan
                             | BuiltinAction::ExperimentExport
                             | BuiltinAction::ExperimentInspect
                             | BuiltinAction::CommandLibraryRead
@@ -949,6 +950,7 @@ impl Host {
                     | BuiltinAction::WorkspaceImportPreview
                     | BuiltinAction::WorkspaceConfigurationInspect
                     | BuiltinAction::WorkspaceConfigurationExport
+                    | BuiltinAction::WorkspaceStartupPlan
                     | BuiltinAction::ExperimentExport
                     | BuiltinAction::ExperimentInspect
                     | BuiltinAction::SessionMetrics
@@ -1004,6 +1006,10 @@ impl Host {
                 .export_workspace_configuration(actor, query)
                 .await
                 .map(QueryResult::DocumentJson),
+            BuiltinAction::WorkspaceStartupPlan => self
+                .workspace_startup_plan(actor, query)
+                .await
+                .map(|plan| QueryResult::WorkspaceStartupPlan(Box::new(plan))),
             BuiltinAction::WorkspaceImportPreview => {
                 let documents = self.inner.documents.clone();
                 let actor = actor.clone();
@@ -1770,6 +1776,9 @@ impl Host {
     ) -> HostResult<Operation> {
         if BuiltinAction::find(call.action_id.as_str()).is_err() {
             return self.invoke_extension(actor, call).await;
+        }
+        if call.workspace_startup.is_some() {
+            return Err(invalid());
         }
         let query = call_query(&call);
         let action = self
@@ -3226,6 +3235,7 @@ mod tests {
                     expected_revision: None,
                     lease_id: None,
                     execution_mode: None,
+                    workspace_startup: None,
                 };
                 let wait = Duration::from_secs(5);
                 let settled = |operation: Operation| {
@@ -3411,6 +3421,7 @@ mod tests {
             expected_revision: None,
             lease_id: None,
             execution_mode: None,
+            workspace_startup: None,
         };
         let settled = |accepted: Operation| {
             let actor = actor.clone();
@@ -5361,7 +5372,7 @@ mod tests {
             session_id: None,
             session_epoch: None,
         };
-        let call=Call {protocol_version:ProtocolVersion::V1_0,host_id:identity.host_id,instance_epoch:identity.instance_epoch,actor_id:actor.id().clone(),request_id:RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),request_context:store.issue_context(&actor).unwrap().token,action_id:id("auth.authorize"),target:target.clone(),params:object(serde_json::json!({"clientId":"recipient","permissions":["content.read"],"targets":[target]})).unwrap(),reveal_target:BuiltinAction::Authorize.spec().reveal_target.clone(),expected_revision:None,lease_id:None,execution_mode:None};
+        let call=Call {protocol_version:ProtocolVersion::V1_0,host_id:identity.host_id,instance_epoch:identity.instance_epoch,actor_id:actor.id().clone(),request_id:RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),request_context:store.issue_context(&actor).unwrap().token,action_id:id("auth.authorize"),target:target.clone(),params:object(serde_json::json!({"clientId":"recipient","permissions":["content.read"],"targets":[target]})).unwrap(),reveal_target:BuiltinAction::Authorize.spec().reveal_target.clone(),expected_revision:None,lease_id:None,execution_mode:None,workspace_startup:None};
         let selector = OperationGetParams::ByRequest {
             actor_id: actor.id().clone(),
             request_id: call.request_id.clone(),

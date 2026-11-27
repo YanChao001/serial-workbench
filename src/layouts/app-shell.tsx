@@ -1,4 +1,10 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useLocation } from "react-router-dom";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TitleBar } from "@/components/title-bar";
@@ -13,6 +19,7 @@ import { SIDEBAR_COLLAPSED_WIDTH } from "@/lib/settings-model";
 import { useAppChrome } from "@/hooks/use-app-chrome";
 import "@/styles/app-navigation.css";
 import { CachedOutlet } from "./cached-outlet";
+import { WorkspaceSidebarContext } from "./workspace-sidebar-context";
 
 /** 感知路由的应用布局；页面失败时保留导航能力 */
 export function AppShell() {
@@ -22,6 +29,13 @@ export function AppShell() {
   const [sidebarPreviewWidth, setSidebarPreviewWidth] = useState<number | null>(
     null,
   );
+  const [workspaceSidebar, setWorkspaceSidebar] = useState<number>();
+  const sidebar = useMemo(
+    () => ({ width: workspaceSidebar, setWidth: setWorkspaceSidebar }),
+    [workspaceSidebar],
+  );
+  const workspaceWidth =
+    contentLayout === "workspace" ? workspaceSidebar : undefined;
   const { fullscreen } = useCommands();
   const routes = APP_ROUTES.filter((route) => !route.hidden);
   const chrome = useAppChrome();
@@ -45,7 +59,7 @@ export function AppShell() {
       )}
       style={
         {
-          "--app-sidebar-width": `${settings.sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : (sidebarPreviewWidth ?? settings.sidebarWidth)}px`,
+          "--app-sidebar-width": `${settings.sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : (sidebarPreviewWidth ?? workspaceWidth ?? settings.sidebarWidth)}px`,
         } as CSSProperties
       }
     >
@@ -54,7 +68,14 @@ export function AppShell() {
       <div ref={chrome} id="app-chrome" className="app-chrome">
         <TitleBar />
       </div>
-      <AppSidebar routes={routes} onWidthPreview={setSidebarPreviewWidth} />
+      <AppSidebar
+        routes={routes}
+        onWidthPreview={setSidebarPreviewWidth}
+        workspaceWidth={workspaceWidth}
+        onWorkspaceWidthChange={
+          workspaceWidth === undefined ? undefined : setWorkspaceSidebar
+        }
+      />
       <main
         ref={content}
         data-content-layout={contentLayout}
@@ -62,7 +83,9 @@ export function AppShell() {
         tabIndex={0}
       >
         <div className="app-page-content" data-content-layout={contentLayout}>
-          <CachedOutlet />
+          <WorkspaceSidebarContext.Provider value={sidebar}>
+            <CachedOutlet />
+          </WorkspaceSidebarContext.Provider>
         </div>
       </main>
     </div>

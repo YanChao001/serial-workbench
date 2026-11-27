@@ -41,6 +41,7 @@ import { SessionControls } from "./session-controls";
 import { DeviceLibrary } from "./device-library";
 import { WorkspaceEditor } from "./workspace-editor";
 import { WorkspacePicker } from "./workspace-picker";
+import { WorkspaceStartup } from "./workspace-startup";
 import {
   addDeviceView,
   enrichWorkspacePorts,
@@ -514,6 +515,16 @@ export function WorkbenchTools({
             if (base) onChange(base.document.value);
           }}
         />
+        {base &&
+          !base.document.value.archived &&
+          context.startupConnections && (
+            <WorkspaceStartup
+              key={JSON.stringify([documentKey, base.document.revision])}
+              base={base}
+              host={host}
+              connections={context.startupConnections}
+            />
+          )}
         {base && (
           <WorkspaceEditor
             key={documentKey}

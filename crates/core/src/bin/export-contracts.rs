@@ -1770,6 +1770,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         WorkspaceConfigurationImportParams,
         WorkspaceConfigurationImportResult,
         WorkspaceConfigurationExportParams,
+        WorkspaceStartupPlanParams,
+        WorkspaceStartupPlan,
         StreamCursorResult,
         FileTransferParams,
         PasteTransferParams,

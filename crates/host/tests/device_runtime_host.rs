@@ -202,6 +202,7 @@ impl Fixture {
             expected_revision: revision,
             lease_id: None,
             execution_mode: None,
+            workspace_startup: None,
         };
         let RpcResult::Operation(result) =
             success(self.client.request(RpcRequest::Invoke(call)).await.unwrap())
@@ -446,6 +447,7 @@ async fn bound_open_resolves_current_workspace_and_requires_its_read_permission(
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
     };
     let reply = f.client.request(RpcRequest::Invoke(call)).await.unwrap();
     let RpcReply::Failure { error, .. } = reply else {

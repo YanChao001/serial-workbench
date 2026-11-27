@@ -136,6 +136,14 @@ pub struct Call {
     #[schemars(with = "ExecutionMode")]
     #[specta(type=ExecutionMode, optional)]
     pub execution_mode: Option<ExecutionMode>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "WorkspaceStartupSelection")]
+    #[specta(type=WorkspaceStartupSelection, optional)]
+    pub workspace_startup: Option<WorkspaceStartupSelection>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

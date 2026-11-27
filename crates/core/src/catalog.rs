@@ -151,6 +151,7 @@ pub enum BuiltinAction {
     WorkspaceConfigurationInspect,
     WorkspaceConfigurationImport,
     WorkspaceConfigurationExport,
+    WorkspaceStartupPlan,
     ExperimentExport,
     ExperimentInspect,
     Client(ClientCapability),
@@ -245,12 +246,13 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 118] = [
+    pub const ALL: [Self; 119] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::WorkspaceConfigurationInspect,
         Self::WorkspaceConfigurationImport,
         Self::WorkspaceConfigurationExport,
+        Self::WorkspaceStartupPlan,
         Self::ExperimentExport,
         Self::ExperimentInspect,
         Self::Client(ClientCapability::WindowRead),
@@ -419,6 +421,7 @@ impl BuiltinAction {
             Self::WorkspaceConfigurationInspect => "workspace.configuration.inspect",
             Self::WorkspaceConfigurationImport => "workspace.configuration.import",
             Self::WorkspaceConfigurationExport => "workspace.configuration.export",
+            Self::WorkspaceStartupPlan => "workspace.startupPlan",
             Self::ExperimentExport => "workspace.experiment.export",
             Self::ExperimentInspect => "workspace.experiment.inspect",
             Self::WorkspaceList => "workspace.list",
@@ -609,6 +612,7 @@ impl BuiltinAction {
             | Self::WorkspaceConfigurationInspect
             | Self::WorkspaceConfigurationImport
             | Self::WorkspaceConfigurationExport
+            | Self::WorkspaceStartupPlan
             | Self::ExperimentExport
             | Self::ExperimentInspect => &["workspace"],
             Self::Client(_) => &["client"],
@@ -685,6 +689,7 @@ impl BuiltinAction {
             | Self::WorkspaceConfigurationInspect
             | Self::WorkspaceConfigurationImport
             | Self::WorkspaceConfigurationExport
+            | Self::WorkspaceStartupPlan
             | Self::CommandLibraryRead
             | Self::CommandLibraryChange
             | Self::CommandLibraryImport
@@ -846,6 +851,7 @@ impl BuiltinAction {
                 | Self::WorkspaceImportPreview
                 | Self::WorkspaceConfigurationInspect
                 | Self::WorkspaceConfigurationExport
+                | Self::WorkspaceStartupPlan
                 | Self::ExperimentInspect
                 | Self::ExperimentExport
         ) {
@@ -1071,6 +1077,10 @@ impl BuiltinAction {
             Self::WorkspaceConfigurationExport => ActionSpec::of_with_dialect::<
                 WorkspaceConfigurationExportParams,
                 DocumentJsonResult,
+            >(meta, dialect),
+            Self::WorkspaceStartupPlan => ActionSpec::of_with_dialect::<
+                WorkspaceStartupPlanParams,
+                WorkspaceStartupPlan,
             >(meta, dialect),
             Self::ExperimentExport => ActionSpec::of_with_dialect::<
                 ExperimentExportParams,

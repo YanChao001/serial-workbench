@@ -1710,6 +1710,7 @@ fn call(client: &HostClient, action: &str, target: &Target, params: Value) -> Ca
         expected_revision: None,
         lease_id: None,
         execution_mode: None,
+        workspace_startup: None,
         reveal_target: query.reveal_target,
     }
 }

@@ -758,7 +758,7 @@ fn write_bytes(path: &PathGuard, bytes: &[u8], control: &Control<'_>) -> HostRes
     file.sync_all().map_err(|_| storage())?;
     path.sync_parent().map_err(|_| storage())
 }
-fn document_id() -> Id {
+pub(super) fn document_id() -> Id {
     Id::try_from("node-packages:installed").expect("installation document id")
 }
 fn storage() -> HostError {

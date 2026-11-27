@@ -130,6 +130,7 @@ fn action_call(spec: &ActionSpec, value: i32) -> Call {
         expected_revision: Some(7.into()),
         lease_id: Some(Id::try_from("original-lease").unwrap()),
         execution_mode: Some(ExecutionMode::Independent),
+        workspace_startup: None,
     }
 }
 

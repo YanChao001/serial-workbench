@@ -336,6 +336,8 @@ import type {
   WorkspaceListResult,
   WorkspaceSaveParams,
   WorkspaceSnapshot,
+  WorkspaceStartupPlan,
+  WorkspaceStartupPlanParams,
   WorkspaceSummary,
   WorkspaceView,
 } from "./types.ts";
@@ -1207,6 +1209,12 @@ export declare function validateWorkspaceSaveParams(
 export declare function validateWorkspaceSnapshot(
   value: unknown,
 ): value is WorkspaceSnapshot;
+export declare function validateWorkspaceStartupPlan(
+  value: unknown,
+): value is WorkspaceStartupPlan;
+export declare function validateWorkspaceStartupPlanParams(
+  value: unknown,
+): value is WorkspaceStartupPlanParams;
 export declare function validateWorkspaceSummary(
   value: unknown,
 ): value is WorkspaceSummary;
