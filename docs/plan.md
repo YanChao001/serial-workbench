@@ -24,6 +24,8 @@
 
 ### 本轮交付与验收
 
+- AUTO-03 工作分支候选 `9a388ff8` 已实现签名 JS/TS 调试 worker、任务内快照及本机控制 RPC。真实签名 Host 检查 TS 第 3 行到第 4 行单步、暂停版本冲突、其他业务身份拒绝和取消回收。独立 Raw 只见普通脚本的 `00 FF`。Node 启动器验证暂停时相邻任务读取和插件管理继续。工作台断点、控制与宽窄窗验收仍在推进。 [草稿 PR #116](https://github.com/YanChao001/serial-workbench/pull/116) · [调试专项](./acceptance.md#用户脚本调试auto-03)
+
 - AUTO-02 的脚本编辑器复用 AUTO-01 的显式确认与任务输出。Windows 候选 `4ef0f10` 的 5 项无头 Chromium 核对宽窄窗、语法和调用高亮、JS/TS 切换保留源码、SDK 补全及接收者边界、片段选区和撤销、错误行定位、中文补全与组合态 Esc，以及原有确认和停止。2,917 项前端测试、12 项产物许可检查通过。脚本编辑使用 Virtual Echo 关联任务即可验收，物理串口归 AUTO-01。隔离原生桌面、其他适用平台和正式发行仍待验。 [交付 PR #115](https://github.com/YanChao001/serial-workbench/pull/115) · [编辑器专项](./acceptance.md#脚本编辑器auto-02)
 
 - AUTO-01 的 M4 JS/TS 本机脚本入口复用签名自动化 0.1.9 和固定 Node 26.13.0。Windows 候选 `3ca8dd0` 的签名 Host 校验普通调用拒绝、源码和修订冲突、同键重放与持久化摘要。实际 TypeScript 经 Virtual Echo 收发 `00 FF`，独立 Raw 核对仅一笔同操作 ID 的 TX。长延时任务取消和撤权后 worker 存活数均为 0，共享会话的第二客户端可读 Raw，脚本结果正文拒读。4 项无头用例通过，覆盖脚本工具宽窄窗、重开后停止活跃任务及相邻环回回归。软件状态保持进行中，复验隔离原生桌面、其他适用平台及 M5 Lua/Python，实机和正式发行按各自范围登记。 [交付 PR #114](https://github.com/YanChao001/serial-workbench/pull/114) · [脚本专项](./acceptance.md#用户脚本运行auto-01)
