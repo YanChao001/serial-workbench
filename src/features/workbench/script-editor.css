@@ -84,8 +84,12 @@
 .script-source-editor .script-code-comment {
   color: var(--muted-foreground);
 }
-.script-source-editor .script-code-property {
+.script-source-editor .script-code-property,
+.script-source-editor .script-code-call {
   color: var(--code-property);
+}
+.script-source-editor .script-code-call {
+  font-weight: 600;
 }
 
 @media (forced-colors: active) {

@@ -60,6 +60,10 @@ const highlight = syntaxHighlighting(
     { tag: [tags.number, tags.bool, tags.null], class: "script-code-literal" },
     { tag: tags.comment, class: "script-code-comment" },
     {
+      tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+      class: "script-code-call",
+    },
+    {
       tag: [tags.typeName, tags.className, tags.propertyName],
       class: "script-code-property",
     },
@@ -149,7 +153,8 @@ export function ScriptEditor({
     });
     editor.current = view;
     function dismiss(event: Event) {
-      if (closeCompletion(view)) event.preventDefault();
+      if (view.compositionStarted || closeCompletion(view))
+        event.preventDefault();
     }
     view.contentDOM.addEventListener(dismissWorkbenchPopup, dismiss);
     return () => {
@@ -184,7 +189,7 @@ export function ScriptEditor({
 
   useLayoutEffect(() => {
     editor.current?.dispatch({
-      effects: attrs.reconfigure(
+      effects: attrs.reconfigure([
         EditorView.contentAttributes.of({
           id,
           "aria-labelledby": labelId,
@@ -192,9 +197,13 @@ export function ScriptEditor({
           "aria-invalid": String(oversize),
           dir: "ltr",
         }),
-      ),
+        EditorState.phrases.of({
+          Completions: t("scriptEditor.completions"),
+          "Selection deleted": t("scriptEditor.selectionDeleted"),
+        }),
+      ]),
     });
-  }, [attrs, id, labelId, bytesId, oversize]);
+  }, [attrs, id, labelId, bytesId, oversize, t]);
 
   function insert(snippet: (typeof scriptSnippets)[number]) {
     const view = editor.current;

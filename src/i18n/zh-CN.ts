@@ -1582,6 +1582,8 @@ export const zhCN = {
   "characterRemap.originalBytes": "原始字节",
   "characterRemap.receiveMappedEmpty": "此范围映射后没有文本。",
   "characterRemap.receiveOutputLimit": "映射结果超出显示限额。可查看原始字节。",
+  "scriptEditor.completions": "补全",
+  "scriptEditor.selectionDeleted": "已删除选区",
   "scriptEditor.snippets": "片段",
   "scriptEditor.insert": "插入片段",
   "scriptEditor.echo": "Virtual Echo 示例",

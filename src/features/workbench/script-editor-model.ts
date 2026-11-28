@@ -24,11 +24,9 @@ const sdkOptions: Completion[] = Object.entries(sdkMembers).map(
 );
 
 export const completeScriptSdk: CompletionSource = (context) => {
-  for (
-    let node = syntaxTree(context.state).resolveInner(context.pos, -1);
-    node.parent;
-    node = node.parent
-  ) {
+  const cursor = syntaxTree(context.state).resolveInner(context.pos, -1);
+  let member: typeof cursor | undefined;
+  for (let node = cursor; node.parent; node = node.parent) {
     if (node.name === "Interpolation") break;
     if (
       /^(?:LineComment|BlockComment|String|TemplateString|RegExp)$/.test(
@@ -36,21 +34,24 @@ export const completeScriptSdk: CompletionSource = (context) => {
       )
     )
       return null;
+    if (!member && node.name === "MemberExpression" && !node.getChild("[")) {
+      const dot = node.getChild(".") ?? node.getChild("?.");
+      if (dot && dot.to <= context.pos) member = node;
+    }
   }
-  const serial = context.matchBefore(/\bserial\.[\w$]*$/);
   const prefix = context.matchBefore(/[\w$]+$/);
-  const from = serial
-    ? serial.from + "serial.".length
-    : (prefix?.from ?? context.pos);
-  if (!serial && !prefix && !context.explicit) return null;
-  // Another object's dot access should keep its own language completions.
-  if (!serial && from > 0 && context.state.sliceDoc(from - 1, from) === ".")
-    return null;
-  return {
-    from,
-    options: serial ? memberOptions : sdkOptions,
-    validFor: /^[\w$]*$/,
-  };
+  const from = prefix?.from ?? context.pos;
+  if (member) {
+    const receiver = member.firstChild;
+    if (
+      receiver?.name !== "VariableName" ||
+      context.state.sliceDoc(receiver.from, receiver.to) !== "serial"
+    )
+      return null;
+    return { from, options: memberOptions, validFor: /^[\w$]*$/ };
+  }
+  if (!prefix && !context.explicit) return null;
+  return { from, options: sdkOptions, validFor: /^[\w$]*$/ };
 };
 
 export function scriptSyntaxDiagnostics(

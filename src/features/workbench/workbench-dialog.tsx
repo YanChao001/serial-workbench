@@ -137,9 +137,11 @@ export function WorkbenchDialog({
           if (
             focused &&
             content.current?.contains(focused) &&
-            !focused.dispatchEvent(
-              new Event(dismissWorkbenchPopup, { cancelable: true }),
-            )
+            (event.isComposing ||
+              event.keyCode === 229 ||
+              !focused.dispatchEvent(
+                new Event(dismissWorkbenchPopup, { cancelable: true }),
+              ))
           )
             event.preventDefault();
         }}

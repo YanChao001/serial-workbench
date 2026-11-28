@@ -1708,6 +1708,8 @@ export const en = {
     "No text remains after mapping this range.",
   "characterRemap.receiveOutputLimit":
     "The mapped output exceeds the display limit. The original bytes are available.",
+  "scriptEditor.completions": "Completions",
+  "scriptEditor.selectionDeleted": "Selection deleted",
   "scriptEditor.snippets": "Snippets",
   "scriptEditor.insert": "Insert snippet",
   "scriptEditor.echo": "Virtual Echo example",

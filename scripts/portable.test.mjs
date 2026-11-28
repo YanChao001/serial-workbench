@@ -85,21 +85,26 @@ test("portable distribution includes complete project licenses and existing thir
     kind: "portable",
     entries,
   });
-  for (const path of ["LICENSE", "NOTICE"]) {
+  const notices = [
+    ["LICENSE", "LICENSE"],
+    ["NOTICE", "NOTICE"],
+    ["third-party/tauri.LICENSE", "resources/third-party/tauri.LICENSE"],
+    [
+      "third-party/codemirror.LICENSE",
+      "resources/third-party/codemirror.LICENSE",
+    ],
+  ];
+  for (const [path, source] of notices) {
     assert.ok(
       existsSync(join(output, path)),
       `Portable package omitted ${path}`,
     );
     assert.deepEqual(
       readFileSync(join(output, path)),
-      readFileSync(join(projectRoot, path)),
+      readFileSync(join(projectRoot, source)),
     );
   }
   assert.equal(existsSync(join(output, "LICENSES")), false);
-  assert.deepEqual(
-    readFileSync(join(output, "third-party/tauri.LICENSE")),
-    readFileSync(join(projectRoot, "resources/third-party/tauri.LICENSE")),
-  );
   const manifest = JSON.parse(
     readFileSync(join(output, "manifest.json"), "utf8"),
   );
@@ -109,6 +114,10 @@ test("portable distribution includes complete project licenses and existing thir
       `Manifest omitted ${path}`,
     );
   }
+  assert.deepEqual(
+    manifest.files.find((file) => file.path === "third-party"),
+    { path: "third-party", type: "directory" },
+  );
 });
 
 test("portable receipt follows the actual Cargo output without forcing a second target cache", (t) => {
