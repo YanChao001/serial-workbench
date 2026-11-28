@@ -538,6 +538,14 @@ IO-12 和 TERM-10 共用 Host 的 `transfer.paste`。在可写会话的接收区
 
 在 `SWB_NODE_RUNTIME_TEST_ROOT` 指向经过验证的发行资源目录时，运行 `cargo test --locked -p serial-workbench-host --lib native_signed_user_script_is_bound_to_operator_source_and_session -- --ignored --nocapture --test-threads=1`。该用例断言相同请求键重放仍为原操作，持久输入仅保留源码摘要，取消和撤权均实际回收 worker，独立 Raw 没有后续写入，同时拒绝该 Raw 读取者取得脚本结果正文。运行 `node --test scripts/trusted-script-worker.test.mjs scripts/node-backend-cancellation.test.mjs scripts/product-automation.test.mjs` 复查源码摘要、失败日志、worker 终态、任务 Raw 通道与归档。无头工作台复验使用 `pnpm test:ui e2e/browser/trusted-script-tool.spec.ts --workers=1`。Lua/Python 与外部适配器按 M5 的专用运行时另行验收。
 
+### 脚本编辑器（AUTO-02）
+
+在无头或隔离本机工作台打开 Virtual Echo 和「运行脚本」。以宽窗检查片段与源码、行号与高亮、语法诊断和回执；在窄窗检查片段菜单、滚动边界和底部按钮。切换 JS/TS 后复查同一草稿。语法错误跳回具体行，修改后消失。输入 `serial.s` 后用补全选 `send`。Esc 先关闭补全，Tab 可走出源码区。插入片段和撤销都保留当前选区的编辑次序，操作前后核对 Host 无新增任务。
+
+就地选择「确认并运行…」，返回编辑时核对焦点和原稿。确认后核对源码摘要、当前会话、输出、任务状态与实际停止。用活动回执复验已接纳任务在关窗后仍可查看，中文窄窗保持源码和输出从上到下排列。正式安装后按相同路径核对编辑器、随包许可和离线加载。
+
+无头路径使用 `pnpm test:ui e2e/browser/trusted-script-tool.spec.ts e2e/browser/loopback-tool.spec.ts --workers=1`。正式与预览构建的许可证使用 `node --test scripts/vite-license.test.mjs scripts/portable.test.mjs` 校验。真实会话、签名 Host、授权与 worker 回收复用 [AUTO-01 专项](#用户脚本运行auto-01)。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

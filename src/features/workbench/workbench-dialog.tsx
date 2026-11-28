@@ -21,7 +21,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { UnsavedWorkScope, useRequestLeave } from "@/providers/unsaved-work";
-import { WorkbenchDialogExit } from "./workbench-dialog-exit";
+import {
+  dismissWorkbenchPopup,
+  WorkbenchDialogExit,
+} from "./workbench-dialog-exit";
 
 function focusToolContent(content: HTMLElement) {
   const candidates = content.querySelectorAll<HTMLElement>(
@@ -129,6 +132,17 @@ export function WorkbenchDialog({
         className="workbench-dialog"
         aria-describedby={undefined}
         closeLabel={closeLabel}
+        onEscapeKeyDown={(event) => {
+          const focused = content.current?.ownerDocument.activeElement;
+          if (
+            focused &&
+            content.current?.contains(focused) &&
+            !focused.dispatchEvent(
+              new Event(dismissWorkbenchPopup, { cancelable: true }),
+            )
+          )
+            event.preventDefault();
+        }}
         onOpenAutoFocus={(event) => {
           if (!content.current) return;
           event.preventDefault();

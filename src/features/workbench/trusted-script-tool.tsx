@@ -20,7 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { readVerifiedFile } from "@/lib/host-reader";
 import { nativeErrorText } from "@/lib/native-error";
 import { isRecord } from "@/lib/settings-model";
@@ -31,7 +30,10 @@ import { useUnsavedWork } from "@/providers/unsaved-work";
 import { version as runtimeVersion } from "../../../resources/runtime/node-release.json";
 import { operationText } from "./operation-text";
 
-export const trustedScriptAction = "swb.builtin.automation.script";
+import { ScriptEditor, type ScriptEditorHandle } from "./script-editor";
+import type { ScriptLanguage } from "./script-editor-model";
+
+const trustedScriptAction = "swb.builtin.automation.script";
 
 type Access = {
   port: string;
@@ -40,7 +42,7 @@ type Access = {
   configurationRevision: string;
   run: NonNullable<HostContextValue["runConfirmedScript"]>;
 };
-type Draft = { source: string; language: "js" | "ts" };
+type Draft = { source: string; language: ScriptLanguage };
 type Confirmation = { scope: { key: string }; intent: LocalScriptIntent };
 type Result = { operationId: string; text: string };
 const initial: Draft = { source: "", language: "js" };
@@ -100,7 +102,7 @@ async function readResult(
   return [...logs, JSON.stringify(result.value, null, 2)].join("\n");
 }
 
-export function TrustedScriptTool({
+export default function TrustedScriptTool({
   access,
   target,
   hostId,
@@ -137,7 +139,7 @@ export function TrustedScriptTool({
     id: string;
     failure: unknown;
   }>();
-  const sourceField = useRef<HTMLTextAreaElement>(null);
+  const sourceField = useRef<ScriptEditorHandle>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const request = useRef<AbortController | null>(null);
   const stopRequest = useRef<AbortController | null>(null);
@@ -396,20 +398,13 @@ export function TrustedScriptTool({
             </label>
           </div>
           <div className="grid min-w-0 gap-1.5">
-            <label htmlFor={id}>{t("trustedScript.source")}</label>
-            <Textarea
+            <ScriptEditor
               id={id}
               ref={sourceField}
-              value={draft.source}
-              className="min-h-28 max-h-[40dvh] min-w-0 resize-y font-mono"
-              aria-describedby={id + "-bytes"}
-              aria-invalid={oversize}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoComplete="off"
-              onChange={(event) =>
-                update({ ...draft, source: event.target.value })
-              }
+              language={draft.language}
+              source={draft.source}
+              oversize={oversize}
+              onChange={(source) => update({ ...draft, source })}
             />
             <p
               id={id + "-bytes"}
