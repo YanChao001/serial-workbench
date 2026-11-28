@@ -21,6 +21,11 @@ impl FileService {
             return Err(denied());
         }
         let (operation, _) = self.store.retained_operation(&id)?;
+        if operation.action_id.as_str() == crate::node_packages::TRUSTED_SCRIPT_ACTION
+            && &operation.actor_id != actor.id()
+        {
+            return Err(denied());
+        }
         self.auth.require(actor, permission, &operation.target)?;
         self.store.plugin_operation(&id)?;
         let Some(ActionResult::Reference(result)) = &operation.result else {

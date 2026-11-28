@@ -105,7 +105,8 @@ test("script sends exact bytes and reads the bound session through the task brid
 });
 
 test("a failed serial operation reaches the script with the bridge error", async (t) => {
-  const source = "export default ({ serial }) => serial.read('19');";
+  const source =
+    "export default ({ serial, log }) => { log('before read'); return serial.read('19'); };";
   const worker = new Worker(entry, {
     workerData: { language: "js", source, sourceSha256: approve("js", source) },
   });
@@ -124,6 +125,7 @@ test("a failed serial operation reaches the script with the bridge error", async
   assert.deepEqual(await completed, [
     {
       kind: "failed",
+      logs: ["before read"],
       code: "SCRIPT_SERIAL_FAILED",
       message: "Session epoch changed",
     },

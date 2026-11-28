@@ -176,17 +176,18 @@ fn canonical_input(call: &Call) -> HostResult<Vec<u8>> {
     Ok(bytes)
 }
 
-// The full normalized call still defines deduplication. The inspectable history
-// excludes capture rule bodies, which may contain private literal replacements.
+// Keep the full normalized digest for deduplication and omit private input from storage.
 pub(super) fn durable_input(action: &Id, input: Vec<u8>) -> HostResult<Vec<u8>> {
-    if action.as_str() != "capture.start" {
-        return Ok(input);
-    }
+    let private_field = match action.as_str() {
+        "capture.start" => "redactionRules",
+        crate::node_packages::TRUSTED_SCRIPT_ACTION => "source",
+        _ => return Ok(input),
+    };
     let mut value: serde_json::Value = serde_json::from_slice(&input).map_err(|_| unavailable())?;
     if value
         .get_mut("params")
         .and_then(serde_json::Value::as_object_mut)
-        .and_then(|params| params.remove("redactionRules"))
+        .and_then(|params| params.remove(private_field))
         .is_none()
     {
         return Ok(input);

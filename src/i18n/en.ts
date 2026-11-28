@@ -1729,6 +1729,9 @@ export const en = {
   "trustedScript.output": "Script output",
   "trustedScript.stop": "Stop",
   "trustedScript.readError": "The script result could not be read.",
+  "trustedScript.sourceChanged":
+    "The source changed. Review and confirm the script again.",
+  "trustedScript.executionFailed": "The script failed.",
   "trustedScript.retry": "Retry confirmation",
   "loopback.title": "Loopback self-test",
   "loopback.source.virtual_echo": "Virtual loopback",

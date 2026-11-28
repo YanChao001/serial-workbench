@@ -922,23 +922,33 @@ const SCRIPT_PACKAGE = "swb.builtin.automation";
 const SCRIPT_ACTION = SCRIPT_PACKAGE + ".script";
 
 function scriptReply(message) {
-  if (
-    message?.kind === "completed" &&
-    Array.isArray(message.logs) &&
-    message.logs.length <= 128 &&
-    message.logs.every((line) => typeof line === "string") &&
-    Buffer.byteLength(JSON.stringify(message)) <= 136 * 1024
-  ) {
+  const logs = message?.logs;
+  const validLogs =
+    Array.isArray(logs) &&
+    logs.length <= 128 &&
+    logs.every((line) => typeof line === "string");
+  if (Buffer.byteLength(JSON.stringify(message ?? null)) > 136 * 1024)
+    throw progressError(
+      "SCRIPT_PROTOCOL_ERROR",
+      "Script reply exceeds its budget",
+    );
+  if (message?.kind === "completed" && validLogs) {
     return { kind: message.kind, logs: message.logs, value: message.value };
   }
   if (
     message?.kind === "failed" &&
+    (logs === undefined || validLogs) &&
     typeof message.code === "string" &&
     message.code.length <= 64 &&
     typeof message.message === "string" &&
     message.message.length <= 512
   ) {
-    return { kind: message.kind, code: message.code, message: message.message };
+    return {
+      kind: message.kind,
+      code: message.code,
+      message: message.message,
+      ...(logs === undefined ? {} : { logs }),
+    };
   }
   throw progressError("SCRIPT_PROTOCOL_ERROR", "Invalid script reply");
 }

@@ -228,11 +228,21 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
         "REVISION_CONFLICT"
     );
 
+    let request = confirmed(input(SOURCE));
     let operation = host
-        .invoke_confirmed_script(&operator, confirmed(input(SOURCE)))
+        .invoke_confirmed_script(&operator, request.clone())
         .await
         .unwrap();
     let completed = settle(operation).await;
+    let (_, persisted) = store.retained_operation(&completed.operation_id).unwrap();
+    let persisted = persisted.unwrap();
+    assert!(!persisted.contains_key("source"));
+    assert!(persisted.contains_key("sourceSha256"));
+    let replay = host
+        .invoke_confirmed_script(&operator, request)
+        .await
+        .unwrap();
+    assert_eq!(replay.operation_id, completed.operation_id);
     assert_eq!(completed.state, OperationState::Succeeded, "{completed:?}");
     let worker = completed.worker_observation.as_ref().unwrap();
     assert_eq!(worker.peak_workers.get(), 1);
@@ -245,7 +255,7 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
         .files
         .read(
             FileReadParams {
-                file_ref: output.result_ref,
+                file_ref: output.result_ref.clone(),
                 offset: 0.into(),
                 max_bytes: 8192.into(),
             },
@@ -253,6 +263,7 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
         )
         .unwrap();
     assert!(file.at_end);
+    let output_ref = output.result_ref;
     let output: serde_json::Value =
         serde_json::from_slice(&STANDARD.decode(file.bytes_base64.as_str()).unwrap()).unwrap();
     assert_eq!(output["kind"], "completed");
@@ -260,6 +271,88 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
     assert_eq!(output["value"]["rx"], "AP8=");
     assert_eq!(output["value"]["tx"]["bytesBase64"], "AP8=");
     assert_eq!(output["value"]["tx"]["outcome"], "accepted");
+    let wait_for_worker = |operation: Operation| {
+        let store = store.clone();
+        let actor = actor.clone();
+        async move {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let current = store.get(&actor, &operation.operation_id).unwrap();
+                    assert!(!current.state.is_terminal(), "{current:?}");
+                    if current
+                        .worker_observation
+                        .as_ref()
+                        .is_some_and(|worker| worker.live_workers.get() == 1)
+                    {
+                        return current;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap()
+        }
+    };
+    const DELAYED: &str = r#"
+        export default async ({ serial, delay }) => {
+          await delay(30000);
+          await serial.send(new Uint8Array([0xbe]));
+        };
+    "#;
+    let delayed = host
+        .invoke_confirmed_script(&operator, confirmed(input(DELAYED)))
+        .await
+        .unwrap();
+    let running = wait_for_worker(delayed).await;
+    let target = Target {
+        kind: ResourceKind::try_from("operation").unwrap(),
+        id: running.operation_id.clone(),
+        host_id: session.host_id.clone(),
+        session_id: None,
+        session_epoch: None,
+    };
+    let cancel = host
+        .invoke(
+            &actor,
+            call(
+                &actor,
+                &target,
+                "operation.cancel",
+                json!({"reason":"user"}),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(settle(cancel).await.state, OperationState::Succeeded);
+    let stopped = settle(running).await;
+    assert_eq!(stopped.state, OperationState::Cancelled, "{stopped:?}");
+    assert_eq!(stopped.worker_observation.unwrap().live_workers.get(), 0);
+
+    let delayed = host
+        .invoke_confirmed_script(&operator, confirmed(input(DELAYED)))
+        .await
+        .unwrap();
+    let running = wait_for_worker(delayed).await;
+    auth.revoke(
+        &operator,
+        RevokeParams {
+            actor_id: actor.id().clone(),
+            permissions: vec!["device.modify".into()],
+            targets: vec![session.clone()],
+        },
+    )
+    .unwrap();
+    let revoked = settle(running).await;
+    assert_ne!(revoked.state, OperationState::Succeeded, "{revoked:?}");
+    assert_eq!(revoked.worker_observation.unwrap().live_workers.get(), 0);
+    assert_eq!(
+        host.invoke_confirmed_script(&operator, confirmed(input(DELAYED)))
+            .await
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+
     let readback_client = Id::try_from("script-readback").unwrap();
     let readback = auth.authenticate(&readback_client, None).unwrap().actor;
     auth.authorize(
@@ -272,6 +365,21 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
         },
     )
     .unwrap();
+    assert_eq!(
+        host.inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: output_ref,
+                    offset: 0.into(),
+                    max_bytes: 8192.into(),
+                },
+                &readback
+            )
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
     let raw = host
         .inner
         .streams
@@ -302,5 +410,8 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
     assert_eq!(
         json!(writes[0].operation_id),
         output["value"]["tx"]["operationId"]
+    );
+    println!(
+        "script_host raw_writes=1 bytes=00ff cancelled_live_workers=0 revoked_live_workers=0 shared_result_denied=true"
     );
 }

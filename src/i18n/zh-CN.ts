@@ -1603,6 +1603,8 @@ export const zhCN = {
   "trustedScript.output": "脚本输出",
   "trustedScript.stop": "停止",
   "trustedScript.readError": "无法读取脚本结果。",
+  "trustedScript.sourceChanged": "源码已更改，请重新确认脚本。",
+  "trustedScript.executionFailed": "脚本执行失败。",
   "trustedScript.retry": "重试确认",
   "loopback.title": "环回自检",
   "loopback.source.virtual_echo": "虚拟回环",

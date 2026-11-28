@@ -130,7 +130,7 @@ function taskSerial() {
   };
 }
 
-async function execute() {
+async function execute(logs) {
   const source = confirmedSource(workerData);
   const moduleUrl =
     "data:text/javascript;base64," +
@@ -144,7 +144,6 @@ async function execute() {
   }
 
   const task = taskSerial();
-  const logs = [];
   let logBytes = 0;
   const api = Object.freeze({
     serial: task.serial,
@@ -190,11 +189,13 @@ async function execute() {
   return { kind: "completed", logs, value: JSON.parse(json) };
 }
 
+const logs = [];
 try {
-  parentPort.postMessage(await execute());
+  parentPort.postMessage(await execute(logs));
 } catch (error) {
   parentPort.postMessage({
     kind: "failed",
+    ...(logs.length ? { logs } : {}),
     code:
       error instanceof ScriptFailure ? error.code : "SCRIPT_EXECUTION_FAILED",
     message:

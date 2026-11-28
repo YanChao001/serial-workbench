@@ -329,6 +329,7 @@ export async function seedWorkbenchFixture(
       delayRuleReply?: "preflight" | "admission" | "cancelCheck";
       delayFirstCancellationReply?: boolean;
       calendarInitiallyQueued?: boolean;
+      firstScriptCompletes?: boolean;
       delaySecondCalendarCheck?: boolean;
       sequenceRetry?: boolean;
       connectionReport?: { steps: unknown[]; [key: string]: unknown };
@@ -1454,7 +1455,12 @@ export async function seedWorkbenchFixture(
             fixture.confirmedScripts.push(intent);
             const operationId =
               "fixture-script-" + fixture.confirmedScripts.length;
-            const held = automation.state === "held";
+            const held =
+              automation.state === "held" &&
+              !(
+                automation.firstScriptCompletes &&
+                fixture.confirmedScripts.length === 1
+              );
             automationOperation = {
               ...sentOperation,
               actionId,

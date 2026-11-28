@@ -84,22 +84,20 @@ async function readResult(
   const result: unknown = JSON.parse(
     new TextDecoder("utf-8", { fatal: true }).decode(bytes),
   );
-  if (
-    isRecord(result) &&
-    result.kind === "failed" &&
-    typeof result.message === "string"
-  )
-    return result.message;
-  if (
-    !isRecord(result) ||
-    result.kind !== "completed" ||
-    !Array.isArray(result.logs) ||
-    result.logs.length > 128 ||
-    !result.logs.every((line: unknown) => typeof line === "string") ||
-    !Object.hasOwn(result, "value")
-  )
+  if (!isRecord(result))
     throw new ContractValidationError("Invalid script result");
-  return [...result.logs, JSON.stringify(result.value, null, 2)].join("\n");
+  const logs: unknown = result.logs ?? [];
+  if (
+    !Array.isArray(logs) ||
+    logs.length > 128 ||
+    !logs.every((line: unknown) => typeof line === "string")
+  )
+    throw new ContractValidationError("Invalid script logs");
+  if (result.kind === "failed" && typeof result.message === "string")
+    return [...logs, result.message].join("\n");
+  if (result.kind !== "completed" || !Object.hasOwn(result, "value"))
+    throw new ContractValidationError("Invalid script result");
+  return [...logs, JSON.stringify(result.value, null, 2)].join("\n");
 }
 
 export function TrustedScriptTool({
@@ -135,6 +133,10 @@ export function TrustedScriptTool({
   const [result, setResult] = useState<Result>();
   const [readFailure, setReadFailure] = useState<string>();
   const [error, setError] = useState<unknown>();
+  const [stopError, setStopError] = useState<{
+    id: string;
+    failure: unknown;
+  }>();
   const sourceField = useRef<HTMLTextAreaElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const request = useRef<AbortController | null>(null);
@@ -159,17 +161,27 @@ export function TrustedScriptTool({
   const oversize = byteCount > 65_536;
   const confirmation = preview?.scope === scope ? preview : undefined;
   const historical = revealedOperationId !== undefined;
-  const selectedId = revealedOperationId ?? operationId;
-  const operation = operations.find(
+  const matching = operations.filter(
     (candidate) =>
       candidate.actionId === trustedScriptAction &&
       candidate.executionHostId === hostId &&
       candidate.target.hostId === hostId &&
       candidate.actorId === actorId &&
-      (selectedId
-        ? candidate.operationId === selectedId
+      (revealedOperationId
+        ? candidate.operationId === revealedOperationId
         : target && matches(candidate, target)),
   );
+  const operation =
+    matching.find(
+      (candidate) =>
+        candidate.operationId === operationId && pending(candidate.state),
+    ) ??
+    matching.reduce<Operation | undefined>((latest, candidate) => {
+      if (!latest) return candidate;
+      const active = pending(candidate.state);
+      if (active !== pending(latest.state)) return active ? candidate : latest;
+      return candidate.acceptedAt >= latest.acceptedAt ? candidate : latest;
+    }, undefined);
   const active = operation && pending(operation.state);
   const waitingId = active ? operation.operationId : undefined;
   const reference =
@@ -339,11 +351,12 @@ export function TrustedScriptTool({
     const controller = new AbortController();
     stopRequest.current = controller;
     setStopping(operation.operationId);
-    setError(undefined);
+    setStopError(undefined);
     try {
       await cancel(operation, controller.signal);
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure);
+      if (!controller.signal.aborted)
+        setStopError({ id: operation.operationId, failure });
     } finally {
       if (stopRequest.current === controller) stopRequest.current = null;
       if (!controller.signal.aborted) setStopping(undefined);
@@ -427,6 +440,11 @@ export function TrustedScriptTool({
           <h3 id={id + "-output"} className="text-sm font-medium">
             {t("trustedScript.output")}
           </h3>
+          {stopError?.id === operation.operationId && active && (
+            <p role="alert" className="wrap-anywhere text-sm text-destructive">
+              {nativeErrorText(stopError.failure, t)}
+            </p>
+          )}
           <p role="status" className="text-sm">
             {operationText(t, (code) => code ?? "").states[operation.state]}
           </p>

@@ -26,7 +26,7 @@ async function openScript(page: Page, state: "ready" | "held", narrow = false) {
       fingerprint: { transport: "virtual", evidence: "unreliable" },
       capabilities: session().capabilities,
     },
-    automation: { action: spec, state },
+    automation: { action: spec, state, firstScriptCompletes: narrow },
   });
   await page.goto("./#/");
   await page
@@ -35,6 +35,10 @@ async function openScript(page: Page, state: "ready" | "held", narrow = false) {
       exact: true,
     })
     .click();
+  return openTool(page, narrow);
+}
+
+async function openTool(page: Page, narrow: boolean) {
   const title = narrow ? "运行脚本" : "Run script";
   await page
     .getByRole("button", { name: narrow ? "工作区菜单" : "Workspace menu" })
@@ -111,7 +115,7 @@ test("explicit native intent binds exact source and renders the verified result"
   await dialog.screenshot({ path: info.outputPath("trusted-script-wide.png") });
 });
 
-test("narrow Chinese tool distinguishes requested stop from terminal and keeps one receipt", async ({
+test("narrow Chinese tool reopens the active script and distinguishes requested stop from terminal", async ({
   page,
 }, info) => {
   const dialog = await openScript(page, "held", true);
@@ -124,7 +128,17 @@ test("narrow Chinese tool distinguishes requested stop from terminal and keeps o
     confirmation.getByRole("button", { name: "返回编辑" }),
   ).toBeFocused();
   await confirmation.getByRole("button", { name: "运行脚本" }).click();
+  await expect(dialog.getByRole("status")).toHaveText("已完成");
+  await dialog.getByRole("button", { name: "确认并运行…" }).click();
+  await confirmation.getByRole("button", { name: "运行脚本" }).click();
   await expect(dialog.getByRole("status")).toHaveText("执行中");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await openTool(page, true);
+  await expect(dialog.getByRole("status")).toHaveText("执行中");
+  await expect(
+    dialog.getByRole("button", { name: "确认并运行…" }),
+  ).toBeDisabled();
   const stop = dialog.getByRole("button", { name: "停止", exact: true });
   await expect(stop).toBeInViewport();
   await dialog.screenshot({
@@ -137,5 +151,5 @@ test("narrow Chinese tool distinguishes requested stop from terminal and keeps o
     window.workbenchFixture.finishAutomationCancellation(),
   );
   await expect(dialog.getByRole("status")).toHaveText("已停止");
-  expect((await submitted(page)).native).toHaveLength(1);
+  expect((await submitted(page)).native).toHaveLength(2);
 });
