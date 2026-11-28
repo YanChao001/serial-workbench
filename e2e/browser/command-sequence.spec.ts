@@ -478,6 +478,80 @@ test("records composer bytes and confirmed receive selections, then replays only
   ).toMatchObject({ definition });
 });
 
+test("records a confirmed resend from history and keeps previews silent", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready" },
+    manualSendReceipts: true,
+    sendHistory: true,
+  });
+  await selectSerial(page);
+  const recorder = page
+    .getByRole("region", { name: "Send", exact: true })
+    .getByRole("button", { name: "Record manual sends" });
+  await recorder.click();
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await recorder.press("Escape");
+
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .press("ArrowDown");
+  await page
+    .getByRole("menuitem", { name: "Send history", exact: true })
+    .click();
+  const history = page.getByRole("dialog", {
+    name: "Send history",
+    exact: true,
+  });
+  await history
+    .getByRole("checkbox", { name: /Virtual serial.*ui-send/ })
+    .check();
+  await history.getByRole("button", { name: "Preview selected bytes" }).click();
+  await expect(history.getByText("53 54 41 54 55 53 3F")).toBeVisible();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await history
+    .getByRole("button", { name: "Resend in preview order" })
+    .click();
+  await expect(history.getByRole("status")).toContainText(
+    "All 1 writes confirmed.",
+  );
+  await page.keyboard.press("Escape");
+  await expect(history).toBeHidden();
+
+  await recorder.click();
+  await page.getByRole("button", { name: "Stop recording" }).click();
+  await expect(page.getByText("Confirmed sends: 1.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Review in command sequence" })
+    .click();
+  const sequence = page.getByRole("dialog", {
+    name: "Command sequence",
+    exact: true,
+  });
+  const editor = sequence.getByRole("textbox", {
+    name: "Sequence definition (JSON)",
+  });
+  expect(JSON.parse(await editor.inputValue())).toEqual({
+    version: 1,
+    steps: [{ kind: "send", hex: "53 54 41 54 55 53 3F", writeWaitMs: 1001 }],
+  });
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    "U1RBVFVTPw==",
+  ]);
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.workbenchFixture.invocations.some(
+          (call) => call.actionId === id,
+        ),
+      builtinCommandSequenceAction,
+    ),
+  ).toBe(false);
+});
+
 test("a stale session revision cannot add a write to the previous recording", async ({
   page,
 }) => {

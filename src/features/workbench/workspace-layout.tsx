@@ -2184,7 +2184,7 @@ export function WorkspaceLayout({
           port:
             state.devices.find((item) => item.deviceId === session.deviceId)
               ?.systemName ?? session.deviceId,
-          send: submitBytes,
+          send: submitManualBytes,
           wait: host.waitForOperation,
         }
       : undefined;
