@@ -158,6 +158,18 @@ pub(super) fn validate_request(
             }
             return Ok(());
         }
+        RpcRequest::RunConfirmedScript(params) => {
+            if !context.actor.is_user_control() {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "Script confirmation requires local user control",
+                ));
+            }
+            if &params.call.request_id != outer_id {
+                return Err(invalid());
+            }
+            return params.call.target.validate();
+        }
         RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => (
             &call.actor_id,
             &call.host_id,

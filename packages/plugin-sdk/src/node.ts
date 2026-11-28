@@ -14,6 +14,7 @@ import type {
   RawEvent,
   StreamReadParams,
   StreamReadResult,
+  TxReceipt,
 } from "@serial-workbench/contracts";
 
 export type {
@@ -222,7 +223,36 @@ export interface NodeWorker {
   terminate(): Promise<NodeWorkerExit>;
 }
 
+export interface TrustedScriptApi {
+  readonly serial: {
+    read(startEventSeq: string): Promise<StreamReadResult>;
+    send(bytes: Uint8Array): Promise<TxReceipt>;
+  };
+  log(message: string): void;
+  delay(ms: number): Promise<void>;
+}
+
+export type ConfirmedScriptSource = Readonly<{
+  language: "js" | "ts";
+  source: string;
+  sourceSha256: string;
+}>;
+
+export type ScriptRunResult =
+  | { kind: "completed"; logs: string[]; value: QueryValue }
+  | { kind: "failed"; code: string; message: string };
+
+export interface ScriptSerialBridge {
+  read(startEventSeq: string): Promise<StreamReadResult>;
+  send(bytesBase64: string): Promise<TxReceipt>;
+}
+
 export interface NodeWorkers {
+  /** 由首方脚本动作在当前已确认任务内执行，等待实际 worker 退出。 */
+  runConfirmedScript(
+    snapshot: ConfirmedScriptSource,
+    serial: ScriptSerialBridge,
+  ): Promise<ScriptRunResult>;
   /** entry 相对已验证包根目录；动作异步链内创建的 worker 归属该任务。 */
   start(entry: NodePackagePath): NodeWorker;
 }

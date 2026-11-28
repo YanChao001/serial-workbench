@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.automation",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "displayName": "Serial Automation",
   "description": "Schedule sends, run command sequences, and trigger scoped actions",
   "license": "Apache-2.0",
@@ -1210,6 +1210,81 @@
         "revealTarget": {
           "pageId": "workbench",
           "panelId": "connectionSequence"
+        }
+      },
+      {
+        "actionId": "swb.builtin.automation.script",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string",
+              "enum": ["js", "ts"]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 65536
+            },
+            "sourceSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "sessionRevision": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,19})$"
+            },
+            "configurationRevision": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,19})$"
+            }
+          },
+          "required": [
+            "language",
+            "source",
+            "sourceSha256",
+            "sessionRevision",
+            "configurationRevision"
+          ],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["completed", "failed"]
+            },
+            "logs": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "string"
+              }
+            },
+            "value": {},
+            "code": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench",
+          "panelId": "trustedScript"
         }
       }
     ],

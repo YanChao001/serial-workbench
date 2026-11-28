@@ -1,7 +1,9 @@
 //! 动态动作复用持久接纳与实际派发，工作名额一直跟随真实后台与结果提交。
 use super::node_queries::QueryAuthority;
 use super::*;
-use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
+use crate::{
+    node_backend::RegisteredHandler, node_packages::TRUSTED_SCRIPT_ACTION, storage::PluginOperation,
+};
 use serial_workbench_core::{
     MDF4_SIGNATURE, NODE_CSV_RESULT_MAX_BYTES, NODE_FILE_RESULT_KEY, NODE_MDF4_RESULT_MAX_BYTES,
     NODE_PNG_RESULT_MAX_BYTES, PNG_SIGNATURE, SchemaValue,
@@ -133,7 +135,7 @@ impl Host {
     ) -> HostResult<PreparedExtension> {
         let binding = self.inner.registry.runtime.resolve(&call.action_id)?;
         if call.action_id.as_str() == crate::node_packages::CONNECTION_SEQUENCE_ACTION
-            && !crate::node_packages::is_current_connection_sequence_archive(
+            && !crate::node_packages::is_current_automation_archive(
                 binding.package(),
                 binding.archive_sha256(),
             )
@@ -141,6 +143,17 @@ impl Host {
             return Err(HostError::new(
                 "PERMISSION_DENIED",
                 "Connection sequence requires the current signed product package",
+            ));
+        }
+        if call.action_id.as_str() == TRUSTED_SCRIPT_ACTION
+            && !crate::node_packages::is_current_automation_archive(
+                binding.package(),
+                binding.archive_sha256(),
+            )
+        {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "User scripts require the current signed automation package",
             ));
         }
         if binding.spec().kind != ActionKind::Action {
@@ -154,6 +167,10 @@ impl Host {
         )?);
         call.params = binding.normalize_parameters(&call.params)?;
         binding.validate_call(&call)?;
+        if call.action_id.as_str() == TRUSTED_SCRIPT_ACTION {
+            Self::validate_script_source(&call)?;
+            self.validate_script_target(&call)?;
+        }
         if call.action_id.as_str() == "swb.builtin.automation.loopback" {
             self.validate_loopback_target(&call)?;
         }
@@ -192,6 +209,61 @@ impl Host {
             plugin,
         })
     }
+    fn validate_script_target(&self, call: &Call) -> HostResult<()> {
+        let session = self.inner.devices.session(&call.target)?.snapshot()?;
+        if session.state != SessionState::Open
+            || session.read_only
+            || session.tx_gate != TxGate::Ready
+        {
+            return Err(HostError::new(
+                "SCRIPT_TARGET_UNAVAILABLE",
+                "Script execution requires a writable open session",
+            ));
+        }
+        for (name, revision) in [
+            ("sessionRevision", session.revision),
+            ("configurationRevision", session.configuration_revision),
+        ] {
+            if call.params.get(name) != Some(&JsonValue::String(revision.get().to_string())) {
+                return Err(HostError::new(
+                    "REVISION_CONFLICT",
+                    "Script session configuration changed",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_script_source(call: &Call) -> HostResult<()> {
+        use sha2::{Digest as _, Sha256};
+
+        let setting = |key: &str| match call.params.get(key) {
+            Some(JsonValue::String(value)) => Ok(value.as_str()),
+            _ => Err(invalid()),
+        };
+        let language = setting("language")?;
+        let source = setting("source")?;
+        if !matches!(language, "js" | "ts") || source.trim().is_empty() || source.len() > 64 * 1024
+        {
+            return Err(HostError::new(
+                "INVALID_SCRIPT_SOURCE",
+                "Script source must be nonempty JS or TS within the source budget",
+            ));
+        }
+        let mut digest = Sha256::new();
+        digest.update(b"serial-workbench-script-v1\0");
+        digest.update(language.as_bytes());
+        digest.update(b"\0");
+        digest.update(source.as_bytes());
+        if setting("sourceSha256")? != format!("{:x}", digest.finalize()) {
+            return Err(HostError::new(
+                "SCRIPT_SOURCE_CHANGED",
+                "Script source differs from the confirmed snapshot",
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_loopback_target(&self, call: &Call) -> HostResult<()> {
         let session = self.inner.devices.session(&call.target)?.snapshot()?;
         if session.state != SessionState::Open
@@ -272,6 +344,36 @@ impl Host {
         }
     }
     pub(super) async fn invoke_extension(
+        &self,
+        actor: &AuthenticatedActor,
+        call: Call,
+    ) -> HostResult<Operation> {
+        if call.action_id.as_str() == TRUSTED_SCRIPT_ACTION {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "User scripts require explicit local operator confirmation",
+            ));
+        }
+        self.invoke_admitted_extension(actor, call).await
+    }
+
+    pub(super) async fn invoke_confirmed_script(
+        &self,
+        operator: &AuthenticatedActor,
+        params: ConfirmedScriptInvocation,
+    ) -> HostResult<Operation> {
+        let ConfirmedScriptInvocation { client_id, call } = params;
+        if call.action_id.as_str() != TRUSTED_SCRIPT_ACTION || call.workspace_startup.is_some() {
+            return Err(invalid());
+        }
+        let actor =
+            self.inner
+                .auth
+                .restore_for_operator(operator, client_id, call.actor_id.clone())?;
+        self.invoke_admitted_extension(&actor, *call).await
+    }
+
+    async fn invoke_admitted_extension(
         &self,
         actor: &AuthenticatedActor,
         call: Call,
@@ -492,6 +594,7 @@ impl Host {
         let operation_id = accepted.operation.operation_id.clone();
         let id = operation_id.clone();
         let runtime = tokio::runtime::Handle::current();
+        let script_action = accepted.call.action_id.as_str() == TRUSTED_SCRIPT_ACTION;
         let output = blocking(move || {
             let authority = Arc::new(ActionAuthority::new(host.clone(), id.clone(), caller)?);
             authority.check()?;
@@ -524,6 +627,9 @@ impl Host {
                 move || check.check(),
                 move || {
                     dispatch.check()?;
+                    if dispatch_call.call.action_id.as_str() == TRUSTED_SCRIPT_ACTION {
+                        dispatcher.validate_script_target(&dispatch_call.call)?;
+                    }
                     dispatcher
                         .dispatch_extension_task(
                             &dispatch_call,
@@ -568,6 +674,7 @@ impl Host {
                         }
                         _ => true,
                     })
+                    .map(|bytes| (bytes, false))
                     .ok_or_else(|| {
                         HostError::new(
                             "NODE_OUTPUT_INVALID",
@@ -575,7 +682,10 @@ impl Host {
                         )
                     });
             }
+            let script_failed = script_action
+                && value.get("kind").and_then(serde_json::Value::as_str) == Some("failed");
             serde_json::to_vec(&value)
+                .map(|bytes| (bytes, script_failed))
                 .map_err(|_| HostError::new("NODE_OUTPUT_INVALID", "Cannot encode plugin result"))
         })
         .await;
@@ -583,18 +693,26 @@ impl Host {
         let store = self.inner.store.clone();
         let _ = blocking(move || {
             let mut outcome = match output {
-                Ok(bytes) => match store.record_plugin_result(&operation_id, &bytes) {
-                    Ok(result) => Settlement {
-                        state: OperationState::Succeeded,
-                        result: Some(result),
-                        error: None,
-                    },
-                    Err(error) => Settlement {
-                        state: OperationState::Unknown,
-                        result: None,
-                        error: Some(error),
-                    },
-                },
+                Ok((bytes, script_failed)) => {
+                    match store.record_plugin_result(&operation_id, &bytes) {
+                        Ok(result) => Settlement {
+                            state: if script_failed {
+                                OperationState::Failed
+                            } else {
+                                OperationState::Succeeded
+                            },
+                            result: Some(result),
+                            error: script_failed.then(|| {
+                                HostError::new("SCRIPT_EXECUTION_FAILED", "Script execution failed")
+                            }),
+                        },
+                        Err(error) => Settlement {
+                            state: OperationState::Unknown,
+                            result: None,
+                            error: Some(error),
+                        },
+                    }
+                }
                 Err(error) => {
                     let state = store.operation_state(&operation_id)?;
                     if state.is_terminal() {
@@ -652,6 +770,10 @@ impl Host {
 #[cfg(test)]
 #[path = "node_actions/native_tests.rs"]
 mod native_tests;
+
+#[cfg(test)]
+#[path = "node_actions/trusted_script_tests.rs"]
+mod trusted_script_tests;
 
 #[cfg(test)]
 #[path = "node_actions/task_lifetime_tests.rs"]

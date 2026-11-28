@@ -82,6 +82,7 @@ import { TestSuiteTool } from "./test-suite-tool";
 import { RuleTriggerTool } from "./rule-trigger-tool";
 import { ruleActionIds } from "./rule-trigger-model";
 import { loopbackAction, LoopbackTool } from "./loopback-tool";
+import { TrustedScriptTool, trustedScriptAction } from "./trusted-script-tool";
 import { CharacterRemapTool } from "./character-remap-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
@@ -769,6 +770,7 @@ export function WorkbenchTools({
     tool === "calendarSchedule" ||
     tool === "commandSequence" ||
     tool === "testSuite" ||
+    tool === "trustedScript" ||
     tool === "loopback" ||
     tool === "ruleTrigger"
   ) {
@@ -803,6 +805,37 @@ export function WorkbenchTools({
       catalog.some(
         (spec) => spec.actionId === id && spec.targetKinds.includes("session"),
       );
+    if (tool === "trustedScript") {
+      const attachment = host.connection?.attachment;
+      const run = host.runConfirmedScript;
+      return (
+        <TrustedScriptTool
+          key={JSON.stringify([key, context.revealedOperationId])}
+          access={
+            access &&
+            session?.txGate === "ready" &&
+            run &&
+            registered(trustedScriptAction)
+              ? {
+                  target: access.target,
+                  port: access.port,
+                  sessionRevision: session.revision,
+                  configurationRevision: session.configurationRevision,
+                  run,
+                }
+              : undefined
+          }
+          target={target}
+          hostId={attachment?.hostId}
+          actorId={attachment?.actorId}
+          operations={host.state.operations}
+          revealedOperationId={context.revealedOperationId}
+          wait={host.waitForOperation}
+          read={host.readFile}
+          cancel={onCancelOperation}
+        />
+      );
+    }
     if (tool === "loopback") {
       const connection = host.connection;
       const device = host.state.devices.find(

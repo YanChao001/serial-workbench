@@ -67,7 +67,7 @@ test("the built-in automation matches the locked archive and the reference actio
     assert.ok(action);
     return { ...action, actionId: "swb.builtin.automation." + name };
   });
-  const [loopback, connection] = manifest.contributes.actions.slice(-2);
+  const [loopback, connection, script] = manifest.contributes.actions.slice(-3);
   assert.equal(loopback.actionId, "swb.builtin.automation.loopback");
   assert.deepEqual(loopback.targetKinds, ["session"]);
   assert.deepEqual(
@@ -80,9 +80,13 @@ test("the built-in automation matches the locked archive and the reference actio
     connection.permissions,
     manifest.permissions.hostApi[1].permissions,
   );
+  assert.equal(script.actionId, "swb.builtin.automation.script");
+  assert.deepEqual(script.targetKinds, ["session"]);
+  assert.deepEqual(script.permissions, manifest.permissions.hostApi[0].permissions);
   assert.deepEqual(manifest.contributes.actions, [
     ...actions,
     loopback,
     connection,
+    script,
   ]);
 });

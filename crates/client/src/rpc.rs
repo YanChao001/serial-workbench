@@ -72,6 +72,7 @@ impl RequestDiagnostic {
             RpcRequest::BrowserTakeover(_) => ("browser.takeover", None),
             RpcRequest::LanAccess(_) => ("lan.access", None),
             RpcRequest::Invoke(call) => ("action.invoke", Some(&call.action_id)),
+            RpcRequest::RunConfirmedScript(_) => ("script.runConfirmed", None),
             RpcRequest::InvokeChild(call) => ("action.invokeChild", Some(&call.action_id)),
             RpcRequest::Query(query) => ("action.query", Some(&query.action_id)),
             RpcRequest::CatalogList(query) => ("catalog.list", Some(&query.action_id)),
@@ -569,6 +570,7 @@ fn request_id(request: &RpcRequest) -> RequestId {
         | RpcRequest::ClientUnregister(_)
         | RpcRequest::ClientReceipt(_) => new_request_id(),
         RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => call.request_id.clone(),
+        RpcRequest::RunConfirmedScript(params) => params.call.request_id.clone(),
         RpcRequest::Query(q)
         | RpcRequest::CatalogList(q)
         | RpcRequest::OperationGet(q)

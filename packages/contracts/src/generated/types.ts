@@ -1600,6 +1600,19 @@ export type ConfigureParams = {
   requested: SerialConfiguration;
 };
 
+export type ConfirmedScriptInvocation =
+  ConfirmedScriptInvocation_Serialize | ConfirmedScriptInvocation_Deserialize;
+
+export type ConfirmedScriptInvocation_Deserialize = {
+  clientId: Id;
+  call: Call_Deserialize;
+};
+
+export type ConfirmedScriptInvocation_Serialize = {
+  clientId: Id;
+  call: Call_Serialize;
+};
+
 export type ContextToken = string;
 
 export type ControlLine = "dtr" | "rts";
@@ -5214,6 +5227,10 @@ export type RpcRequest_Deserialize =
   | { method: "host.attach"; params: AttachParams_Deserialize }
   | { method: "catalog.list"; params: Query_Deserialize }
   | { method: "action.invoke"; params: Call_Deserialize }
+  | {
+      method: "script.runConfirmed";
+      params: ConfirmedScriptInvocation_Deserialize;
+    }
   | { method: "action.invokeChild"; params: ChildCall_Deserialize }
   | { method: "operation.get"; params: Query_Deserialize }
   | { method: "operation.cancel"; params: Call_Deserialize }
@@ -5240,6 +5257,10 @@ export type RpcRequest_Serialize =
   | { method: "host.attach"; params: AttachParams_Serialize }
   | { method: "catalog.list"; params: Query_Serialize }
   | { method: "action.invoke"; params: Call_Serialize }
+  | {
+      method: "script.runConfirmed";
+      params: ConfirmedScriptInvocation_Serialize;
+    }
   | { method: "action.invokeChild"; params: ChildCall_Serialize }
   | { method: "operation.get"; params: Query_Serialize }
   | { method: "operation.cancel"; params: Call_Serialize }

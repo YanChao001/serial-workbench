@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -97,6 +98,99 @@ test("configuration handlers must match the signed kind", async (t) => {
   }
 });
 
+test("a script runs in a managed worker and reads via the parent task lane", (t) =>
+  runManagedScript(t, false));
+
+test("cancelling a script with a pending Raw read waits for worker exit", (t) =>
+  runManagedScript(t, true));
+
+async function runManagedScript(t, cancel) {
+  const id = "swb.builtin.automation";
+  const actionId = id + ".script";
+  const source =
+    'export default async ({ serial, log }) => { const page = await serial.read("17"); log(page.nextEventSeq); return page.events.length; };';
+  const sourceSha256 = createHash("sha256")
+    .update("serial-workbench-script-v1\0js\0")
+    .update(source)
+    .digest("hex");
+  await withBackend(
+    t,
+    'export function register(context) { context.actions.register("' +
+      actionId +
+      '", (call, task) => context.workers.runConfirmedScript(call.params, { read: (startEventSeq) => task.streams.read({ sessionId: "device-1", sessionEpoch: "7", startEventSeq, maxEvents: "32", maxBytes: "65536" }) })); return () => {}; }',
+    async ({ root, entry, send, output }) => {
+      let read = false;
+      for await (const { raw, frame } of output) {
+        if (raw) {
+          assert.equal(read, false);
+          read = true;
+          assert.equal(frame.parentRequestId, "2");
+          assert.equal(frame.parentOperationId, "parent");
+          assert.equal(frame.taskContext, "owned");
+          assert.deepEqual(frame.params, {
+            sessionId: "device-1",
+            sessionEpoch: "7",
+            startEventSeq: "17",
+            maxEvents: "32",
+            maxBytes: "65536",
+          });
+          if (cancel) send({ kind: "cancel_action", requestId: "2" });
+          const reply = cancel
+            ? {
+                ok: false,
+                error: { code: "CANCELLED", message: "parent cancelled" },
+              }
+            : {
+                ok: true,
+                result: {
+                  kind: "stream_read",
+                  nextEventSeq: "18",
+                  events: [],
+                  hasMore: false,
+                },
+              };
+          send({ requestId: frame.requestId, reply }, rawFlag);
+        } else if (frame.kind === "ready") {
+          send({ kind: "activate", requestId: "1", id, root, entry });
+        } else if (frame.requestId === "1") {
+          assert.equal(frame.kind, "registered");
+          send({
+            kind: "invoke",
+            requestId: "2",
+            id,
+            call: {
+              actionId,
+              params: { language: "js", source, sourceSha256 },
+            },
+            taskContext: "owned",
+            parentOperationId: "parent",
+          });
+        } else if (
+          frame.requestId === "2" &&
+          frame.kind !== "action_stopping"
+        ) {
+          assert.equal(
+            frame.kind,
+            cancel ? "action_cancelled" : "action_completed",
+          );
+          assert.equal(read, true);
+          if (!cancel) {
+            assert.deepEqual(frame.value, {
+              kind: "completed",
+              logs: ["18"],
+              value: 0,
+            });
+          }
+          assert.equal(frame.observation.workerObservation.liveWorkers, "0");
+          assert.equal(frame.observation.workerObservation.peakWorkers, "1");
+          return;
+        }
+      }
+      assert.fail("Node closed before settling the script task");
+    },
+  );
+}
+
 async function withBackend(t, source, run) {
   const parent = join(project, ".cache/script-tests");
   mkdirSync(parent, { recursive: true });
@@ -138,7 +232,19 @@ async function withBackend(t, source, run) {
     child.stdin.write(Buffer.concat([header, body]));
   };
   try {
-    send(readFileSync(join(backend, "bootstrap.mjs")));
+    const workerSource = readFileSync(
+      join(backend, "script-worker.mjs"),
+      "utf8",
+    );
+    const bootstrap = readFileSync(join(backend, "bootstrap.mjs"), "utf8");
+    send(
+      Buffer.from(
+        "const scriptWorkerSource = " +
+          JSON.stringify(workerSource) +
+          ";\n" +
+          bootstrap,
+      ),
+    );
     await run({ root, entry, send, output: frames(child.stdout) });
   } finally {
     clearTimeout(timeout);

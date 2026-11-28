@@ -4,6 +4,7 @@ import type { BrowserFileProgress } from "@/lib/browser-file-transfer";
 import type { ReceiveIdleMs } from "@/lib/receive-history";
 import type {
   ConnectionSequenceIntent,
+  LocalScriptIntent,
   ConnectionSequenceIntentResult,
   FileResourceRole,
   SelectedFileResource,
@@ -150,6 +151,10 @@ export type CommandLibraryAccess = {
 
 export type HostContextValue = {
   commandLibrary?: CommandLibraryAccess;
+  runConfirmedScript?(
+    intent: LocalScriptIntent,
+    signal: AbortSignal,
+  ): Promise<Operation>;
   connectionSequenceIntent?(
     intent: ConnectionSequenceIntent,
     signal: AbortSignal,
