@@ -260,31 +260,39 @@ async fn file_transfer_rejects_changed_revision_and_old_epoch_without_writes() {
 async fn file_transfer_is_one_exclusive_owner_while_rx_continues() {
     let h = Harness::new().await;
     let target = h.open("transfer-exclusive").await;
-    let reference = source(&h, &[1, 2, 3, 4, 5]);
+    let payload: Vec<u8> = (0..770).map(|index| (index % 251) as u8).collect();
+    let reference = source(&h, &payload);
     let gate = Arc::new(Gate::default());
     h.probe.steps.lock().unwrap().extend([
         WriteStep {
-            accepted: 2,
+            accepted: 256,
             unknown: false,
             gate: Some(gate.clone()),
             advance_ms: 1,
         },
         WriteStep {
-            accepted: 2,
+            accepted: 256,
             unknown: false,
             gate: None,
             advance_ms: 1,
         },
         WriteStep {
-            accepted: 1,
+            accepted: 256,
             unknown: false,
             gate: None,
             advance_ms: 1,
         },
     ]);
-    let mut call = h.call(&target, "transfer.file", params(&reference));
-    call.execution_mode = Some(ExecutionMode::Independent);
-    let operation = h.invoke(call).await;
+    let mut transfer = params(&reference);
+    transfer["offset"] = serde_json::json!("1");
+    transfer["length"] = serde_json::json!("768");
+    transfer["chunkBytes"] = serde_json::json!("256");
+    let run_transfer = || {
+        let mut call = h.call(&target, "transfer.file", transfer.clone());
+        call.execution_mode = Some(ExecutionMode::Independent);
+        call
+    };
+    let operation = h.invoke(run_transfer()).await;
     gate.entered().await;
     h.probe
         .drain_started
@@ -309,13 +317,83 @@ async fn file_transfer_is_one_exclusive_owner_while_rx_continues() {
     assert_eq!(h.write_count(), 1);
     gate.release();
     let done = h.wait(&operation.operation_id).await;
-    h.wait(&ordinary.operation_id).await;
-    h.host.shutdown().await.unwrap();
+    let ordinary = h.wait(&ordinary.operation_id).await;
     assert_eq!(done.state, OperationState::Succeeded);
+    let reader = FileService::new(h.store.clone(), h.auth.clone(), h.store.identity().unwrap());
+    let edge = |operation: &Operation, ordinal: u64| {
+        let Some(ActionResult::FileTransfer(result)) = &operation.result else {
+            panic!("Expected sealed file transfer");
+        };
+        assert_eq!(result.requested, 768.into());
+        assert_eq!(result.accepted, result.requested);
+        assert_eq!(result.unknown, 0.into());
+        let page = reader
+            .read_receipts(
+                FileTransferReceiptsParams {
+                    receipts_ref: result.receipts_ref.clone(),
+                    start_ordinal: ordinal.into(),
+                    max_receipts: 1.into(),
+                    max_bytes: 4096.into(),
+                },
+                &h.actor,
+            )
+            .unwrap();
+        assert!(page.sealed);
+        assert_eq!(page.count, 3.into());
+        assert_eq!(page.receipts_ref, result.receipts_ref);
+        assert_eq!(page.next_ordinal, (ordinal + 1).into());
+        assert_eq!(page.has_more, ordinal == 0);
+        assert_eq!(page.receipts.len(), 1);
+        let item = page.receipts.into_iter().next().unwrap();
+        assert_eq!(item.receipt.operation_id, operation.operation_id);
+        assert_eq!(item.receipt.session_epoch, target.session_epoch.unwrap());
+        assert_eq!(item.receipt.outcome, TxOutcome::Accepted);
+        item
+    };
+    let first = edge(&done, 0);
+    let last = edge(&done, 2);
+    assert_eq!(first.source_offset, 1.into());
+    assert_eq!(last.source_offset, 513.into());
+    let Some(ActionResult::Tx(queued_write)) = ordinary.result else {
+        panic!("Expected regular write receipt");
+    };
+    assert_eq!(first.receipt.byte_end, queued_write.byte_start);
+    // This request reserved a byte position while the file held the physical writer.
+    assert_eq!(
+        last.receipt.byte_end.get() - first.receipt.byte_start.get(),
+        769
+    );
+
+    h.probe
+        .steps
+        .lock()
+        .unwrap()
+        .extend((0..3).map(|_| WriteStep {
+            accepted: 256,
+            unknown: false,
+            gate: None,
+            advance_ms: 1,
+        }));
+    let uncontended = h.invoke(run_transfer()).await;
+    let uncontended = h.wait(&uncontended.operation_id).await;
+    assert_eq!(uncontended.state, OperationState::Succeeded);
+    let first = edge(&uncontended, 0);
+    let last = edge(&uncontended, 2);
+    assert_eq!(first.receipt.byte_start, 769.into());
+    assert_eq!(last.receipt.byte_end, 1537.into());
+    h.host.shutdown().await.unwrap();
     let writes = h.probe.writes.lock().unwrap();
     assert_eq!(
-        writes.iter().map(|w| w.1.clone()).collect::<Vec<_>>(),
-        vec![vec![1, 2], vec![3, 4], vec![5], vec![9]]
+        writes.iter().map(|w| w.1.as_slice()).collect::<Vec<_>>(),
+        vec![
+            &payload[1..257],
+            &payload[257..513],
+            &payload[513..769],
+            &[9],
+            &payload[1..257],
+            &payload[257..513],
+            &payload[513..769],
+        ]
     );
 }
 

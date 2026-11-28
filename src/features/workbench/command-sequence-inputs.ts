@@ -2,8 +2,6 @@ import {
   commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
-  compileCommandSequence,
-  type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
 import {
   commandVariablePattern,
@@ -12,11 +10,16 @@ import {
 } from "../../../packages/plugin-sdk/src/command-template";
 import { parseHex } from "../../../packages/plugin-sdk/src/hex";
 import { isRecord } from "@/lib/settings-model";
+import {
+  compilePortableSequence,
+  type PortableSequenceStep,
+} from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-file-model";
 
 const maxInputs = 32;
 
+export type SequencePreviewStep = PortableSequenceStep;
 type SequenceDraft = {
-  plan: readonly CommandSequenceStep[];
+  plan: readonly SequencePreviewStep[];
   inputs?: {
     names: readonly string[];
     paths: ReadonlyMap<string, string>;
@@ -74,12 +77,12 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
     throw new CommandSequenceError("$", "Invalid JSON definition");
   }
   if (!isRecord(value) || !isRecord(value.variables))
-    return { plan: compileCommandSequence(definition) };
+    return { plan: compilePortableSequence(definition) };
   const entries = Object.entries(value.variables);
   const names = entries
     .filter(([, value]) => value === null)
     .map(([name]) => name);
-  if (!names.length) return { plan: compileCommandSequence(definition) };
+  if (!names.length) return { plan: compilePortableSequence(definition) };
   if (
     names.length > maxInputs ||
     names.some((name) => !commandVariablePattern.test(name))
@@ -116,9 +119,8 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
       "$.variables",
       "Each input must be referenced by a full top-level send step",
     );
-  const plan = compileCommandSequence(
-    JSON.stringify({ ...value, steps, variables: literalVariables }),
-  );
+  const preview = { ...value, steps, variables: literalVariables };
+  const plan = compilePortableSequence(JSON.stringify(preview));
   return {
     plan,
     inputs: {
@@ -131,7 +133,7 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
           return [name, value] as const;
         });
         if (bindings.some((entry) => entry === undefined)) return;
-        const bound = JSON.stringify({
+        const bound = {
           ...value,
           variables: {
             ...literalVariables,
@@ -139,9 +141,10 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
               bindings.flatMap((entry) => (entry ? [entry] : [])),
             ),
           },
-        });
-        compileCommandSequence(bound);
-        return bound;
+        };
+        const serialized = JSON.stringify(bound);
+        compilePortableSequence(serialized);
+        return serialized;
       },
     },
   };

@@ -6,6 +6,13 @@
 
 ## 当前执行与下一步
 
+### 暂停接续点
+
+2026-11-28 按用户要求暂停开发。AUTO-04 文件重绑和首方签名序列的候选为 `972cf29a`，保存在 `feature/recorded-command-sequence`。候选仍在草稿 PR，逐项状态以账本为准。 [草稿 PR #117](https://github.com/YanChao001/serial-workbench/pull/117) · [需求账本](./feature-status.json)
+
+- 已修复 Windows Rust 编译错误 `E0308` 和 `E0527`。加入自动化 0.1.10 前驱归档后，返回类型和缓存的数组长度均调整为 19。通过 `pnpm typecheck`、`pnpm exec tsc -p packages/plugin-sdk/tsconfig.fixture.json --noEmit`、`pnpm build` 和 `cargo build --locked -p serial-workbench --bin serial-workbench --no-default-features`，桌面程序已编译并链接。Host 首方归档与升级测试 8 项通过，序列与归档摘要的 Node 测试 23 项通过。
+- 恢复时先复验签名 Host 的文件子任务。固定 Node 下运行 `cargo test --locked -p serial-workbench-host --lib native_signed_user_script_is_bound_to_operator_source_and_session -- --ignored --nocapture --test-threads=1`，既有脚本调试断言已走完，文件序列完成第一个普通发送步骤后以 `NODE_ACTION_FAILED` 结束，目标文件传输和后续发送的断言尚未通过。本机日志为 `.cache/recorded-command-sequence/pause-file-sequence-native.log`。桌面重绑的完整交互、真实配对文件重放、系统密钥引用和其他适用验收仍待补齐。 [长文件专项](./acceptance.md#长文件范围的录制和重绑)
+
 ### Windows 本地验收优先
 
 当前主线优先完成 M1–M6 在 Windows 上的功能开发和本地验收。按需求依赖推进，使用现有共享实现和平台适配接口。macOS 与 Linux 的代码可以随 Windows 功能同步实现，这两个平台的测试及验收统一排到后续阶段。
@@ -23,6 +30,8 @@
 3. 全部纳入范围的功能实现完成后，集中处理三平台 CI 和跨平台待验场景。DISP-15 与 PERF-06 已取得 Windows 本地百万条联合验收证据，其他适用平台按同一专项复验。
 
 ### 本轮交付与验收
+
+- AUTO-04 工作分支候选 `0509d236` 已将明确确认的发送历史重发和桌面、配对浏览器的文件传输提交接入录制。通过 16 项无头 Chromium 和 21 项 Vitest，覆盖关传输工具后等待原操作封卷、生成保留范围和时序参数的版本 2 草稿，以及浏览器交接保留会话修订。该分支的 14 项真实 Host 文件传输回归核对偏移 1 的 768 字节范围分三块写入，及其他发送预留打断 TX 连续性的判定。文件重绑、签名执行器、系统密钥引用与真实配对、隔离原生、实机和适用平台验收仍待补齐。 [草稿 PR #117](https://github.com/YanChao001/serial-workbench/pull/117) · [长文件专项](./acceptance.md#长文件范围的录制和重绑)
 
 - AUTO-03 的 M4 本机 JS/TS 调试交付断点、暂停位置、单步、调用栈及有界变量预览。Windows 产品候选 `541afd74` 通过 22 项 Node、17 项 Host 连接回归、真实签名 Host 专项、7 项无头 Chromium 和 2,917 项 Vitest。真实 Host 核对 TS 第 3 行到第 4 行单步、暂停时独立 Raw 读取、旧暂停版本和其他业务身份拒绝。取消和撤权后 worker 存活数均为 0，排队快照失效，Raw 仅有原普通脚本的 `00 FF`。Node 专项核对暂停期间相邻任务与插件管理。工作台回归覆盖英文宽窗、中文窄窗、继续等待、键盘焦点和撤权晚结果。调试隔离可用 Virtual Echo 验证，实机收发归 AUTO-01。隔离原生桌面、其他适用平台、M5 外部语言和正式发行待验。 [交付 PR #116](https://github.com/YanChao001/serial-workbench/pull/116) · [调试专项](./acceptance.md#用户脚本调试auto-03)
 

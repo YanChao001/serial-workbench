@@ -109,6 +109,7 @@ it("uploads bounded blocks and submits the exact selected range using the normal
     draft,
     report,
     new AbortController().signal,
+    "19",
   );
   expect(result?.requestId).toBe("12345678-1234-4abc-8000-0123456789ab");
   const params = request.mock.calls.map(([request]) =>
@@ -130,6 +131,7 @@ it("uploads bounded blocks and submits the exact selected range using the normal
         target,
         actionId: "transfer.file",
         executionMode: "independent",
+        expectedRevision: "19",
         params: {
           ...draft,
           sourceRef: {

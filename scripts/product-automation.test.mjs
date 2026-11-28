@@ -82,11 +82,19 @@ test("the built-in automation matches the locked archive and the reference actio
   );
   assert.equal(script.actionId, "swb.builtin.automation.script");
   assert.deepEqual(script.targetKinds, ["session"]);
-  assert.deepEqual(script.permissions, manifest.permissions.hostApi[0].permissions);
-  assert.deepEqual(manifest.contributes.actions, [
-    ...actions,
-    loopback,
-    connection,
-    script,
-  ]);
+  assert.deepEqual(
+    script.permissions,
+    manifest.permissions.hostApi[0].permissions,
+  );
+  const sequence = manifest.contributes.actions.find(
+    ({ actionId }) => actionId === "swb.builtin.automation.sequence",
+  );
+  assert.equal(sequence.inputSchema.properties.fileBindings.type, "array");
+  assert.equal(sequence.inputSchema.properties.fileBindings.maxItems, 32);
+  const productActions = manifest.contributes.actions.map((entry) => {
+    if (entry !== sequence) return entry;
+    const { fileBindings, ...properties } = entry.inputSchema.properties;
+    return { ...entry, inputSchema: { ...entry.inputSchema, properties } };
+  });
+  assert.deepEqual(productActions, [...actions, loopback, connection, script]);
 });

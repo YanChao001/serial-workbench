@@ -167,6 +167,13 @@ impl Host {
         )?);
         call.params = binding.normalize_parameters(&call.params)?;
         binding.validate_call(&call)?;
+        if call.action_id.as_str() == super::task_children::FILE_SEQUENCE_ACTION {
+            for source in super::task_children::sequence_file_sources(&call, &binding)? {
+                self.inner
+                    .files
+                    .require_reference(&source, actor, "content.read")?;
+            }
+        }
         if call.action_id.as_str() == TRUSTED_SCRIPT_ACTION {
             Self::validate_script_source(&call)?;
             self.validate_script_target(&call)?;

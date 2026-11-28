@@ -745,6 +745,8 @@ export function WorkbenchTools({
           context.session.readOnly
         }
         browserFile={host.browserFile}
+        observeTransfer={context.observeFileTransfer}
+        sessionRevision={context.session?.revision}
         browserTransferAvailable={catalog.some(
           (entry) =>
             entry.actionId === "transfer.file" &&
@@ -759,8 +761,17 @@ export function WorkbenchTools({
         readSource={host.readFile}
         onTransfer={
           context.target && !host.browserFile
-            ? (params, signal) =>
-                call("transfer.file", context.target!, params, signal)
+            ? (params, signal, expectedRevision) =>
+                invoke(
+                  {
+                    actionId: "transfer.file",
+                    target: context.target!,
+                    params,
+                    executionMode: "independent",
+                    expectedRevision,
+                  },
+                  signal,
+                )
             : undefined
         }
       />
@@ -1058,10 +1069,27 @@ export function WorkbenchTools({
           />
         );
       }
+      const fileBindingsSupported =
+        actionId === builtinCommandSequenceAction &&
+        !host.browserFile &&
+        isTauri() &&
+        catalog.some(
+          (spec) =>
+            spec.actionId === actionId &&
+            isRecord(spec.inputSchema.properties) &&
+            Object.hasOwn(spec.inputSchema.properties, "fileBindings"),
+        );
       return (
         <CommandSequenceTool
           key={key}
-          access={cursorAccess}
+          access={
+            cursorAccess && {
+              ...cursorAccess,
+              pickSequenceFile: fileBindingsSupported
+                ? (signal) => host.pickFile("source", signal)
+                : undefined,
+            }
+          }
           actionId={actionId}
           operations={host.state.operations}
           beforeReplace={context.beforeReplace}

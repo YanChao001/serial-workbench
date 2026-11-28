@@ -127,7 +127,10 @@ import {
   WorkspaceSendPanel,
   type SendPermissionPreview,
 } from "./workspace-send-panel";
-import { useManualSendRecording } from "./use-manual-send-recording";
+import {
+  useManualSendRecording,
+  type ObserveFileTransfer,
+} from "./use-manual-send-recording";
 import {
   ManualRecordingControls,
   type ManualRecordingLabels,
@@ -342,6 +345,7 @@ export type WorkbenchToolContext = {
     onApplySend?: (rules: CharacterRemapRules) => void;
   };
   sequenceRecording?: { revision: number; definition: string };
+  observeFileTransfer?: ObserveFileTransfer;
   testSuiteWorkspace?: TestSuiteWorkspace;
   onWriteWaitModeChange: (value: WriteWaitMode) => void;
   diagnostic?: Pick<
@@ -2184,7 +2188,7 @@ export function WorkspaceLayout({
           port:
             state.devices.find((item) => item.deviceId === session.deviceId)
               ?.systemName ?? session.deviceId,
-          send: submitBytes,
+          send: submitManualBytes,
           wait: host.waitForOperation,
         }
       : undefined;
@@ -2208,6 +2212,7 @@ export function WorkspaceLayout({
     recordingScope,
     historyDestination?.target,
     host.waitForOperation,
+    readFileReceipts,
     toolLabels?.manualRecording?.title ?? "",
   );
   const invoke = host.invoke;
@@ -3379,6 +3384,8 @@ export function WorkspaceLayout({
                 revealedOperationId,
                 sequenceRecording:
                   dialog === "commandSequence" ? sequenceRecording : undefined,
+                observeFileTransfer:
+                  dialog === "transfer" ? recording.observeFile : undefined,
                 testSuiteWorkspace:
                   dialog === "testSuite" && suiteSessions
                     ? {

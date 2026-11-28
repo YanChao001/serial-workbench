@@ -17,7 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
-import { isTauri, saveTextExport } from "@/lib/tauri";
+import {
+  isTauri,
+  saveTextExport,
+  type SelectedFileResource,
+} from "@/lib/tauri";
+import { parseU64 } from "@/lib/u64";
 import type { HostContextValue } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { useUnsavedWork } from "@/providers/unsaved-work";
@@ -25,9 +30,11 @@ import {
   commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
-  type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
-import { inspectSequenceDraft } from "./command-sequence-inputs";
+import {
+  inspectSequenceDraft,
+  type SequencePreviewStep,
+} from "./command-sequence-inputs";
 import {
   readSequenceResult,
   sameSequence,
@@ -67,6 +74,7 @@ type Access = Pick<
   target: Target;
   port: string;
   readCursor: (signal: AbortSignal) => Promise<string>;
+  pickSequenceFile?: (signal: AbortSignal) => Promise<SelectedFileResource | null>;
   cancel?: (operation: Operation, signal: AbortSignal) => Promise<void>;
 };
 
@@ -115,7 +123,7 @@ function Plan({
   steps,
   inputPaths,
 }: {
-  steps: readonly CommandSequenceStep[];
+  steps: readonly SequencePreviewStep[];
   inputPaths?: ReadonlyMap<string, string>;
 }) {
   const { t } = useI18n();
@@ -127,6 +135,21 @@ function Plan({
             <span>
               {t("commandSequence.previewDelay", { ms: step.milliseconds })}
             </span>
+          ) : step.kind === "file" ? (
+            <div className="wrap-anywhere">
+              <span>
+                {t("commandSequence.previewFile", {
+                  name: step.input,
+                  offset: step.offset,
+                  length: step.length,
+                })}
+              </span>
+              <p className="text-muted-foreground">
+                {t("commandSequence.previewWriteWait", {
+                  ms: step.writeWaitMs,
+                })}
+              </p>
+            </div>
           ) : (
             <>
               <div>
@@ -229,6 +252,16 @@ export function CommandSequenceTool({
     definition: string;
     values: ReadonlyMap<string, SequenceInputValue>;
   }>();
+  const [sequenceFiles, setSequenceFiles] = useState<{
+    definition: string;
+    sources: ReadonlyMap<string, SelectedFileResource>;
+  }>();
+  const [sequenceFileError, setSequenceFileError] = useState<
+    (SequenceInputSelection & { message: string }) | undefined
+  >();
+  const sequenceSelection = useRef<SequenceInputSelection | undefined>(
+    undefined,
+  );
   const inputFile = useRef<HTMLInputElement>(null);
   const inputSelection = useRef<SequenceInputSelection | undefined>(undefined);
   const [inputFileError, setInputFileError] =
@@ -238,8 +271,11 @@ export function CommandSequenceTool({
 
   function resetInputBindings() {
     inputSelection.current = undefined;
+    sequenceSelection.current = undefined;
     setInputFileError(undefined);
+    setSequenceFileError(undefined);
     setProvided(undefined);
+    setSequenceFiles(undefined);
   }
   const setDefinition = (value: string) => {
     resetInputBindings();
@@ -270,6 +306,26 @@ export function CommandSequenceTool({
   );
   const values =
     provided?.definition === definition ? provided.values : undefined;
+  const requiredFiles = useMemo(() => {
+    const files = new Map<string, bigint>();
+    for (const step of plan ?? []) {
+      if (step.kind !== "file") continue;
+      const end = BigInt(step.offset) + BigInt(step.length);
+      if (end > (files.get(step.input) ?? 0n)) files.set(step.input, end);
+    }
+    return files;
+  }, [plan]);
+  const currentFiles =
+    sequenceFiles?.definition === definition
+      ? sequenceFiles.sources
+      : undefined;
+  const fileBindings = Array.from(requiredFiles.keys()).flatMap((input) => {
+    const source = currentFiles?.get(input);
+    return source ? [{ input, sourceRef: source.reference }] : [];
+  });
+  const filesReady =
+    !requiredFiles.size ||
+    (!!access?.pickSequenceFile && fileBindings.length === requiredFiles.size);
   const { runtimeDefinition, bindingError } = useMemo(() => {
     if (!plan) return {};
     if (!inputs) return { runtimeDefinition: definition };
@@ -385,6 +441,7 @@ export function CommandSequenceTool({
       !access ||
       !actionId ||
       !runtimeDefinition ||
+      !filesReady ||
       busy ||
       command.current ||
       fileRequest.current
@@ -403,7 +460,11 @@ export function CommandSequenceTool({
         {
           actionId,
           target: access.target,
-          params: { definition: runtimeDefinition, startEventSeq },
+          params: {
+            definition: runtimeDefinition,
+            startEventSeq,
+            ...(fileBindings.length > 0 && { fileBindings }),
+          },
           executionMode: "independent",
         },
         signal,
@@ -515,6 +576,65 @@ export function CommandSequenceTool({
     } finally {
       if (inputSelection.current === selection)
         inputSelection.current = undefined;
+      fileRequest.current = false;
+      if (!signal.aborted) setFileBusy(false);
+    }
+  }
+
+  async function bindSequenceFile(name: string, minimum: bigint) {
+    const signal = lifetime.current?.signal;
+    if (
+      !access?.pickSequenceFile ||
+      !signal ||
+      signal.aborted ||
+      busy ||
+      fileRequest.current ||
+      command.current
+    )
+      return;
+    const selection = { name, definition };
+    sequenceSelection.current = selection;
+    const isCurrent = () =>
+      !signal.aborted &&
+      sequenceSelection.current === selection &&
+      activeDefinition.current === definition;
+    fileRequest.current = true;
+    setFileBusy(true);
+    setSequenceFileError(undefined);
+    try {
+      const selected = await access.pickSequenceFile(signal);
+      if (!selected || !isCurrent()) return;
+      const { reference, length } = selected;
+      if (
+        reference.hostId !== access.target.hostId ||
+        reference.kind !== "file" ||
+        !parseU64(reference.revision)
+      )
+        throw new ContractValidationError();
+      if ((parseU64(length) ?? 0n) < minimum) {
+        setSequenceFileError({
+          ...selection,
+          message: t("commandSequence.sequenceFileSmall", {
+            bytes: minimum.toString(),
+          }),
+        });
+        return;
+      }
+      setSequenceFiles((previous) => ({
+        definition,
+        sources: new Map(
+          previous?.definition === definition ? previous.sources : undefined,
+        ).set(name, selected),
+      }));
+    } catch (error) {
+      if (isCurrent())
+        setSequenceFileError({
+          ...selection,
+          message: nativeErrorText(error, t),
+        });
+    } finally {
+      if (sequenceSelection.current === selection)
+        sequenceSelection.current = undefined;
       fileRequest.current = false;
       if (!signal.aborted) setFileBusy(false);
     }
@@ -776,6 +896,53 @@ export function CommandSequenceTool({
               )}
             </fieldset>
           )}
+          {requiredFiles.size > 0 && (
+            <fieldset className="mb-3 grid min-w-0 gap-2 text-sm">
+              <legend className="mb-1 font-medium">
+                {t("commandSequence.sequenceFiles")}
+              </legend>
+              {!access?.pickSequenceFile && (
+                <p className="text-muted-foreground">
+                  {t("commandSequence.sequenceFileUnavailable")}
+                </p>
+              )}
+              {Array.from(requiredFiles, ([name, minimum]) => (
+                <div key={name} className="grid min-w-0 gap-1">
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono wrap-anywhere">{name}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-disabled={!access?.pickSequenceFile || busy}
+                      aria-label={t("commandSequence.bindSequenceFile", {
+                        name,
+                      })}
+                      onClick={() => void bindSequenceFile(name, minimum)}
+                    >
+                      {t("workbench.tools.chooseConfigurationFile")}
+                    </Button>
+                  </div>
+                  <p className="text-muted-foreground wrap-anywhere">
+                    {currentFiles?.has(name)
+                      ? t("commandSequence.sequenceFileBound", {
+                          name: currentFiles.get(name)?.name ?? "",
+                        })
+                      : t("commandSequence.sequenceFileRequired")}
+                  </p>
+                  {sequenceFileError?.name === name &&
+                    sequenceFileError.definition === definition && (
+                      <p
+                        role="status"
+                        className="text-destructive wrap-anywhere"
+                      >
+                        {sequenceFileError.message}
+                      </p>
+                    )}
+                </div>
+              ))}
+            </fieldset>
+          )}
           {plan ? (
             <div
               className="max-h-72 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -795,7 +962,9 @@ export function CommandSequenceTool({
         <Button
           type="button"
           size="sm"
-          disabled={!access || !actionId || !runtimeDefinition || busy}
+          disabled={
+            !access || !actionId || !runtimeDefinition || !filesReady || busy
+          }
           onClick={() => void start()}
         >
           {t("commandSequence.start")}

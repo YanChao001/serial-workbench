@@ -2238,7 +2238,7 @@ export function createHostWorkspace(
   }
   const browserFile: HostContextValue["browserFile"] = connection.browser && {
     hasPending: () => hasPendingBrowserFile(connection),
-    async send(target, file, draft, report, signal) {
+    async send(target, file, draft, report, signal, expectedRevision) {
       try {
         const operation = await sendBrowserFile(
           connection,
@@ -2247,6 +2247,7 @@ export function createHostWorkspace(
           draft,
           report,
           AbortSignal.any([signal, lifetime.signal]),
+          expectedRevision,
         );
         if (operation && !lifetime.signal.aborted) updateOperation(operation);
         return operation;

@@ -145,6 +145,63 @@ test("command sequence imports a definition and recovers an accepted task until 
   ).toBe(1);
 });
 
+test("a long file step previews its portable range without permitting an unbound run", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 430, height: 620 });
+  await seedWorkbenchFixture(page, { automation: { action, state: "ready" } });
+  await selectSerial(page);
+  const dialog = await openSequence(page);
+  const editor = dialog.getByRole("textbox", {
+    name: "Sequence definition (JSON)",
+  });
+  const file = {
+    kind: "file",
+    input: "recorded_file_1",
+    offset: "1",
+    length: "768",
+    chunkBytes: "256",
+    bytesPerSecond: "1048576",
+    interChunkMs: "2",
+    writeWaitMs: "2000",
+  };
+  const definition = JSON.stringify({ version: 2, steps: [file] });
+  await editor.fill(definition);
+  const preview = dialog.getByText(
+    "Send file input recorded_file_1 · 768 bytes from offset 1",
+    { exact: true },
+  );
+  await expect(preview).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Save JSON" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.savedTextExports))
+    .toEqual([{ name: "command-sequence.json", content: definition }]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await preview.scrollIntoViewIfNeeded();
+  await dialog.screenshot({
+    path: info.outputPath("long-file-range-preview.png"),
+  });
+
+  await editor.fill(
+    JSON.stringify({
+      version: 2,
+      steps: [{ ...file, sourceRef: { id: "stale-reference" } }],
+    }),
+  );
+  await expect(
+    dialog.getByText("Check the definition at $.steps[0]."),
+  ).toBeVisible();
+  await expect(preview).toBeHidden();
+  await expect(
+    dialog.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
+});
+
 test("closing a sequence drops a late binary input read and leaves its file reference unbound", async ({
   page,
 }) => {
@@ -282,7 +339,7 @@ test("command sequence leaves an edited draft intact after an empty or invalid i
   ).setFiles({
     name: "future.json",
     mimeType: "application/json",
-    buffer: Buffer.from('{"version":2,"steps":[]}'),
+    buffer: Buffer.from('{"version":999,"steps":[]}'),
   });
   await expect(dialog.getByRole("alert")).toContainText("$.version");
   await expect(editor).toHaveValue(draft);
@@ -476,6 +533,197 @@ test("records composer bytes and confirmed receive selections, then replays only
       builtinCommandSequenceAction,
     ),
   ).toMatchObject({ definition });
+});
+
+test("records a confirmed resend from history and keeps previews silent", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready" },
+    manualSendReceipts: true,
+    sendHistory: true,
+  });
+  await selectSerial(page);
+  const recorder = page
+    .getByRole("region", { name: "Send", exact: true })
+    .getByRole("button", { name: "Record manual sends" });
+  await recorder.click();
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await recorder.press("Escape");
+
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .press("ArrowDown");
+  await page
+    .getByRole("menuitem", { name: "Send history", exact: true })
+    .click();
+  const history = page.getByRole("dialog", {
+    name: "Send history",
+    exact: true,
+  });
+  await history
+    .getByRole("checkbox", { name: /Virtual serial.*ui-send/ })
+    .check();
+  await history.getByRole("button", { name: "Preview selected bytes" }).click();
+  await expect(history.getByText("53 54 41 54 55 53 3F")).toBeVisible();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await history
+    .getByRole("button", { name: "Resend in preview order" })
+    .click();
+  await expect(history.getByRole("status")).toContainText(
+    "All 1 writes confirmed.",
+  );
+  await page.keyboard.press("Escape");
+  await expect(history).toBeHidden();
+
+  await recorder.click();
+  await page.getByRole("button", { name: "Stop recording" }).click();
+  await expect(page.getByText("Confirmed sends: 1.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Review in command sequence" })
+    .click();
+  const sequence = page.getByRole("dialog", {
+    name: "Command sequence",
+    exact: true,
+  });
+  const editor = sequence.getByRole("textbox", {
+    name: "Sequence definition (JSON)",
+  });
+  expect(JSON.parse(await editor.inputValue())).toEqual({
+    version: 1,
+    steps: [{ kind: "send", hex: "53 54 41 54 55 53 3F", writeWaitMs: 1001 }],
+  });
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    "U1RBVFVTPw==",
+  ]);
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.workbenchFixture.invocations.some(
+          (call) => call.actionId === id,
+        ),
+      builtinCommandSequenceAction,
+    ),
+  ).toBe(false);
+});
+
+test("records a completed file range after closing the transfer tool", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready" },
+    transferSource: {
+      reference: {
+        hostId: "workbench-gui-host",
+        kind: "file",
+        id: "local-file-1",
+        revision: "1",
+      },
+      name: "fixture.bin",
+      length: "770",
+      mime: "application/octet-stream",
+    },
+  });
+  await selectSerial(page);
+  const recorder = page.getByRole("button", {
+    name: "Record manual sends",
+    exact: true,
+  });
+  await recorder.click();
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await recorder.press("Escape");
+  await page
+    .getByRole("button", { name: "Workspace menu", exact: true })
+    .press("ArrowDown");
+  await page
+    .getByRole("menuitem", { name: "File transfer", exact: true })
+    .click();
+  const transfer = page.getByRole("dialog", {
+    name: "File transfer",
+    exact: true,
+  });
+  await transfer.getByRole("button", { name: "Select source file" }).click();
+  await transfer.getByRole("tab", { name: "Advanced", exact: true }).click();
+  await transfer.getByLabel("Byte offset", { exact: true }).fill("1");
+  await transfer.getByLabel("Length (bytes)", { exact: true }).fill("768");
+  await transfer.getByLabel("Chunk size (bytes)", { exact: true }).fill("256");
+  const send = transfer.getByRole("button", { name: "Send file", exact: true });
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.invocations.filter(
+        (call) => call.actionId === "transfer.file",
+      ),
+    ),
+  ).toEqual([]);
+  await send.click();
+  await expect(
+    transfer.getByRole("progressbar", { name: "Transfer progress" }),
+  ).toHaveAttribute("aria-valuetext", "0 B / 768 B");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.workbenchFixture.invocations.find(
+            (call) => call.actionId === "transfer.file",
+          )?.expectedRevision,
+      ),
+    )
+    .toBe("1");
+  await page.keyboard.press("Escape");
+  const unfinished = page.getByRole("dialog").filter({
+    has: page.getByRole("heading", { name: "Save unfinished work" }),
+  });
+  await unfinished
+    .getByRole("button", { name: "Discard and continue" })
+    .click();
+  await expect(transfer).toBeHidden();
+
+  await recorder.click();
+  await page.getByRole("button", { name: "Stop recording" }).click();
+  const review = page.getByRole("button", {
+    name: "Review in command sequence",
+  });
+  await expect(review).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.workbenchFixture.setTransferProgress(
+          "768",
+          "0",
+          "succeeded",
+          "768",
+        ),
+      ),
+    )
+    .toBeGreaterThan(0);
+  await expect(page.getByText("Confirmed sends: 1.")).toBeVisible();
+  await review.click();
+  const sequence = page.getByRole("dialog", {
+    name: "Command sequence",
+    exact: true,
+  });
+  const definition = await sequence
+    .getByRole("textbox", { name: "Sequence definition (JSON)" })
+    .inputValue();
+  expect(JSON.parse(definition)).toMatchObject({
+    version: 2,
+    steps: [
+      {
+        kind: "file",
+        input: "recorded_file_1",
+        offset: "1",
+        length: "768",
+        chunkBytes: "256",
+      },
+    ],
+  });
+  expect(definition).not.toContain("local-file-1");
+  expect(definition).not.toContain("fixture.bin");
+  await expect(
+    sequence.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
 });
 
 test("a stale session revision cannot add a write to the previous recording", async ({

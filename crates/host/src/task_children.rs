@@ -9,7 +9,60 @@ use crate::{
     },
 };
 
+use serde::Deserialize;
 use std::sync::OnceLock;
+
+pub(super) const FILE_SEQUENCE_ACTION: &str = "swb.builtin.automation.sequence";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SequenceFileBinding {
+    input: Id,
+    source_ref: ObjectRef,
+}
+
+pub(super) fn sequence_file_sources(
+    call: &Call,
+    binding: &RegisteredHandler,
+) -> HostResult<Vec<ObjectRef>> {
+    let Some(encoded) = call.params.get("fileBindings") else {
+        return Ok(Vec::new());
+    };
+    if call.action_id.as_str() != FILE_SEQUENCE_ACTION
+        || !crate::node_packages::is_current_automation_archive(
+            binding.package(),
+            binding.archive_sha256(),
+        )
+    {
+        return Err(HostError::new(
+            "PERMISSION_DENIED",
+            "File inputs require the signed product sequence executor",
+        ));
+    }
+    let sources: Vec<SequenceFileBinding> =
+        serde_json::from_value(serde_json::to_value(encoded).map_err(|_| invalid())?)
+            .map_err(|_| invalid())?;
+    if sources.is_empty() || sources.len() > 32 {
+        return Err(invalid());
+    }
+    let mut inputs = std::collections::HashSet::new();
+    sources
+        .into_iter()
+        .map(|source| {
+            if !inputs.insert(source.input)
+                || source.source_ref.host_id != call.target.host_id
+                || source.source_ref.kind.as_str() != "file"
+                || source
+                    .source_ref
+                    .revision
+                    .is_none_or(|revision| revision.get() == 0)
+            {
+                return Err(invalid());
+            }
+            Ok(source.source_ref)
+        })
+        .collect()
+}
 
 pub(super) struct TaskScope {
     actor: AuthenticatedActor,
@@ -21,6 +74,7 @@ pub(super) struct TaskScope {
     configuration_digest: Digest,
     connection_session: Option<OnceLock<Target>>,
     script_debugger: Option<Arc<ScriptDebugSession>>,
+    sequence_files: Vec<ObjectRef>,
 }
 impl TaskScope {
     fn remember_connection_session(&self, opened: &Operation) -> HostResult<()> {
@@ -92,6 +146,29 @@ impl TaskScope {
             let host = host.clone();
             Arc::new(move || scope.check_reader(&host))
         };
+        let bound_transfer_source = match admission.as_ref() {
+            Some(child)
+                if child.action_id.as_str() == "transfer.file"
+                    && self.operation.action_id.as_str() == FILE_SEQUENCE_ACTION =>
+            {
+                let params: FileTransferParams = decode(&child.params)?;
+                let source = params.source_ref;
+                if child.target != self.operation.target || !self.sequence_files.contains(&source) {
+                    return Err(HostError::new(
+                        "PERMISSION_DENIED",
+                        "Transfer source was not bound to the sequence",
+                    ));
+                }
+                Some(Target {
+                    host_id: source.host_id,
+                    kind: source.kind,
+                    id: source.id,
+                    session_id: None,
+                    session_epoch: None,
+                })
+            }
+            _ => None,
+        };
         Ok(self.actor.with_task(TaskAuthority {
             admission,
             owner_instance: self.binding.instance_id().clone(),
@@ -103,6 +180,7 @@ impl TaskScope {
                 .and_then(OnceLock::get)
                 .cloned(),
             host_api: self.host_api.clone(),
+            bound_transfer_source,
             inherited: self.actor.task().cloned(),
             admission_queued,
             check,
@@ -182,6 +260,7 @@ impl Host {
             })
             .cloned()
             .collect();
+        let sequence_files = sequence_file_sources(&accepted.call, &binding)?;
         let scope = Arc::new(TaskScope {
             actor: accepted.actor.clone(),
             operation: accepted.operation.clone(),
@@ -192,6 +271,7 @@ impl Host {
             configuration_digest,
             connection_session: connection_sequence.then(OnceLock::new),
             script_debugger,
+            sequence_files,
         });
         self.inner
             .tasks

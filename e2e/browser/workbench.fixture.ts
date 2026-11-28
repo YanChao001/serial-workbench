@@ -93,7 +93,7 @@ export type WorkbenchFixture = {
   setTransferProgress: (
     accepted: string,
     unknown: string,
-    state: "running" | "cancel_requested" | "cancelled",
+    state: "running" | "cancel_requested" | "cancelled" | "succeeded",
     read?: string,
   ) => number;
   browserTakeoverDecisions: { takeoverId: string; approve: boolean }[];
@@ -769,6 +769,7 @@ export async function seedWorkbenchFixture(
     let releaseDebugRead: (() => void) | undefined;
     let operationPosition = 0;
     let transferOperation: Operation | undefined;
+    let transferCall: Call | undefined;
     let sourceRead = "0";
     let delayedCancellationReply = automation?.delayFirstCancellationReply;
     let releaseCancellationReply: (() => void) | undefined;
@@ -1075,7 +1076,9 @@ export async function seedWorkbenchFixture(
           state,
           revision: String(BigInt(transferOperation.revision) + 1n),
           settledAt:
-            state === "cancelled" ? sentOperation.settledAt : undefined,
+            state === "cancelled" || state === "succeeded"
+              ? sentOperation.settledAt
+              : undefined,
           result: {
             kind: "file_transfer",
             value: {
@@ -1084,7 +1087,9 @@ export async function seedWorkbenchFixture(
               unknown,
               receiptsRef: {
                 ...transferOperation.result.value.receiptsRef,
-                ...(state === "cancelled" ? { revision: "1" } : {}),
+                ...(state === "cancelled" || state === "succeeded"
+                  ? { revision: "1" }
+                  : {}),
               },
             },
           },
@@ -2162,6 +2167,7 @@ export async function seedWorkbenchFixture(
               if (transferSource && request.method === "action.invoke") {
                 const call = request.params;
                 if (call.actionId === "transfer.file") {
+                  transferCall = call;
                   sourceRead = "0";
                   transferOperation = {
                     ...sentOperation,
@@ -2183,7 +2189,7 @@ export async function seedWorkbenchFixture(
                         receiptsRef: {
                           hostId: call.target.hostId,
                           kind: "transfer_receipts",
-                          id: "fixture-file-transfer-receipts",
+                          id: "fixture-file-transfer",
                         },
                       },
                     },
@@ -3065,7 +3071,11 @@ export async function seedWorkbenchFixture(
                 query.actionId === "file.read" &&
                 query.target.id === transferSource.reference.id
               ) {
-                const bytes = [0, 0xfe, 0x23, 0xff, 1, 2, 3, 4, 5, 6];
+                const prefix = [0, 0xfe, 0x23, 0xff, 1, 2, 3, 4, 5, 6];
+                const bytes = Array.from(
+                  { length: Number(transferSource.length) },
+                  (_, index) => prefix[index] ?? index % 251,
+                );
                 const offset = Number(query.params.offset);
                 const limit = Number(query.params.maxBytes);
                 if (
@@ -3613,6 +3623,58 @@ export async function seedWorkbenchFixture(
                     value: { operation: transferOperation },
                   },
                 };
+              if (
+                query.actionId === "transfer.receiptsRead" &&
+                transferOperation?.state === "succeeded" &&
+                transferOperation.result?.kind === "file_transfer" &&
+                transferCall
+              ) {
+                const { receiptsRef } = transferOperation.result.value;
+                const ordinal = Number(query.params.startOrdinal);
+                const chunk = Number(transferCall.params.chunkBytes);
+                const length = Number(transferCall.params.length);
+                const count = Math.ceil(length / chunk);
+                const start = ordinal * chunk;
+                const size = Math.min(chunk, length - start);
+                const sourceOffset = Number(transferCall.params.offset) + start;
+                if (
+                  command !== "host_raw_request" ||
+                  query.target.id !== receiptsRef.id ||
+                  query.params.maxReceipts !== "1" ||
+                  (ordinal !== 0 && ordinal !== count - 1)
+                )
+                  throw new Error("Unexpected recording receipt query");
+                return {
+                  ok: true,
+                  result: {
+                    kind: "file_transfer_receipts",
+                    value: {
+                      receiptsRef,
+                      count: String(count),
+                      nextOrdinal: String(ordinal + 1),
+                      hasMore: ordinal + 1 < count,
+                      sealed: true,
+                      receipts: [
+                        {
+                          sourceOffset: String(sourceOffset),
+                          receipt: {
+                            operationId: transferOperation.operationId,
+                            sessionId: transferOperation.target.sessionId,
+                            sessionEpoch: transferOperation.target.sessionEpoch,
+                            byteStart: String(start),
+                            byteEnd: String(start + size),
+                            bytesBase64: btoa("\0".repeat(size)),
+                            acceptedRanges: [{ start: "0", end: String(size) }],
+                            unknownRanges: [],
+                            outcome: "accepted",
+                            peerAcknowledged: false,
+                          },
+                        },
+                      ],
+                    },
+                  },
+                };
+              }
               if (
                 query.actionId === "transfer.readProgress" &&
                 transferOperation?.result?.kind === "file_transfer"

@@ -5,6 +5,7 @@ import {
   type OperationSummary,
   type SessionSnapshot,
   type Target,
+  type TxReceipt,
 } from "@serial-workbench/contracts";
 import { bytesToBase64 } from "@/lib/base64";
 import { parseU64 } from "@/lib/u64";
@@ -169,12 +170,26 @@ export function confirmedSessionWrite(
   )
     return;
   const result = operation.result.value;
+  if (result.bytesBase64 !== planned.bytesBase64) return;
+  return confirmedTxRange(
+    result,
+    operation.operationId,
+    target,
+    BigInt(planned.bytes.length),
+  );
+}
+
+export function confirmedTxRange(
+  result: TxReceipt,
+  operationId: string,
+  target: Target,
+  expectedLength: bigint,
+) {
   if (
-    result.operationId !== operation.operationId ||
+    result.operationId !== operationId ||
     result.sessionId !== target.sessionId ||
     result.sessionEpoch !== target.sessionEpoch ||
     result.outcome !== "accepted" ||
-    result.bytesBase64 !== planned.bytesBase64 ||
     result.unknownRanges.length !== 0
   )
     return;
@@ -183,7 +198,7 @@ export function confirmedSessionWrite(
   if (
     start === undefined ||
     end === undefined ||
-    end - start !== BigInt(planned.bytes.length)
+    end - start !== expectedLength
   )
     return;
   // Accepted ranges are relative to this write. The outer range locates it in the TX stream.
