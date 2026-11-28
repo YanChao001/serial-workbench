@@ -3,7 +3,7 @@ use super::{
     lan_access::{LanCommand, request_access as request_lan_access},
     lan_route::{LanEndpoints, LanRelay, unavailable as lan_unavailable},
     protocol::*,
-    server::{AuthorizedEvent, ConnectionContext, EventFrame, RequestHandler},
+    server::{AuthorizedEvent, ConnectionContext, ControlReplyGuard, EventFrame, RequestHandler},
 };
 use crate::{
     auth::{AuthService, AuthenticatedActor, GrantStamp, HostIdentity},
@@ -87,6 +87,7 @@ struct PendingReply {
     frame: WireFrame,
     _permit: Option<OwnedSemaphorePermit>,
     stamp: Option<GrantStamp>,
+    control_guard: Option<ControlReplyGuard>,
     _raw_output_lease: Option<crate::stream::RawOutputLease>,
 }
 #[derive(Clone)]
@@ -370,6 +371,7 @@ impl ConnectionState {
                             frame: error_frame(frame.request_id, channel, busy()),
                             _permit: None,
                             stamp: None,
+                            control_guard: None,
                             _raw_output_lease: None,
                         })
                         .is_err()
@@ -479,6 +481,7 @@ impl ConnectionState {
                         },
                         _permit: Some(permit),
                         stamp,
+                        control_guard: reply.control_guard,
                         _raw_output_lease: reply.raw_output_lease,
                     })
                     .await;
@@ -819,18 +822,25 @@ async fn output_writer(
             reply = replies.recv() => match reply {
                 Some(mut reply) => {
                     let changes = auth.subscribe_changes();
-                    if let Some(stamp) = reply.stamp.clone() {
+                    let stamp = reply.control_guard.as_ref().map(|guard| &guard.stamp).or(reply.stamp.as_ref());
+                    if let Some(stamp) = stamp.cloned() {
                         let check = auth.clone();
                         if let Err(error) = blocking(move || check.validate_grants(&stamp)).await {
                             reply.frame.body = IpcMessage::Reply { reply: Box::new(failure(error)) };
                             reply._raw_output_lease = None;
                             reply.stamp = None;
+                            reply.control_guard = None;
                         }
                     }
-                    let result = if reply.frame.channel == IpcChannel::Raw {
+                    let result = if reply.frame.channel == IpcChannel::Raw || reply.control_guard.is_some() {
                         let invalidated = async {
-                            wait_raw_revocation(auth.clone(), reply.stamp.clone(), changes).await;
-                            HostError::new("PERMISSION_DENIED", "Reply authorization ended")
+                            let stamp = reply.control_guard.as_ref().map(|guard| &guard.stamp).or(reply.stamp.as_ref());
+                            tokio::select! {
+                                _ = wait_raw_revocation(auth.clone(), stamp.cloned(), changes) => {
+                                    HostError::new("PERMISSION_DENIED", "Reply authorization ended")
+                                }
+                                error = wait_control_operation_end(auth.clone(), reply.control_guard.as_ref()) => error,
+                            }
                         };
                         match write_guarded_frame(&mut writer, &reply.frame, invalidated).await {
                             Ok(GuardedWrite::Written) => Ok(()),
@@ -992,6 +1002,28 @@ async fn wait_delivery_end(guard: Option<watch::Receiver<bool>>) {
         }
     }
 }
+async fn wait_control_operation_end(
+    auth: AuthService,
+    guard: Option<&ControlReplyGuard>,
+) -> HostError {
+    let Some(guard) = guard else {
+        return pending().await;
+    };
+    let mut changes = guard.operation_changes.clone();
+    loop {
+        if changes.changed().await.is_err() {
+            return HostError::new(
+                "OPERATION_NOT_RUNNING",
+                "Reply operation owner has finished",
+            );
+        }
+        let (auth, stamp) = (auth.clone(), guard.stamp.clone());
+        if let Err(error) = blocking(move || auth.validate_grants(&stamp)).await {
+            return error;
+        }
+    }
+}
+
 async fn wait_raw_revocation(
     auth: AuthService,
     stamp: Option<GrantStamp>,
@@ -1977,6 +2009,69 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn queued_debug_snapshot_requires_its_business_actor_at_delivery() {
+        let mut f = RawTest::new();
+        let request_id = new_request_id();
+        f.replies
+            .send(PendingReply {
+                frame: WireFrame {
+                    request_id: request_id.clone(),
+                    channel: IpcChannel::Control,
+                    body: IpcMessage::Reply {
+                        reply: Box::new(RpcReply::Success {
+                            ok: True,
+                            result: Box::new(RpcResult::ScriptDebug(ScriptDebugResponse {
+                                script_debug: ScriptDebugResult::Snapshot {
+                                    snapshot: ScriptDebugSnapshot::Paused {
+                                        revision: 2.into(),
+                                        frames: vec![ScriptDebugFrame {
+                                            name: "run".into(),
+                                            line: 3,
+                                            column: 1,
+                                        }],
+                                        selected_frame: 0,
+                                        variables: vec![ScriptDebugVariable {
+                                            name: "text".into(),
+                                            value_type: ScriptDebugValueType::String,
+                                            preview: "private debugger value".into(),
+                                        }],
+                                    },
+                                },
+                            })),
+                        }),
+                    },
+                },
+                _permit: None,
+                stamp: f.auth.capture_grants(&f.operator).unwrap(),
+                control_guard: Some(ControlReplyGuard {
+                    stamp: f.auth.capture_grants(&f.actor).unwrap().unwrap(),
+                    operation_changes: f.store.subscribe_operation_state_changes(),
+                }),
+                _raw_output_lease: None,
+            })
+            .await
+            .unwrap();
+        f.revoke();
+        let (writing, mut input) = f.writer(65536);
+        let frame = tokio::time::timeout(
+            Duration::from_secs(2),
+            read_frame(&mut input, MAX_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert_eq!(frame.request_id, request_id);
+        assert!(matches!(
+            frame.body,
+            IpcMessage::Reply { reply }
+                if matches!(&*reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED")
+        ));
+        drop(f.replies);
+        writing.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
     async fn file_read_reply_stops_writing_sensitive_bytes_after_revocation() {
         use tokio::io::AsyncReadExt;
         let mut f = RawTest::new();
@@ -2010,6 +2105,7 @@ mod tests {
                 },
                 _permit: None,
                 stamp: f.auth.capture_grants(&f.actor).unwrap(),
+                control_guard: None,
                 _raw_output_lease: None,
             })
             .await
@@ -2072,6 +2168,7 @@ mod tests {
                 },
                 _permit: None,
                 stamp: f.auth.capture_grants(&f.actor).unwrap(),
+                control_guard: None,
                 _raw_output_lease: None,
             })
             .await
@@ -2126,6 +2223,7 @@ mod tests {
                 },
                 _permit: None,
                 stamp: f.auth.capture_grants(&f.actor).unwrap(),
+                control_guard: None,
                 _raw_output_lease: Some(lease),
             })
             .await

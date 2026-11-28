@@ -320,6 +320,10 @@ export class ConfirmedScriptDebugger {
           );
         await this.#request(method);
       }
+    } catch (failure) {
+      if (failure?.code === "SCRIPT_DEBUG_UNAVAILABLE")
+        this.#reportFailure(failure);
+      throw failure;
     } finally {
       this.#busy = false;
     }

@@ -713,6 +713,11 @@ impl Owner {
                     .validate_action(&action.package, &action.definition)
             }) {
                 cancelled.push((*id, cause));
+            } else if action
+                .debug_command
+                .is_some_and(|(_, deadline)| now >= deadline)
+            {
+                cancelled.push((*id, debugger_unavailable()));
             }
         }
         for (id, cause) in cancelled {
@@ -734,13 +739,7 @@ impl Owner {
             if action.cancelling.is_some() || action.cleanup_deadline.is_some() {
                 continue;
             }
-            if let Some((_, deadline)) = action.debug_command {
-                if now >= deadline {
-                    action.debug_command = None;
-                    if let Some(debugger) = action.debugger() {
-                        debugger.complete(Err(debugger_unavailable()));
-                    }
-                }
+            if action.debug_command.is_some() {
                 continue;
             }
             if let Some(debugger) = action.debugger()

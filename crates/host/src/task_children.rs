@@ -239,7 +239,7 @@ impl Host {
         &self,
         operator: &AuthenticatedActor,
         params: ScriptDebugRequest,
-    ) -> HostResult<ScriptDebugResponse> {
+    ) -> HostResult<(ScriptDebugResponse, Option<ControlReplyGuard>)> {
         let actor =
             self.inner
                 .auth
@@ -263,11 +263,25 @@ impl Host {
             .as_ref()
             .ok_or_else(debugger_unavailable)?;
         scope.check_reader(self)?;
-        let script_debug = match params.intent {
+        let (script_debug, guard) = match params.intent {
             ScriptDebugIntent::Inspect => {
+                let operation_changes = self.inner.store.subscribe_operation_state_changes();
+                let reader = scope.delegate(self, None, Default::default())?;
+                let stamp = self.inner.auth.capture_grants(&reader)?.ok_or_else(|| {
+                    HostError::new(
+                        "PERMISSION_DENIED",
+                        "Script debugger requires a business actor",
+                    )
+                })?;
                 let snapshot = debugger.snapshot()?;
-                scope.check_reader(self)?;
-                ScriptDebugResult::Snapshot { snapshot }
+                self.inner.auth.validate_grants(&stamp)?;
+                (
+                    ScriptDebugResult::Snapshot { snapshot },
+                    Some(ControlReplyGuard {
+                        stamp,
+                        operation_changes,
+                    }),
+                )
             }
             ScriptDebugIntent::Command { command } => {
                 let outcome = debugger.submit(command)?;
@@ -275,10 +289,10 @@ impl Host {
                     .await
                     .map_err(|_| debugger_unavailable())?
                     .map_err(|_| debugger_unavailable())??;
-                ScriptDebugResult::Accepted
+                (ScriptDebugResult::Accepted, None)
             }
         };
-        Ok(ScriptDebugResponse { script_debug })
+        Ok((ScriptDebugResponse { script_debug }, guard))
     }
 
     fn read_task_raw(

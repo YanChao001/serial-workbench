@@ -22,7 +22,7 @@ mod workspace_configuration_api;
 use crate::{
     auth::{AuthService, AuthenticatedActor, GrantStamp},
     device::{DeviceService, TransportOpener},
-    ipc::{ConnectionContext, HandlerFuture, HandlerReply, RequestHandler},
+    ipc::{ConnectionContext, ControlReplyGuard, HandlerFuture, HandlerReply, RequestHandler},
     registry::Registry,
     state::{ProjectionLimits, ProjectionStore, Subscription},
     storage::{Acceptance, Settlement, Store, canonical_digest},
@@ -2563,6 +2563,7 @@ impl RequestHandler for Host {
             let observe = !matches!(request, RpcRequest::CatalogList(_));
             let actor = context.actor.clone();
             let mut raw_output_lease = None;
+            let mut control_guard = None;
             let result = match request {
                 RpcRequest::BrowserFileHandoff(params) => {
                     host.browser_file_handoff(context, params).await?
@@ -2615,7 +2616,9 @@ impl RequestHandler for Host {
                     RpcResult::ClientEffectAcknowledged(acknowledged)
                 }
                 RpcRequest::DebugScript(params) => {
-                    RpcResult::ScriptDebug(host.control_script_debugger(&actor, params).await?)
+                    let (response, guard) = host.control_script_debugger(&actor, params).await?;
+                    control_guard = guard;
+                    RpcResult::ScriptDebug(response)
                 }
                 RpcRequest::RunConfirmedScript(params) => {
                     RpcResult::Operation(Box::new(OperationResult {
@@ -2678,6 +2681,7 @@ impl RequestHandler for Host {
                     result: Box::new(result),
                 },
                 raw_output_lease,
+                control_guard,
             })
         })
     }

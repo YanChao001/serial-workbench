@@ -552,7 +552,9 @@ IO-12 和 TERM-10 共用 Host 的 `transfer.paste`。在可写会话的接收区
 
 暂停期间由独立客户端验证串口流可读，由另一插件验证激活和查询可完成。先运行一次普通脚本，再重复调试，覆盖 Inspector 会话编号与实际线程 ID 分离。核对进程只使用内部 Inspector 会话。在发送语句前的断点请求取消或撤权，观察真实退出、`liveWorkers=0` 和独立 Raw 零新增写入。源码摘要、会话代次、后续输出与停止均保留实际操作归属。重开工具时只能恢复仍属于当前会话和身份的任务视图。
 
-运行 `node --test scripts/node-backend-cancellation.test.mjs scripts/trusted-script-worker.test.mjs scripts/product-automation.test.mjs` 复查生产 Node 启动器、相邻任务、栈帧、取消和签名归档。固定原生运行时用 [AUTO-01 签名 Host 命令](#用户脚本运行auto-01) 复验普通脚本及调试控制。外部语言按 M5 对应运行时另验。
+运行 `node --test scripts/node-backend-cancellation.test.mjs scripts/trusted-script-worker.test.mjs scripts/product-automation.test.mjs` 复查生产 Node 启动器、相邻任务、栈帧、取消和签名归档。固定原生运行时用 [AUTO-01 签名 Host 命令](#用户脚本运行auto-01) 复验普通脚本、实际暂停中独立业务身份读取 Raw、取消及撤权后的 worker 回收。运行 `cargo test --locked -p serial-workbench-host --lib queued_debug_snapshot_requires_its_business_actor_at_delivery`，核对已经排队的快照在业务撤权后返回拒绝。外部语言按 M5 对应运行时另验。
+
+运行 `pnpm test:ui e2e/browser/trusted-script-tool.spec.ts e2e/browser/loopback-tool.spec.ts --workers=1`，保存英文宽窗及中文窄窗的无头画面。检查行号和键盘断点、确切源码和断点确认、切换调用帧、源码定位、等待与焦点移交。窄窗重开后保持当前任务可停止，撤权或实际终态到达后丢弃迟到的变量和调用栈。
 
 ### 定时与循环发送（IO-09）
 
