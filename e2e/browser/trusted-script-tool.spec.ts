@@ -6,13 +6,14 @@ import { builtinAutomation } from "./json-fixtures";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const actionId = "swb.builtin.automation.script";
-const spec = builtinAutomation.contributes.actions.find(
+const scriptContribution: unknown = builtinAutomation.contributes.actions.find(
   (entry) => entry.actionId === actionId,
 );
-if (!validateActionSpec(spec)) throw new Error("Missing signed script action");
+if (!validateActionSpec(scriptContribution))
+  throw new Error("Missing signed script action");
+const spec = scriptContribution;
 
 async function openScript(page: Page, state: "ready" | "held", narrow = false) {
-  if (!spec) throw new Error("Missing signed script action");
   await page.setViewportSize(
     narrow ? { width: 420, height: 530 } : { width: 1240, height: 760 },
   );

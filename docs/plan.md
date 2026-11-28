@@ -18,13 +18,13 @@
 
 按依赖顺序只推进队列中的当前任务。Windows 本地优先阶段以本地验收证据和待验记录衔接任务。工作区和分支按[主工作区与单任务](./conventions.md#主工作区与单任务)管理，交付合入时按[合入与清理](./conventions.md#合入与清理)收尾。
 
-1. 当前推进脚本引擎（AUTO-01）的 M4 JS/TS 前置。复用固定 Node、公开 SDK 与已有任务回收，先交付本机显式确认后的脚本运行、真实会话读写、日志和等待。M5 继续验收按需 Lua/Python，脚本编辑与调试依赖该执行入口。 [架构](./architecture.md#用户脚本运行auto-01)
+1. 接续脚本编辑器（AUTO-02）。复用 AUTO-01 的本机显式确认、源码摘要和任务输出，增加语法高亮、SDK 补全、片段和就地运行。Lua/Python 继续归 AUTO-01 的 M5 按需适配，脚本调试沿用独立 worker 入口。 [脚本引擎交付 PR #114](https://github.com/YanChao001/serial-workbench/pull/114) · [架构](./architecture.md#用户脚本运行auto-01)
 2. 按需求依赖核对 M1–M6 的 Windows 验收缺口。复用已交付的 Host RPC 与公开 SDK，继续 M4 余项、M5 专业分析与宿主市场接入，以及 M6 可在本地执行的实机、长稳和发行验收。
 3. 全部纳入范围的功能实现完成后，集中处理三平台 CI 和跨平台待验场景。DISP-15 与 PERF-06 已取得 Windows 本地百万条联合验收证据，其他适用平台按同一专项复验。
 
 ### 本轮交付与验收
 
-- AUTO-01 的 M4 JS/TS 本机脚本入口复用签名自动化 0.1.9 和固定 Node 26.13.0。Host 候选 `4d97ac7a` 校验普通调用拒绝、源码摘要和修订冲突，实际 TypeScript 经 Virtual Echo 收发 `00 FF`。独立 Raw 核对仅一笔相同操作 ID 的 TX，worker 终态存活数为 0，峰值为 1。工作台候选 `06e897fc` 的 4 项无头用例通过，含脚本工具宽窄窗和相邻环回回归。软件状态保持进行中，复验隔离原生桌面、其他适用平台及 M5 Lua/Python，实机和正式发行按各自范围登记。 [交付 PR #114](https://github.com/YanChao001/serial-workbench/pull/114) · [脚本专项](./acceptance.md#用户脚本运行auto-01)
+- AUTO-01 的 M4 JS/TS 本机脚本入口复用签名自动化 0.1.9 和固定 Node 26.13.0。Windows 候选 `3ca8dd0` 的签名 Host 校验普通调用拒绝、源码和修订冲突、同键重放与持久化摘要。实际 TypeScript 经 Virtual Echo 收发 `00 FF`，独立 Raw 核对仅一笔同操作 ID 的 TX。长延时任务取消和撤权后 worker 存活数均为 0，共享会话的第二客户端可读 Raw，脚本结果正文拒读。4 项无头用例通过，覆盖脚本工具宽窄窗、重开后停止活跃任务及相邻环回回归。软件状态保持进行中，复验隔离原生桌面、其他适用平台及 M5 Lua/Python，实机和正式发行按各自范围登记。 [交付 PR #114](https://github.com/YanChao001/serial-workbench/pull/114) · [脚本专项](./acceptance.md#用户脚本运行auto-01)
 
 - Windows 候选 `ad768963` 通过 DISP-15 与 PERF-06 共用的百万条联合验收。配对 Chromium 确认实时末条、归档首段／中段／尾页、反向翻页和原始字节定位。连续滚动与独立 Raw 搜索期间，后续录制的同步水位从 214 增至 247，Raw 命中第 250,000 条。独立 Node 逐卷核对 1,000,000 条归档与 7,616 条后续录制的索引、原始字节范围和 SHA-256。1,016 次滚动到可见的 p95 为 112.465 ms，深处查找到第 999,991 条用时 189.680 s。报告同时保留进程 RSS、队列峰值和全量样本数。两项软件状态保持进行中，继续补齐其他适用平台，实机及正式发行按各自范围登记。 [验收 PR #113](https://github.com/YanChao001/serial-workbench/pull/113) · [专项验收](./acceptance.md#大缓冲渲染与百万行基准disp-15perf-06)
 

@@ -536,7 +536,7 @@ IO-12 和 TERM-10 共用 Host 的 `transfer.paste`。在可写会话的接收区
 
 选择确认后从任务回执核对原始 `00 FF`、TX 操作 ID、日志及真实终态。从独立 Raw 连接对照 TX 回执和 RX。打开另一个会话后提交旧修订，检查拒绝且原会话无新增发送。运行带长延时的脚本，等 worker 已开始后请求停止，等真实退出后核对 `liveWorkers=0` 与零后续写入。撤权后按相同场景核对已有任务收回及后续调用被拒绝。宽窄窗分别验证关闭后草稿与任务归属、待确认的提示、焦点返回和不同会话的晚结果。
 
-在 `SWB_NODE_RUNTIME_TEST_ROOT` 指向经过验证的发行资源目录时，运行 `cargo test --locked -p serial-workbench-host --lib native_signed_user_script_is_bound_to_operator_source_and_session -- --ignored --nocapture --test-threads=1`。运行 `node --test scripts/trusted-script-worker.test.mjs scripts/node-backend-cancellation.test.mjs scripts/product-automation.test.mjs` 复查源码摘要、worker 终态、现有任务 Raw 通道与归档。Lua/Python 与外部适配器按 M5 的专用运行时另行验收。
+在 `SWB_NODE_RUNTIME_TEST_ROOT` 指向经过验证的发行资源目录时，运行 `cargo test --locked -p serial-workbench-host --lib native_signed_user_script_is_bound_to_operator_source_and_session -- --ignored --nocapture --test-threads=1`。该用例断言相同请求键重放仍为原操作，持久输入仅保留源码摘要，取消和撤权均实际回收 worker，独立 Raw 没有后续写入，同时拒绝该 Raw 读取者取得脚本结果正文。运行 `node --test scripts/trusted-script-worker.test.mjs scripts/node-backend-cancellation.test.mjs scripts/product-automation.test.mjs` 复查源码摘要、失败日志、worker 终态、任务 Raw 通道与归档。无头工作台复验使用 `pnpm test:ui e2e/browser/trusted-script-tool.spec.ts --workers=1`。Lua/Python 与外部适配器按 M5 的专用运行时另行验收。
 
 ### 定时与循环发送（IO-09）
 
