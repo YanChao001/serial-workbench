@@ -1069,10 +1069,27 @@ export function WorkbenchTools({
           />
         );
       }
+      const fileBindingsSupported =
+        actionId === builtinCommandSequenceAction &&
+        !host.browserFile &&
+        isTauri() &&
+        catalog.some(
+          (spec) =>
+            spec.actionId === actionId &&
+            isRecord(spec.inputSchema.properties) &&
+            Object.hasOwn(spec.inputSchema.properties, "fileBindings"),
+        );
       return (
         <CommandSequenceTool
           key={key}
-          access={cursorAccess}
+          access={
+            cursorAccess && {
+              ...cursorAccess,
+              pickSequenceFile: fileBindingsSupported
+                ? (signal) => host.pickFile("source", signal)
+                : undefined,
+            }
+          }
           actionId={actionId}
           operations={host.state.operations}
           beforeReplace={context.beforeReplace}

@@ -1,106 +1,23 @@
 import type {
-  FileTransferParams,
   FileTransferReceiptsParams,
   FileTransferReceiptsResult,
   Operation,
   Target,
 } from "@serial-workbench/contracts";
-import { parseU64, U64_MAX } from "@/lib/u64";
-import { isRecord } from "@/lib/settings-model";
-import { CommandSequenceError } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
-import { commandVariablePattern } from "../../../packages/plugin-sdk/src/command-template";
+import { parseU64 } from "@/lib/u64";
+import {
+  recordedFileBounds,
+  type RecordedFileStep,
+} from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-file-model";
 import { confirmedTxRange } from "./send-history-model";
 
-type RecordedRange = Required<Omit<FileTransferParams, "sourceRef">>;
-export type RecordedFileStep = RecordedRange & { kind: "file"; input: string };
+export type { RecordedFileStep } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-file-model";
+export { parseRecordedFileStep } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-file-model";
+
 export type FileReceiptReader = (
   params: FileTransferReceiptsParams,
   signal: AbortSignal,
 ) => Promise<FileTransferReceiptsResult>;
-
-const rangeKeys = [
-  "offset",
-  "length",
-  "chunkBytes",
-  "bytesPerSecond",
-  "interChunkMs",
-  "writeWaitMs",
-] as const satisfies readonly (keyof RecordedRange)[];
-
-function recordBounds(step: RecordedFileStep) {
-  const offset = parseU64(step.offset);
-  const length = parseU64(step.length);
-  const chunk = parseU64(step.chunkBytes);
-  const rate = parseU64(step.bytesPerSecond);
-  const interval = parseU64(step.interChunkMs);
-  const wait = parseU64(step.writeWaitMs);
-  if (
-    offset === undefined ||
-    !length ||
-    offset + length > U64_MAX ||
-    !chunk ||
-    chunk > 16_384n ||
-    !rate ||
-    rate > 16_777_216n ||
-    interval === undefined ||
-    interval > 2_147_483_647n ||
-    !wait
-  )
-    return;
-  return { offset, length, chunk };
-}
-
-export function parseRecordedFileStep(
-  value: unknown,
-  path: string,
-): RecordedFileStep {
-  if (
-    !isRecord(value) ||
-    value.kind !== "file" ||
-    typeof value.input !== "string" ||
-    !commandVariablePattern.test(value.input)
-  )
-    throw new CommandSequenceError(path, "Expected a named file input");
-  const {
-    offset,
-    length,
-    chunkBytes,
-    bytesPerSecond,
-    interChunkMs,
-    writeWaitMs,
-  } = value;
-  if (
-    typeof offset !== "string" ||
-    typeof length !== "string" ||
-    typeof chunkBytes !== "string" ||
-    typeof bytesPerSecond !== "string" ||
-    typeof interChunkMs !== "string" ||
-    typeof writeWaitMs !== "string" ||
-    Object.keys(value).some(
-      (key) =>
-        key !== "kind" &&
-        key !== "input" &&
-        !rangeKeys.some((option) => option === key),
-    )
-  )
-    throw new CommandSequenceError(
-      path,
-      "Expected only the file input and send options",
-    );
-  const step: RecordedFileStep = {
-    kind: "file",
-    input: value.input,
-    offset,
-    length,
-    chunkBytes,
-    bytesPerSecond,
-    interChunkMs,
-    writeWaitMs,
-  };
-  if (!recordBounds(step))
-    throw new CommandSequenceError(path, "Invalid file range or pacing");
-  return step;
-}
 
 function matchesTransfer(operation: Operation, target: Target) {
   return (
@@ -122,7 +39,7 @@ export async function confirmedFileWrite(
   read: FileReceiptReader,
   signal: AbortSignal,
 ) {
-  const bounds = recordBounds(step);
+  const bounds = recordedFileBounds(step);
   if (
     !bounds ||
     !matchesTransfer(admitted, target) ||

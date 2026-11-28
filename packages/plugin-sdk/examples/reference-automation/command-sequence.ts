@@ -1,14 +1,21 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { NodeActionHandler } from "@serial-workbench/plugin-sdk/node";
 import {
+  builtinCommandSequenceAction,
   compileCommandSequence,
   responseFramesConflict,
   type CommandSequenceStep,
 } from "./command-sequence-model.ts";
+import {
+  compilePortableSequence,
+  resolveSequenceFiles,
+  type PortableSequenceStep,
+} from "./command-sequence-file-model.ts";
 import { readExpectedResponse, type StepResult } from "./session-response.ts";
 import {
   acquireTransaction,
   maxPageReads,
+  pollMs,
   readSession,
   releaseTransaction,
   sendTransaction,
@@ -25,6 +32,7 @@ type Attempt = (StepResult | { operationId: string; outcome: "written" }) & {
   path: string;
 };
 type SendStep = Extract<CommandSequenceStep, { kind: "send" }>;
+type FileStep = Extract<PortableSequenceStep, { kind: "file" }>;
 type SendAttempt = { path: string; bytes: Uint8Array; response?: Uint8Array };
 
 function expiredCursor(error: unknown) {
@@ -40,7 +48,7 @@ export function createCommandSequence(
   wait: SequenceWait = (milliseconds, signal) =>
     delay(milliseconds, undefined, { signal }),
 ): NodeActionHandler {
-  return async ({ target, params }, task) => {
+  return async ({ actionId, target, params }, task) => {
     const { sessionId, sessionEpoch } = target;
     if (
       target.kind !== "session" ||
@@ -60,7 +68,15 @@ export function createCommandSequence(
         "A command sequence requires a current source event cursor",
       );
     let cursor = startEventSeq;
-    const plan = compileCommandSequence(params.definition);
+    const product = actionId === builtinCommandSequenceAction;
+    const plan = product
+      ? compilePortableSequence(params.definition)
+      : compileCommandSequence(params.definition);
+    const files = resolveSequenceFiles(
+      plan,
+      params.fileBindings,
+      target.hostId,
+    );
     const attempts: Attempt[] = [];
     const unresolvedReplies: Uint8Array[] = [];
     const writesWithoutReply = new Set<string>();
@@ -199,14 +215,64 @@ export function createCommandSequence(
       return last;
     }
 
+    async function runFile(step: FileStep) {
+      const { input, kind, path, ...options } = step;
+      const sourceRef = files.get(input);
+      if (
+        !sourceRef ||
+        !(await advanceWithinSession(unresolvedReplies.length > 0, false))
+      )
+        return "source_changed";
+      task.signal.throwIfAborted();
+      const admitted = await task.actions.invokeChild({
+        actionId: "transfer.file",
+        target: session,
+        params: { sourceRef, ...options },
+      });
+      let child = admitted;
+      // A file keeps its own transfer lease. Wait for the actual Host terminal state.
+      while (["queued", "running", "cancel_requested"].includes(child.state)) {
+        await delay(pollMs, undefined, { signal: task.signal });
+        child = await task.operations.get({
+          operationId: admitted.operationId,
+        });
+      }
+      const sameFileTransfer =
+        child.operationId === admitted.operationId &&
+        child.actionId === "transfer.file" &&
+        child.target.hostId === session.hostId &&
+        child.target.kind === "session" &&
+        child.target.id === session.id &&
+        child.target.sessionId === session.sessionId &&
+        child.target.sessionEpoch === session.sessionEpoch;
+      const receipt =
+        child.result?.kind === "file_transfer" ? child.result.value : undefined;
+      const written =
+        sameFileTransfer &&
+        child.state === "succeeded" &&
+        receipt?.requested === options.length &&
+        receipt.accepted === options.length &&
+        receipt.unknown === "0";
+      const outcome = written ? "written" : "transmit_unconfirmed";
+      attempts.push({ path, operationId: admitted.operationId, outcome });
+      if (written) writesWithoutReply.add(admitted.operationId);
+      return outcome;
+    }
+
     async function runSteps(
-      steps: readonly CommandSequenceStep[],
+      steps: readonly PortableSequenceStep[],
     ): Promise<StepResult["outcome"] | undefined> {
       for (const step of steps) {
         task.signal.throwIfAborted();
         let branch: readonly CommandSequenceStep[] | undefined;
         if (step.kind === "delay") {
           await wait(step.milliseconds, task.signal);
+        } else if (step.kind === "file") {
+          const outcome = await runFile(step);
+          if (outcome !== "written") {
+            stoppedAt = step.path;
+            return outcome;
+          }
         } else {
           const attempt = await runSend(step);
           switch (attempt.outcome) {

@@ -626,7 +626,7 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
         .read_prepared(
             &readback,
             StreamReadParams {
-                session_id: session.session_id.unwrap(),
+                session_id: session.session_id.clone().unwrap(),
                 session_epoch: session.session_epoch.unwrap(),
                 start_event_seq: 1.into(),
                 max_events: 32.into(),
@@ -653,5 +653,145 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
     );
     println!(
         "script_host raw_writes=1 bytes=00ff cancelled_live_workers=0 revoked_live_workers=0 shared_result_denied=true paused_lines=3,4 debug_cancel_live_workers=0 stale_debug_denied=true other_debug_actor_denied=true debug_revoked_live_workers=0 queued_snapshot_denied=true raw_during_pause=true"
+    );
+
+    let payload: Vec<u8> = (0..770).map(|index| ((index * 3) % 251) as u8).collect();
+    let path = profile.path().join("recorded-sequence-file.bin");
+    std::fs::write(&path, &payload).unwrap();
+    let source_ref = host
+        .inner
+        .files
+        .register(
+            RegisterFileParams {
+                path: path.to_str().unwrap().into(),
+                purpose: FilePurpose::ReadFile,
+            },
+            &operator,
+        )
+        .unwrap();
+    let file_target = Target {
+        host_id: source_ref.host_id.clone(),
+        id: source_ref.id.clone(),
+        kind: source_ref.kind.clone(),
+        session_id: None,
+        session_epoch: None,
+    };
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: participant.clone(),
+            permissions: vec!["device.modify".into()],
+            targets: vec![session.clone()],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+    let cursor = host.inner.streams.current_cursor(&session).unwrap();
+    let start = cursor.position.checked_next().unwrap();
+    let definition = json!({
+        "version": 2,
+        "steps": [
+            {"kind": "send", "hex": "FE"},
+            {"kind": "file", "input": "payload", "offset": "1", "length": "768",
+                "chunkBytes": "256", "bytesPerSecond": "1048576", "interChunkMs": "0",
+                "writeWaitMs": "2000"},
+            {"kind": "send", "hex": "FD"}
+        ],
+    })
+    .to_string();
+    let file_call = || {
+        call(
+            &actor,
+            &session,
+            "swb.builtin.automation.sequence",
+            json!({
+                "definition": definition,
+                "startEventSeq": start,
+                "fileBindings": [{"input": "payload", "sourceRef": source_ref}],
+            }),
+        )
+    };
+    let denied = host.invoke(&actor, file_call()).await.unwrap_err();
+    assert_eq!(denied.code, "PERMISSION_DENIED");
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: participant,
+            permissions: vec!["content.read".into()],
+            targets: vec![file_target],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+    let done = settle(host.invoke(&actor, file_call()).await.unwrap()).await;
+    assert_eq!(done.state, OperationState::Succeeded, "{done:?}");
+    let Some(ActionResult::Reference(report)) = done.result else {
+        panic!("Expected a sequence report");
+    };
+    let report = host
+        .inner
+        .files
+        .read(
+            FileReadParams {
+                file_ref: report.result_ref,
+                offset: 0.into(),
+                max_bytes: 8192.into(),
+            },
+            &actor,
+        )
+        .unwrap();
+    let value: serde_json::Value =
+        serde_json::from_slice(&STANDARD.decode(report.bytes_base64.as_str()).unwrap()).unwrap();
+    assert_eq!(value["outcome"], "completed", "{value}");
+    assert_eq!(value["completedSteps"], 3);
+    let transfer_id = Id::try_from(value["attempts"][1]["operationId"].as_str().unwrap()).unwrap();
+    let transfer = store.get(&actor, &transfer_id).unwrap();
+    assert_eq!(transfer.action_id.as_str(), "transfer.file");
+    assert!(
+        matches!(transfer.admission, Admission::Child { parent_operation_id, .. }
+        if parent_operation_id == done.operation_id)
+    );
+    let Some(ActionResult::FileTransfer(receipt)) = transfer.result else {
+        panic!("Expected file-transfer result");
+    };
+    assert_eq!(receipt.accepted, 768.into());
+    assert_eq!(receipt.unknown, 0.into());
+    let raw = host
+        .inner
+        .streams
+        .read_prepared(
+            &readback,
+            StreamReadParams {
+                session_id: session.session_id.unwrap(),
+                session_epoch: session.session_epoch.unwrap(),
+                start_event_seq: start,
+                max_events: 32.into(),
+                max_bytes: 8192.into(),
+            },
+        )
+        .await
+        .unwrap()
+        .into_parts()
+        .0;
+    let writes = raw
+        .events
+        .into_iter()
+        .filter_map(|event| match event.payload {
+            RawPayload::Tx(receipt) => Some(receipt),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(writes.len(), 5);
+    assert_eq!(writes[0].bytes_base64.as_str(), "/g==");
+    for (index, write) in writes[1..4].iter().enumerate() {
+        assert_eq!(write.operation_id, transfer_id);
+        assert_eq!(
+            STANDARD.decode(write.bytes_base64.as_str()).unwrap(),
+            &payload[(1 + 256 * index)..(1 + 256 * (index + 1))],
+        );
+    }
+    assert_eq!(writes[4].bytes_base64.as_str(), "/Q==");
+    println!(
+        "sequence_file denied_without_source=true child_receipt=768 raw_order=fe,file256,file256,file256,fd"
     );
 }

@@ -1862,6 +1862,12 @@ export const zhCN = {
   "commandSequence.inputFileRead": "无法读取所选文件，请重新选择。",
   "commandSequence.previewInput": "发送输入 {name}",
   "commandSequence.previewSend": "发送",
+  "commandSequence.sequenceFiles": "文件输入",
+  "commandSequence.bindSequenceFile": "为 {name} 绑定文件",
+  "commandSequence.sequenceFileBound": "已绑定 {name}",
+  "commandSequence.sequenceFileRequired": "运行前请选择文件。",
+  "commandSequence.sequenceFileSmall": "请选择至少 {bytes} 字节的文件。",
+  "commandSequence.sequenceFileUnavailable": "当前客户端无法绑定文件。",
   "commandSequence.previewFile":
     "发送文件输入 {name} · 从偏移 {offset} 起的 {length} 字节",
   "commandSequence.previewWriteWait": "写入期限 {ms} ms",

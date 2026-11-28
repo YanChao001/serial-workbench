@@ -2028,6 +2028,14 @@ export const en = {
     "Could not read the selected file. Choose it again.",
   "commandSequence.previewInput": "Send input {name}",
   "commandSequence.previewSend": "Send",
+  "commandSequence.sequenceFiles": "File inputs",
+  "commandSequence.bindSequenceFile": "Bind file for {name}",
+  "commandSequence.sequenceFileBound": "Bound to {name}",
+  "commandSequence.sequenceFileRequired": "Choose a file before running.",
+  "commandSequence.sequenceFileSmall":
+    "Choose a file with at least {bytes} bytes.",
+  "commandSequence.sequenceFileUnavailable":
+    "File binding is unavailable in this client.",
   "commandSequence.previewFile":
     "Send file input {name} · {length} bytes from offset {offset}",
   "commandSequence.previewWriteWait": "Write deadline {ms} ms",

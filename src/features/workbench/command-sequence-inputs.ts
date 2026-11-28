@@ -2,8 +2,6 @@ import {
   commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
-  compileCommandSequence,
-  type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
 import {
   commandVariablePattern,
@@ -13,14 +11,13 @@ import {
 import { parseHex } from "../../../packages/plugin-sdk/src/hex";
 import { isRecord } from "@/lib/settings-model";
 import {
-  parseRecordedFileStep,
-  type RecordedFileStep,
-} from "./recorded-file-step";
+  compilePortableSequence,
+  type PortableSequenceStep,
+} from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-file-model";
 
 const maxInputs = 32;
 
-type FilePreviewStep = RecordedFileStep & { path: string };
-export type SequencePreviewStep = CommandSequenceStep | FilePreviewStep;
+export type SequencePreviewStep = PortableSequenceStep;
 type SequenceDraft = {
   plan: readonly SequencePreviewStep[];
   inputs?: {
@@ -63,33 +60,6 @@ function previewFrame(
   return byte.toString(16).padStart(2, "0");
 }
 
-function compilePreview(
-  value: unknown,
-  definition: string,
-): SequencePreviewStep[] {
-  if (!isRecord(value) || value.version !== 2)
-    return compileCommandSequence(definition);
-  if (!Array.isArray(value.steps))
-    throw new CommandSequenceError("$.steps", "Expected sequence steps");
-  const files = new Map<string, FilePreviewStep>();
-  const steps = value.steps.map((step: unknown, index) => {
-    if (!isRecord(step) || step.kind !== "file") return step;
-    const path = "$.steps[" + index + "]";
-    files.set(path, { ...parseRecordedFileStep(step, path), path });
-    // Count the file in the version 1 step budget. The projected plan restores the original file.
-    return { kind: "send", hex: "00" };
-  });
-  const validated = compileCommandSequence(
-    JSON.stringify({ ...value, version: 1, steps }),
-  );
-  if (!files.size)
-    throw new CommandSequenceError(
-      "$.steps",
-      "Version 2 requires a file input",
-    );
-  return validated.map((step) => files.get(step.path) ?? step);
-}
-
 export function inspectSequenceDraft(definition: string): SequenceDraft {
   if (
     definition.length > commandSequenceMaxBytes ||
@@ -107,12 +77,12 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
     throw new CommandSequenceError("$", "Invalid JSON definition");
   }
   if (!isRecord(value) || !isRecord(value.variables))
-    return { plan: compilePreview(value, definition) };
+    return { plan: compilePortableSequence(definition) };
   const entries = Object.entries(value.variables);
   const names = entries
     .filter(([, value]) => value === null)
     .map(([name]) => name);
-  if (!names.length) return { plan: compilePreview(value, definition) };
+  if (!names.length) return { plan: compilePortableSequence(definition) };
   if (
     names.length > maxInputs ||
     names.some((name) => !commandVariablePattern.test(name))
@@ -150,7 +120,7 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
       "Each input must be referenced by a full top-level send step",
     );
   const preview = { ...value, steps, variables: literalVariables };
-  const plan = compilePreview(preview, JSON.stringify(preview));
+  const plan = compilePortableSequence(JSON.stringify(preview));
   return {
     plan,
     inputs: {
@@ -173,7 +143,7 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
           },
         };
         const serialized = JSON.stringify(bound);
-        compilePreview(bound, serialized);
+        compilePortableSequence(serialized);
         return serialized;
       },
     },

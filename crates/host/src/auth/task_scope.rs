@@ -8,6 +8,7 @@ pub(crate) struct TaskAuthority {
     pub execution_mode: ExecutionMode,
     pub scope: Target,
     pub opened_session: Option<Target>,
+    pub bound_transfer_source: Option<Target>,
     pub host_api: Vec<NodeHostApiScope>,
     pub inherited: Option<Arc<TaskAuthority>>,
     pub admission_queued: Arc<std::sync::atomic::AtomicBool>,
@@ -43,6 +44,11 @@ impl TaskAuthority {
         (self.check)()?;
         if let Some(parent) = &self.inherited {
             parent.require(permission, target)?;
+        }
+        // A signed sequence can delegate an already authorized file only to its
+        // specific file-transfer child. Queries and other child actions have no such source.
+        if permission == "content.read" && self.bound_transfer_source.as_ref() == Some(target) {
+            return Ok(());
         }
         self.check_target_scope(target)?;
         if !self.host_api.iter().any(|scope| {
@@ -130,6 +136,7 @@ mod tests {
             execution_mode: ExecutionMode::Independent,
             scope,
             opened_session: None,
+            bound_transfer_source: None,
             host_api: Vec::new(),
             inherited,
             admission_queued: Arc::default(),
