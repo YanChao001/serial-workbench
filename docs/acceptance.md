@@ -462,7 +462,7 @@ recorded_send_2                   recorded_send_2
 
 命令序列宽窗仍用「序列定义」和「执行预览」两栏。预览中每个文件槽按名称显示偏移、长度和写入期限，临时绑定在同一槽内。窄窗按定义、文件操作、槽位、预览和运行纵排。取消选择保留原绑定，换定义或关窗清除各次运行的文件选择。
 
-文件传输专项用一个 770 字节文件，从偏移 1 发送 768 字节，按 256 字节分块。用 `cargo test --locked -p serial-workbench-host --test file_transfer -- --test-threads=1` 核对实际写入的三个分块、封卷首尾页和原 TX 区间。另在首块阻塞时接纳一笔普通发送，核对整段文件的物理写入独占保持，但首尾 TX 跨度含其他请求的预留位置。录制遇这种证据只保留前缀。用 `pnpm exec vitest run src/features/workbench/manual-send-recording.test.ts` 检查生成的版本 2 定义只含槽位、偏移、长度和时序参数。无头工作台检查窄窗预览、导出和未绑定零写入。
+文件传输专项用一个 770 字节文件，从偏移 1 发送 768 字节，按 256 字节分块。用 `cargo test --locked -p serial-workbench-host --test file_transfer -- --test-threads=1` 核对实际写入的三个分块、封卷首尾页和原 TX 区间。另在首块阻塞时接纳一笔普通发送，核对整段文件的物理写入独占保持，但首尾 TX 跨度含其他请求的预留位置。录制遇这种证据只保留前缀。用 `pnpm exec vitest run src/features/workbench/manual-send-recording.test.ts` 检查生成的版本 2 定义只含槽位、偏移、长度和时序参数。无头工作台检查窄窗预览、导出和未绑定零写入。使用 `pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/transfer-progress.spec.ts --workers=1` 从传输表单确认同样的范围，关窗时丢弃表单草稿，停止录制后等待原操作封卷，核对文件槽位和确切参数。
 
 完整重绑验收须从实际传输入口录制，另存并重开，将另一份满足范围的文件选入同一槽位。确认前用独立 Raw 核对零写入，显式运行后核对文件写入子任务、偏移和三个实际分块。另验缺文件、文件长度不足、版本过期、关闭后晚结果和中途取消。原生选择器、配对文件交接、系统密钥及实物线路按各自路径取证。
 

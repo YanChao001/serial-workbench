@@ -486,6 +486,7 @@ it("shows browser local byte preview without uploading and lets the user cancel 
     expect.objectContaining({ offset: "1", length: "2" }),
     expect.any(Function),
     expect.any(AbortSignal),
+    undefined,
   );
   await user.click(
     screen.getByRole("button", { name: toolLabels.browserFile.cancelUpload }),

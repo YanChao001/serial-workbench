@@ -175,6 +175,7 @@ export type HostContextValue = {
       draft: Omit<FileTransferParams, "sourceRef">,
       report: (progress: BrowserFileProgress) => void,
       signal: AbortSignal,
+      expectedRevision?: string,
     ): Promise<Operation | null>;
     recover(signal: AbortSignal): Promise<Operation | null>;
     hasPending(): boolean;

@@ -78,7 +78,7 @@ export class ManualSendRecording {
     });
   }
 
-  addFile(params: FileTransferParams, submittedAt: number) {
+  addFile(params: Omit<FileTransferParams, "sourceRef">, submittedAt: number) {
     if (this.reason) return;
     const {
       offset,

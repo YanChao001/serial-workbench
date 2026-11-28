@@ -745,6 +745,8 @@ export function WorkbenchTools({
           context.session.readOnly
         }
         browserFile={host.browserFile}
+        observeTransfer={context.observeFileTransfer}
+        sessionRevision={context.session?.revision}
         browserTransferAvailable={catalog.some(
           (entry) =>
             entry.actionId === "transfer.file" &&
@@ -759,8 +761,17 @@ export function WorkbenchTools({
         readSource={host.readFile}
         onTransfer={
           context.target && !host.browserFile
-            ? (params, signal) =>
-                call("transfer.file", context.target!, params, signal)
+            ? (params, signal, expectedRevision) =>
+                invoke(
+                  {
+                    actionId: "transfer.file",
+                    target: context.target!,
+                    params,
+                    executionMode: "independent",
+                    expectedRevision,
+                  },
+                  signal,
+                )
             : undefined
         }
       />

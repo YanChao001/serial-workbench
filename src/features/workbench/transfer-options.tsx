@@ -36,6 +36,7 @@ import type {
 
 import { useToolActionAvailability } from "./use-tool-action-availability";
 import { useTransferFileDrop } from "./use-transfer-file-drop";
+import type { ObserveFileTransfer } from "./use-manual-send-recording";
 import { useBrowserFileDrop } from "./use-browser-file-drop";
 
 const TRANSFER_SAMPLE_BYTES = 16n;
@@ -105,12 +106,15 @@ export type TransferOptionsProps = {
   initialDraft?: TransferDraft;
   browserFile?: HostContextValue["browserFile"];
   browserTransferAvailable?: boolean;
+  observeTransfer?: ObserveFileTransfer;
+  sessionRevision?: string;
   pickSource?: (signal?: AbortSignal) => Promise<SelectedFileResource | null>;
   pickDroppedSource?: HostContextValue["pickDroppedFile"];
   readSource?: HostContextValue["readFile"];
   onTransfer?: (
     params: FileTransferParams,
     signal?: AbortSignal,
+    expectedRevision?: string,
   ) => Promise<Operation>;
   onSaveDraft?: (draft: TransferDraft, signal?: AbortSignal) => Promise<void>;
   onCancel?: (operation: Operation, signal?: AbortSignal) => Promise<void>;
@@ -135,6 +139,8 @@ function TransferOptionsForm({
   readTransferProgress,
   browserFile,
   browserTransferAvailable,
+  observeTransfer,
+  sessionRevision,
 }: TransferOptionsProps) {
   const [source, setSource] = useState<SelectedFileResource>();
   const [browserSource, setBrowserSource] = useState<File>();
@@ -333,15 +339,21 @@ function TransferOptionsForm({
         const owner = new AbortController();
         upload.current = owner;
         try {
-          const operation = await browserFile.send(
-            target,
-            browserSource,
-            draft,
-            (progress) => {
-              if (!wait.aborted) setBrowserProgress(progress);
-            },
-            AbortSignal.any([wait, owner.signal]),
-          );
+          const signal = AbortSignal.any([wait, owner.signal]);
+          const submit = (guarded: boolean) =>
+            browserFile.send(
+              target,
+              browserSource,
+              draft,
+              (progress) => {
+                if (!wait.aborted) setBrowserProgress(progress);
+              },
+              signal,
+              guarded ? sessionRevision : undefined,
+            );
+          const operation = await (observeTransfer
+            ? observeTransfer(draft, submit)
+            : submit(false));
           showOperation(operation, wait);
           if (!operation && !wait.aborted)
             setFeedback(browserLabels.uploadCancelled);
@@ -353,10 +365,13 @@ function TransferOptionsForm({
           }
         }
       } else if (onTransfer && source) {
-        showOperation(
-          await onTransfer({ ...draft, sourceRef: source.reference }, wait),
-          wait,
-        );
+        const params = { ...draft, sourceRef: source.reference };
+        const operation = await (observeTransfer
+          ? observeTransfer(draft, (guarded) =>
+              onTransfer(params, wait, guarded ? sessionRevision : undefined),
+            )
+          : onTransfer(params, wait));
+        showOperation(operation, wait);
       }
     });
   }

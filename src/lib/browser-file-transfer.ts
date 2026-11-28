@@ -120,6 +120,7 @@ export async function sendBrowserFile(
   draft: Draft,
   report: (progress: BrowserFileProgress) => void,
   signal: AbortSignal,
+  expectedRevision?: string,
 ): Promise<Operation | null> {
   if (hasPendingBrowserFile(connection))
     throw new HostRequestError({
@@ -198,7 +199,7 @@ export async function sendBrowserFile(
           revision: "1",
         },
       },
-      { executionMode: "independent" },
+      { executionMode: "independent", expectedRevision },
     );
     const owner: Pending = {
       clientId: connection.attachment.clientId,

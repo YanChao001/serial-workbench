@@ -1,16 +1,26 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { Operation, Target } from "@serial-workbench/contracts";
+import type {
+  FileTransferParams,
+  Operation,
+  Target,
+} from "@serial-workbench/contracts";
 import type { HostContextValue } from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { ManualSendRecording } from "./manual-send-recording";
 
 type Capture = { recording: ManualSendRecording; observer: AbortController };
 type Snapshot = ReturnType<ManualSendRecording["snapshot"]>;
+type TransferOptions = Omit<FileTransferParams, "sourceRef">;
+export type ObserveFileTransfer = <Result extends Operation | null>(
+  params: TransferOptions,
+  send: (guardRevision: boolean) => Promise<Result>,
+) => Promise<Result>;
 
 export function useManualSendRecording(
   scope: string | undefined,
   target: Target | undefined,
   wait: HostContextValue["waitForOperation"],
+  readFileReceipts: HostContextValue["readFileReceipts"] | undefined,
   label: string,
 ) {
   const id = useId();
@@ -72,39 +82,43 @@ export function useManualSendRecording(
     discard,
   });
 
-  async function observe(
-    bytes: Uint8Array,
-    writeWaitMs: string,
-    send: (guardRevision: boolean) => Promise<Operation>,
+  async function observeAction<Result extends Operation | null>(
+    add: (recording: ManualSendRecording) => number | undefined,
+    complete: (
+      recording: ManualSendRecording,
+      index: number,
+      admitted: Operation | undefined,
+      settled: Operation | undefined,
+      signal: AbortSignal,
+    ) => void | Promise<void>,
+    send: (guardRevision: boolean) => Promise<Result>,
   ) {
     const capture = active.current;
     if (!capture || capture.recording.scope !== scope) return send(false);
-    const index = capture.recording.add(
-      bytes,
-      performance.now(),
-      Number(writeWaitMs),
-    );
+    const index = add(capture.recording);
     if (index === undefined) {
       if (snapshot?.phase === "recording") publish(capture);
       return send(false);
     }
     publish(capture);
 
-    const settle = (admitted?: Operation, settled?: Operation) => {
-      if (active.current !== capture) return;
-      capture.recording.settle(index, admitted, settled, performance.now());
+    const { signal } = capture.observer;
+    const settle = async (admitted?: Operation, settled?: Operation) => {
+      if (active.current !== capture || signal.aborted) return;
+      await complete(capture.recording, index, admitted, settled, signal);
       publish(capture);
     };
 
-    let admitted: Operation;
+    let admitted: Result;
     try {
       admitted = await send(true);
     } catch (error) {
-      settle();
+      await settle();
       throw error;
     }
-    const { signal } = capture.observer;
-    if (!signal.aborted) {
+    if (!admitted) {
+      await settle();
+    } else if (!signal.aborted) {
       void wait(admitted, signal).then(
         (settled) => settle(admitted, settled),
         () => settle(admitted),
@@ -113,5 +127,37 @@ export function useManualSendRecording(
     return admitted;
   }
 
-  return { snapshot, start, stop, discard, observe };
+  function observe(
+    bytes: Uint8Array,
+    writeWaitMs: string,
+    send: (guardRevision: boolean) => Promise<Operation>,
+  ) {
+    return observeAction(
+      (recording) =>
+        recording.add(bytes, performance.now(), Number(writeWaitMs)),
+      (recording, index, admitted, settled) => {
+        recording.settle(index, admitted, settled, performance.now());
+      },
+      send,
+    );
+  }
+
+  const observeFile: ObserveFileTransfer = (params, send) => {
+    if (!readFileReceipts) return send(false);
+    return observeAction(
+      (recording) => recording.addFile(params, performance.now()),
+      (recording, index, admitted, settled, signal) =>
+        recording.settleFile(
+          index,
+          admitted,
+          settled,
+          readFileReceipts,
+          signal,
+          performance.now(),
+        ),
+      send,
+    );
+  };
+
+  return { snapshot, start, stop, discard, observe, observeFile };
 }
