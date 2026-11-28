@@ -1,4 +1,4 @@
-/* global scriptWorkerSource: readonly */
+/* global scriptWorkerSource: readonly, ConfirmedScriptDebugger: readonly, confirmedScriptDebugUrl: readonly */
 import { Console } from "node:console";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -904,7 +904,11 @@ function startManagedWorker(owner, task, url, workerData) {
   state.finished = finished;
   state.stop = async (reason) => {
     state.expectedStop ??= reason;
-    if (state.worker) await state.worker.terminate();
+    if (state.worker) {
+      const exit = state.worker.terminate();
+      state.scriptDebugger?.terminatePaused();
+      await exit;
+    }
     return finished;
   };
   const terminate = () => state.stop("explicit");
@@ -988,6 +992,9 @@ async function runConfirmedScript(owner, task, snapshot, bridge) {
     language,
     source,
     sourceSha256,
+    ...(task.scriptBreakpoints
+      ? { debugSourceUrl: confirmedScriptDebugUrl(sourceSha256) }
+      : {}),
   });
   const worker = state.worker;
   let finished = false;
@@ -1056,6 +1063,30 @@ async function runConfirmedScript(owner, task, snapshot, bridge) {
         }
       };
       worker.on("message", onMessage);
+      if (task.scriptBreakpoints) {
+        const debuggerSession = new ConfirmedScriptDebugger(
+          worker,
+          sourceSha256,
+          {
+            publish: (value) =>
+              emit({
+                kind: "script_debug_snapshot",
+                requestId: task.requestId,
+                value,
+              }),
+            failed: reject,
+          },
+        );
+        state.scriptDebugger = debuggerSession;
+        task.scriptDebugger = debuggerSession;
+        void debuggerSession
+          .start(task.scriptBreakpoints)
+          .then(() => {
+            if (!finished && !task.controller.signal.aborted)
+              worker.postMessage({ kind: "script-debug-start" });
+          })
+          .catch(reject);
+      }
       state.finished.then(() => {
         worker.off("message", onMessage);
         reject(
@@ -1069,8 +1100,13 @@ async function runConfirmedScript(owner, task, snapshot, bridge) {
   } finally {
     finished = true;
     if (state.worker) beginTaskCleanup(task);
-    await state.stop(task.controller.signal.aborted ? "cancel" : "explicit");
-    await pending;
+    try {
+      await state.stop(task.controller.signal.aborted ? "cancel" : "explicit");
+      await pending;
+    } finally {
+      state.scriptDebugger?.close();
+      task.scriptDebugger = undefined;
+    }
   }
 }
 
@@ -1340,6 +1376,10 @@ function invoke(message) {
     !owner ||
     owner.closed ||
     typeof handler !== "function" ||
+    (message.scriptBreakpoints !== undefined &&
+      (message.id !== SCRIPT_PACKAGE ||
+        message.call.actionId !== SCRIPT_ACTION ||
+        !message.taskContext)) ||
     invocations.has(message.requestId) ||
     invocations.size >= 8
   )
@@ -1349,6 +1389,8 @@ function invoke(message) {
     requestId: message.requestId,
     actionId: message.call.actionId,
     hostTask: message.taskContext !== undefined,
+    scriptBreakpoints: message.scriptBreakpoints,
+    scriptDebugger: undefined,
     progress: undefined,
     peakWorkers: 0,
     lastMemory: undefined,
@@ -1473,7 +1515,11 @@ function valid(message) {
   if (message.kind === "invoke")
     return (
       Object.keys(message).length ===
-        (Object.hasOwn(message, "taskContext") ? 6 : 4) &&
+        (Object.hasOwn(message, "taskContext") ? 6 : 4) +
+          (Object.hasOwn(message, "scriptBreakpoints") ? 1 : 0) &&
+      (!Object.hasOwn(message, "scriptBreakpoints") ||
+        (Array.isArray(message.scriptBreakpoints) &&
+          message.scriptBreakpoints.length <= 32)) &&
       (!Object.hasOwn(message, "taskContext") ||
         (typeof message.taskContext === "string" &&
           /^[A-Za-z0-9_-]{1,2048}$/.test(message.taskContext))) &&
@@ -1498,6 +1544,18 @@ function valid(message) {
       typeof message.params === "object" &&
       !Array.isArray(message.params)
     );
+  if (message.kind === "script_debug_command") {
+    const { command } = message;
+    return (
+      Object.keys(message).length === 4 &&
+      progressU64(message.actionRequestId) &&
+      command &&
+      !Array.isArray(command) &&
+      typeof command.action === "string" &&
+      progressU64(command.revision) &&
+      (command.frame === undefined || Number.isSafeInteger(command.frame))
+    );
+  }
   if (message.kind === "cancel_action")
     return Object.keys(message).length === 2;
   return message.kind === "shutdown" && Object.keys(message).length === 2;
@@ -1588,6 +1646,32 @@ function dispatch(message) {
       if (message.beforeAdmission) rejectedBeforeAdmission.add(error);
       pending.reject(error);
     }
+    return;
+  }
+  if (message.kind === "script_debug_command") {
+    const task = invocations.get(message.actionRequestId);
+    const debuggerSession = task?.scriptDebugger;
+    const reply = (outcome) =>
+      emit({
+        kind: "script_debug_reply",
+        requestId: message.requestId,
+        outcome,
+      });
+    if (!debuggerSession || task.controller.signal.aborted) {
+      reply("SCRIPT_DEBUG_UNAVAILABLE");
+      return;
+    }
+    void debuggerSession.command(message.command).then(
+      () => reply("accepted"),
+      (failure) =>
+        reply(
+          ["INVALID_ARGUMENT", "REVISION_CONFLICT", "HOST_BUSY"].includes(
+            failure?.code,
+          )
+            ? failure.code
+            : "SCRIPT_DEBUG_UNAVAILABLE",
+        ),
+    );
     return;
   }
   if (message.kind === "cancel_action") {

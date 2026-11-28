@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { once } from "node:events";
 import { stripTypeScriptTypes } from "node:module";
 import { setTimeout } from "node:timers/promises";
 import { parentPort, workerData } from "node:worker_threads";
@@ -131,7 +132,18 @@ function taskSerial() {
 }
 
 async function execute(logs) {
-  const source = confirmedSource(workerData);
+  const { debugSourceUrl } = workerData;
+  if (debugSourceUrl) {
+    const [message] = await once(parentPort, "message");
+    if (message?.kind !== "script-debug-start")
+      throw new ScriptFailure(
+        "SCRIPT_DEBUG_UNAVAILABLE",
+        "Script debug startup was interrupted",
+      );
+  }
+  const source =
+    confirmedSource(workerData) +
+    (debugSourceUrl ? "\n//# sourceURL=" + debugSourceUrl : "");
   const moduleUrl =
     "data:text/javascript;base64," +
     Buffer.from(source, "utf8").toString("base64");

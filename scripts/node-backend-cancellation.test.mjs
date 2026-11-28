@@ -191,6 +191,213 @@ async function runManagedScript(t, cancel) {
   );
 }
 
+test("script breakpoints expose exact TS frames while an adjacent Raw task and plugin activation continue", (t) =>
+  runDebuggerTask(t, false));
+
+test("cancelling a paused script reaps its worker with no later Raw read", (t) =>
+  runDebuggerTask(t, true));
+
+async function runDebuggerTask(t, cancel) {
+  const id = "swb.builtin.automation";
+  const actionId = id + ".script";
+  const adjacentAction = id + ".adjacent";
+  const source = [
+    "export default async ({ serial }: { serial: { read(sequence: string): Promise<unknown> } }) => {",
+    "  const data = 14;",
+    "  function compute(value: number) {",
+    "    const count = value + 2;",
+    "    return count;",
+    "  }",
+    "  const count = compute(data);",
+    '  return { count, received: await serial.read("17") };',
+    "};",
+  ].join("\n");
+  const sourceSha256 = createHash("sha256")
+    .update("serial-workbench-script-v1\0ts\0")
+    .update(source)
+    .digest("hex");
+  await withBackend(
+    t,
+    `export function register(context) {
+      const read = (task, startEventSeq) => task.streams.read({ sessionId: "device-1", sessionEpoch: "7", startEventSeq, maxEvents: "32", maxBytes: "65536" });
+      context.actions.register("${adjacentAction}", (_call, task) => read(task, "33"));
+      context.actions.register("${actionId}", (call, task) =>
+        context.workers.runConfirmedScript(call.params, { read: (startEventSeq) => read(task, startEventSeq) }));
+      return () => {};
+    }`,
+    async ({ root, entry, send, output }) => {
+      const neighborId = "example.debugprobe";
+      const neighbor = join(root, "neighbor.mjs");
+      writeFileSync(
+        neighbor,
+        `import { url } from "node:inspector";
+        export function register(context) {
+          context.queries.register("${neighborId}.listen", () => ({ inspector: url() ?? null }));
+          return () => {};
+        }`,
+      );
+      const debug = (requestId, action, revision, frame) =>
+        send({
+          kind: "script_debug_command",
+          requestId,
+          actionRequestId: "2",
+          command: {
+            action,
+            revision,
+            ...(frame === undefined ? {} : { frame }),
+          },
+        });
+      let firstPause;
+      let secondPause;
+      let selectedPause;
+      let adjacent = false;
+      let backendAvailable = false;
+      let rawReads = 0;
+      let staleRejected = false;
+      let continued = false;
+      for await (const { raw, frame } of output) {
+        if (raw) {
+          const script = frame.parentRequestId === "2";
+          if (script) {
+            assert.equal(cancel, false);
+            assert.ok(continued);
+            assert.equal(frame.params.startEventSeq, "17");
+            rawReads++;
+          } else {
+            assert.ok(firstPause);
+            assert.equal(frame.parentRequestId, "3");
+            assert.equal(frame.params.startEventSeq, "33");
+          }
+          send(
+            {
+              requestId: frame.requestId,
+              reply: {
+                ok: true,
+                result: {
+                  kind: "stream_read",
+                  nextEventSeq: "34",
+                  events: [],
+                  hasMore: false,
+                },
+              },
+            },
+            rawFlag,
+          );
+        } else if (frame.kind === "ready") {
+          send({ kind: "activate", requestId: "1", id, root, entry });
+        } else if (frame.kind === "registered" && frame.requestId === "1") {
+          send({
+            kind: "invoke",
+            requestId: "2",
+            id,
+            call: {
+              actionId,
+              params: { language: "ts", source, sourceSha256 },
+            },
+            taskContext: "owned",
+            parentOperationId: "debug-parent",
+            scriptBreakpoints: [7],
+          });
+        } else if (
+          frame.kind === "script_debug_snapshot" &&
+          frame.value.phase === "paused"
+        ) {
+          assert.equal(frame.requestId, "2");
+          const snapshot = frame.value;
+          if (!firstPause) {
+            firstPause = snapshot.revision;
+            assert.equal(snapshot.frames[0].line, 7);
+            assert.equal(
+              snapshot.variables.find(({ name }) => name === "data").preview,
+              "14",
+            );
+            send({
+              kind: "invoke",
+              requestId: "3",
+              id,
+              call: { actionId: adjacentAction },
+              taskContext: "adjacent",
+              parentOperationId: "neighbor-task",
+            });
+            send({
+              kind: "activate",
+              requestId: "10",
+              id: neighborId,
+              root,
+              entry: neighbor,
+            });
+          } else if (!secondPause) {
+            secondPause = snapshot.revision;
+            assert.ok(adjacent && backendAvailable);
+            assert.equal(snapshot.frames[0].name, "compute");
+            assert.equal(snapshot.frames[0].line, 4);
+            assert.equal(snapshot.frames[1].line, 7);
+            assert.equal(
+              snapshot.variables.find(({ name }) => name === "value").preview,
+              "14",
+            );
+            debug("14", "inspectFrame", secondPause, 1);
+          } else {
+            selectedPause = snapshot.revision;
+            assert.equal(snapshot.selectedFrame, 1);
+            assert.equal(
+              snapshot.variables.find(({ name }) => name === "data").preview,
+              "14",
+            );
+            debug("15", "continue", secondPause);
+          }
+        } else if (frame.kind === "registered" && frame.requestId === "10") {
+          send({
+            kind: "query",
+            requestId: "11",
+            id: neighborId,
+            query: { actionId: neighborId + ".listen" },
+          });
+        } else if (frame.kind === "queried" && frame.requestId === "11") {
+          assert.deepEqual(frame.value, { inspector: null });
+          backendAvailable = true;
+          if (adjacent) debug("12", "stepInto", firstPause);
+        } else if (
+          frame.kind === "action_completed" &&
+          frame.requestId === "3"
+        ) {
+          adjacent = true;
+          if (backendAvailable) debug("12", "stepInto", firstPause);
+        } else if (
+          frame.kind === "script_debug_reply" &&
+          frame.requestId === "15"
+        ) {
+          assert.equal(frame.outcome, "REVISION_CONFLICT");
+          staleRejected = true;
+          if (cancel) send({ kind: "cancel_action", requestId: "2" });
+          else {
+            continued = true;
+            debug("16", "continue", selectedPause);
+          }
+        } else if (
+          frame.requestId === "2" &&
+          (frame.kind === "action_completed" ||
+            frame.kind === "action_cancelled")
+        ) {
+          assert.ok(
+            firstPause && secondPause && selectedPause && staleRejected,
+          );
+          assert.equal(
+            frame.kind,
+            cancel ? "action_cancelled" : "action_completed",
+          );
+          assert.equal(frame.observation.workerObservation.liveWorkers, "0");
+          assert.equal(frame.observation.workerObservation.peakWorkers, "1");
+          assert.equal(rawReads, cancel ? 0 : 1);
+          if (!cancel) assert.equal(frame.value.value.count, 16);
+          return;
+        }
+      }
+      assert.fail("Node closed before settling the debug task");
+    },
+  );
+}
+
 async function withBackend(t, source, run) {
   const parent = join(project, ".cache/script-tests");
   mkdirSync(parent, { recursive: true });
@@ -237,11 +444,17 @@ async function withBackend(t, source, run) {
       "utf8",
     );
     const bootstrap = readFileSync(join(backend, "bootstrap.mjs"), "utf8");
+    const debuggerSource = readFileSync(
+      join(backend, "script-debugger.mjs"),
+      "utf8",
+    );
     send(
       Buffer.from(
         "const scriptWorkerSource = " +
           JSON.stringify(workerSource) +
           ";\n" +
+          debuggerSource +
+          "\n" +
           bootstrap,
       ),
     );

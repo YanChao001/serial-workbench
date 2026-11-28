@@ -1156,6 +1156,8 @@ impl Process {
             concat!(
                 include_str!("transport.mjs"),
                 "\n",
+                include_str!("script-debugger.mjs"),
+                "\n",
                 include_str!("bootstrap.mjs")
             )
         )
