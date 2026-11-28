@@ -152,6 +152,8 @@ export default function TrustedScriptTool({
     failure: unknown;
   }>();
   const sourceField = useRef<ScriptEditorHandle>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
+  const statusField = useRef<HTMLParagraphElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const request = useRef<AbortController | null>(null);
   const stopRequest = useRef<AbortController | null>(null);
@@ -220,6 +222,24 @@ export default function TrustedScriptTool({
     debugSource || (busy === "submitting" && debugIntent !== undefined);
   const debugDisabled =
     debuggerState.waiting || stopping === operation?.operationId;
+  const debugStatus = debuggerState.waiting
+    ? t("scriptDebug.waiting")
+    : pausedFrame
+      ? t("scriptDebug.paused", { line: pausedFrame.line })
+      : inspecting &&
+          (debuggerState.unavailable ||
+            (debugSource && debuggerState.observed && !debuggerState.snapshot))
+        ? t("scriptDebug.unavailable")
+        : inspecting &&
+            (debuggerState.snapshot?.phase === "starting" ||
+              (debugSource && !debuggerState.observed))
+          ? t("scriptDebug.starting")
+          : undefined;
+  function restoreDebugFocus() {
+    const stop = stopButton.current;
+    if (stop && !stop.disabled) stop.focus({ preventScroll: true });
+    else statusField.current?.focus({ preventScroll: true });
+  }
   const reference =
     !active && operation?.result?.kind === "reference"
       ? operation.result.value.resultRef
@@ -530,9 +550,16 @@ export default function TrustedScriptTool({
           {nativeErrorText(error, t)}
         </p>
       )}
+      {operation && (
+        <p ref={statusField} role="status" tabIndex={-1} className="text-sm">
+          {debugStatus ??
+            operationText(t, (code) => code ?? "").states[operation.state]}
+        </p>
+      )}
       {pause && (
         <ScriptDebugDetails
           pause={pause}
+          restoreFocus={restoreDebugFocus}
           disabled={debugDisabled}
           failure={debuggerState.failure}
           send={debuggerState.send}
@@ -556,15 +583,6 @@ export default function TrustedScriptTool({
               {nativeErrorText(stopError.failure, t)}
             </p>
           )}
-          <p role="status" className="text-sm">
-            {pausedFrame
-              ? t("scriptDebug.paused", { line: pausedFrame.line })
-              : debuggerState.snapshot?.phase === "starting"
-                ? t("scriptDebug.starting")
-                : operationText(t, (code) => code ?? "").states[
-                    operation.state
-                  ]}
-          </p>
           {operation.error && operation.state !== "cancelled" && (
             <p className="wrap-anywhere text-sm text-destructive">
               {nativeErrorText(operation.error, t)}
@@ -580,16 +598,18 @@ export default function TrustedScriptTool({
           )}
         </section>
       )}
-      <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 rounded-md bg-background/70 py-1 backdrop-blur-sm">
+      <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 rounded-md bg-background/95 py-1 backdrop-blur-sm">
         {pause && (
           <ScriptDebugActions
             pause={pause}
             disabled={debugDisabled}
             send={debuggerState.send}
+            restoreFocus={restoreDebugFocus}
           />
         )}
         {active && cancel && (
           <Button
+            ref={stopButton}
             variant="outline"
             disabled={
               stopping === operation.operationId ||

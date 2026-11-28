@@ -2,6 +2,7 @@ import {
   useEffect,
   useEffectEvent,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -19,7 +20,16 @@ import { useI18n } from "@/providers/i18n";
 import type { HostContextValue } from "@/providers/host-context";
 
 type DebugScope = { id: string };
-type Observation = { scope: DebugScope; snapshot?: ScriptDebugSnapshot };
+type DebugWatch = {
+  scope: DebugScope;
+  controller: AbortController;
+  inspectEpoch: number;
+};
+type Observation = {
+  scope: DebugScope;
+  snapshot?: ScriptDebugSnapshot;
+  sawDebugger: boolean;
+};
 type CommandState = { scope: DebugScope; revision: string; failure?: unknown };
 
 export function useScriptDebug(
@@ -30,49 +40,57 @@ export function useScriptDebug(
   const scope = useMemo(() => (id && rpc ? { id } : undefined), [id, rpc]);
   const [observation, setObservation] = useState<Observation>();
   const [commandState, setCommandState] = useState<CommandState>();
-  const watch = useRef<{
-    scope: DebugScope;
-    controller: AbortController;
-  } | null>(null);
+  const watch = useRef<DebugWatch | null>(null);
   const requesting = useRef<AbortController | null>(null);
-  const snapshot =
-    observation?.scope === scope ? observation?.snapshot : undefined;
+  const observed = observation?.scope === scope ? observation : undefined;
+  const snapshot = observed?.snapshot;
   const currentCommand =
     commandState?.scope === scope &&
     commandState?.revision === snapshot?.revision
       ? commandState
       : undefined;
 
-  const inspect = useEffectEvent(
-    async (owner: DebugScope, signal: AbortSignal) => {
-      if (!rpc || operation?.operationId !== owner.id || scope !== owner)
-        return;
-      let projection: ScriptDebugSnapshot | undefined;
-      try {
-        const reply = await rpc(operation, { kind: "inspect" }, signal);
-        if (reply.kind === "snapshot") projection = reply.snapshot;
-      } catch {
-        // An ordinary execution and a removed debugger have the same inspect outcome.
-      }
-      if (!signal.aborted)
-        setObservation((known) => {
-          if (
-            known?.scope === owner &&
-            known.snapshot?.revision === projection?.revision
-          )
-            return known;
-          return { scope: owner, snapshot: projection };
-        });
-    },
-  );
+  const inspect = useEffectEvent(async (owner: DebugWatch) => {
+    const { scope: observedScope, controller, inspectEpoch } = owner;
+    if (
+      !rpc ||
+      operation?.operationId !== observedScope.id ||
+      scope !== observedScope
+    )
+      return;
+    const { signal } = controller;
+    let projection: ScriptDebugSnapshot | undefined;
+    try {
+      const reply = await rpc(operation, { kind: "inspect" }, signal);
+      if (reply.kind === "snapshot") projection = reply.snapshot;
+    } catch {
+      // An ordinary execution and a removed debugger have the same inspect outcome.
+    }
+    if (signal.aborted || owner.inspectEpoch !== inspectEpoch) return;
+    setObservation((known) => {
+      if (
+        known?.scope === observedScope &&
+        known.snapshot?.revision === projection?.revision
+      )
+        return known;
+      return {
+        scope: observedScope,
+        snapshot: projection,
+        sawDebugger:
+          projection !== undefined ||
+          (known?.scope === observedScope && known.sawDebugger),
+      };
+    });
+  });
 
   useEffect(() => {
     if (!scope) return;
     const controller = new AbortController();
-    watch.current = { scope, controller };
+    const owner = { scope, controller, inspectEpoch: 0 };
+    watch.current = owner;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      await inspect(scope, controller.signal);
+      await inspect(owner);
       if (!controller.signal.aborted)
         timer = setTimeout(() => void poll(), 200);
     };
@@ -111,11 +129,11 @@ export function useScriptDebug(
       if (reply.kind !== "accepted") throw new ContractValidationError();
     } catch (failure) {
       if (controller.signal.aborted) return;
-      if (
-        nativeErrorCode(failure) === "PERMISSION_DENIED" ||
-        nativeErrorCode(failure) === "SCRIPT_DEBUG_UNAVAILABLE"
-      )
-        setObservation({ scope });
+      const code = nativeErrorCode(failure);
+      if (code === "PERMISSION_DENIED" || code === "SCRIPT_DEBUG_UNAVAILABLE") {
+        owner.inspectEpoch += 1;
+        setObservation({ scope, sawDebugger: true });
+      }
       setCommandState({ ...pending, failure });
     } finally {
       if (requesting.current === controller) requesting.current = null;
@@ -124,6 +142,8 @@ export function useScriptDebug(
 
   return {
     snapshot,
+    observed: observed !== undefined,
+    unavailable: observed?.sawDebugger === true && !snapshot,
     send,
     waiting:
       currentCommand !== undefined && currentCommand.failure === undefined,
@@ -140,18 +160,34 @@ const executionCommands = [
   ["stepOut", "scriptDebug.stepOut"],
 ] as const;
 
+function usePauseFocus(restoreFocus: () => void) {
+  const region = useRef<HTMLDivElement>(null);
+  const restore = useEffectEvent(restoreFocus);
+  useLayoutEffect(() => {
+    const element = region.current;
+    return () => {
+      if (element?.contains(element.ownerDocument.activeElement)) restore();
+    };
+  }, []);
+  return region;
+}
+
 export function ScriptDebugActions({
   pause,
   disabled,
   send,
+  restoreFocus,
 }: {
   pause: Pause;
   disabled: boolean;
   send: CommandSender;
+  restoreFocus: () => void;
 }) {
   const { t } = useI18n();
+  const region = usePauseFocus(restoreFocus);
   return (
     <div
+      ref={region}
       role="group"
       aria-label={t("scriptDebug.controls")}
       className="flex min-w-0 flex-wrap gap-2"
@@ -161,8 +197,10 @@ export function ScriptDebugActions({
           key={action}
           size="sm"
           variant="outline"
-          disabled={disabled}
-          onClick={() => void send({ action, revision: pause.revision })}
+          aria-disabled={disabled}
+          onClick={() => {
+            if (!disabled) void send({ action, revision: pause.revision });
+          }}
         >
           {t(label)}
         </Button>
@@ -177,21 +215,29 @@ export function ScriptDebugDetails({
   failure,
   send,
   locate,
+  restoreFocus,
 }: {
   pause: Pause;
   disabled: boolean;
   failure?: unknown;
   send: CommandSender;
   locate?: (frame: ScriptDebugFrame) => void;
+  restoreFocus: () => void;
 }) {
   const { t } = useI18n();
   const id = useId();
+  const region = usePauseFocus(restoreFocus);
   const frame = pause.frames[pause.selectedFrame];
   return (
-    <div className="grid min-w-0 gap-3 border-y border-border/70 py-3">
+    <div
+      ref={region}
+      className="grid min-w-0 gap-3 border-y border-border/70 py-3"
+    >
       {failure !== undefined && (
         <p role="alert" className="wrap-anywhere text-sm text-destructive">
-          {nativeErrorText(failure, t)}
+          {nativeErrorCode(failure) === "REVISION_CONFLICT"
+            ? t("scriptDebug.pauseChanged")
+            : nativeErrorText(failure, t)}
         </p>
       )}
       {frame && locate && (
@@ -220,9 +266,9 @@ export function ScriptDebugDetails({
                   variant="ghost"
                   className="h-auto w-full justify-start whitespace-normal text-start wrap-anywhere font-mono"
                   aria-pressed={index === pause.selectedFrame}
-                  disabled={disabled}
+                  aria-disabled={disabled}
                   onClick={() => {
-                    if (index !== pause.selectedFrame)
+                    if (!disabled && index !== pause.selectedFrame)
                       void send({
                         action: "inspectFrame",
                         revision: pause.revision,

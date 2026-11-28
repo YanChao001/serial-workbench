@@ -1609,6 +1609,7 @@ export const zhCN = {
   "scriptDebug.stepOut": "单步退出",
   "scriptDebug.starting": "正在启动调试",
   "scriptDebug.paused": "暂停于第 {line} 行",
+  "scriptDebug.waiting": "正在等待调试器…",
   "scriptDebug.locate": "定位至第 {line} 行第 {column} 列",
   "scriptDebug.stack": "调用栈",
   "scriptDebug.variables": "变量",

@@ -262,8 +262,24 @@ test("wide debugger confirms the exact breakpoints, steps, inspects a caller and
   await dialog.screenshot({ path: info.outputPath("script-debug-wide.png") });
   await dialog.getByRole("button", { name: "Step out", exact: true }).click();
   await expect(dialog.getByRole("status")).toHaveText("Paused on line 5");
-  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.evaluate(() => {
+    window.workbenchFixture.holdNextDebugRead = true;
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.debugReadHeld))
+    .toBe(true);
+  const resume = dialog.getByRole("button", { name: "Continue", exact: true });
+  await resume.focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("status")).toHaveText(
+    "Waiting for the debugger…",
+  );
+  await expect(resume).toBeFocused();
+  await page.evaluate(() => window.workbenchFixture.releaseDebugRead());
   await expect(dialog.getByRole("status")).toHaveText("Running");
+  await expect(
+    dialog.getByRole("button", { name: "Stop", exact: true }),
+  ).toBeFocused();
   await expect(dialog.getByRole("region", { name: "Variables" })).toBeHidden();
   expect(
     await page.evaluate(() => window.workbenchFixture.debugCommands),
@@ -306,14 +322,42 @@ test("narrow debugger reopens the owned pause and drops revoked and post-stop va
     window.workbenchFixture.debugDenied = true;
   });
   await expect(variables).toBeHidden();
+  await expect(dialog.getByRole("status")).toHaveText(
+    "此脚本调试会话已不可用。",
+  );
   await expect(dialog.getByRole("group", { name: "调试控制" })).toBeHidden();
   await page.evaluate(() => {
     window.workbenchFixture.debugDenied = false;
   });
   await expect(variables).toContainText("14");
 
+  await page.evaluate(() => {
+    window.workbenchFixture.holdNextDebugRead = true;
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.debugReadHeld))
+    .toBe(true);
+  await page.evaluate(() => {
+    window.workbenchFixture.debugDenied = true;
+  });
+  await dialog.getByRole("button", { name: "继续", exact: true }).click();
+  await expect(variables).toBeHidden();
+  await page.evaluate(() => {
+    const fixture = window.workbenchFixture;
+    fixture.debugDenied = false;
+    fixture.holdNextDebugRead = true;
+    fixture.releaseDebugRead();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.holdNextDebugRead))
+    .toBe(false);
+  await expect(variables).toBeHidden();
+  await page.evaluate(() => window.workbenchFixture.releaseDebugRead());
+  await expect(variables).toContainText("14");
+
   const stop = dialog.getByRole("button", { name: "停止", exact: true });
-  await stop.scrollIntoViewIfNeeded();
+  await variables.scrollIntoViewIfNeeded();
+  await expect(variables).toBeInViewport();
   await expect(stop).toBeInViewport();
   await dialog.screenshot({ path: info.outputPath("script-debug-narrow.png") });
   await page.evaluate(() => {

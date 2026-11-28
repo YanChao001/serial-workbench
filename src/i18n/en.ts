@@ -1735,6 +1735,7 @@ export const en = {
   "scriptDebug.stepOut": "Step out",
   "scriptDebug.starting": "Starting debugger",
   "scriptDebug.paused": "Paused on line {line}",
+  "scriptDebug.waiting": "Waiting for the debugger…",
   "scriptDebug.locate": "Go to line {line}, column {column}",
   "scriptDebug.stack": "Call stack",
   "scriptDebug.variables": "Variables",
