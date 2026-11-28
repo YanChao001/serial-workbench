@@ -18,11 +18,13 @@
 
 按依赖顺序只推进队列中的当前任务。Windows 本地优先阶段以本地验收证据和待验记录衔接任务。工作区和分支按[主工作区与单任务](./conventions.md#主工作区与单任务)管理，交付合入时按[合入与清理](./conventions.md#合入与清理)收尾。
 
-1. 接续脚本编辑器（AUTO-02）。复用 AUTO-01 的本机显式确认、源码摘要和任务输出，增加语法高亮、SDK 补全、片段和就地运行。Lua/Python 继续归 AUTO-01 的 M5 按需适配，脚本调试沿用独立 worker 入口。 [脚本引擎交付 PR #114](https://github.com/YanChao001/serial-workbench/pull/114) · [架构](./architecture.md#用户脚本运行auto-01)
+1. 接续脚本调试（AUTO-03）。复用已交付的本机 JS/TS worker 和脚本编辑器。在独立任务中实现断点、单步、变量和调用栈，验证调试暂停时采集继续。外部语言仍随 M5 按需运行时分别验证。 [脚本编辑器交付 PR #115](https://github.com/YanChao001/serial-workbench/pull/115) · [需求](./requirements.md#自动化与测试auto)
 2. 按需求依赖核对 M1–M6 的 Windows 验收缺口。复用已交付的 Host RPC 与公开 SDK，继续 M4 余项、M5 专业分析与宿主市场接入，以及 M6 可在本地执行的实机、长稳和发行验收。
 3. 全部纳入范围的功能实现完成后，集中处理三平台 CI 和跨平台待验场景。DISP-15 与 PERF-06 已取得 Windows 本地百万条联合验收证据，其他适用平台按同一专项复验。
 
 ### 本轮交付与验收
+
+- AUTO-02 的脚本编辑器复用 AUTO-01 的显式确认与任务输出。Windows 候选 `4ef0f10` 的 5 项无头 Chromium 核对宽窄窗、语法和调用高亮、JS/TS 切换保留源码、SDK 补全及接收者边界、片段选区和撤销、错误行定位、中文补全与组合态 Esc，以及原有确认和停止。2,917 项前端测试、12 项产物许可检查通过。脚本编辑使用 Virtual Echo 关联任务即可验收，物理串口归 AUTO-01。隔离原生桌面、其他适用平台和正式发行仍待验。 [交付 PR #115](https://github.com/YanChao001/serial-workbench/pull/115) · [编辑器专项](./acceptance.md#脚本编辑器auto-02)
 
 - AUTO-01 的 M4 JS/TS 本机脚本入口复用签名自动化 0.1.9 和固定 Node 26.13.0。Windows 候选 `3ca8dd0` 的签名 Host 校验普通调用拒绝、源码和修订冲突、同键重放与持久化摘要。实际 TypeScript 经 Virtual Echo 收发 `00 FF`，独立 Raw 核对仅一笔同操作 ID 的 TX。长延时任务取消和撤权后 worker 存活数均为 0，共享会话的第二客户端可读 Raw，脚本结果正文拒读。4 项无头用例通过，覆盖脚本工具宽窄窗、重开后停止活跃任务及相邻环回回归。软件状态保持进行中，复验隔离原生桌面、其他适用平台及 M5 Lua/Python，实机和正式发行按各自范围登记。 [交付 PR #114](https://github.com/YanChao001/serial-workbench/pull/114) · [脚本专项](./acceptance.md#用户脚本运行auto-01)
 
@@ -123,7 +125,7 @@
 
 每项按需求矩阵的最终目标里程碑计入一次。M0 基座见下方验证基线。软件通过以逐项适用的软件验收证据为准，阶段出口证据的覆盖见下方验证基线。实机和发行按账本及专项分别登记。
 
-「待补齐」对应账本的 `in-progress`，统计仍缺实现或适用软件验收证据的需求。第 86 号 PR 核对主线后有 161 项，随后 10 项转为软件通过，IO-15 在通用预处理合入后新增为待补齐，LOG-09、LOG-14、CONN-10、DISP-18、UX-07、UX-09 交付后合计 158 项。#109 推进 DISP-15 和 PERF-06 后共有 160 项待补齐，#114 推进 AUTO-01 后为 161 项。实际执行队列见[当前任务顺序](#当前任务顺序)。 [第 86 号 PR](https://github.com/YanChao001/serial-workbench/pull/86) · [IO-15 交付](https://github.com/YanChao001/serial-workbench/pull/95)
+「待补齐」对应账本的 `in-progress`，统计仍缺实现或适用软件验收证据的需求。第 86 号 PR 核对主线后有 161 项，随后 10 项转为软件通过，IO-15 在通用预处理合入后新增为待补齐，LOG-09、LOG-14、CONN-10、DISP-18、UX-07、UX-09 交付后合计 158 项。#109 推进 DISP-15 和 PERF-06 后共有 160 项待补齐，#114 推进 AUTO-01 后为 161 项，#115 推进 AUTO-02 后为 162 项。实际执行队列见[当前任务顺序](#当前任务顺序)。 [第 86 号 PR](https://github.com/YanChao001/serial-workbench/pull/86) · [IO-15 交付](https://github.com/YanChao001/serial-workbench/pull/95)
 
 | 软件需求 | 纳入 | 通过 | 待补齐 | 未启动 |
 | -------- | ---: | ---: | -----: | -----: |
