@@ -54,6 +54,7 @@ import { readReplayRecord as readRecord } from "@/lib/host-reader";
 import {
   hostConnectDevice,
   hostConnectionSequenceIntent,
+  hostRunConfirmedScript,
   chooseFileResource,
   claimTransferDrop,
   hostApplyDocumentIntent,
@@ -102,6 +103,7 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 type HostUserActions = {
   connectDevice: typeof hostConnectDevice;
   connectionSequenceIntent?: typeof hostConnectionSequenceIntent;
+  runConfirmedScript?: typeof hostRunConfirmedScript;
   chooseFile: typeof chooseFileResource;
   claimDrop?: typeof claimTransferDrop;
   applyDocumentIntent: typeof hostApplyDocumentIntent;
@@ -128,6 +130,7 @@ export function createHostWorkspace(
   userActions: HostUserActions | null = {
     connectDevice: hostConnectDevice,
     connectionSequenceIntent: hostConnectionSequenceIntent,
+    runConfirmedScript: hostRunConfirmedScript,
     chooseFile: chooseFileResource,
     claimDrop: claimTransferDrop,
     applyDocumentIntent: hostApplyDocumentIntent,
@@ -1637,6 +1640,34 @@ export function createHostWorkspace(
       })();
       return waitForHost(pending, waiting);
     });
+  const runScript = connection.lanRoute
+    ? undefined
+    : userActions?.runConfirmedScript;
+  const runConfirmedScript: HostContextValue["runConfirmedScript"] =
+    runScript &&
+    ((intent, signal) => {
+      const waiting = AbortSignal.any([signal, lifetime.signal]);
+      waiting.throwIfAborted();
+      const pending = runScript(connection.generation, intent).then(
+        (operation) => {
+          lifetime.signal.throwIfAborted();
+          if (
+            operation.requestId !== intent.requestId ||
+            operation.actionId !== "swb.builtin.automation.script" ||
+            operation.actorId !== connection.attachment.actorId ||
+            operation.executionHostId !== intent.target.hostId ||
+            !sameTarget(operation.target, intent.target)
+          ) {
+            throw new ContractValidationError(
+              "Script admission belongs to another request",
+            );
+          }
+          updateOperation(operation);
+          return operation;
+        },
+      );
+      return waitForHost(pending, waiting);
+    });
   async function fileMetadata(reference: ObjectRef, signal?: AbortSignal) {
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
@@ -2222,6 +2253,7 @@ export function createHostWorkspace(
     pickDroppedFile,
     trustedConnect,
     connectionSequenceIntent,
+    runConfirmedScript,
     readFile,
     fileMetadata,
     readReplayRecord,

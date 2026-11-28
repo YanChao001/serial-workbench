@@ -247,6 +247,7 @@ export type WorkbenchTool =
   | "testSuite"
   | "ruleTrigger"
   | "loopback"
+  | "trustedScript"
   | "characterRemap"
   | "diagnostics";
 type WorkbenchPanel =
@@ -285,6 +286,7 @@ function activityPanel(
     case "commandSequence":
     case "ruleTrigger":
     case "loopback":
+    case "trustedScript":
     case "characterRemap":
     case "diagnostics":
     case "capture":
@@ -426,6 +428,7 @@ export type WorkspaceLayoutProps = {
         | "testSuite"
         | "ruleTrigger"
         | "loopback"
+        | "trustedScript"
         | "characterRemap"
       >
     | "more"
@@ -451,6 +454,7 @@ export type WorkspaceLayoutProps = {
     testSuite?: string;
     ruleTrigger?: string;
     loopback?: string;
+    trustedScript?: string;
     characterRemap?: string;
     mappedReceive?: string;
     manualRecording?: ManualRecordingLabels;
@@ -1485,7 +1489,9 @@ export function WorkspaceLayout({
         (panel === "replayTransmit" &&
           activity.actionId === "replay.transmit") ||
         (panel === "connectionSequence" &&
-          activity.actionId === builtinConnectionSequenceAction)
+          activity.actionId === builtinConnectionSequenceAction) ||
+        (panel === "trustedScript" &&
+          activity.actionId === "swb.builtin.automation.script")
           ? activity.operationId
           : undefined;
       if (

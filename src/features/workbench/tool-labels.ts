@@ -422,6 +422,7 @@ export function workbenchToolLabels(t: Translate) {
     testSuite: t("testSuite.title"),
     ruleTrigger: t("ruleTrigger.title"),
     loopback: t("loopback.title"),
+    trustedScript: t("trustedScript.title"),
     characterRemap: t("characterRemap.title"),
     mappedReceive: t("characterRemap.receiveMode"),
     manualRecording: {

@@ -117,6 +117,7 @@ export type WorkbenchFixture = {
   manualSendRevision: string;
   manualSendAcceptedBytes?: number;
   invocations: Call[];
+  confirmedScripts: import("../../src/lib/tauri").LocalScriptIntent[];
   clientStateReads: number;
   sentBytes: string[];
   savedTextExports: { name: string; content: string }[];
@@ -1204,6 +1205,7 @@ export async function seedWorkbenchFixture(
       sendHistoryReadable: true,
       manualSendRevision: openedSession.revision,
       invocations: [],
+      confirmedScripts: [],
       clientStateReads: 0,
       sentBytes: [],
       savedTextExports: [],
@@ -1440,6 +1442,50 @@ export async function seedWorkbenchFixture(
         },
         unregisterCallback: (id: number) => callbacks.delete(id),
         async invoke(command: string, args: Record<string, unknown> = {}) {
+          if (command === "host_run_confirmed_script") {
+            const actionId = "swb.builtin.automation.script";
+            if (
+              automation?.action.actionId !== actionId ||
+              args.generation !== hostAttachment.generation
+            )
+              throw new Error("Unexpected native script intent");
+            const intent =
+              args.intent as WorkbenchFixture["confirmedScripts"][number];
+            fixture.confirmedScripts.push(intent);
+            const operationId =
+              "fixture-script-" + fixture.confirmedScripts.length;
+            const held = automation.state === "held";
+            automationOperation = {
+              ...sentOperation,
+              actionId,
+              operationId,
+              rootOperationId: operationId,
+              actorId: hostAttachment.attachment.actorId,
+              target: intent.target,
+              requestId: intent.requestId,
+              executionMode: "independent",
+              state: held ? "running" : "succeeded",
+              result: held
+                ? undefined
+                : {
+                    kind: "reference",
+                    value: {
+                      resultRef: {
+                        hostId: intent.target.hostId,
+                        kind: "plugin_result",
+                        id: operationId,
+                        revision: "1",
+                      },
+                    },
+                  },
+            };
+            automationFile = JSON.stringify({
+              kind: "completed",
+              logs: ["echo"],
+              value: { bytes: "00 FF" },
+            });
+            return automationOperation;
+          }
           const nativeSequence = command === "host_connection_sequence_intent";
           if (nativeSequence) {
             if (

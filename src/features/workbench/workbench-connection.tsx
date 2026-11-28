@@ -534,6 +534,13 @@ export function WorkbenchConnection({
                   {toolLabels.characterRemap}
                 </DropdownMenuItem>
               )}
+              {toolLabels?.trustedScript && (
+                <DropdownMenuItem
+                  onSelect={() => selectToolFromMenu("trustedScript")}
+                >
+                  {toolLabels.trustedScript}
+                </DropdownMenuItem>
+              )}
               {toolLabels?.loopback && (
                 <DropdownMenuItem
                   onSelect={() => selectToolFromMenu("loopback")}
