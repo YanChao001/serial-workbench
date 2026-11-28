@@ -133,6 +133,8 @@ export function useScriptDebug(
       if (code === "PERMISSION_DENIED" || code === "SCRIPT_DEBUG_UNAVAILABLE") {
         owner.inspectEpoch += 1;
         setObservation({ scope, sawDebugger: true });
+        setCommandState(undefined);
+        return;
       }
       setCommandState({ ...pending, failure });
     } finally {
@@ -264,7 +266,7 @@ export function ScriptDebugDetails({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-auto w-full justify-start whitespace-normal text-start wrap-anywhere font-mono"
+                  className="h-auto w-full justify-start whitespace-normal text-start wrap-anywhere font-mono aria-pressed:bg-accent"
                   aria-pressed={index === pause.selectedFrame}
                   aria-disabled={disabled}
                   onClick={() => {

@@ -354,6 +354,7 @@ test("narrow debugger reopens the owned pause and drops revoked and post-stop va
   await expect(variables).toBeHidden();
   await page.evaluate(() => window.workbenchFixture.releaseDebugRead());
   await expect(variables).toContainText("14");
+  await expect(dialog.getByRole("alert")).toBeHidden();
 
   const stop = dialog.getByRole("button", { name: "停止", exact: true });
   await variables.scrollIntoViewIfNeeded();
