@@ -181,6 +181,13 @@ export const commands = {
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_node_intent", { generation, intent }),
     ),
+  hostRunConfirmedScript: (
+    generation: U64,
+    intent: LocalScriptIntent_Deserialize,
+  ) =>
+    typedError<Operation_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_run_confirmed_script", { generation, intent }),
+    ),
   hostOpenNodeView: (
     generation: U64,
     operationId: Id,
@@ -1834,6 +1841,19 @@ export type ConfigurationBoundary_Serialize = {
 
 export type ConfigureParams = {
   requested: SerialConfiguration;
+};
+
+export type ConfirmedScriptInvocation =
+  ConfirmedScriptInvocation_Serialize | ConfirmedScriptInvocation_Deserialize;
+
+export type ConfirmedScriptInvocation_Deserialize = {
+  clientId: Id;
+  call: Call_Deserialize;
+};
+
+export type ConfirmedScriptInvocation_Serialize = {
+  clientId: Id;
+  call: Call_Serialize;
 };
 
 export type ConnectionDefault =
@@ -3776,6 +3796,29 @@ export type LocalNodeIntent_Serialize =
       params: NodeSourceRevokeParams;
     };
 
+export type LocalScriptIntent =
+  LocalScriptIntent_Serialize | LocalScriptIntent_Deserialize;
+
+export type LocalScriptIntent_Deserialize = {
+  requestId: RequestId;
+  target: Target_Deserialize;
+  language: string;
+  source: string;
+  sourceSha256: Digest;
+  sessionRevision: U64;
+  configurationRevision: U64;
+};
+
+export type LocalScriptIntent_Serialize = {
+  requestId: RequestId;
+  target: Target_Serialize;
+  language: string;
+  source: string;
+  sourceSha256: Digest;
+  sessionRevision: U64;
+  configurationRevision: U64;
+};
+
 export type MediaResolution = {
   ticket: string;
   url: string;
@@ -4811,6 +4854,7 @@ export type ReplayReadResult_Deserialize = {
   nextRecord: U64;
   atEnd: boolean;
   playback?: ReplayPlaybackState_Deserialize;
+  archiveTotalRecords?: U64;
 };
 
 export type ReplayReadResult_Serialize = {
@@ -4820,6 +4864,7 @@ export type ReplayReadResult_Serialize = {
   nextRecord: U64;
   atEnd: boolean;
   playback?: ReplayPlaybackState_Serialize;
+  archiveTotalRecords?: U64;
 };
 
 export type ReplayRecord = ReplayRecord_Serialize | ReplayRecord_Deserialize;
@@ -4982,6 +5027,10 @@ export type RpcRequest_Deserialize =
   | { method: "host.attach"; params: AttachParams_Deserialize }
   | { method: "catalog.list"; params: Query_Deserialize }
   | { method: "action.invoke"; params: Call_Deserialize }
+  | {
+      method: "script.runConfirmed";
+      params: ConfirmedScriptInvocation_Deserialize;
+    }
   | { method: "action.invokeChild"; params: ChildCall_Deserialize }
   | { method: "operation.get"; params: Query_Deserialize }
   | { method: "operation.cancel"; params: Call_Deserialize }
@@ -5008,6 +5057,10 @@ export type RpcRequest_Serialize =
   | { method: "host.attach"; params: AttachParams_Serialize }
   | { method: "catalog.list"; params: Query_Serialize }
   | { method: "action.invoke"; params: Call_Serialize }
+  | {
+      method: "script.runConfirmed";
+      params: ConfirmedScriptInvocation_Serialize;
+    }
   | { method: "action.invokeChild"; params: ChildCall_Serialize }
   | { method: "operation.get"; params: Query_Serialize }
   | { method: "operation.cancel"; params: Call_Serialize }

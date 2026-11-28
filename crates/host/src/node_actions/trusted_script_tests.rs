@@ -1,0 +1,306 @@
+use super::*;
+use crate::{
+    ipc::HostServer,
+    node_runtime::{NodeRuntimeLimits, verify_node_runtime},
+};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use serde_json::json;
+use sha2::{Digest as _, Sha256};
+use std::{path::Path, sync::atomic::AtomicBool, time::Duration};
+
+#[tokio::test]
+#[ignore = "Needs a verified native Node distribution in SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
+    let root = std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap();
+    let runtime = verify_node_runtime(
+        Path::new(&root),
+        &NodeRuntimeLimits::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let profile = crate::test_support::Profile::isolated("host-trusted-script-");
+    let server = HostServer::bind(profile.path()).await.unwrap();
+    let credential = serial_workbench_client::read_user_control_credential(profile.path()).unwrap();
+    let auth = server.auth();
+    let local_client = Id::try_from("script-operator").unwrap();
+    let operator = auth
+        .authenticate_user_control(&local_client, &credential)
+        .unwrap();
+    let participant = Id::try_from("script-participant").unwrap();
+    let registration = auth.authenticate(&participant, None).unwrap();
+    let actor = registration.actor;
+    let store = server.store();
+    let identity = store.identity().unwrap();
+    let host = Host::initialize(
+        store.clone(),
+        auth.clone(),
+        Arc::new(crate::clock::SystemClock::new().unwrap()),
+        DeviceSource::Opener(crate::device::DeviceService::virtual_opener()),
+        Some(StartupConfigSnapshot {
+            profile_reference: StartupProfileReference::HostProfile,
+            profile_source: StartupConfigSource::Argument,
+            log_level: StartupLogLevel::Info,
+            log_level_source: StartupConfigSource::Default,
+        }),
+        Some(runtime),
+    )
+    .await
+    .unwrap();
+
+    let package = NodePackageId::try_from("swb.builtin.automation").unwrap();
+    let catalog = &host.inner.registry.runtime;
+    let mut changes = catalog.subscribe();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            let status = catalog.status(&package).unwrap();
+            assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+            if status.phase == NodePackageRuntimePhase::Active {
+                break;
+            }
+            changes.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+
+    let device = Target {
+        host_id: identity.host_id.clone(),
+        kind: ResourceKind::try_from("device").unwrap(),
+        id: Id::try_from("virtual:echo").unwrap(),
+        session_id: None,
+        session_epoch: None,
+    };
+    let call = |caller: &AuthenticatedActor,
+                target: &Target,
+                action: &str,
+                params: serde_json::Value| Call {
+        protocol_version: ProtocolVersion::V1_0,
+        host_id: identity.host_id.clone(),
+        instance_epoch: identity.instance_epoch,
+        actor_id: caller.id().clone(),
+        request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+        request_context: store.issue_context(caller).unwrap().token,
+        action_id: Id::try_from(action).unwrap(),
+        target: target.clone(),
+        params: serde_json::from_value(params).unwrap(),
+        reveal_target: RevealTarget {
+            page_id: Id::try_from("workbench").unwrap(),
+            panel_id: None,
+            session_id: None,
+            workspace_id: None,
+            result_ref: None,
+        },
+        expected_revision: None,
+        lease_id: None,
+        execution_mode: Some(ExecutionMode::Independent),
+        workspace_startup: None,
+    };
+    let settle = |operation: Operation| {
+        let store = store.clone();
+        let observer = actor.clone();
+        async move {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let current = store.get(&observer, &operation.operation_id).unwrap();
+                    if current.state.is_terminal() {
+                        return current;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap()
+        }
+    };
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: participant.clone(),
+            permissions: vec!["device.modify".into()],
+            targets: vec![device.clone()],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+    let opened = host
+        .invoke(
+            &actor,
+            call(
+                &actor,
+                &device,
+                "device.open",
+                json!({"configuration": SerialConfiguration::default()}),
+            ),
+        )
+        .await
+        .unwrap();
+    let opened = settle(opened).await;
+    let Some(ActionResult::Opened(opened)) = opened.result else {
+        panic!("Expected Virtual Echo, got {opened:?}");
+    };
+    let session = Target {
+        host_id: identity.host_id.clone(),
+        kind: ResourceKind::try_from("session").unwrap(),
+        id: opened.session_id.clone(),
+        session_id: Some(opened.session_id),
+        session_epoch: Some(opened.session_epoch),
+    };
+    let snapshot = host
+        .inner
+        .devices
+        .session(&session)
+        .unwrap()
+        .snapshot()
+        .unwrap();
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: participant.clone(),
+            permissions: ["metadata.read", "content.read", "device.modify"]
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            targets: vec![session.clone()],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+    let actor = auth
+        .authenticate(&participant, registration.issued_credential.as_ref())
+        .unwrap()
+        .actor;
+    let confirmed = |params| ConfirmedScriptInvocation {
+        client_id: participant.clone(),
+        call: Box::new(call(&actor, &session, TRUSTED_SCRIPT_ACTION, params)),
+    };
+    let input = |source: &str| {
+        let digest =
+            Sha256::digest([b"serial-workbench-script-v1\0ts\0", source.as_bytes()].concat());
+        json!({
+            "language": "ts",
+            "source": source,
+            "sourceSha256": format!("{digest:x}"),
+            "sessionRevision": snapshot.revision,
+            "configurationRevision": snapshot.configuration_revision,
+        })
+    };
+    const SOURCE: &str = r#"
+        export default async function run({serial, delay, log}: {serial: {send(bytes: Uint8Array): Promise<unknown>; read(cursor: string): Promise<{events: Array<{kind: string; payload: {bytesBase64: string}}>}>}; delay(ms: number): Promise<void>; log(text: string): void}) {
+          const receipt = await serial.send(new Uint8Array([0, 255]));
+          for (let attempt = 0; attempt < 25; attempt++) {
+            const page = await serial.read("1");
+            const rx = page.events.find((event: {kind: string}) => event.kind === "rx");
+            if (rx) {
+              log("echo");
+              return { tx: receipt, rx: rx.payload.bytesBase64 };
+            }
+            await delay(10);
+          }
+          throw new Error("Expected Virtual Echo RX");
+        }
+    "#;
+    assert_eq!(
+        host.invoke(
+            &actor,
+            call(&actor, &session, TRUSTED_SCRIPT_ACTION, input(SOURCE))
+        )
+        .await
+        .unwrap_err()
+        .code,
+        "PERMISSION_DENIED"
+    );
+    let mut changed = input(SOURCE);
+    changed["source"] = json!("export default () => null;");
+    assert_eq!(
+        host.invoke_confirmed_script(&operator, confirmed(changed))
+            .await
+            .unwrap_err()
+            .code,
+        "SCRIPT_SOURCE_CHANGED"
+    );
+    let mut stale = input(SOURCE);
+    stale["configurationRevision"] = json!("999");
+    assert_eq!(
+        host.invoke_confirmed_script(&operator, confirmed(stale))
+            .await
+            .unwrap_err()
+            .code,
+        "REVISION_CONFLICT"
+    );
+
+    let operation = host
+        .invoke_confirmed_script(&operator, confirmed(input(SOURCE)))
+        .await
+        .unwrap();
+    let completed = settle(operation).await;
+    assert_eq!(completed.state, OperationState::Succeeded, "{completed:?}");
+    let worker = completed.worker_observation.as_ref().unwrap();
+    assert_eq!(worker.peak_workers.get(), 1);
+    assert_eq!(worker.live_workers.get(), 0);
+    let Some(ActionResult::Reference(output)) = completed.result else {
+        panic!("Expected the signed script result");
+    };
+    let file = host
+        .inner
+        .files
+        .read(
+            FileReadParams {
+                file_ref: output.result_ref,
+                offset: 0.into(),
+                max_bytes: 8192.into(),
+            },
+            &actor,
+        )
+        .unwrap();
+    assert!(file.at_end);
+    let output: serde_json::Value =
+        serde_json::from_slice(&STANDARD.decode(file.bytes_base64.as_str()).unwrap()).unwrap();
+    assert_eq!(output["kind"], "completed");
+    assert_eq!(output["logs"], json!(["echo"]));
+    assert_eq!(output["value"]["rx"], "AP8=");
+    assert_eq!(output["value"]["tx"]["bytesBase64"], "AP8=");
+    assert_eq!(output["value"]["tx"]["outcome"], "accepted");
+    let readback_client = Id::try_from("script-readback").unwrap();
+    let readback = auth.authenticate(&readback_client, None).unwrap().actor;
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: readback_client,
+            permissions: vec!["content.read".into()],
+            targets: vec![session.clone()],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+    let raw = host
+        .inner
+        .streams
+        .read_prepared(
+            &readback,
+            StreamReadParams {
+                session_id: session.session_id.unwrap(),
+                session_epoch: session.session_epoch.unwrap(),
+                start_event_seq: 1.into(),
+                max_events: 32.into(),
+                max_bytes: 8192.into(),
+            },
+        )
+        .await
+        .unwrap()
+        .into_parts()
+        .0;
+    let writes: Vec<_> = raw
+        .events
+        .into_iter()
+        .filter_map(|event| match event.payload {
+            RawPayload::Tx(receipt) => Some(receipt),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(writes.len(), 1, "Denied scripts must create no TX");
+    assert_eq!(writes[0].bytes_base64.as_str(), "AP8=");
+    assert_eq!(
+        json!(writes[0].operation_id),
+        output["value"]["tx"]["operationId"]
+    );
+}

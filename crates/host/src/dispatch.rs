@@ -2614,6 +2614,11 @@ impl RequestHandler for Host {
                     };
                     RpcResult::ClientEffectAcknowledged(acknowledged)
                 }
+                RpcRequest::RunConfirmedScript(params) => {
+                    RpcResult::Operation(Box::new(OperationResult {
+                        operation: host.invoke_confirmed_script(&actor, params).await?,
+                    }))
+                }
                 RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => {
                     RpcResult::Operation(Box::new(OperationResult {
                         operation: host.invoke(&actor, call).await?,
@@ -3016,6 +3021,7 @@ mod tests {
                     (&automation, "swb.builtin.automation.calendar"),
                     (&automation, "swb.builtin.automation.loopback"),
                     (&automation, "swb.builtin.automation.connect"),
+                    (&automation, "swb.builtin.automation.script"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {

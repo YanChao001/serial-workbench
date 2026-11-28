@@ -158,6 +158,19 @@ impl AuthService {
             false,
         ))
     }
+    pub(crate) fn restore_for_operator(
+        &self,
+        operator: &AuthenticatedActor,
+        client_id: Id,
+        actor_id: Id,
+    ) -> HostResult<AuthenticatedActor> {
+        self.require_control(operator)?;
+        self.restore_actor(&super::ActorReference {
+            client_id,
+            actor_id,
+        })
+    }
+
     pub fn new(store: Store, control: ContextToken) -> Self {
         Self::with_clock(
             store,

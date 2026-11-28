@@ -1149,12 +1149,17 @@ impl Process {
         cancel: &AtomicBool,
         observation: Arc<Mutex<ExitObservation>>,
     ) -> HostResult<Self> {
-        let bootstrap = concat!(
-            include_str!("transport.mjs"),
-            "\n",
-            include_str!("bootstrap.mjs")
+        let script_worker = serde_json::to_string(include_str!("script-worker.mjs"))
+            .map_err(|_| error("INTERNAL_ERROR", "scriptWorkerSource"))?;
+        let bootstrap = format!(
+            "const scriptWorkerSource = {script_worker};\n{}",
+            concat!(
+                include_str!("transport.mjs"),
+                "\n",
+                include_str!("bootstrap.mjs")
+            )
         )
-        .as_bytes();
+        .into_bytes();
         if bootstrap.is_empty() || bootstrap.len() > serial_workbench_ipc::frame::MAX_FRAME_BYTES {
             return Err(error("LIMIT_EXCEEDED", "backendBootstrapFrame"));
         }
@@ -1188,7 +1193,7 @@ impl Process {
         owner
             .io
             .send
-            .try_send(bootstrap.to_vec())
+            .try_send(bootstrap)
             .map_err(|_| error("HOST_BUSY", "backendBootstrapQueue"))?;
         Ok(owner)
     }

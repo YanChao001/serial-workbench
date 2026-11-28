@@ -4,6 +4,29 @@
 
 从仓库根运行 `pnpm plugin-sdk:fixture` 可编译参考入口。要验证安装、调用和退出，继续走[签名运行时与 SDK 验收](../../docs/acceptance.md#签名运行时与-sdk)。查 manifest 版本、声明、文件结果及可信安装边界时，使用 [Node 扩展契约](../../docs/contracts/node-extension-v0.md)。
 
+## 本机用户脚本
+
+工作台的「运行脚本」接受一个 JS 或 TS 模块，入口是默认导出函数。TypeScript 使用固定 Node 的类型擦除。下面的类型导入在执行前擦除。
+
+```ts
+import type { TrustedScriptApi } from "@serial-workbench/plugin-sdk/node";
+
+export default async function run({ serial, delay, log }: TrustedScriptApi) {
+  const receipt = await serial.send(new Uint8Array([0, 255]));
+  if (receipt.outcome !== "accepted") {
+    throw new Error(`Serial write ended with ${receipt.outcome}`);
+  }
+  await delay(30);
+  const page = await serial.read("1");
+  log(`Read ${page.events.length} events`);
+  return { operationId: receipt.operationId, nextEventSeq: page.nextEventSeq };
+}
+```
+
+`serial.read` 从显式事件序号读取已授权会话的留存页。续页使用 `nextEventSeq`，并按真实缺口处理过期或换代。每次等待当前串口请求结束后再发起下一项。写入返回真实 TX 回执，任务不会自动重试。日志用 `log` 收集纯文本，函数返回可序列化 JSON。运行前核对目标会话和脚本 SHA-256，仅从明确的本机控制确认启动。 [脚本运行架构](../../docs/architecture.md#用户脚本运行auto-01)
+
+## 插件后台
+
 后台模块必须导出 `register(context)`，返回可异步执行的清理函数。处理器 ID、目标和权限先在正式 manifest 中声明，worker 文件随签名包提交；安装不会运行代码。下面假定 manifest 声明了相应动作、查询，包内含有 `dist/worker.mjs`。
 
 ```ts

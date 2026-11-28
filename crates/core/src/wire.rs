@@ -287,6 +287,13 @@ pub struct CatalogListResult {
     pub next_page_token: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConfirmedScriptInvocation {
+    pub client_id: Id,
+    pub call: Box<Call>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "method", content = "params", deny_unknown_fields)]
 pub enum RpcRequest {
     #[serde(rename = "browser.access")]
@@ -311,6 +318,8 @@ pub enum RpcRequest {
     CatalogList(Query),
     #[serde(rename = "action.invoke")]
     Invoke(Call),
+    #[serde(rename = "script.runConfirmed")]
+    RunConfirmedScript(ConfirmedScriptInvocation),
     #[serde(rename = "action.invokeChild")]
     InvokeChild(ChildCall),
     #[serde(rename = "operation.get")]

@@ -1,3 +1,4 @@
+/* global scriptWorkerSource: readonly */
 import { Console } from "node:console";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -853,6 +854,216 @@ await import(pathToFileURL(workerData.entry).href);
 const workerBootstrapUrl = new URL(
   `data:text/javascript;base64,${Buffer.from(workerBootstrap).toString("base64")}`,
 );
+function startManagedWorker(owner, task, url, workerData) {
+  if (owner.closed || owner.workers.size >= 8 || workers.size >= 32)
+    throw new Error("Invalid worker entry");
+  const state = {
+    task,
+    sampling: false,
+    memorySample: undefined,
+    expectedStop: undefined,
+    stop: undefined,
+    finished: undefined,
+    worker: new Worker(url, {
+      execArgv: [],
+      stdout: true,
+      stderr: true,
+      trackUnmanagedFds: true,
+      workerData,
+      resourceLimits: {
+        maxOldGenerationSizeMb: 64,
+        maxYoungGenerationSizeMb: 8,
+        stackSizeMb: 4,
+      },
+    }),
+  };
+  // 工作者输出不能写入共享控制 stdout；stderr 由 Rust 独立限额读取。
+  state.worker.stdout.pipe(process.stderr, { end: false });
+  state.worker.stderr.pipe(process.stderr, { end: false });
+  state.worker.on("error", () => {
+    if (task) stopTask(task, true);
+  });
+  const finished = new Promise((resolve) =>
+    state.worker.once("exit", (exitCode) => {
+      if (task) updateTaskMemory(task);
+      workers.delete(state);
+      owner.workers.delete(handle);
+      task?.workers.delete(state);
+      state.worker = undefined;
+      state.task = undefined;
+      state.memorySample = undefined;
+      if (task) updateTaskMemory(task);
+      if (task && exitCode !== 0) {
+        if (state.expectedStop === undefined) stopTask(task, true);
+        else if (state.expectedStop === "cancel" && task.handlerReturned)
+          task.cancelledPendingWorkers = true;
+      }
+      resolve(Object.freeze({ exitCode }));
+    }),
+  );
+  state.finished = finished;
+  state.stop = async (reason) => {
+    state.expectedStop ??= reason;
+    if (state.worker) await state.worker.terminate();
+    return finished;
+  };
+  const terminate = () => state.stop("explicit");
+  const handle = Object.freeze({ finished, terminate });
+  workers.add(state);
+  peakWorkers = Math.max(peakWorkers, workers.size);
+  owner.workers.add(handle);
+  task?.workers.add(state);
+  if (task) task.peakWorkers = Math.max(task.peakWorkers, task.workers.size);
+  state.handle = handle;
+  return state;
+}
+
+const SCRIPT_PACKAGE = "swb.builtin.automation";
+const SCRIPT_ACTION = SCRIPT_PACKAGE + ".script";
+
+function scriptReply(message) {
+  if (
+    message?.kind === "completed" &&
+    Array.isArray(message.logs) &&
+    message.logs.length <= 128 &&
+    message.logs.every((line) => typeof line === "string") &&
+    Buffer.byteLength(JSON.stringify(message)) <= 136 * 1024
+  ) {
+    return { kind: message.kind, logs: message.logs, value: message.value };
+  }
+  if (
+    message?.kind === "failed" &&
+    typeof message.code === "string" &&
+    message.code.length <= 64 &&
+    typeof message.message === "string" &&
+    message.message.length <= 512
+  ) {
+    return { kind: message.kind, code: message.code, message: message.message };
+  }
+  throw progressError("SCRIPT_PROTOCOL_ERROR", "Invalid script reply");
+}
+
+function handleScriptSerial(bridge, message) {
+  if (
+    message.kind === "serial-read" &&
+    progressU64(message.startEventSeq) &&
+    message.startEventSeq !== "0"
+  ) {
+    return bridge.read(message.startEventSeq);
+  }
+  if (
+    message.kind === "serial-send" &&
+    typeof message.bytesBase64 === "string" &&
+    message.bytesBase64.length > 0 &&
+    message.bytesBase64.length <= 87_384
+  ) {
+    const bytes = Buffer.from(message.bytesBase64, "base64");
+    if (
+      bytes.length <= 65_536 &&
+      bytes.toString("base64") === message.bytesBase64
+    ) {
+      return bridge.send(message.bytesBase64);
+    }
+  }
+  throw progressError("SCRIPT_PROTOCOL_ERROR", "Invalid script serial request");
+}
+
+async function runConfirmedScript(owner, task, snapshot, bridge) {
+  const { language, source, sourceSha256 } = snapshot;
+  const scriptUrl = new URL(
+    "data:text/javascript;base64," +
+      Buffer.from(scriptWorkerSource, "utf8").toString("base64"),
+  );
+  const state = startManagedWorker(owner, task, scriptUrl, {
+    language,
+    source,
+    sourceSha256,
+  });
+  const worker = state.worker;
+  let finished = false;
+  let pending;
+  let nextId = 1;
+  try {
+    return await new Promise((resolve, reject) => {
+      const onMessage = (message) => {
+        if (finished || task.controller.signal.aborted) return;
+        if (
+          message?.kind === "serial-read" ||
+          message?.kind === "serial-send"
+        ) {
+          if (pending || message.id !== nextId++) {
+            finished = true;
+            reject(
+              progressError(
+                "SCRIPT_PROTOCOL_ERROR",
+                "Unexpected script serial request",
+              ),
+            );
+            return;
+          }
+          pending = Promise.resolve()
+            .then(async () => {
+              if (finished || task.controller.signal.aborted) return;
+              let reply;
+              try {
+                reply = {
+                  ok: true,
+                  value: await handleScriptSerial(bridge, message),
+                };
+              } catch (error) {
+                reply = {
+                  ok: false,
+                  message:
+                    typeof error?.message === "string"
+                      ? error.message.slice(0, 512)
+                      : "Serial operation failed",
+                };
+              }
+              if (!finished && !task.controller.signal.aborted) {
+                worker.postMessage({
+                  kind: "serial-result",
+                  id: message.id,
+                  ...reply,
+                });
+              }
+            })
+            .catch(reject)
+            .finally(() => {
+              pending = undefined;
+            });
+          return;
+        }
+        finished = true;
+        try {
+          if (pending)
+            throw progressError(
+              "SCRIPT_PROTOCOL_ERROR",
+              "Script has an unsettled serial request",
+            );
+          resolve(scriptReply(message));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      worker.on("message", onMessage);
+      state.finished.then(() => {
+        worker.off("message", onMessage);
+        reject(
+          progressError(
+            "SCRIPT_WORKER_EXITED",
+            "Script worker exited before returning a result",
+          ),
+        );
+      });
+    });
+  } finally {
+    finished = true;
+    if (state.worker) beginTaskCleanup(task);
+    await state.stop(task.controller.signal.aborted ? "cancel" : "explicit");
+    await pending;
+  }
+}
+
 function selection() {
   return Object.fromEntries(groups.map((key) => [key, []]));
 }
@@ -1021,6 +1232,25 @@ async function activate(message) {
       },
     }),
     workers: Object.freeze({
+      runConfirmedScript(snapshot, bridge) {
+        const task = taskScope.getStore();
+        if (
+          message.id !== SCRIPT_PACKAGE ||
+          task?.owner !== owner ||
+          task.actionId !== SCRIPT_ACTION ||
+          !task.hostTask ||
+          task.admissionClosed ||
+          task.scriptStarted
+        ) {
+          throw progressError(
+            "PERMISSION_DENIED",
+            "Script execution requires its product action task",
+          );
+        }
+        task.controller.signal.throwIfAborted();
+        task.scriptStarted = true;
+        return runConfirmedScript(owner, task, snapshot, bridge);
+      },
       start(entry) {
         const task = taskScope.getStore();
         if (task) {
@@ -1052,65 +1282,10 @@ async function activate(message) {
           inside.startsWith(`..${sep}`)
         )
           throw new Error("Invalid worker entry");
-        const state = {
-          task,
-          sampling: false,
-          memorySample: undefined,
-          expectedStop: undefined,
-          stop: undefined,
-          finished: undefined,
-          worker: new Worker(workerBootstrapUrl, {
-            execArgv: [],
-            stdout: true,
-            stderr: true,
-            trackUnmanagedFds: true,
-            workerData: { root: message.root, entry: path },
-            resourceLimits: {
-              maxOldGenerationSizeMb: 64,
-              maxYoungGenerationSizeMb: 8,
-              stackSizeMb: 4,
-            },
-          }),
-        };
-        // 工作者输出不能写入共享控制 stdout；stderr 由 Rust 独立限额读取。
-        state.worker.stdout.pipe(process.stderr, { end: false });
-        state.worker.stderr.pipe(process.stderr, { end: false });
-        state.worker.on("error", () => {
-          if (task) stopTask(task, true);
-        });
-        const finished = new Promise((resolve) =>
-          state.worker.once("exit", (exitCode) => {
-            if (task) updateTaskMemory(task);
-            workers.delete(state);
-            owner.workers.delete(handle);
-            task?.workers.delete(state);
-            state.worker = undefined;
-            state.task = undefined;
-            state.memorySample = undefined;
-            if (task) updateTaskMemory(task);
-            if (task && exitCode !== 0) {
-              if (state.expectedStop === undefined) stopTask(task, true);
-              else if (state.expectedStop === "cancel" && task.handlerReturned)
-                task.cancelledPendingWorkers = true;
-            }
-            resolve(Object.freeze({ exitCode }));
-          }),
-        );
-        state.finished = finished;
-        state.stop = async (reason) => {
-          state.expectedStop ??= reason;
-          if (state.worker) await state.worker.terminate();
-          return finished;
-        };
-        const terminate = () => state.stop("explicit");
-        const handle = Object.freeze({ finished, terminate });
-        workers.add(state);
-        peakWorkers = Math.max(peakWorkers, workers.size);
-        owner.workers.add(handle);
-        task?.workers.add(state);
-        if (task)
-          task.peakWorkers = Math.max(task.peakWorkers, task.workers.size);
-        return handle;
+        return startManagedWorker(owner, task, workerBootstrapUrl, {
+          root: message.root,
+          entry: path,
+        }).handle;
       },
     }),
   });
@@ -1162,6 +1337,7 @@ function invoke(message) {
   const task = {
     owner,
     requestId: message.requestId,
+    actionId: message.call.actionId,
     hostTask: message.taskContext !== undefined,
     progress: undefined,
     peakWorkers: 0,

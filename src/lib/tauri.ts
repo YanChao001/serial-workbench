@@ -48,6 +48,7 @@ import type {
   LocalDocumentIntent_Deserialize,
   LocalBrowserAccess,
   LocalNodeIntent_Deserialize,
+  LocalScriptIntent_Deserialize,
   ConnectionSequenceIntent,
   ConnectionSequenceIntentResult_Serialize,
 } from "./generated/bindings";
@@ -71,6 +72,7 @@ export type {
   SelectedFileResource,
   MediaResolution,
   LocalNodeIntent_Deserialize as LocalNodeIntent,
+  LocalScriptIntent_Deserialize as LocalScriptIntent,
   ConnectionSequenceIntent,
   ConnectionSequenceIntentResult_Serialize as ConnectionSequenceIntentResult,
 } from "./generated/bindings";
@@ -231,6 +233,16 @@ export async function hostApplyNodeIntent(
 ): Promise<Operation> {
   const operation = await callHost((commands) =>
     commands.hostApplyNodeIntent(generation, intent),
+  );
+  return parseHostOperation(operation);
+}
+
+export async function hostRunConfirmedScript(
+  generation: U64,
+  intent: LocalScriptIntent_Deserialize,
+): Promise<Operation> {
+  const operation = await callHost((commands) =>
+    commands.hostRunConfirmedScript(generation, intent),
   );
   return parseHostOperation(operation);
 }

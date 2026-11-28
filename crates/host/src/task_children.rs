@@ -148,7 +148,7 @@ impl Host {
         let configuration = serde_json::to_vec(&accepted.call.params).map_err(|_| invalid())?;
         let configuration_digest =
             Digest::try_from(format!("{:x}", sha2::Sha256::digest(configuration)).as_str())?;
-        let signed_automation = crate::node_packages::is_current_connection_sequence_archive(
+        let signed_automation = crate::node_packages::is_current_automation_archive(
             binding.package(),
             binding.archive_sha256(),
         );

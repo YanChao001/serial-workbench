@@ -20,7 +20,7 @@ pub use installed::VerifiedNodeInstallation;
 pub(crate) use manager::NodePackageManager;
 pub(crate) use product::is_connection_sequence_device_scope;
 pub(crate) use product::{
-    CONNECTION_SEQUENCE_ACTION, is_current_connection_sequence_archive,
+    CONNECTION_SEQUENCE_ACTION, TRUSTED_SCRIPT_ACTION, is_current_automation_archive,
     is_product_connection_sequence,
 };
 use serial_workbench_core::{

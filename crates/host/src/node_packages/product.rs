@@ -87,6 +87,10 @@ const AUTOMATION_0_1_7_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.7.zip");
 const AUTOMATION_0_1_7_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.7.json");
+const AUTOMATION_0_1_8_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.8.zip");
+const AUTOMATION_0_1_8_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.8.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
@@ -222,8 +226,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 16] {
-    static PREVIOUS: OnceLock<[ProductPackage; 16]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 17] {
+    static PREVIOUS: OnceLock<[ProductPackage; 17]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -280,6 +284,11 @@ fn previous_packages() -> &'static [ProductPackage; 16] {
                 AUTOMATION_MARKER,
             ),
             ProductPackage::new(
+                AUTOMATION_0_1_8_DESCRIPTOR,
+                AUTOMATION_0_1_8_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
                 PREVIOUS_RFC2217_DESCRIPTOR,
                 PREVIOUS_RFC2217_ARCHIVE,
                 RFC2217_MARKER,
@@ -299,9 +308,10 @@ fn previous_packages() -> &'static [ProductPackage; 16] {
 }
 
 pub(crate) const CONNECTION_SEQUENCE_ACTION: &str = "swb.builtin.automation.connect";
+pub(crate) const TRUSTED_SCRIPT_ACTION: &str = "swb.builtin.automation.script";
 const CONNECTION_SEQUENCE_PACKAGE: &str = "swb.builtin.automation";
 
-pub(crate) fn is_current_connection_sequence_archive(id: &NodePackageId, digest: &Digest) -> bool {
+pub(crate) fn is_current_automation_archive(id: &NodePackageId, digest: &Digest) -> bool {
     id.as_str() == CONNECTION_SEQUENCE_PACKAGE
         && packages()
             .iter()
@@ -322,11 +332,9 @@ pub(super) fn retains_execution_permissions(
     if previous.manifest.permissions == next.manifest().permissions {
         return true;
     }
-    // This signed upgrade adds one scope owned by the pinned connection action.
-    // The Host enforces activation of that scope separately for each task.
-    if next.manifest().version.as_str() != "0.1.8"
-        || !is_current_connection_sequence_archive(&next.manifest().id, next.archive_sha256())
-    {
+    // The signed 0.1.8 scope remains owned by the pinned connection action.
+    // Task dispatch still removes the device scope for unrelated actions.
+    if !is_current_automation_archive(&next.manifest().id, next.archive_sha256()) {
         return false;
     }
     let mut existing_permissions = next.manifest().permissions.clone();
@@ -413,6 +421,7 @@ mod tests {
             calendar_automation,
             response_automation,
             loopback_automation,
+            connection_automation,
             old_rfc2217,
             old_modbus,
             old_modbus_slave,
@@ -422,14 +431,15 @@ mod tests {
         check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.8");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.8");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.8");
-        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.8");
-        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.8");
-        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.8");
-        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.8");
-        check_predecessor_upgrade(loopback_automation, "0.1.7", "0.1.8");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.9");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.9");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.9");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.9");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.9");
+        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.9");
+        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.9");
+        check_predecessor_upgrade(loopback_automation, "0.1.7", "0.1.9");
+        check_predecessor_upgrade(connection_automation, "0.1.8", "0.1.9");
         check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus_slave, "0.1.0", "0.1.1");

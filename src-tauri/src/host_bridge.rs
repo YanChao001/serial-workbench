@@ -10,6 +10,7 @@ pub(crate) mod node_intents;
 mod pending_frames;
 mod platform_effects;
 mod read_requests;
+pub(crate) mod script_intent;
 pub(crate) mod session_takeover;
 use pending_frames::PendingFrames;
 use serial_workbench_core::{HostError, HostResult, Id, LanRoute, U64};

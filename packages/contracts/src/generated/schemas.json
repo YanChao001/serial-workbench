@@ -18828,6 +18828,19 @@
           "required": ["geometry", "maximized", "fullscreen"],
           "type": "object"
         },
+        "ConfirmedScriptInvocation": {
+          "additionalProperties": false,
+          "properties": {
+            "call": {
+              "$ref": "#/definitions/Call"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["clientId", "call"],
+          "type": "object"
+        },
         "ContextToken": {
           "pattern": "^[A-Za-z0-9_-]{1,2048}$",
           "type": "string"
@@ -19271,6 +19284,20 @@
                 },
                 "params": {
                   "$ref": "#/definitions/Call"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "script.runConfirmed",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ConfirmedScriptInvocation"
                 }
               },
               "required": ["method", "params"],
@@ -22727,6 +22754,19 @@
             }
           },
           "required": ["requested"],
+          "type": "object"
+        },
+        "ConfirmedScriptInvocation": {
+          "additionalProperties": false,
+          "properties": {
+            "call": {
+              "$ref": "#/definitions/Call"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["clientId", "call"],
           "type": "object"
         },
         "ContextToken": {
@@ -26692,6 +26732,20 @@
                 },
                 "params": {
                   "$ref": "#/definitions/Call"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "script.runConfirmed",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ConfirmedScriptInvocation"
                 }
               },
               "required": ["method", "params"],
@@ -65834,6 +65888,19 @@
           "required": ["geometry", "maximized", "fullscreen"],
           "type": "object"
         },
+        "ConfirmedScriptInvocation": {
+          "additionalProperties": false,
+          "properties": {
+            "call": {
+              "$ref": "#/definitions/Call"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["clientId", "call"],
+          "type": "object"
+        },
         "ContextToken": {
           "pattern": "^[A-Za-z0-9_-]{1,2048}$",
           "type": "string"
@@ -66376,6 +66443,20 @@
             },
             "params": {
               "$ref": "#/definitions/Call"
+            }
+          },
+          "required": ["method", "params"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "const": "script.runConfirmed",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ConfirmedScriptInvocation"
             }
           },
           "required": ["method", "params"],
@@ -83865,6 +83946,19 @@
           "required": ["requested"],
           "type": "object"
         },
+        "ConfirmedScriptInvocation": {
+          "additionalProperties": false,
+          "properties": {
+            "call": {
+              "$ref": "#/definitions/Call"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["clientId", "call"],
+          "type": "object"
+        },
         "ContextToken": {
           "pattern": "^[A-Za-z0-9_-]{1,2048}$",
           "type": "string"
@@ -88157,6 +88251,20 @@
                 },
                 "params": {
                   "$ref": "#/definitions/Call"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "script.runConfirmed",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ConfirmedScriptInvocation"
                 }
               },
               "required": ["method", "params"],

@@ -530,6 +530,14 @@ IO-12 和 TERM-10 共用 Host 的 `transfer.paste`。在可写会话的接收区
 
 实机用独立串口对端收集粘贴长文本、普通发送和取消后的接收字节及时间。覆盖缓冲受限的实际目标、各自的可用波特率和括号模式，核对块间时序、没有交错及停止后无额外粘贴字节。正式签名包在独立环境安装后复验系统剪贴板、键盘焦点和同一发送场景。
 
+### 用户脚本运行（AUTO-01）
+
+在本机工作台打开已授权的 Virtual Echo 会话，选「运行脚本」，粘贴 [SDK 示例](../packages/plugin-sdk/README.md#本机用户脚本)。确认窗核对目标、语言及源码摘要。返回编辑后修改一字，旧摘要无法提交。普通配对客户端或未确认的通用动作请求应被拒绝。业务客户端没有当前精确会话读写权时，本机确认仍不能执行。
+
+选择确认后从任务回执核对原始 `00 FF`、TX 操作 ID、日志及真实终态。从独立 Raw 连接对照 TX 回执和 RX。打开另一个会话后提交旧修订，检查拒绝且原会话无新增发送。运行带长延时的脚本，等 worker 已开始后请求停止，等真实退出后核对 `liveWorkers=0` 与零后续写入。撤权后按相同场景核对已有任务收回及后续调用被拒绝。宽窄窗分别验证关闭后草稿与任务归属、待确认的提示、焦点返回和不同会话的晚结果。
+
+在 `SWB_NODE_RUNTIME_TEST_ROOT` 指向经过验证的发行资源目录时，运行 `cargo test --locked -p serial-workbench-host --lib native_signed_user_script_is_bound_to_operator_source_and_session -- --ignored --nocapture --test-threads=1`。运行 `node --test scripts/trusted-script-worker.test.mjs scripts/node-backend-cancellation.test.mjs scripts/product-automation.test.mjs` 复查源码摘要、worker 终态、现有任务 Raw 通道与归档。Lua/Python 与外部适配器按 M5 的专用运行时另行验收。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

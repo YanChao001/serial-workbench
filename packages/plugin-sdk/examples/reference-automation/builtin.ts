@@ -8,6 +8,10 @@ import { builtinConnectionSequenceAction } from "./connection-sequence-model.ts"
 import { createConnectionSequence } from "./connection-sequence.ts";
 import { builtinCommandSequenceAction } from "./command-sequence-model.ts";
 import { createRepeatSend } from "./repeat-send.ts";
+import {
+  builtinTrustedScriptAction,
+  createTrustedScriptRun,
+} from "./script-run.ts";
 import { builtinRepeatSendAction } from "./repeat-send-settings.ts";
 
 export const register: NodeRegister = (context) => {
@@ -22,6 +26,10 @@ export const register: NodeRegister = (context) => {
   context.actions.register(
     builtinConnectionSequenceAction,
     createConnectionSequence(),
+  );
+  context.actions.register(
+    builtinTrustedScriptAction,
+    createTrustedScriptRun(context.workers),
   );
   return () => {};
 };
