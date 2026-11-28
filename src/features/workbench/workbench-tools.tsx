@@ -82,10 +82,10 @@ import { TestSuiteTool } from "./test-suite-tool";
 import { RuleTriggerTool } from "./rule-trigger-tool";
 import { ruleActionIds } from "./rule-trigger-model";
 import { loopbackAction, LoopbackTool } from "./loopback-tool";
-import { TrustedScriptTool, trustedScriptAction } from "./trusted-script-tool";
 import { CharacterRemapTool } from "./character-remap-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
+const TrustedScriptTool = lazy(() => import("./trusted-script-tool"));
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
 const ConnectionSequenceTool = lazy(() => import("./connection-sequence-tool"));
 const BroadcastSendTool = lazy(() => import("./broadcast-send-tool"));
@@ -809,31 +809,33 @@ export function WorkbenchTools({
       const attachment = host.connection?.attachment;
       const run = host.runConfirmedScript;
       return (
-        <TrustedScriptTool
-          key={JSON.stringify([key, context.revealedOperationId])}
-          access={
-            access &&
-            session?.txGate === "ready" &&
-            run &&
-            registered(trustedScriptAction)
-              ? {
-                  target: access.target,
-                  port: access.port,
-                  sessionRevision: session.revision,
-                  configurationRevision: session.configurationRevision,
-                  run,
-                }
-              : undefined
-          }
-          target={target}
-          hostId={attachment?.hostId}
-          actorId={attachment?.actorId}
-          operations={host.state.operations}
-          revealedOperationId={context.revealedOperationId}
-          wait={host.waitForOperation}
-          read={host.readFile}
-          cancel={onCancelOperation}
-        />
+        <Suspense fallback={null}>
+          <TrustedScriptTool
+            key={JSON.stringify([key, context.revealedOperationId])}
+            access={
+              access &&
+              session?.txGate === "ready" &&
+              run &&
+              registered("swb.builtin.automation.script")
+                ? {
+                    target: access.target,
+                    port: access.port,
+                    sessionRevision: session.revision,
+                    configurationRevision: session.configurationRevision,
+                    run,
+                  }
+                : undefined
+            }
+            target={target}
+            hostId={attachment?.hostId}
+            actorId={attachment?.actorId}
+            operations={host.state.operations}
+            revealedOperationId={context.revealedOperationId}
+            wait={host.waitForOperation}
+            read={host.readFile}
+            cancel={onCancelOperation}
+          />
+        </Suspense>
       );
     }
     if (tool === "loopback") {

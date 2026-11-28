@@ -116,13 +116,104 @@ test("explicit native intent binds exact source and renders the verified result"
   await dialog.screenshot({ path: info.outputPath("trusted-script-wide.png") });
 });
 
+test("script editing highlights syntax, inserts SDK completions and snippets, and locates diagnostics", async ({
+  page,
+}, info) => {
+  const dialog = await openScript(page, "ready");
+  const editor = dialog.getByRole("textbox", { name: "Source code" });
+  await editor.fill("export default async ({ serial }) => {\n  serial.s\n};");
+  await expect(editor.locator(".script-code-keyword").first()).toHaveText(
+    "export",
+  );
+  await editor.press("Control+End");
+  await editor.press("ArrowUp");
+  await editor.press("End");
+  await editor.press("Control+Space");
+  const completion = dialog.getByRole("option", { name: /^send\b/ });
+  await expect(completion).toBeVisible();
+  await editor.press("Escape");
+  await expect(completion).toBeHidden();
+  await expect(editor).toBeFocused();
+  await editor.press("Control+Space");
+  await expect(completion).toBeVisible();
+  await completion.click();
+  await expect(editor).toContainText("serial.send");
+  await editor.press("Control+z");
+  await expect(editor).not.toContainText("serial.send");
+
+  await editor.fill("export default async () => {\n  const broken = ;\n};");
+  const error = dialog.getByRole("button", { name: /Line 2.*Check syntax/ });
+  await expect(error).toBeVisible();
+  await error.click();
+  await expect(editor).toBeFocused();
+  await expect(editor.locator(".cm-activeLine")).toContainText("const broken");
+  await editor.fill("");
+  await dialog.getByRole("button", { name: "Virtual Echo example" }).click();
+  await expect(editor).toBeFocused();
+  await expect(editor).toContainText("0x00, 0xff");
+  await expect(
+    editor.locator(".script-code-call", { hasText: "log" }),
+  ).toBeVisible();
+  const codeLines = editor.locator(".cm-line");
+  const original = await codeLines.allTextContents();
+  await editor.press("Control+End");
+  await editor.press("ArrowUp");
+  await editor.press("ArrowUp");
+  await editor.press("Home");
+  await editor.press("Shift+End");
+  await dialog.getByRole("button", { name: "Delay", exact: true }).click();
+  await expect(codeLines.nth(3)).toHaveText("await delay(100);");
+  await editor.press("Control+z");
+  expect(await codeLines.allTextContents()).toEqual(original);
+  const language = dialog.getByRole("combobox", { name: "Language" });
+  await language.selectOption("ts");
+  await language.selectOption("js");
+  expect(await codeLines.allTextContents()).toEqual(original);
+  expect(await submitted(page)).toEqual({ native: [], generic: [] });
+
+  await dialog.screenshot({ path: info.outputPath("script-editor-wide.png") });
+  await page.setViewportSize({ width: 420, height: 530 });
+  const snippets = dialog.getByRole("button", { name: "Insert snippet" });
+  await expect(snippets).toBeVisible();
+  await editor.press("Control+Home");
+  await editor.press("ArrowDown");
+  await editor.press("End");
+  await editor.press("Enter");
+  await snippets.press("ArrowDown");
+  await page.getByRole("menuitem", { name: "Log", exact: true }).click();
+  await expect(editor).toBeFocused();
+  await expect(editor).toContainText('log("echo");');
+  await editor.press("Tab");
+  await expect(
+    dialog.getByRole("button", { name: "Review and run…" }),
+  ).toBeFocused();
+  expect(await submitted(page)).toEqual({ native: [], generic: [] });
+  await dialog.screenshot({
+    path: info.outputPath("script-editor-narrow.png"),
+  });
+});
+
 test("narrow Chinese tool reopens the active script and distinguishes requested stop from terminal", async ({
   page,
 }, info) => {
   const dialog = await openScript(page, "held", true);
-  await dialog
-    .getByRole("textbox", { name: "源码" })
-    .fill("export default async () => { return 0; };");
+  const editor = dialog.getByRole("textbox", { name: "源码" });
+  await editor.fill("export default ({ serial }) => serial.s");
+  await editor.press("Control+End");
+  await editor.press("Control+Space");
+  const suggestions = dialog.getByRole("listbox", { name: "补全" });
+  await expect(suggestions).toBeVisible();
+  await editor.press("Escape");
+  await expect(suggestions).toBeHidden();
+  await editor.dispatchEvent("compositionstart");
+  await editor.dispatchEvent("keydown", {
+    key: "Escape",
+    code: "Escape",
+    isComposing: true,
+  });
+  await editor.dispatchEvent("compositionend");
+  await expect(editor).toBeFocused();
+  await editor.fill("export default async () => { return 0; };");
   await dialog.getByRole("button", { name: "确认并运行…" }).click();
   const confirmation = page.getByRole("dialog", { name: "确认运行脚本" });
   await expect(

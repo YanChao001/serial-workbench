@@ -41,6 +41,10 @@ export default defineConfig(({ mode, command, isPreview }) => {
               "resources/third-party/xterm-addon-fit.LICENSE",
             ],
             ["third-party/yaml.LICENSE", "resources/third-party/yaml.LICENSE"],
+            [
+              "third-party/codemirror.LICENSE",
+              "resources/third-party/codemirror.LICENSE",
+            ],
           ] as const) {
             this.emitFile({
               type: "asset",

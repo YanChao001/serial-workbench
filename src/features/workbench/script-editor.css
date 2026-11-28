@@ -1,0 +1,103 @@
+.script-source-editor {
+  min-width: 0;
+  background: var(--surface-reading);
+  border: 1px solid var(--surface-control-border, var(--input));
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-size: var(--control-input-font-size);
+  overflow: hidden;
+}
+
+.script-source-editor:focus-within {
+  border-color: var(--ring);
+  outline: 1px solid var(--ring);
+}
+
+.script-source-editor .cm-editor {
+  min-height: 9rem;
+  max-height: min(40dvh, 26rem);
+}
+
+.script-source-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.script-source-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.55;
+}
+
+.script-source-editor .cm-content {
+  padding-block: 0.5rem;
+}
+
+.script-source-editor .cm-line {
+  padding-inline: 0.625rem;
+}
+
+.script-source-editor .cm-gutters {
+  background: transparent;
+  border: 0;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.script-source-editor .cm-activeLine {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.script-source-editor .cm-selectionBackground,
+.script-source-editor .cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in oklab, var(--primary) 28%, transparent);
+}
+
+.script-source-editor .cm-cursor {
+  border-left-color: currentColor;
+}
+
+.script-source-editor .cm-tooltip {
+  max-width: min(26rem, 80vw);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border-color: var(--border);
+  border-radius: var(--radius-md);
+}
+
+.script-source-editor .cm-tooltip-autocomplete ul li {
+  padding: 0.25rem 0.5rem;
+}
+
+.script-source-editor .cm-tooltip-autocomplete ul li[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.script-source-editor .script-code-keyword {
+  color: var(--code-boolean);
+}
+.script-source-editor .script-code-string {
+  color: var(--code-string);
+}
+.script-source-editor .script-code-literal {
+  color: var(--code-number);
+}
+.script-source-editor .script-code-comment {
+  color: var(--muted-foreground);
+}
+.script-source-editor .script-code-property,
+.script-source-editor .script-code-call {
+  color: var(--code-property);
+}
+.script-source-editor .script-code-call {
+  font-weight: 600;
+}
+
+@media (forced-colors: active) {
+  .script-source-editor:focus-within {
+    outline: 2px solid Highlight;
+  }
+  .script-source-editor .cm-line ::selection {
+    background: Highlight;
+    color: HighlightText;
+  }
+}

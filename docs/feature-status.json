@@ -2623,13 +2623,13 @@
     {
       "id": "AUTO-02",
       "scope": "included",
-      "scopeNote": "",
+      "scopeNote": "编辑器的源码、补全和任务回执使用 Virtual Echo 即可验收，实机收发归 AUTO-01。",
       "software": {
-        "status": "not-started",
-        "evidence": []
+        "status": "in-progress",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/115"]
       },
       "hardware": {
-        "status": "not-started",
+        "status": "not-applicable",
         "evidence": []
       },
       "release": {

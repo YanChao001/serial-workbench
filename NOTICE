@@ -28,6 +28,10 @@ Protocol field definitions use the yaml parser distributed under the ISC License
 Source: resources/third-party/yaml.LICENSE
 Distributions: third-party/yaml.LICENSE
 
+The script editor includes CodeMirror, Lezer and their runtime dependencies under the MIT License.
+Source: resources/third-party/codemirror.LICENSE
+Distributions: third-party/codemirror.LICENSE
+
 The device WebSocket plugin bundles ws under the MIT License.
 Source: resources/third-party/ws.LICENSE
 Distributions: third-party/ws.LICENSE in the signed device WebSocket plugin

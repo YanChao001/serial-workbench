@@ -56,7 +56,8 @@
       "../resources/third-party/tauri-desktop-starter.LICENSE": "third-party/tauri-desktop-starter.LICENSE",
       "../resources/third-party/xterm.LICENSE": "third-party/xterm.LICENSE",
       "../resources/third-party/xterm-addon-fit.LICENSE": "third-party/xterm-addon-fit.LICENSE",
-      "../resources/third-party/yaml.LICENSE": "third-party/yaml.LICENSE"
+      "../resources/third-party/yaml.LICENSE": "third-party/yaml.LICENSE",
+      "../resources/third-party/codemirror.LICENSE": "third-party/codemirror.LICENSE"
     },
     "active": true,
     "targets": "all",
