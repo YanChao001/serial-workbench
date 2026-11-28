@@ -1,4 +1,10 @@
-import type { Operation, Target } from "@serial-workbench/contracts";
+import type {
+  FileTransferParams,
+  FileTransferReceiptsParams,
+  FileTransferReceiptsResult,
+  Operation,
+  Target,
+} from "@serial-workbench/contracts";
 import { expect, it } from "vitest";
 import { bytesToBase64 } from "@/lib/base64";
 import { inspectSequenceDraft } from "./command-sequence-inputs";
@@ -107,6 +113,170 @@ it("keeps confirmed work on scope change and omits an interval outside sequence 
     phase: "ready",
     reason: "limit",
     confirmed: 1,
+  });
+});
+
+it("describes a complete long file by a slot and confirms only the sealed edge receipts", async () => {
+  const recording = new ManualSendRecording("scope", target, true);
+  const sourceRef = {
+    hostId: "host",
+    kind: "file",
+    id: "temporary-source",
+    revision: "4",
+  };
+  const params: FileTransferParams = {
+    sourceRef,
+    offset: "1",
+    length: "768",
+    chunkBytes: "256",
+    bytesPerSecond: "1048576",
+    interChunkMs: "2",
+    writeWaitMs: "2000",
+  };
+  const admitted: Operation = {
+    ...operation("file-tx"),
+    target,
+    actionId: "transfer.file",
+  };
+  const receiptsRef = {
+    hostId: "host",
+    kind: "transfer_receipts",
+    id: "file-tx",
+    revision: "1",
+  };
+  const settled: Operation = {
+    ...admitted,
+    result: {
+      kind: "file_transfer",
+      value: {
+        receiptsRef,
+        requested: "768",
+        accepted: "768",
+        unknown: "0",
+        peerAcknowledged: false,
+      },
+    },
+  };
+  const ordinals: string[] = [];
+  let interleaved = false;
+  const read = async (
+    request: FileTransferReceiptsParams,
+  ): Promise<FileTransferReceiptsResult> => {
+    expect(request.receiptsRef).toEqual(receiptsRef);
+    expect(request.maxReceipts).toBe("1");
+    const ordinal = request.startOrdinal;
+    expect(["0", "2"]).toContain(ordinal);
+    ordinals.push(ordinal);
+    const first = ordinal === "0";
+    const start = first ? 52 : interleaved ? 565 : 564;
+    return {
+      receiptsRef,
+      sealed: true,
+      count: "3",
+      nextOrdinal: first ? "1" : "3",
+      hasMore: first,
+      receipts: [
+        {
+          sourceOffset: first ? "1" : "513",
+          receipt: {
+            operationId: admitted.operationId,
+            sessionId: "session",
+            sessionEpoch: "1",
+            outcome: "accepted",
+            bytesBase64: bytesToBase64(new Uint8Array(256)),
+            byteStart: String(start),
+            byteEnd: String(start + 256),
+            acceptedRanges: [{ start: "0", end: "256" }],
+            unknownRanges: [],
+            peerAcknowledged: false,
+          },
+        },
+      ],
+    };
+  };
+  const send = recording.add(first, 10, 2000)!;
+  const file = recording.addFile(params, 50)!;
+  recording.stop("user");
+  await recording.settleFile(
+    file,
+    admitted,
+    settled,
+    read,
+    new AbortController().signal,
+    80,
+  );
+  expect(recording.snapshot()).toMatchObject({
+    phase: "settling",
+    confirmed: 0,
+  });
+  recording.settle(send, tx("first"), receipt("first", first, 50), 20);
+  expect(ordinals.sort()).toEqual(["0", "2"]);
+  const definition = recording.snapshot().definition!;
+  expect(definition).not.toContain(sourceRef.id);
+  expect(JSON.parse(definition)).toEqual({
+    version: 2,
+    variables: { recorded_send_1: null },
+    steps: [
+      { kind: "send", hex: "$" + "{recorded_send_1}", writeWaitMs: 2000 },
+      { kind: "delay", milliseconds: 30 },
+      {
+        kind: "file",
+        input: "recorded_file_2",
+        offset: "1",
+        length: "768",
+        chunkBytes: "256",
+        bytesPerSecond: "1048576",
+        interChunkMs: "2",
+        writeWaitMs: "2000",
+      },
+    ],
+  });
+  expect(inspectSequenceDraft(definition).plan[2]).toMatchObject({
+    kind: "file",
+    input: "recorded_file_2",
+    path: "$.steps[2]",
+    length: "768",
+  });
+
+  const interrupted = new ManualSendRecording("scope", target);
+  const partial = interrupted.addFile(params, 50)!;
+  await interrupted.settleFile(
+    partial,
+    admitted,
+    { ...settled, state: "cancelled" },
+    read,
+    new AbortController().signal,
+    80,
+  );
+  expect(interrupted.snapshot()).toMatchObject({
+    phase: "ready",
+    confirmed: 0,
+    reason: "unconfirmed",
+    definition: undefined,
+  });
+  expect(ordinals).toHaveLength(2);
+
+  const mixed = new ManualSendRecording("scope", target);
+  const prefix = mixed.add(first, 10, 2000)!;
+  const ambiguousFile = mixed.addFile(params, 50)!;
+  mixed.settle(prefix, tx("first"), receipt("first", first, 50), 20);
+  interleaved = true;
+  await mixed.settleFile(
+    ambiguousFile,
+    admitted,
+    settled,
+    read,
+    new AbortController().signal,
+    80,
+  );
+  expect(mixed.snapshot()).toMatchObject({
+    phase: "ready",
+    confirmed: 1,
+    reason: "unconfirmed",
+  });
+  expect(draft(mixed)).toEqual({
+    version: 1,
+    steps: [{ kind: "send", hex: "00 FF", writeWaitMs: 2000 }],
   });
 });
 

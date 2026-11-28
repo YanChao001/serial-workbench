@@ -145,6 +145,63 @@ test("command sequence imports a definition and recovers an accepted task until 
   ).toBe(1);
 });
 
+test("a long file step previews its portable range without permitting an unbound run", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 430, height: 620 });
+  await seedWorkbenchFixture(page, { automation: { action, state: "ready" } });
+  await selectSerial(page);
+  const dialog = await openSequence(page);
+  const editor = dialog.getByRole("textbox", {
+    name: "Sequence definition (JSON)",
+  });
+  const file = {
+    kind: "file",
+    input: "recorded_file_1",
+    offset: "1",
+    length: "768",
+    chunkBytes: "256",
+    bytesPerSecond: "1048576",
+    interChunkMs: "2",
+    writeWaitMs: "2000",
+  };
+  const definition = JSON.stringify({ version: 2, steps: [file] });
+  await editor.fill(definition);
+  const preview = dialog.getByText(
+    "Send file input recorded_file_1 · 768 bytes from offset 1",
+    { exact: true },
+  );
+  await expect(preview).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Save JSON" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.savedTextExports))
+    .toEqual([{ name: "command-sequence.json", content: definition }]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await preview.scrollIntoViewIfNeeded();
+  await dialog.screenshot({
+    path: info.outputPath("long-file-range-preview.png"),
+  });
+
+  await editor.fill(
+    JSON.stringify({
+      version: 2,
+      steps: [{ ...file, sourceRef: { id: "stale-reference" } }],
+    }),
+  );
+  await expect(
+    dialog.getByText("Check the definition at $.steps[0]."),
+  ).toBeVisible();
+  await expect(preview).toBeHidden();
+  await expect(
+    dialog.getByRole("button", { name: "Run sequence" }),
+  ).toBeDisabled();
+});
+
 test("closing a sequence drops a late binary input read and leaves its file reference unbound", async ({
   page,
 }) => {
@@ -282,7 +339,7 @@ test("command sequence leaves an edited draft intact after an empty or invalid i
   ).setFiles({
     name: "future.json",
     mimeType: "application/json",
-    buffer: Buffer.from('{"version":2,"steps":[]}'),
+    buffer: Buffer.from('{"version":999,"steps":[]}'),
   });
   await expect(dialog.getByRole("alert")).toContainText("$.version");
   await expect(editor).toHaveValue(draft);

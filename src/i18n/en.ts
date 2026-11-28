@@ -2028,6 +2028,8 @@ export const en = {
     "Could not read the selected file. Choose it again.",
   "commandSequence.previewInput": "Send input {name}",
   "commandSequence.previewSend": "Send",
+  "commandSequence.previewFile":
+    "Send file input {name} · {length} bytes from offset {offset}",
   "commandSequence.previewWriteWait": "Write deadline {ms} ms",
   "commandSequence.previewDelay": "Wait {ms} ms",
   "commandSequence.previewExpect": "Expect within {ms} ms",

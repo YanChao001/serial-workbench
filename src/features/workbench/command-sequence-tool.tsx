@@ -25,9 +25,11 @@ import {
   commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
-  type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
-import { inspectSequenceDraft } from "./command-sequence-inputs";
+import {
+  inspectSequenceDraft,
+  type SequencePreviewStep,
+} from "./command-sequence-inputs";
 import {
   readSequenceResult,
   sameSequence,
@@ -115,7 +117,7 @@ function Plan({
   steps,
   inputPaths,
 }: {
-  steps: readonly CommandSequenceStep[];
+  steps: readonly SequencePreviewStep[];
   inputPaths?: ReadonlyMap<string, string>;
 }) {
   const { t } = useI18n();
@@ -127,6 +129,21 @@ function Plan({
             <span>
               {t("commandSequence.previewDelay", { ms: step.milliseconds })}
             </span>
+          ) : step.kind === "file" ? (
+            <div className="wrap-anywhere">
+              <span>
+                {t("commandSequence.previewFile", {
+                  name: step.input,
+                  offset: step.offset,
+                  length: step.length,
+                })}
+              </span>
+              <p className="text-muted-foreground">
+                {t("commandSequence.previewWriteWait", {
+                  ms: step.writeWaitMs,
+                })}
+              </p>
+            </div>
           ) : (
             <>
               <div>
@@ -271,7 +288,7 @@ export function CommandSequenceTool({
   const values =
     provided?.definition === definition ? provided.values : undefined;
   const { runtimeDefinition, bindingError } = useMemo(() => {
-    if (!plan) return {};
+    if (!plan || plan.some((step) => step.kind === "file")) return {};
     if (!inputs) return { runtimeDefinition: definition };
     if (!values) return {};
     try {

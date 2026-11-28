@@ -12,11 +12,17 @@ import {
 } from "../../../packages/plugin-sdk/src/command-template";
 import { parseHex } from "../../../packages/plugin-sdk/src/hex";
 import { isRecord } from "@/lib/settings-model";
+import {
+  parseRecordedFileStep,
+  type RecordedFileStep,
+} from "./recorded-file-step";
 
 const maxInputs = 32;
 
+type FilePreviewStep = RecordedFileStep & { path: string };
+export type SequencePreviewStep = CommandSequenceStep | FilePreviewStep;
 type SequenceDraft = {
-  plan: readonly CommandSequenceStep[];
+  plan: readonly SequencePreviewStep[];
   inputs?: {
     names: readonly string[];
     paths: ReadonlyMap<string, string>;
@@ -57,6 +63,33 @@ function previewFrame(
   return byte.toString(16).padStart(2, "0");
 }
 
+function compilePreview(
+  value: unknown,
+  definition: string,
+): SequencePreviewStep[] {
+  if (!isRecord(value) || value.version !== 2)
+    return compileCommandSequence(definition);
+  if (!Array.isArray(value.steps))
+    throw new CommandSequenceError("$.steps", "Expected sequence steps");
+  const files = new Map<string, FilePreviewStep>();
+  const steps = value.steps.map((step: unknown, index) => {
+    if (!isRecord(step) || step.kind !== "file") return step;
+    const path = "$.steps[" + index + "]";
+    files.set(path, { ...parseRecordedFileStep(step, path), path });
+    // Count the file in the version 1 step budget. The projected plan restores the original file.
+    return { kind: "send", hex: "00" };
+  });
+  const validated = compileCommandSequence(
+    JSON.stringify({ ...value, version: 1, steps }),
+  );
+  if (!files.size)
+    throw new CommandSequenceError(
+      "$.steps",
+      "Version 2 requires a file input",
+    );
+  return validated.map((step) => files.get(step.path) ?? step);
+}
+
 export function inspectSequenceDraft(definition: string): SequenceDraft {
   if (
     definition.length > commandSequenceMaxBytes ||
@@ -74,12 +107,12 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
     throw new CommandSequenceError("$", "Invalid JSON definition");
   }
   if (!isRecord(value) || !isRecord(value.variables))
-    return { plan: compileCommandSequence(definition) };
+    return { plan: compilePreview(value, definition) };
   const entries = Object.entries(value.variables);
   const names = entries
     .filter(([, value]) => value === null)
     .map(([name]) => name);
-  if (!names.length) return { plan: compileCommandSequence(definition) };
+  if (!names.length) return { plan: compilePreview(value, definition) };
   if (
     names.length > maxInputs ||
     names.some((name) => !commandVariablePattern.test(name))
@@ -116,9 +149,8 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
       "$.variables",
       "Each input must be referenced by a full top-level send step",
     );
-  const plan = compileCommandSequence(
-    JSON.stringify({ ...value, steps, variables: literalVariables }),
-  );
+  const preview = { ...value, steps, variables: literalVariables };
+  const plan = compilePreview(preview, JSON.stringify(preview));
   return {
     plan,
     inputs: {
@@ -131,7 +163,7 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
           return [name, value] as const;
         });
         if (bindings.some((entry) => entry === undefined)) return;
-        const bound = JSON.stringify({
+        const bound = {
           ...value,
           variables: {
             ...literalVariables,
@@ -139,9 +171,10 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
               bindings.flatMap((entry) => (entry ? [entry] : [])),
             ),
           },
-        });
-        compileCommandSequence(bound);
-        return bound;
+        };
+        const serialized = JSON.stringify(bound);
+        compilePreview(bound, serialized);
+        return serialized;
       },
     },
   };
