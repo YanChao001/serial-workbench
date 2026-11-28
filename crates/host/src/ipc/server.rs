@@ -30,15 +30,22 @@ use tokio::{
     task::JoinSet,
 };
 
+pub(crate) struct ControlReplyGuard {
+    pub stamp: GrantStamp,
+    pub operation_changes: tokio::sync::watch::Receiver<()>,
+}
+
 pub struct HandlerReply {
     pub wire_reply: RpcReply,
     pub raw_output_lease: Option<crate::stream::RawOutputLease>,
+    pub(crate) control_guard: Option<ControlReplyGuard>,
 }
 impl From<RpcReply> for HandlerReply {
     fn from(wire_reply: RpcReply) -> Self {
         Self {
             wire_reply,
             raw_output_lease: None,
+            control_guard: None,
         }
     }
 }

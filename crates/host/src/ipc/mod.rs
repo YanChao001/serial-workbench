@@ -9,6 +9,7 @@ mod protocol;
 mod server;
 pub use serial_workbench_core::{BrowserEntry, HttpControlEntry};
 use serial_workbench_core::{HostError, HostResult};
+pub(crate) use server::ControlReplyGuard;
 #[cfg(test)]
 pub(crate) use server::test_context;
 pub use server::{ConnectionContext, HandlerFuture, HandlerReply, HostServer, RequestHandler};

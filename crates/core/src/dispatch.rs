@@ -180,7 +180,8 @@ impl RpcRequest {
             | Self::ClientRegister(_)
             | Self::ClientUnregister(_)
             | Self::ClientReceipt(_)
-            | Self::RunConfirmedScript(_) => return Ok(RequestChannel::Control),
+            | Self::RunConfirmedScript(_)
+            | Self::DebugScript(_) => return Ok(RequestChannel::Control),
             Self::Query(q) => (q.action_id.as_str(), None),
             Self::Invoke(c) => (c.action_id.as_str(), None),
             Self::InvokeChild(c) => (c.action_id.as_str(), None),

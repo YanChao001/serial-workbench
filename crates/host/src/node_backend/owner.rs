@@ -1,6 +1,8 @@
 use super::{
     Authority, BeforeDispatch, DispatchedTask, ExitObservation, NodeBackendExit, NodeBackendLimits,
-    Request, TICK, TaskOperationReply, definitions, error, pipes, process_scope, registrations,
+    Request, TICK, TaskOperationReply,
+    debugger::{DebugCommandOutcome, ScriptDebugSession, debugger_unavailable},
+    definitions, error, pipes, process_scope, registrations,
 };
 use crate::{
     node_packages::VerifiedNodeInstallation,
@@ -9,7 +11,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serial_workbench_core::{
     ActionKind, Call, HostError, HostResult, Id, NodeContributionSelection, NodePackageId,
-    NodePackageRegistration, Query, U64,
+    NodePackageRegistration, Query, ScriptDebugCommand, ScriptDebugSnapshot, U64,
 };
 use std::{
     collections::BTreeMap,
@@ -75,6 +77,13 @@ enum Command<'a> {
         task_context: Option<&'a serial_workbench_core::ContextToken>,
         #[serde(skip_serializing_if = "Option::is_none")]
         parent_operation_id: Option<&'a serial_workbench_core::Id>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        script_breakpoints: Option<&'a [u32]>,
+    },
+    ScriptDebugCommand {
+        request_id: U64,
+        action_request_id: U64,
+        command: &'a ScriptDebugCommand,
     },
     TaskReply {
         request_id: U64,
@@ -103,6 +112,9 @@ pub(super) fn validate_invoke_frame(package: &NodePackageId, call: &Call) -> Hos
         parent_operation_id: Some(&serial_workbench_core::Id::try_from(
             "00000000-0000-4000-8000-000000000000",
         )?),
+        script_breakpoints: (call.action_id.as_str()
+            == crate::node_packages::TRUSTED_SCRIPT_ACTION)
+            .then_some(&[65_537; 32]),
     })
     .map(|_| ())
 }
@@ -162,6 +174,14 @@ enum Frame {
     ActionStopping {
         request_id: U64,
     },
+    ScriptDebugSnapshot {
+        request_id: U64,
+        value: ScriptDebugSnapshot,
+    },
+    ScriptDebugReply {
+        request_id: U64,
+        outcome: DebugCommandOutcome,
+    },
     InvokeChild {
         request_id: U64,
         parent_request_id: U64,
@@ -190,6 +210,12 @@ struct PendingAction {
     cleanup_deadline: Option<Instant>,
     task: Option<DispatchedTask>,
     observations: super::observation::ObservationSlot,
+    debug_command: Option<(U64, Instant)>,
+}
+impl PendingAction {
+    fn debugger(&self) -> Option<&Arc<ScriptDebugSession>> {
+        self.task.as_ref()?.debugger.as_ref().map(|lease| &lease.0)
+    }
 }
 struct PendingTaskRequest {
     response: tokio::sync::oneshot::Receiver<TaskOperationReply>,
@@ -641,6 +667,10 @@ impl Owner {
             call: &call,
             task_context: task.as_ref().map(|task| &task.context),
             parent_operation_id: task.as_ref().map(|task| &task.operation),
+            script_breakpoints: task
+                .as_ref()
+                .and_then(|task| task.debugger.as_ref())
+                .map(|lease| lease.0.breakpoints()),
         })?;
         self.actions.insert(
             request_id.get(),
@@ -653,6 +683,7 @@ impl Owner {
                 cleanup_deadline: None,
                 task,
                 observations,
+                debug_command: None,
             },
         );
         Ok(())
@@ -682,17 +713,63 @@ impl Owner {
                     .validate_action(&action.package, &action.definition)
             }) {
                 cancelled.push((*id, cause));
+            } else if action
+                .debug_command
+                .is_some_and(|(_, deadline)| now >= deadline)
+            {
+                cancelled.push((*id, debugger_unavailable()));
             }
         }
         for (id, cause) in cancelled {
             self.send(Command::CancelAction {
                 request_id: id.into(),
             })?;
-            self.actions.get_mut(&id).expect("active action").cancelling =
-                Some((now + self.limits.command_timeout, cause));
+            let action = self.actions.get_mut(&id).expect("active action");
+            action.cancelling = Some((now + self.limits.command_timeout, cause));
+            if let Some(debugger) = action.debugger() {
+                debugger.close();
+            }
+        }
+        self.poll_script_debuggers(now)
+    }
+
+    fn poll_script_debuggers(&mut self, now: Instant) -> HostResult<()> {
+        let mut commands = Vec::new();
+        for (id, action) in &mut self.actions {
+            if action.cancelling.is_some() || action.cleanup_deadline.is_some() {
+                continue;
+            }
+            if action.debug_command.is_some() {
+                continue;
+            }
+            if let Some(debugger) = action.debugger()
+                && let Some(command) = debugger.take_command()
+            {
+                commands.push((*id, debugger.clone(), command));
+            }
+        }
+        for (id, debugger, command) in commands {
+            let request_id = self.next()?;
+            let effect_started = self.effect_started;
+            let sent = self.send(Command::ScriptDebugCommand {
+                request_id,
+                action_request_id: id.into(),
+                command: &command,
+            });
+            self.effect_started = effect_started;
+            match sent {
+                Ok(()) => {
+                    self.actions
+                        .get_mut(&id)
+                        .expect("active debug task")
+                        .debug_command = Some((request_id, now + self.limits.command_timeout));
+                }
+                Err(error) => debugger.complete(Err(error)),
+            }
         }
         Ok(())
     }
+
     fn action_frame(&mut self, frame: Frame) -> HostResult<Option<Frame>> {
         if let Frame::OperationGet {
             request_id,
@@ -781,6 +858,33 @@ impl Owner {
             }
             return Ok(None);
         }
+        if let Frame::ScriptDebugSnapshot { request_id, value } = frame {
+            let debugger = self
+                .actions
+                .get(&request_id.get())
+                .and_then(PendingAction::debugger)
+                .ok_or_else(|| error("PROTOCOL_ERROR", "backendUnknownScriptDebugger"))?;
+            debugger.observe(value)?;
+            return Ok(None);
+        }
+        if let Frame::ScriptDebugReply {
+            request_id,
+            outcome,
+        } = frame
+        {
+            if let Some(action) = self.actions.values_mut().find(|pending| {
+                pending
+                    .debug_command
+                    .is_some_and(|(id, _)| id == request_id)
+            }) {
+                action.debug_command = None;
+                if let Some(debugger) = action.debugger() {
+                    debugger.complete(outcome.result());
+                }
+            }
+            // An acknowledged command can arrive after the action has already settled.
+            return Ok(None);
+        }
         if let Frame::ActionStopping { request_id } = frame {
             let pending = self
                 .actions
@@ -790,6 +894,9 @@ impl Owner {
             pending
                 .cleanup_deadline
                 .get_or_insert(Instant::now() + self.limits.command_timeout);
+            if let Some(debugger) = pending.debugger() {
+                debugger.close();
+            }
             return Ok(None);
         }
         let (request_id, outcome, observation) = match frame {
@@ -1155,6 +1262,8 @@ impl Process {
             "const scriptWorkerSource = {script_worker};\n{}",
             concat!(
                 include_str!("transport.mjs"),
+                "\n",
+                include_str!("script-debugger.mjs"),
                 "\n",
                 include_str!("bootstrap.mjs")
             )

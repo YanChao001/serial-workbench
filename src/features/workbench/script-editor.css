@@ -92,6 +92,19 @@
   font-weight: 600;
 }
 
+.script-source-editor[data-breakpoints-editable="true"] .cm-lineNumbers {
+  cursor: pointer;
+}
+.script-source-editor .script-breakpoint {
+  color: var(--destructive);
+  font-weight: 700;
+  border-inline-start: 3px solid var(--destructive);
+}
+.script-source-editor .cm-line.script-paused-line {
+  box-shadow: inset 2px 0 var(--primary);
+  background: color-mix(in oklab, var(--primary) 15%, var(--surface-reading));
+}
+
 @media (forced-colors: active) {
   .script-source-editor:focus-within {
     outline: 2px solid Highlight;

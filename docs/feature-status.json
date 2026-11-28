@@ -2640,13 +2640,13 @@
     {
       "id": "AUTO-03",
       "scope": "included",
-      "scopeNote": "",
+      "scopeNote": "M4 本机 JS/TS 暂停和采集隔离可用 Virtual Echo 验证，实机收发归 AUTO-01。M5 外部语言按各运行时另验。",
       "software": {
-        "status": "not-started",
-        "evidence": []
+        "status": "in-progress",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/116"]
       },
       "hardware": {
-        "status": "not-started",
+        "status": "not-applicable",
         "evidence": []
       },
       "release": {

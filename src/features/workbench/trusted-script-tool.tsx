@@ -32,6 +32,11 @@ import { operationText } from "./operation-text";
 
 import { ScriptEditor, type ScriptEditorHandle } from "./script-editor";
 import type { ScriptLanguage } from "./script-editor-model";
+import {
+  ScriptDebugActions,
+  ScriptDebugDetails,
+  useScriptDebug,
+} from "./script-debug-panel";
 
 const trustedScriptAction = "swb.builtin.automation.script";
 
@@ -42,10 +47,14 @@ type Access = {
   configurationRevision: string;
   run: NonNullable<HostContextValue["runConfirmedScript"]>;
 };
-type Draft = { source: string; language: ScriptLanguage };
+type Draft = {
+  source: string;
+  language: ScriptLanguage;
+  breakpoints: number[];
+};
 type Confirmation = { scope: { key: string }; intent: LocalScriptIntent };
 type Result = { operationId: string; text: string };
-const initial: Draft = { source: "", language: "js" };
+const initial: Draft = { source: "", language: "js", breakpoints: [] };
 const encoder = new TextEncoder();
 
 function pending(state: Operation["state"]) {
@@ -112,6 +121,7 @@ export default function TrustedScriptTool({
   wait,
   read,
   cancel,
+  scriptDebug,
 }: {
   access?: Access;
   target?: Target;
@@ -121,6 +131,7 @@ export default function TrustedScriptTool({
   revealedOperationId?: string;
   wait: HostContextValue["waitForOperation"];
   read: HostContextValue["readFile"];
+  scriptDebug?: HostContextValue["scriptDebug"];
   cancel?: (operation: Operation, signal: AbortSignal) => Promise<void>;
 }) {
   const { t } = useI18n();
@@ -130,6 +141,7 @@ export default function TrustedScriptTool({
   const [preview, setPreview] = useState<Confirmation>();
   const [retry, setRetry] = useState<Confirmation>();
   const [operationId, setOperationId] = useState<string>();
+  const [debugIntent, setDebugIntent] = useState<LocalScriptIntent>();
   const [busy, setBusy] = useState<"preparing" | "submitting">();
   const [stopping, setStopping] = useState<string>();
   const [result, setResult] = useState<Result>();
@@ -140,6 +152,8 @@ export default function TrustedScriptTool({
     failure: unknown;
   }>();
   const sourceField = useRef<ScriptEditorHandle>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
+  const statusField = useRef<HTMLParagraphElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   const request = useRef<AbortController | null>(null);
   const stopRequest = useRef<AbortController | null>(null);
@@ -186,6 +200,46 @@ export default function TrustedScriptTool({
     }, undefined);
   const active = operation && pending(operation.state);
   const waitingId = active ? operation.operationId : undefined;
+  const inspecting =
+    active &&
+    operation.state !== "cancel_requested" &&
+    (operation.requestId === debugIntent?.requestId ||
+      operation.operationId !== operationId)
+      ? operation
+      : undefined;
+  const debuggerState = useScriptDebug(inspecting, scriptDebug);
+  const pause =
+    debuggerState.snapshot?.phase === "paused"
+      ? debuggerState.snapshot
+      : undefined;
+  const debugSource = active && operation.requestId === debugIntent?.requestId;
+  const pausedFrame = pause?.frames[0];
+  const locateSource =
+    debugSource &&
+    draft.source === debugIntent?.source &&
+    draft.language === debugIntent.language;
+  const editorLocked =
+    debugSource || (busy === "submitting" && debugIntent !== undefined);
+  const debugDisabled =
+    debuggerState.waiting || stopping === operation?.operationId;
+  const debugStatus = debuggerState.waiting
+    ? t("scriptDebug.waiting")
+    : pausedFrame
+      ? t("scriptDebug.paused", { line: pausedFrame.line })
+      : inspecting &&
+          (debuggerState.unavailable ||
+            (debugSource && debuggerState.observed && !debuggerState.snapshot))
+        ? t("scriptDebug.unavailable")
+        : inspecting &&
+            (debuggerState.snapshot?.phase === "starting" ||
+              (debugSource && !debuggerState.observed))
+          ? t("scriptDebug.starting")
+          : undefined;
+  function restoreDebugFocus() {
+    const stop = stopButton.current;
+    if (stop && !stop.disabled) stop.focus({ preventScroll: true });
+    else statusField.current?.focus({ preventScroll: true });
+  }
   const reference =
     !active && operation?.result?.kind === "reference"
       ? operation.result.value.resultRef
@@ -201,7 +255,8 @@ export default function TrustedScriptTool({
     dirty:
       !historical &&
       (draft.source !== acceptedDraft.source ||
-        draft.language !== acceptedDraft.language),
+        draft.language !== acceptedDraft.language ||
+        draft.breakpoints.join(",") !== acceptedDraft.breakpoints.join(",")),
     retainAfterUnmount: false,
     discard: () => setDraft(acceptedDraft),
   });
@@ -254,13 +309,38 @@ export default function TrustedScriptTool({
     setRetry(undefined);
     setError(undefined);
   }
-  async function review() {
-    if (!access || !scope || request.current || oversize || active) return;
+  function toggleBreakpoint(line: number) {
+    const points = draft.breakpoints;
+    if (points.includes(line))
+      update({
+        ...draft,
+        breakpoints: points.filter((point) => point !== line),
+      });
+    else if (points.length < 32)
+      update({
+        ...draft,
+        breakpoints: [...points, line].sort((a, b) => a - b),
+      });
+  }
+
+  async function review(debugging: boolean) {
+    if (
+      !access ||
+      !scope ||
+      request.current ||
+      oversize ||
+      active ||
+      (debugging && !scriptDebug)
+    )
+      return;
     if (!draft.source.trim()) {
       sourceField.current?.focus();
       return;
     }
-    if (retry?.scope === scope) {
+    if (
+      retry?.scope === scope &&
+      Boolean(retry.intent.debugBreakpoints) === debugging
+    ) {
       setError(undefined);
       setPreview(retry);
       return;
@@ -295,6 +375,13 @@ export default function TrustedScriptTool({
           sourceSha256,
           sessionRevision: access.sessionRevision,
           configurationRevision: access.configurationRevision,
+          ...(debugging
+            ? {
+                debugBreakpoints: draft.breakpoints.length
+                  ? [...draft.breakpoints]
+                  : [1],
+              }
+            : {}),
         },
       });
     } catch (failure) {
@@ -311,6 +398,9 @@ export default function TrustedScriptTool({
     request.current = controller;
     setPreview(undefined);
     setBusy("submitting");
+    setDebugIntent(
+      confirmation.intent.debugBreakpoints ? confirmation.intent : undefined,
+    );
     try {
       const admitted = await access.run(confirmation.intent, controller.signal);
       if (controller.signal.aborted) return;
@@ -385,6 +475,7 @@ export default function TrustedScriptTool({
               <select
                 className="min-w-0 rounded-md border border-input bg-background px-2 py-1"
                 value={draft.language}
+                disabled={editorLocked}
                 onChange={(event) =>
                   update({
                     ...draft,
@@ -404,8 +495,40 @@ export default function TrustedScriptTool({
               language={draft.language}
               source={draft.source}
               oversize={oversize}
-              onChange={(source) => update({ ...draft, source })}
+              readOnly={editorLocked}
+              breakpoints={draft.breakpoints}
+              activeLine={locateSource ? pausedFrame?.line : undefined}
+              onToggleBreakpoint={scriptDebug ? toggleBreakpoint : undefined}
+              onChange={(source, breakpoints) =>
+                update({ ...draft, source, breakpoints })
+              }
             />
+            {scriptDebug && draft.breakpoints.length > 0 && (
+              <div
+                role="group"
+                aria-label={t("scriptDebug.breakpoints")}
+                className="flex min-w-0 flex-wrap items-center gap-1.5"
+              >
+                {draft.breakpoints.map((line) => (
+                  <Button
+                    key={line}
+                    size="sm"
+                    variant="outline"
+                    disabled={editorLocked}
+                    aria-label={t("scriptDebug.remove", { line })}
+                    onClick={() => toggleBreakpoint(line)}
+                  >
+                    {t("scriptDebug.line", { line })}{" "}
+                    <span aria-hidden="true">×</span>
+                  </Button>
+                ))}
+                {draft.breakpoints.length === 32 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("scriptDebug.limit")}
+                  </p>
+                )}
+              </div>
+            )}
             <p
               id={id + "-bytes"}
               className="text-end text-xs text-muted-foreground"
@@ -428,6 +551,26 @@ export default function TrustedScriptTool({
         </p>
       )}
       {operation && (
+        <p ref={statusField} role="status" tabIndex={-1} className="text-sm">
+          {debugStatus ??
+            operationText(t, (code) => code ?? "").states[operation.state]}
+        </p>
+      )}
+      {pause && (
+        <ScriptDebugDetails
+          pause={pause}
+          restoreFocus={restoreDebugFocus}
+          disabled={debugDisabled}
+          failure={debuggerState.failure}
+          send={debuggerState.send}
+          locate={
+            locateSource
+              ? (frame) => sourceField.current?.locate(frame.line, frame.column)
+              : undefined
+          }
+        />
+      )}
+      {operation && (
         <section
           aria-labelledby={id + "-output"}
           className="grid min-w-0 gap-2"
@@ -440,9 +583,6 @@ export default function TrustedScriptTool({
               {nativeErrorText(stopError.failure, t)}
             </p>
           )}
-          <p role="status" className="text-sm">
-            {operationText(t, (code) => code ?? "").states[operation.state]}
-          </p>
           {operation.error && operation.state !== "cancelled" && (
             <p className="wrap-anywhere text-sm text-destructive">
               {nativeErrorText(operation.error, t)}
@@ -458,9 +598,18 @@ export default function TrustedScriptTool({
           )}
         </section>
       )}
-      <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 rounded-md bg-background/70 py-1 backdrop-blur-sm">
+      <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 rounded-md bg-background/95 py-1 backdrop-blur-sm">
+        {pause && (
+          <ScriptDebugActions
+            pause={pause}
+            disabled={debugDisabled}
+            send={debuggerState.send}
+            restoreFocus={restoreDebugFocus}
+          />
+        )}
         {active && cancel && (
           <Button
+            ref={stopButton}
             variant="outline"
             disabled={
               stopping === operation.operationId ||
@@ -471,18 +620,31 @@ export default function TrustedScriptTool({
             {t("trustedScript.stop")}
           </Button>
         )}
-        {!historical && (
+        {!historical && !pause && (
           <Button
             disabled={!access || oversize || Boolean(busy) || Boolean(active)}
-            onClick={() => void review()}
+            onClick={() => void review(false)}
           >
             {busy === "preparing"
               ? t("trustedScript.staging")
               : busy === "submitting"
                 ? t("trustedScript.submitting")
-                : retry?.scope === scope && retry
+                : retry &&
+                    retry.scope === scope &&
+                    !retry.intent.debugBreakpoints
                   ? t("trustedScript.retry")
                   : t("trustedScript.review")}
+          </Button>
+        )}
+        {!historical && !pause && scriptDebug && (
+          <Button
+            variant="outline"
+            disabled={!access || oversize || Boolean(busy) || Boolean(active)}
+            onClick={() => void review(true)}
+          >
+            {retry && retry.scope === scope && retry.intent.debugBreakpoints
+              ? t("trustedScript.retry")
+              : t("scriptDebug.review")}
           </Button>
         )}
       </div>
@@ -506,7 +668,13 @@ export default function TrustedScriptTool({
           }}
         >
           <DialogHeader>
-            <DialogTitle>{t("trustedScript.confirm")}</DialogTitle>
+            <DialogTitle>
+              {t(
+                confirmation?.intent.debugBreakpoints
+                  ? "scriptDebug.confirm"
+                  : "trustedScript.confirm",
+              )}
+            </DialogTitle>
             <DialogDescription>{t("trustedScript.trust")}</DialogDescription>
           </DialogHeader>
           <div className="grid min-w-0 gap-1 text-sm">
@@ -519,6 +687,12 @@ export default function TrustedScriptTool({
                 ? "TypeScript"
                 : "JavaScript"}
             </p>
+            {confirmation?.intent.debugBreakpoints && (
+              <p>
+                {t("scriptDebug.breakpoints")} ·{" "}
+                {confirmation.intent.debugBreakpoints.join(", ")}
+              </p>
+            )}
             <p>{t("trustedScript.digest")}</p>
             <code className="wrap-anywhere text-xs">
               {confirmation?.intent.sourceSha256}
@@ -532,7 +706,13 @@ export default function TrustedScriptTool({
             >
               {t("trustedScript.back")}
             </Button>
-            <Button onClick={() => void run()}>{t("trustedScript.run")}</Button>
+            <Button onClick={() => void run()}>
+              {t(
+                confirmation?.intent.debugBreakpoints
+                  ? "scriptDebug.start"
+                  : "trustedScript.run",
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

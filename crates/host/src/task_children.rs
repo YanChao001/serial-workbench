@@ -4,8 +4,8 @@ use super::*;
 use crate::{
     auth::TaskAuthority,
     node_backend::{
-        DispatchedTask, RegisteredHandler, TaskDerivedFuture, TaskOperationReply, TaskRawFuture,
-        TaskRawPage, TaskRawResult,
+        DispatchedTask, RegisteredHandler, ScriptDebugLease, ScriptDebugSession, TaskDerivedFuture,
+        TaskOperationReply, TaskRawFuture, TaskRawPage, TaskRawResult, debugger_unavailable,
     },
 };
 
@@ -20,6 +20,7 @@ pub(super) struct TaskScope {
     instance_epoch: U64,
     configuration_digest: Digest,
     connection_session: Option<OnceLock<Target>>,
+    script_debugger: Option<Arc<ScriptDebugSession>>,
 }
 impl TaskScope {
     fn remember_connection_session(&self, opened: &Operation) -> HostResult<()> {
@@ -154,6 +155,23 @@ impl Host {
         );
         let connection_sequence = signed_automation
             && crate::node_packages::is_product_connection_sequence(&accepted.operation);
+        let script_debugger = if signed_automation
+            && accepted.call.action_id.as_str() == crate::node_packages::TRUSTED_SCRIPT_ACTION
+        {
+            accepted
+                .call
+                .params
+                .get("debugBreakpoints")
+                .map(|value| {
+                    let lines =
+                        serde_json::from_value(serde_json::to_value(value).map_err(|_| invalid())?)
+                            .map_err(|_| invalid())?;
+                    ScriptDebugSession::new(lines).map(Arc::new)
+                })
+                .transpose()?
+        } else {
+            None
+        };
         let host_api = binding
             .host_api()
             .iter()
@@ -173,6 +191,7 @@ impl Host {
             instance_epoch: accepted.call.instance_epoch,
             configuration_digest,
             connection_session: connection_sequence.then(OnceLock::new),
+            script_debugger,
         });
         self.inner
             .tasks
@@ -193,6 +212,7 @@ impl Host {
             context,
             operation: scope.operation.operation_id.clone(),
             runtime,
+            debugger: scope.script_debugger.clone().map(ScriptDebugLease),
             invoke_child: Arc::new(move |call| host.invoke_child_attempt(&scope.actor, call)),
             get_operation: Arc::new(move |selector| {
                 reader.get_task_operation(read_scope.clone(), selector)
@@ -213,6 +233,66 @@ impl Host {
                 publisher.publish_task_derived(publish_scope.clone(), params)
             }),
         })
+    }
+
+    pub(super) async fn control_script_debugger(
+        &self,
+        operator: &AuthenticatedActor,
+        params: ScriptDebugRequest,
+    ) -> HostResult<(ScriptDebugResponse, Option<ControlReplyGuard>)> {
+        let actor =
+            self.inner
+                .auth
+                .restore_for_operator(operator, params.client_id, params.actor_id)?;
+        let scope = self
+            .inner
+            .tasks
+            .lock()
+            .map_err(|_| busy())?
+            .get(&params.operation_id)
+            .cloned()
+            .ok_or_else(debugger_unavailable)?;
+        if actor.id() != &scope.operation.actor_id {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "Script debugger belongs to another actor",
+            ));
+        }
+        let debugger = scope
+            .script_debugger
+            .as_ref()
+            .ok_or_else(debugger_unavailable)?;
+        scope.check_reader(self)?;
+        let (script_debug, guard) = match params.intent {
+            ScriptDebugIntent::Inspect => {
+                let operation_changes = self.inner.store.subscribe_operation_state_changes();
+                let reader = scope.delegate(self, None, Default::default())?;
+                let stamp = self.inner.auth.capture_grants(&reader)?.ok_or_else(|| {
+                    HostError::new(
+                        "PERMISSION_DENIED",
+                        "Script debugger requires a business actor",
+                    )
+                })?;
+                let snapshot = debugger.snapshot()?;
+                self.inner.auth.validate_grants(&stamp)?;
+                (
+                    ScriptDebugResult::Snapshot { snapshot },
+                    Some(ControlReplyGuard {
+                        stamp,
+                        operation_changes,
+                    }),
+                )
+            }
+            ScriptDebugIntent::Command { command } => {
+                let outcome = debugger.submit(command)?;
+                tokio::time::timeout(std::time::Duration::from_secs(6), outcome)
+                    .await
+                    .map_err(|_| debugger_unavailable())?
+                    .map_err(|_| debugger_unavailable())??;
+                (ScriptDebugResult::Accepted, None)
+            }
+        };
+        Ok((ScriptDebugResponse { script_debug }, guard))
     }
 
     fn read_task_raw(

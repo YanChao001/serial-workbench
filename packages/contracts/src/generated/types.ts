@@ -5231,6 +5231,7 @@ export type RpcRequest_Deserialize =
       method: "script.runConfirmed";
       params: ConfirmedScriptInvocation_Deserialize;
     }
+  | { method: "script.debug"; params: ScriptDebugRequest }
   | { method: "action.invokeChild"; params: ChildCall_Deserialize }
   | { method: "operation.get"; params: Query_Deserialize }
   | { method: "operation.cancel"; params: Call_Deserialize }
@@ -5261,6 +5262,7 @@ export type RpcRequest_Serialize =
       method: "script.runConfirmed";
       params: ConfirmedScriptInvocation_Serialize;
     }
+  | { method: "script.debug"; params: ScriptDebugRequest }
   | { method: "action.invokeChild"; params: ChildCall_Serialize }
   | { method: "operation.get"; params: Query_Serialize }
   | { method: "operation.cancel"; params: Call_Serialize }
@@ -5280,6 +5282,7 @@ export type RpcResult_Deserialize =
   | LanAccessResult_Deserialize
   | ClientRegistration_Deserialize
   | ClientEffectAcknowledged
+  | ScriptDebugResponse
   | QueryResult_Deserialize
   | AttachResult
   | OperationResult_Deserialize
@@ -5297,6 +5300,7 @@ export type RpcResult_Serialize =
   | LanAccessResult_Serialize
   | ClientRegistration_Serialize
   | ClientEffectAcknowledged
+  | ScriptDebugResponse
   | QueryResult_Serialize
   | AttachResult
   | OperationResult_Serialize
@@ -5333,6 +5337,66 @@ export type SchemaValue =
   | string
   | SchemaValue[]
   | { [key in string]: SchemaValue };
+
+export type ScriptDebugCommand =
+  | { action: "continue"; revision: U64 }
+  | { action: "stepOver"; revision: U64 }
+  | { action: "stepInto"; revision: U64 }
+  | { action: "stepOut"; revision: U64 }
+  | { action: "inspectFrame"; revision: U64; frame: number };
+
+export type ScriptDebugFrame = {
+  name: string;
+  line: number;
+  column: number;
+};
+
+export type ScriptDebugIntent =
+  { kind: "inspect" } | { kind: "command"; command: ScriptDebugCommand };
+
+export type ScriptDebugRequest = {
+  requestId: RequestId;
+  clientId: Id;
+  actorId: Id;
+  operationId: Id;
+  intent: ScriptDebugIntent;
+};
+
+export type ScriptDebugResponse = {
+  scriptDebug: ScriptDebugResult;
+};
+
+export type ScriptDebugResult =
+  { kind: "snapshot"; snapshot: ScriptDebugSnapshot } | { kind: "accepted" };
+
+export type ScriptDebugSnapshot =
+  | { phase: "starting"; revision: U64 }
+  | { phase: "running"; revision: U64 }
+  | {
+      phase: "paused";
+      revision: U64;
+      frames: ScriptDebugFrame[];
+      selectedFrame: number;
+      variables: ScriptDebugVariable[];
+    };
+
+export type ScriptDebugValueType =
+  | "unavailable"
+  | "string"
+  | "number"
+  | "boolean"
+  | "bigint"
+  | "null"
+  | "undefined"
+  | "object"
+  | "function"
+  | "symbol";
+
+export type ScriptDebugVariable = {
+  name: string;
+  type: ScriptDebugValueType;
+  preview: string;
+};
 
 export type SerialConfiguration = {
   baudRate: PositiveU64;

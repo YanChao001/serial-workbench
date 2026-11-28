@@ -1,4 +1,5 @@
 //! 共享 Node 后台的阻塞生命周期边界；调用方在有界阻塞任务中持有 owner。
+mod debugger;
 mod definitions;
 mod derived;
 pub(crate) mod observation;
@@ -10,6 +11,7 @@ mod registrations;
 mod telemetry;
 mod transport;
 use crate::{node_packages::VerifiedNodeInstallation, node_runtime::VerifiedNodeRuntime};
+pub(crate) use debugger::{ScriptDebugLease, ScriptDebugSession, debugger_unavailable};
 pub(crate) use derived::{SLOTS as DERIVED_SLOTS, TaskDerivedFuture};
 pub(crate) use raw::{
     SLOTS as RAW_READ_SLOTS, SessionRawRequest, TaskRawFuture, TaskRawPage, TaskRawRequest,
@@ -45,6 +47,7 @@ pub(crate) struct DispatchedTask {
     pub context: serial_workbench_core::ContextToken,
     pub operation: serial_workbench_core::Id,
     pub runtime: tokio::runtime::Handle,
+    pub debugger: Option<ScriptDebugLease>,
     pub invoke_child:
         Arc<dyn Fn(serial_workbench_core::ChildCall) -> TaskOperationFuture + Send + Sync>,
     pub get_operation:

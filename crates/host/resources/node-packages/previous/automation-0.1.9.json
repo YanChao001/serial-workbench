@@ -1,0 +1,16 @@
+{
+  "id": "swb.builtin.automation",
+  "version": "0.1.9",
+  "archiveSha256": "5918e308bb493be4833af9953f9ec65b77de36f8bda5e4a6d0ca02ce5bc6caed",
+  "compiledModuleSha256": "ed10619dd4242cd01166a152afc574c73ec39b18fea96475c9c945ad81aea600",
+  "manifestSha256": "d9b8ee8ccc44edb38056e7579861f216aa298fb967341aa6ccab3b0ee29b470d",
+  "sourceApproval": {
+    "keyId": "built-in-automation-0.1.9",
+    "publicKey": [
+      10, 226, 224, 117, 113, 157, 18, 173, 252, 73, 118, 93, 94, 129, 144, 7,
+      185, 55, 192, 217, 166, 141, 173, 9, 44, 73, 194, 186, 202, 83, 77, 171
+    ],
+    "publicKeySha256": "13bbf0a0e762db4cc468a9d0cc4ffcd47e6ca32981a88d18220fe53ad967f469",
+    "source": "swb.product"
+  }
+}

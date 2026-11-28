@@ -34,6 +34,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             host_bridge::document_intents::host_open_command_library,
             host_bridge::node_intents::host_apply_node_intent,
             host_bridge::script_intent::host_run_confirmed_script,
+            host_bridge::script_intent::host_script_debug,
             crate::node_view::host_open_node_view,
             crate::node_view::host_close_node_view,
             host_bridge::host_request,

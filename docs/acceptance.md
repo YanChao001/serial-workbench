@@ -546,6 +546,16 @@ IO-12 和 TERM-10 共用 Host 的 `transfer.paste`。在可写会话的接收区
 
 无头路径使用 `pnpm test:ui e2e/browser/trusted-script-tool.spec.ts e2e/browser/loopback-tool.spec.ts --workers=1`。正式与预览构建的许可证使用 `node --test scripts/vite-license.test.mjs scripts/portable.test.mjs` 校验。真实会话、签名 Host、授权与 worker 回收复用 [AUTO-01 专项](#用户脚本运行auto-01)。
 
+### 用户脚本调试（AUTO-03）
+
+使用已授权的 Virtual Echo，在同一源码编辑器设定断点并显式调试。选择带类型声明和本地函数的 TS 示例。核对命中行与原稿一致，单步进入后可选择调用者栈帧查看变量，单步越过和继续遵守当前暂停版本。切换帧、继续或换代后重发旧指令，检查旧暂停不可修改。普通配对客户端和共享同一串口的其他业务身份不能读取或控制该调试会话。
+
+暂停期间由独立客户端验证串口流可读，由另一插件验证激活和查询可完成。先运行一次普通脚本，再重复调试，覆盖 Inspector 会话编号与实际线程 ID 分离。核对进程只使用内部 Inspector 会话。在发送语句前的断点请求取消或撤权，观察真实退出、`liveWorkers=0` 和独立 Raw 零新增写入。源码摘要、会话代次、后续输出与停止均保留实际操作归属。重开工具时只能恢复仍属于当前会话和身份的任务视图。
+
+运行 `node --test scripts/node-backend-cancellation.test.mjs scripts/trusted-script-worker.test.mjs scripts/product-automation.test.mjs` 复查生产 Node 启动器、相邻任务、栈帧、取消和签名归档。固定原生运行时用 [AUTO-01 签名 Host 命令](#用户脚本运行auto-01) 复验普通脚本、实际暂停中独立业务身份读取 Raw、取消及撤权后的 worker 回收。运行 `cargo test --locked -p serial-workbench-host --lib queued_debug_snapshot_requires_its_business_actor_at_delivery`，核对已经排队的快照在业务撤权后返回拒绝。外部语言按 M5 对应运行时另验。
+
+运行 `pnpm test:ui e2e/browser/trusted-script-tool.spec.ts e2e/browser/loopback-tool.spec.ts --workers=1`，保存英文宽窗及中文窄窗的无头画面。检查行号和键盘断点、确切源码和断点确认、切换调用帧、源码定位、等待与焦点移交。窄窗重开后保持当前任务可停止，撤权或实际终态到达后丢弃迟到的变量和调用栈。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

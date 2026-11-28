@@ -158,6 +158,19 @@ pub(super) fn validate_request(
             }
             return Ok(());
         }
+        RpcRequest::DebugScript(params) => {
+            if !context.actor.is_user_control() {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "Script debugging requires local user control",
+                ));
+            }
+            return if &params.request_id == outer_id {
+                Ok(())
+            } else {
+                Err(invalid())
+            };
+        }
         RpcRequest::RunConfirmedScript(params) => {
             if !context.actor.is_user_control() {
                 return Err(HostError::new(

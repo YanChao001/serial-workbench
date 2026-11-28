@@ -7,6 +7,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   LOOPBACK_TARGET_UNAVAILABLE: "loopback.unavailable",
   SCRIPT_TARGET_UNAVAILABLE: "trustedScript.unavailable",
   SCRIPT_SOURCE_CHANGED: "trustedScript.sourceChanged",
+  SCRIPT_DEBUG_UNAVAILABLE: "scriptDebug.unavailable",
   INVALID_SCRIPT_SOURCE: "trustedScript.limit",
   SCRIPT_EXECUTION_FAILED: "trustedScript.executionFailed",
   PLUGIN_TRANSPORT_OPEN_FAILED: "nativeError.pluginTransportOpenFailed",
