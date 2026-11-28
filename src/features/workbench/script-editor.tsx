@@ -50,9 +50,15 @@ import {
   scriptSyntaxDiagnostics,
   type ScriptLanguage,
 } from "./script-editor-model";
+import {
+  scriptDebugMarks,
+  scriptLineOffset,
+  setScriptDebugMarks,
+} from "./script-editor-debug";
 import "./script-editor.css";
 
 const externalSource = Annotation.define<boolean>();
+const noBreakpoints: readonly number[] = [];
 const highlight = syntaxHighlighting(
   HighlightStyle.define([
     { tag: tags.keyword, class: "script-code-keyword" },
@@ -70,7 +76,10 @@ const highlight = syntaxHighlighting(
   ]),
 );
 
-export type ScriptEditorHandle = { focus(): void };
+export type ScriptEditorHandle = {
+  focus(): void;
+  locate(line: number, column: number): void;
+};
 type Report = { from: number; line: number; column: number };
 
 export function ScriptEditor({
@@ -79,6 +88,10 @@ export function ScriptEditor({
   language,
   source,
   oversize,
+  readOnly = false,
+  breakpoints = noBreakpoints,
+  activeLine,
+  onToggleBreakpoint,
   onChange,
 }: {
   ref?: Ref<ScriptEditorHandle>;
@@ -86,7 +99,11 @@ export function ScriptEditor({
   language: ScriptLanguage;
   source: string;
   oversize: boolean;
-  onChange(source: string): void;
+  readOnly?: boolean;
+  breakpoints?: readonly number[];
+  activeLine?: number;
+  onToggleBreakpoint?(line: number): void;
+  onChange(source: string, breakpoints: number[]): void;
 }) {
   const { t } = useI18n();
   const container = useRef<HTMLDivElement>(null);
@@ -100,7 +117,21 @@ export function ScriptEditor({
 
   useImperativeHandle(
     ref,
-    () => ({ focus: () => editor.current?.focus() }),
+    () => ({
+      focus: () => editor.current?.focus(),
+      locate(line, column) {
+        const view = editor.current;
+        if (!view) return;
+        const position = scriptLineOffset(view.state.doc, line, column);
+        if (position !== undefined) {
+          view.dispatch({
+            selection: { anchor: position },
+            scrollIntoView: true,
+          });
+          view.focus();
+        }
+      },
+    }),
     [],
   );
   const syntaxMessage = useEffectEvent(() => t("scriptEditor.syntax"));
@@ -112,7 +143,21 @@ export function ScriptEditor({
           transaction.annotation(externalSource),
         )
       )
-        onChange(update.state.doc.toString());
+        onChange(
+          update.state.doc.toString(),
+          [
+            ...new Set(
+              breakpoints
+                .filter((line) => line <= update.startState.doc.lines)
+                .map((line) => {
+                  const start = update.startState.doc.line(line).from;
+                  return update.state.doc.lineAt(
+                    update.changes.mapPos(start, 1),
+                  ).number;
+                }),
+            ),
+          ].sort((a, b) => a - b),
+        );
     }
     if (
       update.transactions.some((transaction) =>
@@ -128,6 +173,12 @@ export function ScriptEditor({
     }
   });
 
+  const toggle = useEffectEvent((line: number) => {
+    if (!onToggleBreakpoint || readOnly || !source.trim()) return false;
+    onToggleBreakpoint(line);
+    return true;
+  });
+
   useLayoutEffect(() => {
     if (!container.current) return;
     const view = new EditorView({
@@ -136,7 +187,21 @@ export function ScriptEditor({
         lang.of([]),
         attrs.of([]),
         EditorState.tabSize.of(2),
-        lineNumbers(),
+        lineNumbers({
+          domEventHandlers: {
+            mousedown(view, line, event) {
+              if (
+                !(event instanceof MouseEvent) ||
+                event.button !== 0 ||
+                !toggle(view.state.doc.lineAt(line.from).number)
+              )
+                return false;
+              view.focus();
+              return true;
+            },
+          },
+        }),
+        scriptDebugMarks,
         history(),
         drawSelection(),
         highlightActiveLine(),
@@ -196,18 +261,27 @@ export function ScriptEditor({
           "aria-describedby": bytesId,
           "aria-invalid": String(oversize),
           dir: "ltr",
+          tabindex: "0",
         }),
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
         EditorState.phrases.of({
           Completions: t("scriptEditor.completions"),
           "Selection deleted": t("scriptEditor.selectionDeleted"),
         }),
       ]),
     });
-  }, [attrs, id, labelId, bytesId, oversize, t]);
+  }, [attrs, id, labelId, bytesId, oversize, readOnly, t]);
+
+  useLayoutEffect(() => {
+    editor.current?.dispatch({
+      effects: setScriptDebugMarks.of({ breakpoints, activeLine }),
+    });
+  }, [breakpoints, activeLine]);
 
   function insert(snippet: (typeof scriptSnippets)[number]) {
     const view = editor.current;
-    if (!view) return;
+    if (!view || readOnly) return;
     view.dispatch({
       ...view.state.replaceSelection(snippet.text(language)),
       annotations: isolateHistory.of("full"),
@@ -237,7 +311,9 @@ export function ScriptEditor({
               size="sm"
               variant="ghost"
               className="justify-start"
-              disabled={snippet.id === "example" && Boolean(source.trim())}
+              disabled={
+                readOnly || (snippet.id === "example" && Boolean(source.trim()))
+              }
               onClick={() => insert(snippet)}
             >
               {t(snippet.label)}
@@ -263,7 +339,10 @@ export function ScriptEditor({
               {scriptSnippets.map((snippet) => (
                 <DropdownMenuItem
                   key={snippet.id}
-                  disabled={snippet.id === "example" && Boolean(source.trim())}
+                  disabled={
+                    readOnly ||
+                    (snippet.id === "example" && Boolean(source.trim()))
+                  }
                   onSelect={() => {
                     insertedFromMenu.current = true;
                     insert(snippet);
@@ -276,10 +355,34 @@ export function ScriptEditor({
           </DropdownMenu>
         </div>
         <div className="grid min-w-0 gap-1.5">
-          <span id={labelId} className="text-sm font-medium">
-            {t("trustedScript.source")}
-          </span>
-          <div ref={container} className="script-source-editor" />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span id={labelId} className="text-sm font-medium">
+              {t("trustedScript.source")}
+            </span>
+            {onToggleBreakpoint && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={readOnly || !source.trim()}
+                onClick={() => {
+                  const view = editor.current;
+                  if (!view) return;
+                  onToggleBreakpoint(
+                    view.state.doc.lineAt(view.state.selection.main.head)
+                      .number,
+                  );
+                  view.focus();
+                }}
+              >
+                {t("scriptDebug.toggle")}
+              </Button>
+            )}
+          </div>
+          <div
+            ref={container}
+            className="script-source-editor"
+            data-breakpoints-editable={Boolean(onToggleBreakpoint) && !readOnly}
+          />
           {reports.length > 0 && (
             <ul
               aria-label={t("scriptEditor.problems")}

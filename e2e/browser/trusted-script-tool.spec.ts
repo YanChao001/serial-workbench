@@ -193,6 +193,146 @@ test("script editing highlights syntax, inserts SDK completions and snippets, an
   });
 });
 
+const debugSource = [
+  "export default async function run() {",
+  "  const count = 14;",
+  "  const next = compute(count);",
+  "  function compute(value) { return value + 2; }",
+  "  return next;",
+  "}",
+].join("\n");
+
+test("wide debugger confirms the exact breakpoints, steps, inspects a caller and continues", async ({
+  page,
+}, info) => {
+  const dialog = await openScript(page, "ready");
+  const editor = dialog.getByRole("textbox", { name: "Source code" });
+  await editor.fill(debugSource);
+  await editor.press("Control+Home");
+  await editor.press("ArrowDown");
+  await editor.press("ArrowDown");
+  await dialog
+    .getByRole("button", { name: "Toggle breakpoint at cursor" })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Remove breakpoint on line 3" }),
+  ).toBeVisible();
+  await expect(dialog.locator(".script-breakpoint")).toHaveText("3");
+  await dialog.getByRole("button", { name: "Review and debug…" }).click();
+  const confirm = page.getByRole("dialog", {
+    name: "Confirm script debugging",
+  });
+  await expect(confirm.getByText("Breakpoints · 3")).toBeVisible();
+  expect(await submitted(page)).toEqual({ native: [], generic: [] });
+  await expect(
+    confirm.getByRole("button", { name: "Back to editing" }),
+  ).toBeFocused();
+  await confirm.getByRole("button", { name: "Start debugging" }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Paused on line 3");
+  await expect(editor).toHaveAttribute("aria-readonly", "true");
+  await expect(editor.locator(".script-paused-line")).toContainText(
+    "compute(count)",
+  );
+  expect((await submitted(page)).native).toEqual([
+    expect.objectContaining({
+      source: debugSource,
+      sourceSha256: createHash("sha256")
+        .update("serial-workbench-script-v1\0js\0" + debugSource)
+        .digest("hex"),
+      debugBreakpoints: [3],
+    }),
+  ]);
+
+  await dialog.getByRole("button", { name: "Step into", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Paused on line 4");
+  await expect(dialog.getByRole("region", { name: "Variables" })).toContainText(
+    "16",
+  );
+  const caller = dialog.getByRole("button", { name: "run · 3:3", exact: true });
+  await caller.click();
+  await expect(caller).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("region", { name: "Variables" })).toContainText(
+    "14",
+  );
+  await dialog.getByRole("button", { name: "Go to line 3, column 3" }).click();
+  await expect(editor).toBeFocused();
+  await expect(editor.locator(".script-paused-line")).toContainText(
+    "function compute",
+  );
+  await dialog.screenshot({ path: info.outputPath("script-debug-wide.png") });
+  await dialog.getByRole("button", { name: "Step out", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Paused on line 5");
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("Running");
+  await expect(dialog.getByRole("region", { name: "Variables" })).toBeHidden();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.debugCommands),
+  ).toEqual([
+    { action: "stepInto", revision: "2" },
+    { action: "inspectFrame", revision: "3", frame: 1 },
+    { action: "stepOut", revision: "4" },
+    { action: "continue", revision: "5" },
+  ]);
+});
+
+test("narrow debugger reopens the owned pause and drops revoked and post-stop values", async ({
+  page,
+}, info) => {
+  const dialog = await openScript(page, "ready", true);
+  const editor = dialog.getByRole("textbox", { name: "源码" });
+  await editor.fill(debugSource);
+  const gutterLine = dialog
+    .locator(".cm-lineNumbers .cm-gutterElement")
+    .getByText("3", { exact: true });
+  await gutterLine.click();
+  await expect(
+    dialog.getByRole("button", { name: "移除第 3 行断点" }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "确认并调试…" }).click();
+  await page
+    .getByRole("dialog", { name: "确认调试脚本" })
+    .getByRole("button", { name: "开始调试" })
+    .click();
+  await expect(dialog.getByRole("status")).toHaveText("暂停于第 3 行");
+  const variables = dialog.getByRole("region", { name: "变量" });
+  await expect(variables).toContainText("14");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await openTool(page, true);
+  await expect(variables).toContainText("14");
+  await expect(dialog.getByRole("button", { name: /定位至第/ })).toBeHidden();
+
+  await page.evaluate(() => {
+    window.workbenchFixture.debugDenied = true;
+  });
+  await expect(variables).toBeHidden();
+  await expect(dialog.getByRole("group", { name: "调试控制" })).toBeHidden();
+  await page.evaluate(() => {
+    window.workbenchFixture.debugDenied = false;
+  });
+  await expect(variables).toContainText("14");
+
+  const stop = dialog.getByRole("button", { name: "停止", exact: true });
+  await stop.scrollIntoViewIfNeeded();
+  await expect(stop).toBeInViewport();
+  await dialog.screenshot({ path: info.outputPath("script-debug-narrow.png") });
+  await page.evaluate(() => {
+    window.workbenchFixture.holdNextDebugRead = true;
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.debugReadHeld))
+    .toBe(true);
+  await stop.click();
+  await expect(dialog.getByRole("status")).toHaveText("正在请求停止");
+  await page.evaluate(() => {
+    window.workbenchFixture.finishAutomationCancellation();
+    window.workbenchFixture.releaseDebugRead();
+  });
+  await expect(dialog.getByRole("status")).toHaveText("已停止");
+  await expect(variables).toBeHidden();
+  expect((await submitted(page)).native).toHaveLength(1);
+});
+
 test("narrow Chinese tool reopens the active script and distinguishes requested stop from terminal", async ({
   page,
 }, info) => {

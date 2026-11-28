@@ -34,6 +34,9 @@ import type {
   ReplayReadResult,
   ReplaySearchPage,
   ExperimentInspection,
+  ScriptDebugCommand,
+  ScriptDebugIntent,
+  ScriptDebugSnapshot,
 } from "@serial-workbench/contracts";
 import type {
   ClientStateSnapshot,
@@ -118,6 +121,11 @@ export type WorkbenchFixture = {
   manualSendAcceptedBytes?: number;
   invocations: Call[];
   confirmedScripts: import("../../src/lib/tauri").LocalScriptIntent[];
+  debugCommands: ScriptDebugCommand[];
+  debugDenied: boolean;
+  holdNextDebugRead: boolean;
+  debugReadHeld: boolean;
+  releaseDebugRead: () => void;
   clientStateReads: number;
   sentBytes: string[];
   savedTextExports: { name: string; content: string }[];
@@ -757,6 +765,8 @@ export async function seedWorkbenchFixture(
       diagnosticLogs,
     } = JSON.parse(raw) as typeof fixturePayload;
     let automationOperation: Operation | undefined;
+    let scriptDebugSnapshot: ScriptDebugSnapshot | undefined;
+    let releaseDebugRead: (() => void) | undefined;
     let operationPosition = 0;
     let transferOperation: Operation | undefined;
     let sourceRead = "0";
@@ -1207,6 +1217,13 @@ export async function seedWorkbenchFixture(
       manualSendRevision: openedSession.revision,
       invocations: [],
       confirmedScripts: [],
+      debugCommands: [],
+      debugDenied: false,
+      holdNextDebugRead: false,
+      debugReadHeld: false,
+      releaseDebugRead() {
+        releaseDebugRead?.();
+      },
       clientStateReads: 0,
       sentBytes: [],
       savedTextExports: [],
@@ -1443,6 +1460,78 @@ export async function seedWorkbenchFixture(
         },
         unregisterCallback: (id: number) => callbacks.delete(id),
         async invoke(command: string, args: Record<string, unknown> = {}) {
+          if (command === "host_script_debug") {
+            const unavailable = {
+              code: "SCRIPT_DEBUG_UNAVAILABLE",
+              message: "No live debugger",
+              retryable: false,
+            };
+            if (
+              args.generation !== hostAttachment.generation ||
+              args.operationId !== automationOperation?.operationId ||
+              automationOperation?.state !== "running" ||
+              !scriptDebugSnapshot
+            )
+              throw unavailable;
+            if (fixture.debugDenied)
+              throw {
+                code: "PERMISSION_DENIED",
+                message: "Debugger access revoked",
+                retryable: false,
+              };
+            const intent = args.intent as ScriptDebugIntent;
+            const snapshot = scriptDebugSnapshot;
+            if (intent.kind === "inspect") {
+              if (fixture.holdNextDebugRead) {
+                fixture.holdNextDebugRead = false;
+                await new Promise<void>((resolve) => {
+                  fixture.debugReadHeld = true;
+                  releaseDebugRead = resolve;
+                });
+                fixture.debugReadHeld = false;
+                releaseDebugRead = undefined;
+              }
+              return { kind: "snapshot", snapshot };
+            }
+            const requested = intent.command;
+            if (
+              snapshot.phase !== "paused" ||
+              requested.revision !== snapshot.revision
+            )
+              throw {
+                code: "REVISION_CONFLICT",
+                message: "Old pause",
+                retryable: false,
+              };
+            fixture.debugCommands.push(requested);
+            const revision = String(Number(snapshot.revision) + 1);
+            if (requested.action === "continue") {
+              scriptDebugSnapshot = { phase: "running", revision };
+            } else if (requested.action === "inspectFrame") {
+              if (!snapshot.frames[requested.frame]) throw unavailable;
+              scriptDebugSnapshot = {
+                ...snapshot,
+                revision,
+                selectedFrame: requested.frame,
+                variables: [{ name: "count", type: "number", preview: "14" }],
+              };
+            } else {
+              scriptDebugSnapshot = {
+                phase: "paused",
+                revision,
+                selectedFrame: 0,
+                frames:
+                  requested.action === "stepInto"
+                    ? [
+                        { name: "compute", line: 4, column: 3 },
+                        { name: "run", line: 3, column: 3 },
+                      ]
+                    : [{ name: "run", line: 5, column: 3 }],
+                variables: [{ name: "next", type: "number", preview: "16" }],
+              };
+            }
+            return { kind: "accepted" };
+          }
           if (command === "host_run_confirmed_script") {
             const actionId = "swb.builtin.automation.script";
             if (
@@ -1455,12 +1544,28 @@ export async function seedWorkbenchFixture(
             fixture.confirmedScripts.push(intent);
             const operationId =
               "fixture-script-" + fixture.confirmedScripts.length;
+            scriptDebugSnapshot = intent.debugBreakpoints
+              ? {
+                  phase: "paused",
+                  revision: "2",
+                  selectedFrame: 0,
+                  frames: [
+                    {
+                      name: "run",
+                      line: intent.debugBreakpoints[0] ?? 1,
+                      column: 3,
+                    },
+                  ],
+                  variables: [{ name: "count", type: "number", preview: "14" }],
+                }
+              : undefined;
             const held =
-              automation.state === "held" &&
-              !(
-                automation.firstScriptCompletes &&
-                fixture.confirmedScripts.length === 1
-              );
+              Boolean(scriptDebugSnapshot) ||
+              (automation.state === "held" &&
+                !(
+                  automation.firstScriptCompletes &&
+                  fixture.confirmedScripts.length === 1
+                ));
             automationOperation = {
               ...sentOperation,
               actionId,
@@ -1469,6 +1574,7 @@ export async function seedWorkbenchFixture(
               actorId: hostAttachment.attachment.actorId,
               target: intent.target,
               requestId: intent.requestId,
+              revealTarget: { pageId: "workbench", panelId: "trustedScript" },
               executionMode: "independent",
               state: held ? "running" : "succeeded",
               result: held

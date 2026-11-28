@@ -808,6 +808,13 @@ export function WorkbenchTools({
     if (tool === "trustedScript") {
       const attachment = host.connection?.attachment;
       const run = host.runConfirmedScript;
+      const debuggerRegistered = catalog.some(
+        (spec) =>
+          spec.actionId === "swb.builtin.automation.script" &&
+          spec.targetKinds.includes("session") &&
+          isRecord(spec.inputSchema.properties) &&
+          Object.hasOwn(spec.inputSchema.properties, "debugBreakpoints"),
+      );
       return (
         <Suspense fallback={null}>
           <TrustedScriptTool
@@ -834,6 +841,9 @@ export function WorkbenchTools({
             wait={host.waitForOperation}
             read={host.readFile}
             cancel={onCancelOperation}
+            scriptDebug={
+              ready && debuggerRegistered ? host.scriptDebug : undefined
+            }
           />
         </Suspense>
       );
