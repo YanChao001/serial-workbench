@@ -373,7 +373,7 @@ LOG-07 与 SEC-02 使用同一份规则定义。规则按顺序替换 UTF-8 文�
 
 JS/TS 调试沿用已确认源码、签名任务和固定 Node。由 worker 的监督进程在进程内通过 V8 Inspector 连接该 worker 的线程 ID。工作台通过本机控制通道请求调试。Host 按窗口代次、业务身份、任务和当前会话权限核验每次读写，转发继续、单步和查看局部变量等固定指令。Inspector 使用进程内会话，暂停快照留在当前操作的内存中。快照仅包括原脚本的行列、有界调用栈与局部变量预览。
 
-调试 worker 在断点安装完成后才加载用户源码。断点以已确认稿的行号表示，TS 沿用保留位置的类型擦除。调试传输和消息只归当前 worker，采集、其他任务和插件管理继续走原路径。断点中的停止先请求 worker 终止，再以 `terminateOnResume` 解除 V8 暂停，实际退出后才结算。授权失效和超时走同一清理，并丢弃该次暂停的读写结果。窗口可以结束等待，后台任务仍有原超时与资源约束。
+调试 worker 在断点安装完成后才加载用户源码。断点以已确认稿的行号表示，TS 沿用保留位置的类型擦除。调试传输和消息只归当前 worker，采集、其他任务和插件管理继续走原路径。断点中的停止先请求 worker 终止，再以 `terminateOnResume` 解除 V8 暂停，实际退出后才结算。授权失效和超时走同一清理，并丢弃该次暂停的读写结果。窗口可以结束等待，后台任务继续由 Host 持有，可从任务入口重新查看或停止。Host 继续限制工作名额、调试命令等待和实际清理时间。
 
 采用进程内 Inspector 避免另开调试网络监听或改写用户程序插入断点。使用固定 Node 26.13.0 的 NodeWorker 和 V8 协议。按版本复验 TS 行号、断点与单步、变量和调用栈、暂停时其他任务、停止后无后续写入，以及无调试监听端口。Lua/Python 及其他外部语言沿用 M5 各按需运行时的调试边界。 [NodeWorker 协议](https://raw.githubusercontent.com/nodejs/node/v26.13.0/src/inspector/domain_node_worker.pdl) · [V8 协议](https://raw.githubusercontent.com/nodejs/node/v26.13.0/deps/v8/include/js_protocol.pdl)
 

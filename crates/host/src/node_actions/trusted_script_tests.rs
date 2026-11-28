@@ -271,6 +271,178 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
     assert_eq!(output["value"]["rx"], "AP8=");
     assert_eq!(output["value"]["tx"]["bytesBase64"], "AP8=");
     assert_eq!(output["value"]["tx"]["outcome"], "accepted");
+    let debugger_client = Id::try_from("script-debug-readback").unwrap();
+    let debugger_reader = auth.authenticate(&debugger_client, None).unwrap().actor;
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: debugger_client.clone(),
+            permissions: vec!["content.read".into()],
+            targets: vec![session.clone()],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+
+    let debug_source = [
+        "export default async ({ serial }: { serial: { send(value: Uint8Array): Promise<unknown> } }) => {",
+        "  const count: number = 14;",
+        "  const next = count + 2;",
+        "  await serial.send(new Uint8Array([next]));",
+        "};",
+    ].join("\n");
+    let mut debug_input = input(&debug_source);
+    debug_input["debugBreakpoints"] = json!([3]);
+    let debugging = host
+        .invoke_confirmed_script(&operator, confirmed(debug_input))
+        .await
+        .unwrap();
+    let debug_request = |intent| ScriptDebugRequest {
+        request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+        client_id: participant.clone(),
+        actor_id: actor.id().clone(),
+        operation_id: debugging.operation_id.clone(),
+        intent,
+    };
+    let wait_for_pause = |previous: U64| {
+        let (host, operator, debug_request) = (&host, &operator, &debug_request);
+        let (store, actor, operation_id) = (&store, &actor, &debugging.operation_id);
+        async move {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let current = store.get(actor, operation_id).unwrap();
+                    assert!(
+                        !current.state.is_terminal(),
+                        "Debugger exited before pause: {:?}",
+                        current.error
+                    );
+                    let reply = host
+                        .control_script_debugger(
+                            operator,
+                            debug_request(ScriptDebugIntent::Inspect),
+                        )
+                        .await;
+                    match reply {
+                        Ok(ScriptDebugResponse {
+                            script_debug:
+                                ScriptDebugResult::Snapshot {
+                                    snapshot:
+                                        snapshot @ ScriptDebugSnapshot::Paused { revision, .. },
+                                },
+                        }) if revision > previous => return snapshot,
+                        Err(error) if error.code != "SCRIPT_DEBUG_UNAVAILABLE" => {
+                            panic!("{error:?}")
+                        }
+                        _ => tokio::time::sleep(Duration::from_millis(10)).await,
+                    }
+                }
+            })
+            .await
+            .unwrap()
+        }
+    };
+    let first = wait_for_pause(0.into()).await;
+    let ScriptDebugSnapshot::Paused {
+        revision,
+        frames,
+        variables,
+        ..
+    } = first
+    else {
+        unreachable!()
+    };
+    assert_eq!(frames[0].line, 3);
+    assert!(
+        variables
+            .iter()
+            .any(|variable| variable.name == "count" && variable.preview == "14")
+    );
+    assert_eq!(
+        host.control_script_debugger(&actor, debug_request(ScriptDebugIntent::Inspect))
+            .await
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    let other = ScriptDebugRequest {
+        client_id: debugger_client.clone(),
+        actor_id: debugger_reader.id().clone(),
+        ..debug_request(ScriptDebugIntent::Inspect)
+    };
+    assert_eq!(
+        host.control_script_debugger(&operator, other)
+            .await
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    let step = debug_request(ScriptDebugIntent::Command {
+        command: ScriptDebugCommand::StepOver { revision },
+    });
+    assert_eq!(
+        host.control_script_debugger(&operator, step)
+            .await
+            .unwrap()
+            .script_debug,
+        ScriptDebugResult::Accepted
+    );
+    let second = wait_for_pause(revision).await;
+    let ScriptDebugSnapshot::Paused {
+        frames, variables, ..
+    } = second
+    else {
+        unreachable!()
+    };
+    assert_eq!(frames[0].line, 4);
+    assert!(
+        variables
+            .iter()
+            .any(|variable| variable.name == "next" && variable.preview == "16")
+    );
+    let stale = debug_request(ScriptDebugIntent::Command {
+        command: ScriptDebugCommand::Continue { revision },
+    });
+    assert_eq!(
+        host.control_script_debugger(&operator, stale)
+            .await
+            .unwrap_err()
+            .code,
+        "REVISION_CONFLICT"
+    );
+    let debug_target = Target {
+        kind: ResourceKind::try_from("operation").unwrap(),
+        id: debugging.operation_id.clone(),
+        host_id: session.host_id.clone(),
+        session_id: None,
+        session_epoch: None,
+    };
+    let cancelled = host
+        .invoke(
+            &actor,
+            call(
+                &actor,
+                &debug_target,
+                "operation.cancel",
+                json!({"reason":"user"}),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(settle(cancelled).await.state, OperationState::Succeeded);
+    let debug_receipt = settle(debugging.clone()).await;
+    assert_eq!(debug_receipt.state, OperationState::Cancelled);
+    assert_eq!(
+        debug_receipt.worker_observation.unwrap().live_workers.get(),
+        0
+    );
+    assert_eq!(
+        host.control_script_debugger(&operator, debug_request(ScriptDebugIntent::Inspect))
+            .await
+            .unwrap_err()
+            .code,
+        "SCRIPT_DEBUG_UNAVAILABLE"
+    );
+
     let wait_for_worker = |operation: Operation| {
         let store = store.clone();
         let actor = actor.clone();
@@ -412,6 +584,6 @@ async fn native_signed_user_script_is_bound_to_operator_source_and_session() {
         output["value"]["tx"]["operationId"]
     );
     println!(
-        "script_host raw_writes=1 bytes=00ff cancelled_live_workers=0 revoked_live_workers=0 shared_result_denied=true"
+        "script_host raw_writes=1 bytes=00ff cancelled_live_workers=0 revoked_live_workers=0 shared_result_denied=true paused_lines=3,4 debug_cancel_live_workers=0 stale_debug_denied=true other_debug_actor_denied=true"
     );
 }

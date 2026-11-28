@@ -13,6 +13,9 @@ pub(crate) struct LocalScriptIntent {
     source_sha256: Digest,
     session_revision: U64,
     configuration_revision: U64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(type=Vec<u32>, optional)]
+    debug_breakpoints: Option<Vec<u32>>,
 }
 
 impl DesktopHostBridge {
@@ -31,6 +34,16 @@ impl DesktopHostBridge {
             ));
         }
         let target = intent.target;
+        let mut params = json!({
+            "language": intent.language,
+            "source": intent.source,
+            "sourceSha256": intent.source_sha256,
+            "sessionRevision": intent.session_revision,
+            "configurationRevision": intent.configuration_revision,
+        });
+        if let Some(breakpoints) = intent.debug_breakpoints {
+            params["debugBreakpoints"] = json!(breakpoints);
+        }
         let call = Call {
             protocol_version: attachment.protocol_version,
             host_id: attachment.host_id,
@@ -47,14 +60,7 @@ impl DesktopHostBridge {
                 result_ref: None,
             },
             target,
-            params: serde_json::from_value(json!({
-                "language": intent.language,
-                "source": intent.source,
-                "sourceSha256": intent.source_sha256,
-                "sessionRevision": intent.session_revision,
-                "configurationRevision": intent.configuration_revision,
-            }))
-            .map_err(|_| {
+            params: serde_json::from_value(params).map_err(|_| {
                 HostError::new("INVALID_ARGUMENT", "Invalid confirmed script parameters")
             })?,
             expected_revision: None,
@@ -79,6 +85,42 @@ impl DesktopHostBridge {
             },
             RpcReply::Failure { error, .. } => Err(error),
         }
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn host_script_debug(
+    window: tauri::WebviewWindow,
+    generation: U64,
+    request_id: RequestId,
+    operation_id: Id,
+    intent: ScriptDebugIntent,
+    state: tauri::State<'_, DesktopHostBridge>,
+) -> HostResult<ScriptDebugResult> {
+    state.bind_window(&window)?;
+    let attachment = state
+        .attachment_at_generation(window.label(), generation)
+        .await?;
+    let request = RpcRequest::DebugScript(ScriptDebugRequest {
+        request_id,
+        client_id: attachment.client_id,
+        actor_id: attachment.actor_id,
+        operation_id,
+        intent,
+    });
+    match state
+        .control_request_at_generation(window.label(), generation, request)
+        .await?
+    {
+        RpcReply::Success { result, .. } => match *result {
+            RpcResult::ScriptDebug(response) => Ok(response.script_debug),
+            _ => Err(HostError::new(
+                "INTERNAL",
+                "Invalid script debugger response",
+            )),
+        },
+        RpcReply::Failure { error, .. } => Err(error),
     }
 }
 

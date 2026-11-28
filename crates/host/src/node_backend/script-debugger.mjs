@@ -1,6 +1,7 @@
 import { Session as ScriptInspectorSession } from "node:inspector";
 
 const SCRIPT_INSPECTOR_WAIT_MS = 4_000;
+const SCRIPT_INSPECTOR_MAX_MESSAGE = 512 * 1024;
 const SCRIPT_STACK_LIMIT = 12;
 const SCRIPT_VARIABLE_LIMIT = 24;
 const SCRIPT_SCOPE_TYPES = new Set([
@@ -87,13 +88,15 @@ export class ConfirmedScriptDebugger {
   #busy = false;
   #stopping = false;
   #closed = false;
-  #threadId;
+  #workerTitle;
   #sourceUrl;
   #publish;
   #failed;
 
-  constructor(worker, sourceSha256, { publish, failed }) {
-    this.#threadId = String(worker.threadId);
+  constructor(worker, name, sourceSha256, { publish, failed }) {
+    // NodeWorker.workerId is allocated per inspector connection. The title
+    // uses the immutable worker thread ID and the name chosen by the supervisor.
+    this.#workerTitle = "[worker " + worker.threadId + "] " + name;
     this.#sourceUrl = confirmedScriptDebugUrl(sourceSha256);
     this.#publish = publish;
     this.#failed = failed;
@@ -101,7 +104,7 @@ export class ConfirmedScriptDebugger {
     this.#root.connect();
     this.#root.on("NodeWorker.attachedToWorker", ({ params }) => {
       const { sessionId, workerInfo } = params;
-      if (workerInfo.workerId !== this.#threadId || this.#sessionId) {
+      if (workerInfo.title !== this.#workerTitle || this.#sessionId) {
         void this.#post("NodeWorker.detach", { sessionId }).catch(() => {});
         return;
       }
@@ -117,6 +120,11 @@ export class ConfirmedScriptDebugger {
     this.#root.on("NodeWorker.receivedMessageFromWorker", ({ params }) => {
       if (params.sessionId !== this.#sessionId) return;
       try {
+        if (params.message.length > SCRIPT_INSPECTOR_MAX_MESSAGE)
+          throw scriptDebuggerError(
+            "SCRIPT_DEBUG_UNAVAILABLE",
+            "The inspector reply exceeds its budget",
+          );
         this.#receive(JSON.parse(params.message));
       } catch (failure) {
         this.#reportFailure(failure);

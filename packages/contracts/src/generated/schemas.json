@@ -19307,6 +19307,20 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "script.debug",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ScriptDebugRequest"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "action.invokeChild",
                   "type": "string"
                 },
@@ -19449,6 +19463,142 @@
           "maximum": 9007199254740991,
           "minimum": -9007199254740991,
           "type": "integer"
+        },
+        "ScriptDebugCommand": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "continue",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOver",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepInto",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOut",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "inspectFrame",
+                  "type": "string"
+                },
+                "frame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision", "frame"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugIntent": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "inspect",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "$ref": "#/definitions/ScriptDebugCommand"
+                },
+                "kind": {
+                  "const": "command",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "command"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "intent": {
+              "$ref": "#/definitions/ScriptDebugIntent"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            }
+          },
+          "required": [
+            "requestId",
+            "clientId",
+            "actorId",
+            "operationId",
+            "intent"
+          ],
+          "type": "object"
         },
         "Target": {
           "additionalProperties": false,
@@ -26755,6 +26905,20 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "script.debug",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ScriptDebugRequest"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "action.invokeChild",
                   "type": "string"
                 },
@@ -26911,6 +27075,9 @@
               "$ref": "#/definitions/ClientEffectAcknowledged"
             },
             {
+              "$ref": "#/definitions/ScriptDebugResponse"
+            },
+            {
               "$ref": "#/definitions/QueryResult"
             },
             {
@@ -26993,6 +27160,301 @@
               "type": "object"
             }
           ]
+        },
+        "ScriptDebugCommand": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "continue",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOver",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepInto",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOut",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "inspectFrame",
+                  "type": "string"
+                },
+                "frame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision", "frame"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugFrame": {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "line": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "line", "column"],
+          "type": "object"
+        },
+        "ScriptDebugIntent": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "inspect",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "$ref": "#/definitions/ScriptDebugCommand"
+                },
+                "kind": {
+                  "const": "command",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "command"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "intent": {
+              "$ref": "#/definitions/ScriptDebugIntent"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            }
+          },
+          "required": [
+            "requestId",
+            "clientId",
+            "actorId",
+            "operationId",
+            "intent"
+          ],
+          "type": "object"
+        },
+        "ScriptDebugResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "scriptDebug": {
+              "$ref": "#/definitions/ScriptDebugResult"
+            }
+          },
+          "required": ["scriptDebug"],
+          "type": "object"
+        },
+        "ScriptDebugResult": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "snapshot",
+                  "type": "string"
+                },
+                "snapshot": {
+                  "$ref": "#/definitions/ScriptDebugSnapshot"
+                }
+              },
+              "required": ["kind", "snapshot"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "accepted",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugSnapshot": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "starting",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "running",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frames": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugFrame"
+                  },
+                  "type": "array"
+                },
+                "phase": {
+                  "const": "paused",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                },
+                "selectedFrame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "variables": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugVariable"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "phase",
+                "revision",
+                "frames",
+                "selectedFrame",
+                "variables"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugValueType": {
+          "enum": [
+            "unavailable",
+            "string",
+            "number",
+            "boolean",
+            "bigint",
+            "null",
+            "undefined",
+            "object",
+            "function",
+            "symbol"
+          ],
+          "type": "string"
+        },
+        "ScriptDebugVariable": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/definitions/ScriptDebugValueType"
+            }
+          },
+          "required": ["name", "type", "preview"],
+          "type": "object"
         },
         "SerialConfiguration": {
           "additionalProperties": false,
@@ -63205,6 +63667,9 @@
               "$ref": "#/definitions/ClientEffectAcknowledged"
             },
             {
+              "$ref": "#/definitions/ScriptDebugResponse"
+            },
+            {
               "$ref": "#/definitions/QueryResult"
             },
             {
@@ -63287,6 +63752,165 @@
               "type": "object"
             }
           ]
+        },
+        "ScriptDebugFrame": {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "line": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "line", "column"],
+          "type": "object"
+        },
+        "ScriptDebugResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "scriptDebug": {
+              "$ref": "#/definitions/ScriptDebugResult"
+            }
+          },
+          "required": ["scriptDebug"],
+          "type": "object"
+        },
+        "ScriptDebugResult": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "snapshot",
+                  "type": "string"
+                },
+                "snapshot": {
+                  "$ref": "#/definitions/ScriptDebugSnapshot"
+                }
+              },
+              "required": ["kind", "snapshot"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "accepted",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugSnapshot": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "starting",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "running",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frames": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugFrame"
+                  },
+                  "type": "array"
+                },
+                "phase": {
+                  "const": "paused",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                },
+                "selectedFrame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "variables": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugVariable"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "phase",
+                "revision",
+                "frames",
+                "selectedFrame",
+                "variables"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugValueType": {
+          "enum": [
+            "unavailable",
+            "string",
+            "number",
+            "boolean",
+            "bigint",
+            "null",
+            "undefined",
+            "object",
+            "function",
+            "symbol"
+          ],
+          "type": "string"
+        },
+        "ScriptDebugVariable": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/definitions/ScriptDebugValueType"
+            }
+          },
+          "required": ["name", "type", "preview"],
+          "type": "object"
         },
         "SerialConfiguration": {
           "additionalProperties": false,
@@ -66198,6 +66822,142 @@
           "minimum": -9007199254740991,
           "type": "integer"
         },
+        "ScriptDebugCommand": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "continue",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOver",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepInto",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOut",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "inspectFrame",
+                  "type": "string"
+                },
+                "frame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision", "frame"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugIntent": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "inspect",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "$ref": "#/definitions/ScriptDebugCommand"
+                },
+                "kind": {
+                  "const": "command",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "command"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "intent": {
+              "$ref": "#/definitions/ScriptDebugIntent"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            }
+          },
+          "required": [
+            "requestId",
+            "clientId",
+            "actorId",
+            "operationId",
+            "intent"
+          ],
+          "type": "object"
+        },
         "Target": {
           "additionalProperties": false,
           "dependencies": {
@@ -66466,6 +67226,20 @@
           "additionalProperties": false,
           "properties": {
             "method": {
+              "const": "script.debug",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ScriptDebugRequest"
+            }
+          },
+          "required": ["method", "params"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
               "const": "action.invokeChild",
               "type": "string"
             },
@@ -66622,6 +67396,9 @@
         },
         {
           "$ref": "#/definitions/ClientEffectAcknowledged"
+        },
+        {
+          "$ref": "#/definitions/ScriptDebugResponse"
         },
         {
           "$ref": "#/definitions/QueryResult"
@@ -73023,6 +73800,165 @@
               "type": "object"
             }
           ]
+        },
+        "ScriptDebugFrame": {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "line": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "line", "column"],
+          "type": "object"
+        },
+        "ScriptDebugResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "scriptDebug": {
+              "$ref": "#/definitions/ScriptDebugResult"
+            }
+          },
+          "required": ["scriptDebug"],
+          "type": "object"
+        },
+        "ScriptDebugResult": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "snapshot",
+                  "type": "string"
+                },
+                "snapshot": {
+                  "$ref": "#/definitions/ScriptDebugSnapshot"
+                }
+              },
+              "required": ["kind", "snapshot"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "accepted",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugSnapshot": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "starting",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "running",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frames": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugFrame"
+                  },
+                  "type": "array"
+                },
+                "phase": {
+                  "const": "paused",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                },
+                "selectedFrame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "variables": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugVariable"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "phase",
+                "revision",
+                "frames",
+                "selectedFrame",
+                "variables"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugValueType": {
+          "enum": [
+            "unavailable",
+            "string",
+            "number",
+            "boolean",
+            "bigint",
+            "null",
+            "undefined",
+            "object",
+            "function",
+            "symbol"
+          ],
+          "type": "string"
+        },
+        "ScriptDebugVariable": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/definitions/ScriptDebugValueType"
+            }
+          },
+          "required": ["name", "type", "preview"],
+          "type": "object"
         },
         "SerialConfiguration": {
           "additionalProperties": false,
@@ -88274,6 +89210,20 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "script.debug",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ScriptDebugRequest"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "action.invokeChild",
                   "type": "string"
                 },
@@ -88430,6 +89380,9 @@
               "$ref": "#/definitions/ClientEffectAcknowledged"
             },
             {
+              "$ref": "#/definitions/ScriptDebugResponse"
+            },
+            {
               "$ref": "#/definitions/QueryResult"
             },
             {
@@ -88512,6 +89465,301 @@
               "type": "object"
             }
           ]
+        },
+        "ScriptDebugCommand": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "continue",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOver",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepInto",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "stepOut",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "const": "inspectFrame",
+                  "type": "string"
+                },
+                "frame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["action", "revision", "frame"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugFrame": {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "line": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "line", "column"],
+          "type": "object"
+        },
+        "ScriptDebugIntent": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "inspect",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "$ref": "#/definitions/ScriptDebugCommand"
+                },
+                "kind": {
+                  "const": "command",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "command"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "intent": {
+              "$ref": "#/definitions/ScriptDebugIntent"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            }
+          },
+          "required": [
+            "requestId",
+            "clientId",
+            "actorId",
+            "operationId",
+            "intent"
+          ],
+          "type": "object"
+        },
+        "ScriptDebugResponse": {
+          "additionalProperties": false,
+          "properties": {
+            "scriptDebug": {
+              "$ref": "#/definitions/ScriptDebugResult"
+            }
+          },
+          "required": ["scriptDebug"],
+          "type": "object"
+        },
+        "ScriptDebugResult": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "snapshot",
+                  "type": "string"
+                },
+                "snapshot": {
+                  "$ref": "#/definitions/ScriptDebugSnapshot"
+                }
+              },
+              "required": ["kind", "snapshot"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "accepted",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugSnapshot": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "starting",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "running",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                }
+              },
+              "required": ["phase", "revision"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "frames": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugFrame"
+                  },
+                  "type": "array"
+                },
+                "phase": {
+                  "const": "paused",
+                  "type": "string"
+                },
+                "revision": {
+                  "$ref": "#/definitions/U64"
+                },
+                "selectedFrame": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "variables": {
+                  "items": {
+                    "$ref": "#/definitions/ScriptDebugVariable"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "phase",
+                "revision",
+                "frames",
+                "selectedFrame",
+                "variables"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ScriptDebugValueType": {
+          "enum": [
+            "unavailable",
+            "string",
+            "number",
+            "boolean",
+            "bigint",
+            "null",
+            "undefined",
+            "object",
+            "function",
+            "symbol"
+          ],
+          "type": "string"
+        },
+        "ScriptDebugVariable": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "preview": {
+              "type": "string"
+            },
+            "type": {
+              "$ref": "#/definitions/ScriptDebugValueType"
+            }
+          },
+          "required": ["name", "type", "preview"],
+          "type": "object"
         },
         "SerialConfiguration": {
           "additionalProperties": false,

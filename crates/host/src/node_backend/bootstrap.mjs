@@ -854,7 +854,7 @@ await import(pathToFileURL(workerData.entry).href);
 const workerBootstrapUrl = new URL(
   `data:text/javascript;base64,${Buffer.from(workerBootstrap).toString("base64")}`,
 );
-function startManagedWorker(owner, task, url, workerData) {
+function startManagedWorker(owner, task, url, workerData, name) {
   if (owner.closed || owner.workers.size >= 8 || workers.size >= 32)
     throw new Error("Invalid worker entry");
   const state = {
@@ -870,6 +870,7 @@ function startManagedWorker(owner, task, url, workerData) {
       stderr: true,
       trackUnmanagedFds: true,
       workerData,
+      name,
       resourceLimits: {
         maxOldGenerationSizeMb: 64,
         maxYoungGenerationSizeMb: 8,
@@ -988,14 +989,23 @@ async function runConfirmedScript(owner, task, snapshot, bridge) {
     "data:text/javascript;base64," +
       Buffer.from(scriptWorkerSource, "utf8").toString("base64"),
   );
-  const state = startManagedWorker(owner, task, scriptUrl, {
-    language,
-    source,
-    sourceSha256,
-    ...(task.scriptBreakpoints
-      ? { debugSourceUrl: confirmedScriptDebugUrl(sourceSha256) }
-      : {}),
-  });
+  const name = task.scriptBreakpoints
+    ? "swb-script-debug-" + task.requestId
+    : undefined;
+  const state = startManagedWorker(
+    owner,
+    task,
+    scriptUrl,
+    {
+      language,
+      source,
+      sourceSha256,
+      ...(task.scriptBreakpoints
+        ? { debugSourceUrl: confirmedScriptDebugUrl(sourceSha256) }
+        : {}),
+    },
+    name,
+  );
   const worker = state.worker;
   let finished = false;
   let pending;
@@ -1066,6 +1076,7 @@ async function runConfirmedScript(owner, task, snapshot, bridge) {
       if (task.scriptBreakpoints) {
         const debuggerSession = new ConfirmedScriptDebugger(
           worker,
+          name,
           sourceSha256,
           {
             publish: (value) =>

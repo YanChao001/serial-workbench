@@ -2614,6 +2614,9 @@ impl RequestHandler for Host {
                     };
                     RpcResult::ClientEffectAcknowledged(acknowledged)
                 }
+                RpcRequest::DebugScript(params) => {
+                    RpcResult::ScriptDebug(host.control_script_debugger(&actor, params).await?)
+                }
                 RpcRequest::RunConfirmedScript(params) => {
                     RpcResult::Operation(Box::new(OperationResult {
                         operation: host.invoke_confirmed_script(&actor, params).await?,

@@ -91,6 +91,10 @@ const AUTOMATION_0_1_8_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.8.zip");
 const AUTOMATION_0_1_8_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.8.json");
+const AUTOMATION_0_1_9_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.9.zip");
+const AUTOMATION_0_1_9_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.9.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
@@ -226,8 +230,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 17] {
-    static PREVIOUS: OnceLock<[ProductPackage; 17]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 18] {
+    static PREVIOUS: OnceLock<[ProductPackage; 18]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -286,6 +290,11 @@ fn previous_packages() -> &'static [ProductPackage; 17] {
             ProductPackage::new(
                 AUTOMATION_0_1_8_DESCRIPTOR,
                 AUTOMATION_0_1_8_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
+                AUTOMATION_0_1_9_DESCRIPTOR,
+                AUTOMATION_0_1_9_ARCHIVE,
                 AUTOMATION_MARKER,
             ),
             ProductPackage::new(
@@ -422,6 +431,7 @@ mod tests {
             response_automation,
             loopback_automation,
             connection_automation,
+            script_automation,
             old_rfc2217,
             old_modbus,
             old_modbus_slave,
@@ -431,15 +441,16 @@ mod tests {
         check_predecessor_upgrade(comparison_fields, "0.3.0", "0.4.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.9");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.9");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.9");
-        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.9");
-        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.9");
-        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.9");
-        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.9");
-        check_predecessor_upgrade(loopback_automation, "0.1.7", "0.1.9");
-        check_predecessor_upgrade(connection_automation, "0.1.8", "0.1.9");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.10");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.10");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.10");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.10");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.10");
+        check_predecessor_upgrade(calendar_automation, "0.1.5", "0.1.10");
+        check_predecessor_upgrade(response_automation, "0.1.6", "0.1.10");
+        check_predecessor_upgrade(loopback_automation, "0.1.7", "0.1.10");
+        check_predecessor_upgrade(connection_automation, "0.1.8", "0.1.10");
+        check_predecessor_upgrade(script_automation, "0.1.9", "0.1.10");
         check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus, "0.1.0", "0.1.1");
         check_predecessor_upgrade(old_modbus_slave, "0.1.0", "0.1.1");

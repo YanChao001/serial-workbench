@@ -40,6 +40,8 @@ import type {
   Operation,
   OperationInput,
   OperationSummary,
+  ScriptDebugIntent,
+  ScriptDebugResult,
   RebindParams,
   RecentList,
   ReplayReadParams,
@@ -155,6 +157,11 @@ export type HostContextValue = {
     intent: LocalScriptIntent,
     signal: AbortSignal,
   ): Promise<Operation>;
+  scriptDebug?(
+    operation: Operation,
+    intent: ScriptDebugIntent,
+    signal: AbortSignal,
+  ): Promise<ScriptDebugResult>;
   connectionSequenceIntent?(
     intent: ConnectionSequenceIntent,
     signal: AbortSignal,

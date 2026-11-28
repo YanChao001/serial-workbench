@@ -320,6 +320,8 @@ pub enum RpcRequest {
     Invoke(Call),
     #[serde(rename = "script.runConfirmed")]
     RunConfirmedScript(ConfirmedScriptInvocation),
+    #[serde(rename = "script.debug")]
+    DebugScript(ScriptDebugRequest),
     #[serde(rename = "action.invokeChild")]
     InvokeChild(ChildCall),
     #[serde(rename = "operation.get")]
@@ -349,6 +351,7 @@ pub enum RpcResult {
     LanAccess(LanAccessResult),
     ClientRegistration(ClientRegistration),
     ClientEffectAcknowledged(ClientEffectAcknowledged),
+    ScriptDebug(ScriptDebugResponse),
     Query(QueryResult),
     Attach(AttachResult),
     Operation(Box<OperationResult>),

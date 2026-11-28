@@ -201,6 +201,11 @@ async function runDebuggerTask(t, cancel) {
   const id = "swb.builtin.automation";
   const actionId = id + ".script";
   const adjacentAction = id + ".adjacent";
+  const warmup = 'export default () => "ready";';
+  const warmupDigest = createHash("sha256")
+    .update("serial-workbench-script-v1\0js\0")
+    .update(warmup)
+    .digest("hex");
   const source = [
     "export default async ({ serial }: { serial: { read(sequence: string): Promise<unknown> } }) => {",
     "  const data = 14;",
@@ -286,6 +291,26 @@ async function runDebuggerTask(t, cancel) {
         } else if (frame.kind === "ready") {
           send({ kind: "activate", requestId: "1", id, root, entry });
         } else if (frame.kind === "registered" && frame.requestId === "1") {
+          send({
+            kind: "invoke",
+            requestId: "4",
+            id,
+            call: {
+              actionId,
+              params: {
+                language: "js",
+                source: warmup,
+                sourceSha256: warmupDigest,
+              },
+            },
+            taskContext: "warmup",
+            parentOperationId: "warmup-parent",
+          });
+        } else if (
+          frame.kind === "action_completed" &&
+          frame.requestId === "4"
+        ) {
+          assert.equal(frame.value.value, "ready");
           send({
             kind: "invoke",
             requestId: "2",

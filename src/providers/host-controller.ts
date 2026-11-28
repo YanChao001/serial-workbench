@@ -55,6 +55,7 @@ import {
   hostConnectDevice,
   hostConnectionSequenceIntent,
   hostRunConfirmedScript,
+  hostScriptDebug,
   chooseFileResource,
   claimTransferDrop,
   hostApplyDocumentIntent,
@@ -104,6 +105,7 @@ type HostUserActions = {
   connectDevice: typeof hostConnectDevice;
   connectionSequenceIntent?: typeof hostConnectionSequenceIntent;
   runConfirmedScript?: typeof hostRunConfirmedScript;
+  scriptDebug?: typeof hostScriptDebug;
   chooseFile: typeof chooseFileResource;
   claimDrop?: typeof claimTransferDrop;
   applyDocumentIntent: typeof hostApplyDocumentIntent;
@@ -131,6 +133,7 @@ export function createHostWorkspace(
     connectDevice: hostConnectDevice,
     connectionSequenceIntent: hostConnectionSequenceIntent,
     runConfirmedScript: hostRunConfirmedScript,
+    scriptDebug: hostScriptDebug,
     chooseFile: chooseFileResource,
     claimDrop: claimTransferDrop,
     applyDocumentIntent: hostApplyDocumentIntent,
@@ -1668,6 +1671,29 @@ export function createHostWorkspace(
       );
       return waitForHost(pending, waiting);
     });
+  const debugScript = connection.lanRoute
+    ? undefined
+    : userActions?.scriptDebug;
+  const scriptDebug: HostContextValue["scriptDebug"] =
+    debugScript &&
+    ((operation, intent, signal) => {
+      const waiting = AbortSignal.any([signal, lifetime.signal]);
+      waiting.throwIfAborted();
+      const { actorId, hostId } = connection.attachment;
+      if (
+        operation.actorId !== actorId ||
+        operation.executionHostId !== hostId ||
+        operation.target.hostId !== hostId ||
+        operation.actionId !== "swb.builtin.automation.script"
+      )
+        throw new ContractValidationError(
+          "Script debugger belongs to another operation",
+        );
+      return waitForHost(
+        debugScript(connection.generation, operation.operationId, intent),
+        waiting,
+      );
+    });
   async function fileMetadata(reference: ObjectRef, signal?: AbortSignal) {
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
@@ -2254,6 +2280,7 @@ export function createHostWorkspace(
     trustedConnect,
     connectionSequenceIntent,
     runConfirmedScript,
+    scriptDebug,
     readFile,
     fileMetadata,
     readReplayRecord,

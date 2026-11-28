@@ -17,6 +17,8 @@ import type {
   RpcRequest,
   WireFrame,
   SessionSnapshot,
+  ScriptDebugIntent,
+  ScriptDebugResult,
   U64,
   Operation,
   Target,
@@ -245,6 +247,21 @@ export async function hostRunConfirmedScript(
     commands.hostRunConfirmedScript(generation, intent),
   );
   return parseHostOperation(operation);
+}
+
+export function hostScriptDebug(
+  generation: U64,
+  operationId: string,
+  intent: ScriptDebugIntent,
+): Promise<ScriptDebugResult> {
+  return callHost((commands) =>
+    commands.hostScriptDebug(
+      generation,
+      crypto.randomUUID(),
+      operationId,
+      intent,
+    ),
+  );
 }
 
 export class NativeBridgeError extends Error {

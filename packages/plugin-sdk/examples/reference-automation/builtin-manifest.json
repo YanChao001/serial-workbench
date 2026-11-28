@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.automation",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "displayName": "Serial Automation",
   "description": "Schedule sends, run command sequences, and trigger scoped actions",
   "license": "Apache-2.0",
@@ -1230,6 +1230,12 @@
             "sourceSha256": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
+            },
+            "debugBreakpoints": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": { "type": "integer", "minimum": 1, "maximum": 65537 }
             },
             "sessionRevision": {
               "type": "string",
